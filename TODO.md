@@ -16,16 +16,16 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Implement `GLContext` creation and destruction.
 - [x] Implement current-context binding for one thread.
 - [x] Add GL error state and `glGetError` semantics.
-- [ ] Define internal object-name allocation with generation/lifetime checks.
+- [x] Define internal object-name allocation with generation/lifetime checks.
 - [x] Add dirty-state tracking so ordinary state changes do not emit RinGPU commands immediately.
 - [ ] Implement basic state queries required by the initial profile.
-- [ ] Add tests for context isolation, object-name reuse, and error behavior.
+- [x] Add tests for context isolation, object-name reuse, and error behavior.
 
 ## Phase 2 — Buffers and vertex input
 
-- [ ] Implement buffer object creation/deletion/binding.
+- [x] Implement buffer object creation/deletion/binding.
 - [ ] Implement `glBufferData` and bounded buffer uploads through RinGPU.
-- [ ] Implement array-buffer and element-array-buffer state.
+- [x] Implement array-buffer and element-array-buffer state.
 - [ ] Implement the initial vertex attribute state model.
 - [ ] Translate supported GL vertex formats into RinGPU vertex layouts.
 - [ ] Reject unsupported or out-of-range vertex fetches before submission.

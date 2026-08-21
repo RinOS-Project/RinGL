@@ -14,6 +14,8 @@ ringl_inc = include_directories('include', 'src')
 
 ringl_sources = files(
   'src/context/context.c',
+  'src/objects/object_table.c',
+  'src/objects/buffer.c',
 )
 
 ringl_lib = static_library(

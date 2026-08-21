@@ -5,3 +5,11 @@ context_test = executable(
 )
 
 test('context', context_test)
+
+buffer_test = executable(
+  'ringl-buffer-test',
+  'buffer_test.c',
+  dependencies: ringl_dep,
+)
+
+test('buffer', buffer_test)

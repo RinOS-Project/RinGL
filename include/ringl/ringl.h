@@ -17,6 +17,10 @@ extern "C" {
 #define RINGL_INVALID_OPERATION 0x0502u
 #define RINGL_OUT_OF_MEMORY     0x0505u
 
+/* Initial OpenGL ES buffer targets. */
+#define RINGL_ARRAY_BUFFER         0x8892u
+#define RINGL_ELEMENT_ARRAY_BUFFER 0x8893u
+
 /* Context-side derived state. These bits are internal policy made observable
  * only for diagnostics/tests; ordinary GL state changes should set them rather
  * than immediately emitting RinGPU commands. */
@@ -65,6 +69,14 @@ RinGLContext* ringl_get_current_context(void);
 uint32_t ringl_get_error(void);
 
 uint32_t ringl_context_dirty_bits(const RinGLContext* context);
+
+/* Initial buffer-object namespace. Generated names are reserved until first
+ * bind, matching GL's distinction between a generated name and a live object. */
+void ringl_gen_buffers(int32_t count, uint32_t* buffers);
+void ringl_delete_buffers(int32_t count, const uint32_t* buffers);
+void ringl_bind_buffer(uint32_t target, uint32_t buffer);
+int ringl_is_buffer(uint32_t buffer);
+uint32_t ringl_get_bound_buffer(uint32_t target);
 
 #ifdef __cplusplus
 }

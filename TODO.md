@@ -4,20 +4,20 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 
 ## Phase 0 — Repository bootstrap
 
-- [ ] Add the initial source/include/test directory layout.
-- [ ] Choose and document the build system used by RinOS integration.
-- [ ] Add formatting and warning policy for C/C++ sources.
-- [ ] Add a minimal CI build and test job.
-- [ ] Define a versioning policy for public RinGL headers.
-- [ ] Document how RinGL discovers or receives a RinGPU device/queue.
+- [x] Add the initial source/include/test directory layout.
+- [x] Choose and document the build system used by RinOS integration.
+- [x] Add formatting and warning policy for C/C++ sources.
+- [x] Add a minimal CI build and test job.
+- [x] Define a versioning policy for public RinGL headers.
+- [x] Document how RinGL discovers or receives a RinGPU device/queue.
 
 ## Phase 1 — Context and core GL state
 
-- [ ] Implement `GLContext` creation and destruction.
-- [ ] Implement current-context binding for one thread.
-- [ ] Add GL error state and `glGetError` semantics.
+- [x] Implement `GLContext` creation and destruction.
+- [x] Implement current-context binding for one thread.
+- [x] Add GL error state and `glGetError` semantics.
 - [ ] Define internal object-name allocation with generation/lifetime checks.
-- [ ] Add dirty-state tracking so ordinary state changes do not emit RinGPU commands immediately.
+- [x] Add dirty-state tracking so ordinary state changes do not emit RinGPU commands immediately.
 - [ ] Implement basic state queries required by the initial profile.
 - [ ] Add tests for context isolation, object-name reuse, and error behavior.
 

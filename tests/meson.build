@@ -21,3 +21,11 @@ buffer_storage_test = executable(
 )
 
 test('buffer-storage', buffer_storage_test)
+
+vertex_attrib_test = executable(
+  'ringl-vertex-attrib-test',
+  'vertex_attrib_test.c',
+  dependencies: ringl_dep,
+)
+
+test('vertex-attrib', vertex_attrib_test)

@@ -17,6 +17,8 @@ ringl_sources = files(
   'src/context/context.c',
   'src/objects/object_table.c',
   'src/objects/buffer.c',
+  'src/context/vertex_attrib.c',
+  'src/translate/vertex_layout.c',
 )
 
 ringl_lib = static_library(

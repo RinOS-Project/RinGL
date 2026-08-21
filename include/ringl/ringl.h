@@ -10,23 +10,25 @@ extern "C" {
 
 #define RINGL_API_VERSION 1u
 
-/* OpenGL-compatible error values used by the initial RinGL context core. */
 #define RINGL_NO_ERROR          0x0000u
 #define RINGL_INVALID_ENUM      0x0500u
 #define RINGL_INVALID_VALUE     0x0501u
 #define RINGL_INVALID_OPERATION 0x0502u
 #define RINGL_OUT_OF_MEMORY     0x0505u
 
-/* Initial OpenGL ES buffer targets and usage hints. */
-#define RINGL_ARRAY_BUFFER          0x8892u
-#define RINGL_ELEMENT_ARRAY_BUFFER  0x8893u
-#define RINGL_STREAM_DRAW           0x88e0u
-#define RINGL_STATIC_DRAW           0x88e4u
-#define RINGL_DYNAMIC_DRAW          0x88e8u
+#define RINGL_FALSE 0u
+#define RINGL_TRUE  1u
 
-/* Context-side derived state. These bits are internal policy made observable
- * only for diagnostics/tests; ordinary GL state changes should set them rather
- * than immediately emitting RinGPU commands. */
+#define RINGL_FLOAT 0x1406u
+
+#define RINGL_ARRAY_BUFFER         0x8892u
+#define RINGL_ELEMENT_ARRAY_BUFFER 0x8893u
+#define RINGL_STREAM_DRAW          0x88e0u
+#define RINGL_STATIC_DRAW          0x88e4u
+#define RINGL_DYNAMIC_DRAW         0x88e8u
+
+#define RINGL_MAX_VERTEX_ATTRIBS 16u
+
 #define RINGL_DIRTY_PIPELINE    0x00000001u
 #define RINGL_DIRTY_BINDINGS    0x00000002u
 #define RINGL_DIRTY_FRAMEBUFFER 0x00000004u
@@ -35,11 +37,6 @@ extern "C" {
 
 typedef struct RinGLContext RinGLContext;
 
-/*
- * Thin embedding callbacks for operations that require host integration around
- * RinGPU. The OS-specific adapter may implement uploads with a staging buffer,
- * command list, copy command, queue submit, and fence as appropriate.
- */
 typedef int (*RinGLRinGpuCreateBufferFn)(void* session,
                                          uint64_t size_bytes,
                                          uint64_t* buffer_out);
@@ -58,13 +55,6 @@ typedef struct RinGLRinGpuOpsV1 {
     RinGLRinGpuDestroyObjectFn destroy_object;
 } RinGLRinGpuOpsV1;
 
-/*
- * Embedding boundary for RinGPU integration.
- *
- * RinGL deliberately does not own a global GPU device. The embedding runtime
- * supplies an opaque session, operation table, and a selected graphics queue.
- * The context copies the v1 operation table during creation.
- */
 typedef struct RinGLRinGpuBindingV1 {
     uint32_t struct_size;
     uint32_t api_version;
@@ -83,21 +73,26 @@ typedef struct RinGLContextDescV1 {
     uint32_t reserved0;
 } RinGLContextDescV1;
 
+typedef struct RinGLVertexAttribInfoV1 {
+    uint32_t struct_size;
+    uint32_t api_version;
+    uint32_t enabled;
+    uint32_t size;
+    uint32_t type;
+    uint32_t normalized;
+    uint32_t stride;
+    uint32_t buffer;
+    uint64_t offset;
+} RinGLVertexAttribInfoV1;
+
 int ringl_context_create(const RinGLContextDescV1* desc,
                          RinGLContext** context_out);
 void ringl_context_destroy(RinGLContext* context);
-
-/* One current RinGL context per thread. Passing NULL clears the binding. */
 int ringl_make_current(RinGLContext* context);
 RinGLContext* ringl_get_current_context(void);
-
-/* GL-style sticky error state: the first pending error wins until consumed. */
 uint32_t ringl_get_error(void);
-
 uint32_t ringl_context_dirty_bits(const RinGLContext* context);
 
-/* Initial buffer-object namespace. Generated names are reserved until first
- * bind, matching GL's distinction between a generated name and a live object. */
 void ringl_gen_buffers(int32_t count, uint32_t* buffers);
 void ringl_delete_buffers(int32_t count, const uint32_t* buffers);
 void ringl_bind_buffer(uint32_t target, uint32_t buffer);
@@ -109,6 +104,20 @@ void ringl_buffer_data(uint32_t target,
                        uint32_t usage);
 uint64_t ringl_get_buffer_size(uint32_t target);
 uint32_t ringl_get_buffer_usage(uint32_t target);
+
+/* Initial bounded vertex-input profile. RinGPU currently exposes scalar
+ * 32-bit vertex attributes, so the first translated path admits one FLOAT
+ * scalar per enabled location. The state model is deliberately versioned so
+ * broader GLES formats can be added without changing the context ABI. */
+void ringl_enable_vertex_attrib_array(uint32_t index);
+void ringl_disable_vertex_attrib_array(uint32_t index);
+void ringl_vertex_attrib_pointer(uint32_t index,
+                                 int32_t size,
+                                 uint32_t type,
+                                 uint32_t normalized,
+                                 int32_t stride,
+                                 uint64_t offset);
+int ringl_get_vertex_attrib(uint32_t index, RinGLVertexAttribInfoV1* info);
 
 #ifdef __cplusplus
 }

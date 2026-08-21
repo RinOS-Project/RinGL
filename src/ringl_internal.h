@@ -7,6 +7,7 @@
 #include "objects/object_table.h"
 
 #define RINGL_CONTEXT_MAGIC 0x52474c43u /* RGLC */
+#define RINGL_NATIVE_VERTEX_FLOAT32 3u
 
 typedef struct RinGLBufferObject {
     uint64_t ringpu_handle;
@@ -14,6 +15,29 @@ typedef struct RinGLBufferObject {
     uint32_t usage;
     uint32_t reserved0;
 } RinGLBufferObject;
+
+typedef struct RinGLVertexAttribState {
+    uint32_t enabled;
+    uint32_t size;
+    uint32_t type;
+    uint32_t normalized;
+    uint32_t stride;
+    uint32_t buffer;
+    uint64_t offset;
+} RinGLVertexAttribState;
+
+typedef struct RinGLResolvedVertexAttribute {
+    uint32_t location;
+    uint32_t format;
+    uint32_t offset;
+} RinGLResolvedVertexAttribute;
+
+typedef struct RinGLResolvedVertexLayout {
+    uint32_t buffer;
+    uint32_t stride;
+    uint32_t attribute_count;
+    RinGLResolvedVertexAttribute attributes[RINGL_MAX_VERTEX_ATTRIBS];
+} RinGLResolvedVertexLayout;
 
 struct RinGLContext {
     uint32_t magic;
@@ -29,6 +53,7 @@ struct RinGLContext {
     RinGLBufferObject buffers[RINGL_OBJECT_SLOT_COUNT];
     uint32_t array_buffer;
     uint32_t element_array_buffer;
+    RinGLVertexAttribState vertex_attribs[RINGL_MAX_VERTEX_ATTRIBS];
 };
 
 void ringl_context_record_error(RinGLContext* context, uint32_t error);
@@ -45,5 +70,8 @@ int ringl_backend_upload_buffer(RinGLContext* context,
                                 uint64_t size_bytes);
 void ringl_backend_destroy_object(RinGLContext* context, uint64_t object);
 void ringl_buffer_objects_destroy_all(RinGLContext* context);
+void ringl_vertex_attrib_detach_buffer(RinGLContext* context, uint32_t buffer);
+int ringl_resolve_vertex_layout(const RinGLContext* context,
+                                RinGLResolvedVertexLayout* layout);
 
 #endif /* RINGL_INTERNAL_H */

@@ -13,6 +13,7 @@ project(
 ringl_inc = include_directories('include', 'src')
 
 ringl_sources = files(
+  'src/backend/ringpu_backend.c',
   'src/context/context.c',
   'src/objects/object_table.c',
   'src/objects/buffer.c',

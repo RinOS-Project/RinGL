@@ -12,6 +12,20 @@ static int ringl_context_is_valid(const RinGLContext* context)
     return context != NULL && context->magic == RINGL_CONTEXT_MAGIC;
 }
 
+static int ringl_validate_ringpu_ops(const RinGLRinGpuOpsV1* ops)
+{
+    if (ops == NULL)
+        return 1;
+    if (ops->struct_size < sizeof(*ops) ||
+        ops->api_version != RINGL_API_VERSION ||
+        ops->create_buffer == NULL ||
+        ops->upload_buffer == NULL ||
+        ops->destroy_object == NULL) {
+        return 0;
+    }
+    return 1;
+}
+
 static int ringl_validate_ringpu_binding(const RinGLRinGpuBindingV1* binding)
 {
     if (binding == NULL)
@@ -22,6 +36,8 @@ static int ringl_validate_ringpu_binding(const RinGLRinGpuBindingV1* binding)
     if (binding->api_version != RINGL_API_VERSION)
         return 0;
     if (binding->reserved0 != 0u)
+        return 0;
+    if (!ringl_validate_ringpu_ops(binding->ops))
         return 0;
 
     return 1;
@@ -58,6 +74,12 @@ int ringl_context_create(const RinGLContextDescV1* desc,
         if (desc->ringpu != NULL) {
             memcpy(&context->ringpu, desc->ringpu, sizeof(context->ringpu));
             context->has_ringpu = 1;
+            if (desc->ringpu->ops != NULL) {
+                memcpy(&context->ringpu_ops, desc->ringpu->ops,
+                       sizeof(context->ringpu_ops));
+                context->ringpu.ops = &context->ringpu_ops;
+                context->has_ringpu_ops = 1;
+            }
         }
     }
 
@@ -73,7 +95,9 @@ void ringl_context_destroy(RinGLContext* context)
     if (ringl_current_context == context)
         ringl_current_context = NULL;
 
+    ringl_buffer_objects_destroy_all(context);
     context->magic = 0u;
+    memset(&context->ringpu_ops, 0, sizeof(context->ringpu_ops));
     memset(&context->ringpu, 0, sizeof(context->ringpu));
     free(context);
 }

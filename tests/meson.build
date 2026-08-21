@@ -13,3 +13,11 @@ buffer_test = executable(
 )
 
 test('buffer', buffer_test)
+
+buffer_storage_test = executable(
+  'ringl-buffer-storage-test',
+  'buffer_storage_test.c',
+  dependencies: ringl_dep,
+)
+
+test('buffer-storage', buffer_storage_test)

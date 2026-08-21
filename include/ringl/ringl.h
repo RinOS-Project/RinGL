@@ -17,9 +17,12 @@ extern "C" {
 #define RINGL_INVALID_OPERATION 0x0502u
 #define RINGL_OUT_OF_MEMORY     0x0505u
 
-/* Initial OpenGL ES buffer targets. */
-#define RINGL_ARRAY_BUFFER         0x8892u
-#define RINGL_ELEMENT_ARRAY_BUFFER 0x8893u
+/* Initial OpenGL ES buffer targets and usage hints. */
+#define RINGL_ARRAY_BUFFER          0x8892u
+#define RINGL_ELEMENT_ARRAY_BUFFER  0x8893u
+#define RINGL_STREAM_DRAW           0x88e0u
+#define RINGL_STATIC_DRAW           0x88e4u
+#define RINGL_DYNAMIC_DRAW          0x88e8u
 
 /* Context-side derived state. These bits are internal policy made observable
  * only for diagnostics/tests; ordinary GL state changes should set them rather
@@ -33,17 +36,40 @@ extern "C" {
 typedef struct RinGLContext RinGLContext;
 
 /*
+ * Thin embedding callbacks for operations that require host integration around
+ * RinGPU. The OS-specific adapter may implement uploads with a staging buffer,
+ * command list, copy command, queue submit, and fence as appropriate.
+ */
+typedef int (*RinGLRinGpuCreateBufferFn)(void* session,
+                                         uint64_t size_bytes,
+                                         uint64_t* buffer_out);
+typedef int (*RinGLRinGpuUploadBufferFn)(void* session,
+                                         uint64_t buffer,
+                                         uint64_t offset,
+                                         const void* data,
+                                         uint64_t size_bytes);
+typedef int (*RinGLRinGpuDestroyObjectFn)(void* session, uint64_t object);
+
+typedef struct RinGLRinGpuOpsV1 {
+    uint32_t struct_size;
+    uint32_t api_version;
+    RinGLRinGpuCreateBufferFn create_buffer;
+    RinGLRinGpuUploadBufferFn upload_buffer;
+    RinGLRinGpuDestroyObjectFn destroy_object;
+} RinGLRinGpuOpsV1;
+
+/*
  * Embedding boundary for RinGPU integration.
  *
  * RinGL deliberately does not own a global GPU device. The embedding runtime
- * supplies an opaque session plus a RinGPU graphics queue handle/capabilities.
- * The opaque session is never interpreted by the context core; backend code
- * will use it when the command translation layer is added.
+ * supplies an opaque session, operation table, and a selected graphics queue.
+ * The context copies the v1 operation table during creation.
  */
 typedef struct RinGLRinGpuBindingV1 {
     uint32_t struct_size;
     uint32_t api_version;
     void* session;
+    const RinGLRinGpuOpsV1* ops;
     uint64_t graphics_queue;
     uint32_t queue_capabilities;
     uint32_t reserved0;
@@ -77,6 +103,12 @@ void ringl_delete_buffers(int32_t count, const uint32_t* buffers);
 void ringl_bind_buffer(uint32_t target, uint32_t buffer);
 int ringl_is_buffer(uint32_t buffer);
 uint32_t ringl_get_bound_buffer(uint32_t target);
+void ringl_buffer_data(uint32_t target,
+                       int64_t size_bytes,
+                       const void* data,
+                       uint32_t usage);
+uint64_t ringl_get_buffer_size(uint32_t target);
+uint32_t ringl_get_buffer_usage(uint32_t target);
 
 #ifdef __cplusplus
 }

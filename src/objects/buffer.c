@@ -9,6 +9,12 @@ static int ringl_buffer_target_valid(uint32_t target)
     return target == RINGL_ARRAY_BUFFER || target == RINGL_ELEMENT_ARRAY_BUFFER;
 }
 
+static int ringl_buffer_usage_valid(uint32_t usage)
+{
+    return usage == RINGL_STREAM_DRAW || usage == RINGL_STATIC_DRAW ||
+           usage == RINGL_DYNAMIC_DRAW;
+}
+
 static uint32_t* ringl_buffer_binding_for_target(RinGLContext* context,
                                                  uint32_t target)
 {
@@ -17,6 +23,23 @@ static uint32_t* ringl_buffer_binding_for_target(RinGLContext* context,
     if (target == RINGL_ELEMENT_ARRAY_BUFFER)
         return &context->element_array_buffer;
     return NULL;
+}
+
+static RinGLBufferObject* ringl_bound_buffer_object(RinGLContext* context,
+                                                    uint32_t target)
+{
+    uint32_t* binding = ringl_buffer_binding_for_target(context, target);
+    uint32_t index;
+
+    if (binding == NULL || *binding == 0u)
+        return NULL;
+    if (ringl_object_lookup(context, *binding, RINGL_OBJECT_BUFFER) == NULL)
+        return NULL;
+
+    index = ringl_object_slot_index(*binding);
+    if (index >= RINGL_OBJECT_SLOT_COUNT)
+        return NULL;
+    return &context->buffers[index];
 }
 
 void ringl_gen_buffers(int32_t count, uint32_t* buffers)
@@ -89,9 +112,12 @@ void ringl_delete_buffers(int32_t count, const uint32_t* buffers)
             context->element_array_buffer = 0u;
 
         slot_index = ringl_object_slot_index(name);
-        if (slot_index < RINGL_OBJECT_SLOT_COUNT)
+        if (slot_index < RINGL_OBJECT_SLOT_COUNT) {
+            ringl_backend_destroy_object(context,
+                                         context->buffers[slot_index].ringpu_handle);
             memset(&context->buffers[slot_index], 0,
                    sizeof(context->buffers[slot_index]));
+        }
 
         ringl_object_release(context, name, RINGL_OBJECT_BUFFER);
         ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
@@ -153,4 +179,115 @@ uint32_t ringl_get_bound_buffer(uint32_t target)
     if (target == RINGL_ARRAY_BUFFER)
         return context->array_buffer;
     return context->element_array_buffer;
+}
+
+void ringl_buffer_data(uint32_t target,
+                       int64_t size_bytes,
+                       const void* data,
+                       uint32_t usage)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLBufferObject* object;
+    uint64_t new_handle = 0u;
+
+    if (context == NULL)
+        return;
+    if (!ringl_buffer_target_valid(target)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return;
+    }
+    if (!ringl_buffer_usage_valid(usage)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return;
+    }
+    if (size_bytes < 0) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+
+    object = ringl_bound_buffer_object(context, target);
+    if (object == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+
+    if (size_bytes > 0) {
+        if (ringl_backend_create_buffer(context, (uint64_t)size_bytes,
+                                        &new_handle) != 0 ||
+            new_handle == 0u) {
+            ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+            return;
+        }
+
+        if (data != NULL &&
+            ringl_backend_upload_buffer(context, new_handle, 0u, data,
+                                        (uint64_t)size_bytes) != 0) {
+            ringl_backend_destroy_object(context, new_handle);
+            ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+            return;
+        }
+    }
+
+    ringl_backend_destroy_object(context, object->ringpu_handle);
+    object->ringpu_handle = new_handle;
+    object->size_bytes = (uint64_t)size_bytes;
+    object->usage = usage;
+    ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
+}
+
+uint64_t ringl_get_buffer_size(uint32_t target)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLBufferObject* object;
+
+    if (context == NULL)
+        return 0u;
+    if (!ringl_buffer_target_valid(target)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return 0u;
+    }
+
+    object = ringl_bound_buffer_object(context, target);
+    if (object == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return 0u;
+    }
+    return object->size_bytes;
+}
+
+uint32_t ringl_get_buffer_usage(uint32_t target)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLBufferObject* object;
+
+    if (context == NULL)
+        return 0u;
+    if (!ringl_buffer_target_valid(target)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return 0u;
+    }
+
+    object = ringl_bound_buffer_object(context, target);
+    if (object == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return 0u;
+    }
+    return object->usage;
+}
+
+void ringl_buffer_objects_destroy_all(RinGLContext* context)
+{
+    uint32_t index;
+
+    if (context == NULL)
+        return;
+
+    for (index = 0; index < RINGL_OBJECT_SLOT_COUNT; ++index) {
+        if (context->objects[index].type != RINGL_OBJECT_BUFFER ||
+            context->objects[index].state == RINGL_OBJECT_FREE) {
+            continue;
+        }
+        ringl_backend_destroy_object(context, context->buffers[index].ringpu_handle);
+        context->buffers[index].ringpu_handle = 0u;
+    }
 }

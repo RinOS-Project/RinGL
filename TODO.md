@@ -24,12 +24,12 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 ## Phase 2 — Buffers and vertex input
 
 - [x] Implement buffer object creation/deletion/binding.
-- [ ] Implement `glBufferData` and bounded buffer uploads through RinGPU.
+- [x] Implement `glBufferData` and bounded buffer uploads through RinGPU.
 - [x] Implement array-buffer and element-array-buffer state.
-- [ ] Implement the initial vertex attribute state model.
-- [ ] Translate supported GL vertex formats into RinGPU vertex layouts.
-- [ ] Reject unsupported or out-of-range vertex fetches before submission.
-- [ ] Add buffer lifetime and bounds tests.
+- [x] Implement the initial vertex attribute state model.
+- [x] Translate supported GL vertex formats into RinGPU vertex layouts.
+- [x] Reject unsupported or out-of-range vertex fetches before submission.
+- [x] Add buffer lifetime and bounds tests.
 
 ## Phase 3 — Shaders and programs
 

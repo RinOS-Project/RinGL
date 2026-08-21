@@ -73,5 +73,9 @@ void ringl_buffer_objects_destroy_all(RinGLContext* context);
 void ringl_vertex_attrib_detach_buffer(RinGLContext* context, uint32_t buffer);
 int ringl_resolve_vertex_layout(const RinGLContext* context,
                                 RinGLResolvedVertexLayout* layout);
+int ringl_validate_vertex_fetch(const RinGLContext* context,
+                                uint32_t first_vertex,
+                                uint32_t vertex_count,
+                                RinGLResolvedVertexLayout* layout);
 
 #endif /* RINGL_INTERNAL_H */

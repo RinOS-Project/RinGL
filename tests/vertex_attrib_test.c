@@ -18,6 +18,7 @@ int main(void)
     };
     RinGLResolvedVertexLayout layout;
     uint32_t buffer = 0u;
+    uint32_t slot_index;
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -26,6 +27,10 @@ int main(void)
     assert(buffer != 0u);
     ringl_bind_buffer(RINGL_ARRAY_BUFFER, buffer);
     assert(ringl_is_buffer(buffer));
+
+    slot_index = ringl_object_slot_index(buffer);
+    assert(slot_index < RINGL_OBJECT_SLOT_COUNT);
+    context->buffers[slot_index].size_bytes = 16u;
 
     ringl_vertex_attrib_pointer(0u, 1, RINGL_FLOAT, RINGL_FALSE, 8, 0u);
     ringl_vertex_attrib_pointer(1u, 1, RINGL_FLOAT, RINGL_FALSE, 8, 4u);
@@ -49,6 +54,10 @@ int main(void)
     assert(layout.attributes[0].offset == 0u);
     assert(layout.attributes[1].location == 1u);
     assert(layout.attributes[1].offset == 4u);
+
+    assert(ringl_validate_vertex_fetch(context, 0u, 2u, &layout) == 0);
+    assert(ringl_validate_vertex_fetch(context, 0u, 3u, &layout) != 0);
+    assert(ringl_validate_vertex_fetch(context, UINT32_MAX, 2u, &layout) != 0);
 
     ringl_vertex_attrib_pointer(2u, 2, RINGL_FLOAT, RINGL_FALSE, 8, 0u);
     assert(ringl_get_error() == RINGL_INVALID_VALUE);

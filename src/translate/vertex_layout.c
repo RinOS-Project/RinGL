@@ -55,3 +55,49 @@ int ringl_resolve_vertex_layout(const RinGLContext* context,
     layout->stride = common_stride;
     return 0;
 }
+
+int ringl_validate_vertex_fetch(const RinGLContext* context,
+                                uint32_t first_vertex,
+                                uint32_t vertex_count,
+                                RinGLResolvedVertexLayout* layout)
+{
+    uint32_t slot_index;
+    uint32_t index;
+    uint64_t last_vertex;
+    const RinGLBufferObject* buffer;
+
+    if (ringl_resolve_vertex_layout(context, layout) != 0)
+        return -1;
+    if (vertex_count == 0u || layout->attribute_count == 0u)
+        return 0;
+    if (layout->buffer == 0u || layout->stride == 0u)
+        return -1;
+
+    last_vertex = (uint64_t)first_vertex + (uint64_t)vertex_count - 1u;
+    if (last_vertex > UINT32_MAX)
+        return -1;
+
+    slot_index = ringl_object_slot_index(layout->buffer);
+    if (slot_index >= RINGL_OBJECT_SLOT_COUNT)
+        return -1;
+    buffer = &context->buffers[slot_index];
+    if (buffer->size_bytes == 0u)
+        return -1;
+
+    for (index = 0; index < layout->attribute_count; ++index) {
+        const RinGLResolvedVertexAttribute* attrib = &layout->attributes[index];
+        uint64_t stride_bytes;
+        uint64_t end;
+
+        if (last_vertex != 0u &&
+            (uint64_t)layout->stride >
+                (UINT64_MAX - (uint64_t)attrib->offset - 4u) / last_vertex) {
+            return -1;
+        }
+        stride_bytes = last_vertex * (uint64_t)layout->stride;
+        end = (uint64_t)attrib->offset + stride_bytes + 4u;
+        if (end > buffer->size_bytes)
+            return -1;
+    }
+    return 0;
+}

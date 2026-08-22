@@ -39,6 +39,22 @@ extern "C" {
 
 typedef struct RinGLContext RinGLContext;
 
+typedef struct RinGLRinGpuVertexAttributeV1 {
+    uint32_t location;
+    uint32_t format;
+    uint32_t offset;
+    uint32_t reserved0;
+} RinGLRinGpuVertexAttributeV1;
+
+typedef struct RinGLRinGpuGraphicsPipelineV1 {
+    uint64_t vertex_shader;
+    uint64_t fragment_shader;
+    uint32_t color_format;
+    uint32_t primitive_topology;
+    uint32_t vertex_stride;
+    uint32_t attribute_count;
+} RinGLRinGpuGraphicsPipelineV1;
+
 typedef int (*RinGLRinGpuCreateBufferFn)(void* session,
                                          uint64_t size_bytes,
                                          uint64_t* buffer_out);
@@ -52,6 +68,12 @@ typedef int (*RinGLRinGpuCreateShaderModuleFn)(void* session,
                                                const void* rsh1,
                                                uint64_t size_bytes,
                                                uint64_t* shader_module_out);
+typedef int (*RinGLRinGpuCreateGraphicsPipelineFn)(
+    void* session,
+    const RinGLRinGpuGraphicsPipelineV1* desc,
+    const RinGLRinGpuVertexAttributeV1* attributes,
+    uint32_t attribute_count,
+    uint64_t* pipeline_out);
 
 typedef struct RinGLRinGpuOpsV1 {
     uint32_t struct_size;
@@ -60,6 +82,7 @@ typedef struct RinGLRinGpuOpsV1 {
     RinGLRinGpuUploadBufferFn upload_buffer;
     RinGLRinGpuDestroyObjectFn destroy_object;
     RinGLRinGpuCreateShaderModuleFn create_shader_module;
+    RinGLRinGpuCreateGraphicsPipelineFn create_graphics_pipeline;
 } RinGLRinGpuOpsV1;
 
 typedef struct RinGLRinGpuBindingV1 {

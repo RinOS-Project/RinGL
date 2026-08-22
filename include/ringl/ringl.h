@@ -18,7 +18,6 @@ extern "C" {
 
 #define RINGL_FALSE 0u
 #define RINGL_TRUE  1u
-
 #define RINGL_FLOAT 0x1406u
 
 #define RINGL_ARRAY_BUFFER         0x8892u
@@ -40,14 +39,8 @@ extern "C" {
 
 typedef struct RinGLContext RinGLContext;
 
-typedef int (*RinGLRinGpuCreateBufferFn)(void* session,
-                                         uint64_t size_bytes,
-                                         uint64_t* buffer_out);
-typedef int (*RinGLRinGpuUploadBufferFn)(void* session,
-                                         uint64_t buffer,
-                                         uint64_t offset,
-                                         const void* data,
-                                         uint64_t size_bytes);
+typedef int (*RinGLRinGpuCreateBufferFn)(void* session, uint64_t size_bytes, uint64_t* buffer_out);
+typedef int (*RinGLRinGpuUploadBufferFn)(void* session, uint64_t buffer, uint64_t offset, const void* data, uint64_t size_bytes);
 typedef int (*RinGLRinGpuDestroyObjectFn)(void* session, uint64_t object);
 
 typedef struct RinGLRinGpuOpsV1 {
@@ -88,8 +81,7 @@ typedef struct RinGLVertexAttribInfoV1 {
     uint64_t offset;
 } RinGLVertexAttribInfoV1;
 
-int ringl_context_create(const RinGLContextDescV1* desc,
-                         RinGLContext** context_out);
+int ringl_context_create(const RinGLContextDescV1* desc, RinGLContext** context_out);
 void ringl_context_destroy(RinGLContext* context);
 int ringl_make_current(RinGLContext* context);
 RinGLContext* ringl_get_current_context(void);
@@ -101,32 +93,24 @@ void ringl_delete_buffers(int32_t count, const uint32_t* buffers);
 void ringl_bind_buffer(uint32_t target, uint32_t buffer);
 int ringl_is_buffer(uint32_t buffer);
 uint32_t ringl_get_bound_buffer(uint32_t target);
-void ringl_buffer_data(uint32_t target,
-                       int64_t size_bytes,
-                       const void* data,
-                       uint32_t usage);
+void ringl_buffer_data(uint32_t target, int64_t size_bytes, const void* data, uint32_t usage);
 uint64_t ringl_get_buffer_size(uint32_t target);
 uint32_t ringl_get_buffer_usage(uint32_t target);
 
 void ringl_enable_vertex_attrib_array(uint32_t index);
 void ringl_disable_vertex_attrib_array(uint32_t index);
-void ringl_vertex_attrib_pointer(uint32_t index,
-                                 int32_t size,
-                                 uint32_t type,
-                                 uint32_t normalized,
-                                 int32_t stride,
-                                 uint64_t offset);
+void ringl_vertex_attrib_pointer(uint32_t index, int32_t size, uint32_t type, uint32_t normalized, int32_t stride, uint64_t offset);
 int ringl_get_vertex_attrib(uint32_t index, RinGLVertexAttribInfoV1* info);
 
-/* Phase-3 shader object core. Source storage accepts one UTF-8 source string;
- * length < 0 means NUL-terminated input. Compilation/linking is deliberately
- * separate so the GLSL ES frontend can lower directly to RinShader IR. */
 uint32_t ringl_create_shader(uint32_t shader_type);
 void ringl_delete_shader(uint32_t shader);
 int ringl_is_shader(uint32_t shader);
 void ringl_shader_source(uint32_t shader, const char* source, int64_t length);
+void ringl_compile_shader(uint32_t shader);
+uint32_t ringl_get_shader_compile_status(uint32_t shader);
 uint32_t ringl_get_shader_type(uint32_t shader);
 uint64_t ringl_get_shader_source_length(uint32_t shader);
+uint64_t ringl_get_shader_info_log(uint32_t shader, char* buffer, uint64_t buffer_size);
 
 #ifdef __cplusplus
 }

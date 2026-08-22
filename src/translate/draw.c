@@ -278,13 +278,19 @@ static int prepare_graphics_resources(RinGLContext* context,
             &context->graphics_bind_group) != 0 ||
         context->graphics_bind_group == 0u)
         return -1;
-    if (ringl_backend_bind_graphics_resources(
-            context, command_list, context->graphics_bind_group) != 0)
-        return -1;
 
     if (texture_index_out != NULL)
         *texture_index_out = texture_index;
     return 0;
+}
+
+static int bind_graphics_resources(RinGLContext* context,
+                                   uint64_t command_list)
+{
+    if (context->graphics_bind_group == 0u)
+        return 0;
+    return ringl_backend_bind_graphics_resources(
+        context, command_list, context->graphics_bind_group);
 }
 
 static void publish_texture_transition(RinGLContext* context,
@@ -395,7 +401,8 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
                                    &texture_transitioned) != 0 ||
         transition_to_color_target(context, command_list) != 0 ||
         begin_color_pass(context, command_list, RINGL_RIN_GPU_RENDER_LOAD) != 0 ||
-        set_raster_state(context, command_list) != 0) {
+        set_raster_state(context, command_list) != 0 ||
+        bind_graphics_resources(context, command_list) != 0) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
@@ -499,7 +506,8 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
                                    &texture_transitioned) != 0 ||
         transition_to_color_target(context, command_list) != 0 ||
         begin_color_pass(context, command_list, RINGL_RIN_GPU_RENDER_LOAD) != 0 ||
-        set_raster_state(context, command_list) != 0) {
+        set_raster_state(context, command_list) != 0 ||
+        bind_graphics_resources(context, command_list) != 0) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }

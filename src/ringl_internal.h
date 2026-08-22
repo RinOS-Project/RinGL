@@ -124,6 +124,15 @@ struct RinGLContext {
     uint32_t blend_enabled;
     uint32_t cull_face_mode;
     uint32_t front_face;
+    uint32_t depth_func;
+    uint32_t depth_write_mask;
+    uint32_t blend_source_rgb;
+    uint32_t blend_destination_rgb;
+    uint32_t blend_source_alpha;
+    uint32_t blend_destination_alpha;
+    uint32_t blend_equation_rgb;
+    uint32_t blend_equation_alpha;
+    uint32_t color_write_mask;
 
     RinGLObjectSlot objects[RINGL_OBJECT_SLOT_COUNT];
     RinGLBufferObject buffers[RINGL_OBJECT_SLOT_COUNT];

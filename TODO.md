@@ -72,7 +72,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Implement `glDrawElements` for `UNSIGNED_SHORT`/`UNSIGNED_INT` with robust index-buffer and referenced-vertex range validation.
 - [x] Retain bounded buffer shadow contents so indexed draws can reject unsafe vertex fetches before RinGPU submission.
 - [x] Map indexed draws through the append-only RinGPU adapter boundary.
-- [ ] Add `UNSIGNED_BYTE` index support required by the GLES 2.0 profile (blocked on a native RinGPU UINT8 index format or an agreed translation contract).
+- [x] Add GLES 2.0 `UNSIGNED_BYTE` index support using the additive native RinGPU `UINT8` index format.
 - [x] Implement texture object lifecycle and eight texture-unit bindings.
 - [x] Implement initial level-0 `RGBA`/`UNSIGNED_BYTE` 2D texture storage with bounded dimensions.
 - [x] Implement robust CPU-side `texImage2D` zero initialization and bounded `texSubImage2D` updates.

@@ -11,6 +11,7 @@
 #define RINGL_SHADER_LOG_MAX 160u
 #define RINGL_PROGRAM_LOG_MAX 160u
 #define RINGL_MAX_SAMPLER_UNIFORMS 8u
+#define RINGL_MAX_VARYINGS 8u
 #define RINGL_UNIFORM_NAME_MAX 64u
 
 typedef struct RinGLBufferObject {
@@ -49,7 +50,10 @@ typedef struct RinGLShaderObject {
     uint32_t statement_count;
     uint32_t attribute_count;
     uint32_t sampler_uniform_count;
+    uint32_t varying_count;
     char sampler_uniform_names[RINGL_MAX_SAMPLER_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
+    char varying_names[RINGL_MAX_VARYINGS][RINGL_UNIFORM_NAME_MAX];
+    uint32_t varying_widths[RINGL_MAX_VARYINGS];
     char info_log[RINGL_SHADER_LOG_MAX];
 } RinGLShaderObject;
 
@@ -58,12 +62,21 @@ typedef struct RinGLProgramSamplerUniform {
     int32_t texture_unit;
 } RinGLProgramSamplerUniform;
 
+typedef struct RinGLProgramVarying {
+    char name[RINGL_UNIFORM_NAME_MAX];
+    uint32_t width;
+    uint32_t vertex_output_location;
+    uint32_t fragment_input_location;
+} RinGLProgramVarying;
+
 typedef struct RinGLProgramObject {
     uint32_t vertex_shader;
     uint32_t fragment_shader;
     uint32_t link_status;
     uint32_t sampler_uniform_count;
+    uint32_t varying_count;
     RinGLProgramSamplerUniform sampler_uniforms[RINGL_MAX_SAMPLER_UNIFORMS];
+    RinGLProgramVarying varyings[RINGL_MAX_VARYINGS];
     char info_log[RINGL_PROGRAM_LOG_MAX];
 } RinGLProgramObject;
 

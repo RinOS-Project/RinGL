@@ -88,12 +88,18 @@ static uint32_t native_blend_factor(uint32_t factor)
     switch (factor) {
     case RINGL_ZERO: return RINGL_RIN_GPU_BLEND_ZERO;
     case RINGL_ONE: return RINGL_RIN_GPU_BLEND_ONE;
+    case RINGL_SRC_COLOR: return RINGL_RIN_GPU_BLEND_SRC_COLOR;
+    case RINGL_ONE_MINUS_SRC_COLOR:
+        return RINGL_RIN_GPU_BLEND_ONE_MINUS_SRC_COLOR;
     case RINGL_SRC_ALPHA: return RINGL_RIN_GPU_BLEND_SRC_ALPHA;
     case RINGL_ONE_MINUS_SRC_ALPHA:
         return RINGL_RIN_GPU_BLEND_ONE_MINUS_SRC_ALPHA;
     case RINGL_DST_ALPHA: return RINGL_RIN_GPU_BLEND_DST_ALPHA;
     case RINGL_ONE_MINUS_DST_ALPHA:
         return RINGL_RIN_GPU_BLEND_ONE_MINUS_DST_ALPHA;
+    case RINGL_DST_COLOR: return RINGL_RIN_GPU_BLEND_DST_COLOR;
+    case RINGL_ONE_MINUS_DST_COLOR:
+        return RINGL_RIN_GPU_BLEND_ONE_MINUS_DST_COLOR;
     default: return 0u;
     }
 }

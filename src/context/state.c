@@ -73,8 +73,10 @@ static void stencil_face_fields(RinGLContext* context, uint32_t face,
 static int blend_factor_valid(uint32_t factor)
 {
     return factor == RINGL_ZERO || factor == RINGL_ONE ||
+           factor == RINGL_SRC_COLOR || factor == RINGL_ONE_MINUS_SRC_COLOR ||
            factor == RINGL_SRC_ALPHA || factor == RINGL_ONE_MINUS_SRC_ALPHA ||
-           factor == RINGL_DST_ALPHA || factor == RINGL_ONE_MINUS_DST_ALPHA;
+           factor == RINGL_DST_ALPHA || factor == RINGL_ONE_MINUS_DST_ALPHA ||
+           factor == RINGL_DST_COLOR || factor == RINGL_ONE_MINUS_DST_COLOR;
 }
 
 static int blend_equation_valid(uint32_t mode)

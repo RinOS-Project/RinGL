@@ -73,6 +73,7 @@ struct RinGLContext {
     RinGLRinGpuOpsV1 ringpu_ops;
     int has_ringpu;
     int has_ringpu_ops;
+    void* pipeline_cache;
 
     RinGLObjectSlot objects[RINGL_OBJECT_SLOT_COUNT];
     RinGLBufferObject buffers[RINGL_OBJECT_SLOT_COUNT];
@@ -100,10 +101,17 @@ int ringl_backend_create_shader_module(RinGLContext* context,
                                        const void* rsh1,
                                        uint64_t size_bytes,
                                        uint64_t* shader_module_out);
+int ringl_backend_create_graphics_pipeline(
+    RinGLContext* context,
+    const RinGLRinGpuGraphicsPipelineV1* desc,
+    const RinGLRinGpuVertexAttributeV1* attributes,
+    uint32_t attribute_count,
+    uint64_t* pipeline_out);
 void ringl_backend_destroy_object(RinGLContext* context, uint64_t object);
 void ringl_buffer_objects_destroy_all(RinGLContext* context);
 void ringl_shader_objects_destroy_all(RinGLContext* context);
 void ringl_program_objects_destroy_all(RinGLContext* context);
+void ringl_pipeline_cache_destroy(RinGLContext* context);
 void ringl_vertex_attrib_detach_buffer(RinGLContext* context, uint32_t buffer);
 int ringl_resolve_vertex_layout(const RinGLContext* context,
                                 RinGLResolvedVertexLayout* layout);

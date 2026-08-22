@@ -6,6 +6,14 @@ context_test = executable(
 
 test('context', context_test)
 
+framebuffer_test = executable(
+  'ringl-framebuffer-test',
+  'framebuffer_test.c',
+  dependencies: ringl_dep,
+)
+
+test('framebuffer', framebuffer_test)
+
 buffer_test = executable(
   'ringl-buffer-test',
   'buffer_test.c',

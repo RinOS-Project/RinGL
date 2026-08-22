@@ -127,6 +127,7 @@ int main(void)
     uint8_t blob[4096];
     Header header;
     uint64_t first_module;
+    char log[192];
     const char* scalar_source =
         "attribute float x;\n"
         "void main() {\n"
@@ -141,6 +142,11 @@ int main(void)
     const char* fragment_source =
         "void main() {\n"
         "  gl_FragColor = vec4(1.0, 0.25, 0.0, 1.0);\n"
+        "}\n";
+    const char* texture_source =
+        "uniform sampler2D colorTexture;\n"
+        "void main() {\n"
+        "  gl_FragColor = texture2D(colorTexture, vec2(0.25, 0.75));\n"
         "}\n";
 
     assert(ringl_context_create(&desc, &context) == 0);
@@ -181,6 +187,15 @@ int main(void)
     assert(header.input_count == 0u);
     assert(header.output_count == 4u);
     assert(header.instruction_count >= 5u);
+
+    ringl_shader_source(fragment, texture_source, -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(fragment) != 0);
+    assert(ringl_get_shader_rsh1_size(fragment) == 0u);
+    assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) > 0u);
+    assert(strstr(log, "texture2D") != NULL);
+    assert(strstr(log, "vec4") != NULL);
 
     ringl_shader_source(vertex, "void main() { gl_Position = 0.0; }", -1);
     assert(ringl_get_shader_compile_status(vertex) == RINGL_FALSE);

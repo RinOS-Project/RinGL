@@ -10,6 +10,7 @@ int ringl_resolve_vertex_layout(const RinGLContext* context,
     uint32_t index;
     uint32_t common_buffer = 0u;
     uint32_t common_stride = 0u;
+    uint32_t scalar_location = 0u;
 
     if (context == NULL || layout == NULL)
         return -1;
@@ -18,11 +19,11 @@ int ringl_resolve_vertex_layout(const RinGLContext* context,
     for (index = 0; index < RINGL_MAX_VERTEX_ATTRIBS; ++index) {
         const RinGLVertexAttribState* attrib = &context->vertex_attribs[index];
         uint32_t effective_stride;
-        RinGLResolvedVertexAttribute* resolved;
+        uint32_t component;
 
         if (!attrib->enabled)
             continue;
-        if (attrib->buffer == 0u || attrib->size != 1u ||
+        if (attrib->buffer == 0u || (attrib->size != 1u && attrib->size != 2u) ||
             attrib->type != RINGL_FLOAT || attrib->normalized != RINGL_FALSE)
             return -1;
         if (ringl_object_lookup_const(context, attrib->buffer,
@@ -30,9 +31,13 @@ int ringl_resolve_vertex_layout(const RinGLContext* context,
             return -1;
         if (attrib->offset > UINT32_MAX)
             return -1;
+        if ((uint64_t)attrib->offset + (uint64_t)attrib->size * 4u > UINT32_MAX)
+            return -1;
 
-        effective_stride = attrib->stride == 0u ? 4u : attrib->stride;
-        if (effective_stride > 2048u || (effective_stride & 3u) != 0u)
+        effective_stride = attrib->stride == 0u ? attrib->size * 4u
+                                                 : attrib->stride;
+        if (effective_stride > 2048u || (effective_stride & 3u) != 0u ||
+            effective_stride < attrib->size * 4u)
             return -1;
 
         if (common_buffer == 0u) {
@@ -43,12 +48,15 @@ int ringl_resolve_vertex_layout(const RinGLContext* context,
             return -1;
         }
 
-        if (layout->attribute_count >= RINGL_MAX_VERTEX_ATTRIBS)
+        if (layout->attribute_count + attrib->size > RINGL_MAX_VERTEX_ATTRIBS)
             return -1;
-        resolved = &layout->attributes[layout->attribute_count++];
-        resolved->location = index;
-        resolved->format = RINGL_NATIVE_VERTEX_FLOAT32;
-        resolved->offset = (uint32_t)attrib->offset;
+        for (component = 0u; component < attrib->size; ++component) {
+            RinGLResolvedVertexAttribute* resolved =
+                &layout->attributes[layout->attribute_count++];
+            resolved->location = scalar_location++;
+            resolved->format = RINGL_NATIVE_VERTEX_FLOAT32;
+            resolved->offset = (uint32_t)attrib->offset + component * 4u;
+        }
     }
 
     layout->buffer = common_buffer;

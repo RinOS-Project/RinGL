@@ -303,6 +303,11 @@ int main(void)
     ringl_draw_elements(RINGL_TRIANGLES, 3, RINGL_UNSIGNED_BYTE, 0u);
     assert(ringl_get_error() == RINGL_NO_ERROR);
 
+    ringl_enable(RINGL_BLEND);
+    ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    ringl_disable(RINGL_BLEND);
+
     ringl_buffer_data(RINGL_ELEMENT_ARRAY_BUFFER, sizeof(bad_indices),
                       bad_indices, RINGL_STATIC_DRAW);
     ringl_draw_elements(RINGL_TRIANGLES, 3, RINGL_UNSIGNED_SHORT, 0u);
@@ -316,7 +321,7 @@ int main(void)
     assert(backend.submissions == 5u);
     assert(backend.indexed_draws == 2u);
     assert(backend.indexed_formats[0] == RINGL_RIN_GPU_INDEX_UINT16);
-    assert(backend.indexed_formats[1] == 3u);
+    assert(backend.indexed_formats[1] == RINGL_RIN_GPU_INDEX_UINT8);
     assert(backend.clear[0] == 0.0f);
     assert(backend.clear[1] == 0.25f);
     assert(backend.clear[2] == 1.0f);

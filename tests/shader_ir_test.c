@@ -78,6 +78,27 @@ static int fake_create_shader_module(void* session, const void* rsh1,
     return 0;
 }
 
+static Header lower_and_read_header(uint32_t shader, const char* source,
+                                    uint8_t* blob, uint32_t capacity)
+{
+    Header header;
+    uint32_t size;
+
+    ringl_shader_source(shader, source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size >= sizeof(Header));
+    assert(size <= capacity);
+    assert(ringl_copy_shader_rsh1(shader, blob, capacity) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.magic == RSH1_MAGIC);
+    assert(header.version == 1u);
+    assert(header.total_size == size);
+    return header;
+}
+
 int main(void)
 {
     FakeBackend backend = {0};
@@ -101,58 +122,70 @@ int main(void)
         .ringpu = &binding,
     };
     RinGLContext* context = NULL;
-    uint32_t shader;
-    uint32_t size;
+    uint32_t vertex;
+    uint32_t fragment;
     uint8_t blob[4096];
     Header header;
     uint64_t first_module;
-    const char* source =
+    const char* scalar_source =
         "attribute float x;\n"
         "void main() {\n"
         "  float y = x * 2.0;\n"
         "  gl_Position = y + 1.0;\n"
         "}\n";
+    const char* vector_source =
+        "attribute vec2 position;\n"
+        "void main() {\n"
+        "  gl_Position = vec4(position, 0.0, 1.0);\n"
+        "}\n";
+    const char* fragment_source =
+        "void main() {\n"
+        "  gl_FragColor = vec4(1.0, 0.25, 0.0, 1.0);\n"
+        "}\n";
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
 
-    shader = ringl_create_shader(RINGL_VERTEX_SHADER);
-    assert(shader != 0u);
-    ringl_shader_source(shader, source, -1);
-    ringl_compile_shader(shader);
-    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
-    assert(ringl_lower_shader_rsh1(shader) == 0);
+    vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+    fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+    assert(vertex != 0u && fragment != 0u);
 
-    size = ringl_get_shader_rsh1_size(shader);
-    assert(size >= sizeof(Header));
-    assert(size <= sizeof(blob));
-    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
-    memcpy(&header, blob, sizeof(header));
-    assert(header.magic == RSH1_MAGIC);
-    assert(header.version == 1u);
+    header = lower_and_read_header(vertex, scalar_source, blob, sizeof(blob));
     assert(header.stage == 1u);
-    assert(header.total_size == size);
     assert(header.input_count == 1u);
     assert(header.output_count == 1u);
     assert(header.instruction_count >= 5u);
     assert(header.register_count >= 4u);
 
-    assert(ringl_realize_shader_module(shader) == 0);
-    first_module = ringl_get_shader_module(shader);
+    assert(ringl_realize_shader_module(vertex) == 0);
+    first_module = ringl_get_shader_module(vertex);
     assert(first_module != 0u);
     assert(backend.shader_creates == 1u);
 
-    assert(ringl_realize_shader_module(shader) == 0);
-    assert(ringl_get_shader_module(shader) != 0u);
-    assert(ringl_get_shader_module(shader) != first_module);
+    assert(ringl_realize_shader_module(vertex) == 0);
+    assert(ringl_get_shader_module(vertex) != 0u);
+    assert(ringl_get_shader_module(vertex) != first_module);
     assert(backend.shader_creates == 2u);
     assert(backend.destroys == 1u);
 
-    ringl_shader_source(shader, "void main() { gl_Position = 0.0; }", -1);
-    assert(ringl_get_shader_compile_status(shader) == RINGL_FALSE);
-    assert(ringl_get_shader_rsh1_size(shader) == 0u);
-    assert(ringl_get_shader_module(shader) == 0u);
+    header = lower_and_read_header(vertex, vector_source, blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 2u);
+    assert(header.output_count == 4u);
+    assert(header.instruction_count >= 7u);
+    assert(ringl_get_shader_module(vertex) == 0u);
     assert(backend.destroys == 2u);
+
+    header = lower_and_read_header(fragment, fragment_source, blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 0u);
+    assert(header.output_count == 4u);
+    assert(header.instruction_count >= 5u);
+
+    ringl_shader_source(vertex, "void main() { gl_Position = 0.0; }", -1);
+    assert(ringl_get_shader_compile_status(vertex) == RINGL_FALSE);
+    assert(ringl_get_shader_rsh1_size(vertex) == 0u);
+    assert(ringl_get_shader_module(vertex) == 0u);
 
     ringl_context_destroy(context);
     return 0;

@@ -117,6 +117,28 @@ int ringl_backend_create_graphics_pipeline(
         pipeline_out);
 }
 
+int ringl_backend_create_graphics_pipeline_native(
+    RinGLContext* context,
+    const RinGLRinGpuGraphicsPipelineNativeV1* desc,
+    const RinGLRinGpuVertexAttributeV1* attributes,
+    uint32_t attribute_count,
+    const RinGLRinGpuVaryingV1* varyings,
+    uint32_t varying_count,
+    uint64_t* pipeline_out)
+{
+    if (context == NULL || desc == NULL || pipeline_out == NULL ||
+        (attribute_count != 0u && attributes == NULL) ||
+        (varying_count != 0u && varyings == NULL) ||
+        !context->has_ringpu_ops ||
+        context->ringpu_ops.create_graphics_pipeline_native == NULL) {
+        return -1;
+    }
+    *pipeline_out = 0u;
+    return context->ringpu_ops.create_graphics_pipeline_native(
+        context->ringpu.session, desc, attributes, attribute_count,
+        varyings, varying_count, pipeline_out);
+}
+
 int ringl_backend_create_command_list(RinGLContext* context,
                                       uint32_t capabilities,
                                       uint64_t* command_list_out)
@@ -170,6 +192,45 @@ int ringl_backend_begin_render_pass(RinGLContext* context,
     }
     return context->ringpu_ops.begin_render_pass(context->ringpu.session,
                                                  command_list, render_pass);
+}
+
+int ringl_backend_set_raster_state(RinGLContext* context,
+                                   uint64_t command_list,
+                                   const RinGLRinGpuRasterStateV1* state)
+{
+    if (context == NULL || command_list == 0u || state == NULL ||
+        !context->has_ringpu_ops || context->ringpu_ops.set_raster_state == NULL)
+        return -1;
+    return context->ringpu_ops.set_raster_state(context->ringpu.session,
+                                                command_list, state);
+}
+
+int ringl_backend_create_graphics_bind_group(
+    RinGLContext* context, uint64_t pipeline,
+    const RinGLRinGpuGraphicsBindingV1* bindings,
+    uint32_t binding_count, uint64_t* bind_group_out)
+{
+    if (context == NULL || pipeline == 0u || bind_group_out == NULL ||
+        (binding_count != 0u && bindings == NULL) ||
+        !context->has_ringpu_ops ||
+        context->ringpu_ops.create_graphics_bind_group == NULL)
+        return -1;
+    *bind_group_out = 0u;
+    return context->ringpu_ops.create_graphics_bind_group(
+        context->ringpu.session, pipeline, bindings, binding_count,
+        bind_group_out);
+}
+
+int ringl_backend_bind_graphics_resources(RinGLContext* context,
+                                          uint64_t command_list,
+                                          uint64_t bind_group)
+{
+    if (context == NULL || command_list == 0u || bind_group == 0u ||
+        !context->has_ringpu_ops ||
+        context->ringpu_ops.bind_graphics_resources == NULL)
+        return -1;
+    return context->ringpu_ops.bind_graphics_resources(
+        context->ringpu.session, command_list, bind_group);
 }
 
 int ringl_backend_draw_vertices(RinGLContext* context,

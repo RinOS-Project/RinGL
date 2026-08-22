@@ -26,6 +26,30 @@ extern "C" {
 #define RINGL_TRIANGLES        0x0004u
 #define RINGL_COLOR_BUFFER_BIT 0x00004000u
 
+#define RINGL_FRONT          0x0404u
+#define RINGL_BACK           0x0405u
+#define RINGL_FRONT_AND_BACK 0x0408u
+#define RINGL_CW             0x0900u
+#define RINGL_CCW            0x0901u
+#define RINGL_CULL_FACE      0x0b44u
+#define RINGL_DEPTH_TEST     0x0b71u
+#define RINGL_BLEND          0x0be2u
+#define RINGL_SCISSOR_TEST   0x0c11u
+
+#define RINGL_VIEWPORT                      0x0ba2u
+#define RINGL_SCISSOR_BOX                   0x0c10u
+#define RINGL_MAX_TEXTURE_SIZE_QUERY        0x0d33u
+#define RINGL_TEXTURE_BINDING_2D            0x8069u
+#define RINGL_ACTIVE_TEXTURE                0x84e0u
+#define RINGL_MAX_VERTEX_ATTRIBS_QUERY      0x8869u
+#define RINGL_MAX_TEXTURE_IMAGE_UNITS       0x8872u
+#define RINGL_ARRAY_BUFFER_BINDING          0x8894u
+#define RINGL_ELEMENT_ARRAY_BUFFER_BINDING  0x8895u
+#define RINGL_CURRENT_PROGRAM               0x8b8du
+#define RINGL_MAX_COMBINED_TEXTURE_IMAGE_UNITS 0x8b4du
+#define RINGL_CULL_FACE_MODE                0x0b45u
+#define RINGL_FRONT_FACE                    0x0b46u
+
 #define RINGL_ARRAY_BUFFER          0x8892u
 #define RINGL_ELEMENT_ARRAY_BUFFER  0x8893u
 #define RINGL_STREAM_DRAW           0x88e0u
@@ -287,6 +311,14 @@ int ringl_make_current(RinGLContext* context);
 RinGLContext* ringl_get_current_context(void);
 uint32_t ringl_get_error(void);
 uint32_t ringl_context_dirty_bits(const RinGLContext* context);
+void ringl_get_integerv(uint32_t pname, int32_t* values);
+void ringl_enable(uint32_t capability);
+void ringl_disable(uint32_t capability);
+int ringl_is_enabled(uint32_t capability);
+void ringl_viewport(int32_t x, int32_t y, int32_t width, int32_t height);
+void ringl_scissor(int32_t x, int32_t y, int32_t width, int32_t height);
+void ringl_cull_face(uint32_t mode);
+void ringl_front_face(uint32_t mode);
 
 int ringl_set_default_framebuffer(const RinGLDefaultFramebufferV1* framebuffer);
 int ringl_set_default_framebuffer_state(uint32_t state);

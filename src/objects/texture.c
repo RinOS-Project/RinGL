@@ -57,13 +57,21 @@ static RinGLTextureObject* bound_texture_2d(RinGLContext* context)
     return &context->textures[slot_index];
 }
 
-static int texture_level0_complete(const RinGLTextureObject* texture)
+static int texture_level0_storage_defined(const RinGLTextureObject* texture)
 {
     if (texture == NULL || !texture->defined || texture->width == 0u ||
         texture->height == 0u || texture->shadow_bytes == NULL ||
         texture->shadow_size == 0u) {
         return 0;
     }
+
+    return 1;
+}
+
+static int texture_level0_complete(const RinGLTextureObject* texture)
+{
+    if (!texture_level0_storage_defined(texture))
+        return 0;
 
     if (texture->min_filter == RINGL_NEAREST ||
         texture->min_filter == RINGL_LINEAR) {
@@ -122,7 +130,9 @@ static int texture_realize_image(RinGLContext* context,
 
     if (texture->ringpu_image != 0u)
         return 0;
-    if (!texture_level0_complete(texture))
+    if (texture->requires_color_target
+            ? !texture_level0_storage_defined(texture)
+            : !texture_level0_complete(texture))
         return -1;
 
     if (texture->requires_color_target) {
@@ -649,7 +659,7 @@ int ringl_texture_realize_color_target(RinGLContext* context, uint32_t texture,
     if (index >= RINGL_OBJECT_SLOT_COUNT)
         return -1;
     object = &context->textures[index];
-    if (!texture_level0_complete(object) ||
+    if (!texture_level0_storage_defined(object) ||
         texture_realize_image(context, object) != 0 ||
         object->ringpu_image == 0u) {
         return -1;

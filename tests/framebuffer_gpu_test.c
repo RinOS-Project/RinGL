@@ -243,8 +243,6 @@ int main(void)
 
     ringl_gen_textures(1, &texture);
     ringl_bind_texture(RINGL_TEXTURE_2D, texture);
-    ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MIN_FILTER,
-                         RINGL_NEAREST);
     ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 2, 2, 0,
                        RINGL_RGBA, RINGL_UNSIGNED_BYTE, pixels);
     ringl_gen_framebuffers(1, &texture_framebuffer);

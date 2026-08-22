@@ -74,6 +74,8 @@ struct RinGLContext {
     int has_ringpu;
     int has_ringpu_ops;
     void* pipeline_cache;
+    RinGLDefaultFramebufferV1 default_framebuffer;
+    uint32_t has_default_framebuffer;
 
     RinGLObjectSlot objects[RINGL_OBJECT_SLOT_COUNT];
     RinGLBufferObject buffers[RINGL_OBJECT_SLOT_COUNT];

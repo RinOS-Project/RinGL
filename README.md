@@ -7,6 +7,14 @@ Its job is to preserve OpenGL-style state and object semantics at the API bounda
 > [!IMPORTANT]
 > RinGL is an early-stage project. The initial implementation target is a bounded OpenGL ES 2.0-style graphics path. It is not currently a conformant OpenGL or OpenGL ES implementation.
 
+## Building
+
+Meson remains the standalone test build. RinGL also provides a CMake `RinGL::RinGL`
+static target with the identical translation-unit list, warning policy, public
+headers, and transitive C math dependency. This lets the Ladybird `AK_OS_RINOS`
+target embed the tested RinGL implementation instead of depending on an
+unresolved external archive at final link time.
+
 ## Architecture
 
 ```text

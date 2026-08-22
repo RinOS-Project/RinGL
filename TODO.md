@@ -10,6 +10,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Add a minimal CI build and test job.
 - [x] Define a versioning policy for public RinGL headers.
 - [x] Document how RinGL discovers or receives a RinGPU device/queue.
+- [x] Provide a CMake `RinGL::RinGL` static target whose source list matches the Meson library, so the Ladybird `AK_OS_RINOS` build links the tested RinGL implementation directly.
 
 ## Phase 1 — Context and core GL state
 

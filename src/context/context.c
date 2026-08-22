@@ -101,6 +101,10 @@ void ringl_context_destroy(RinGLContext* context)
     if (ringl_current_context == context)
         ringl_current_context = NULL;
 
+    if (context->graphics_command_list != 0u) {
+        ringl_backend_destroy_object(context, context->graphics_command_list);
+        context->graphics_command_list = 0u;
+    }
     ringl_pipeline_cache_destroy(context);
     ringl_program_objects_destroy_all(context);
     ringl_shader_objects_destroy_all(context);

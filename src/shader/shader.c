@@ -45,6 +45,9 @@ static void ringl_shader_reset_compile_state(RinGLContext* context,
     object->declaration_count = 0u;
     object->statement_count = 0u;
     object->attribute_count = 0u;
+    object->sampler_uniform_count = 0u;
+    memset(object->sampler_uniform_names, 0,
+           sizeof(object->sampler_uniform_names));
     object->info_log[0] = '\0';
 }
 
@@ -196,6 +199,9 @@ void ringl_compile_shader(uint32_t shader)
     object->declaration_count = result.declaration_count;
     object->statement_count = result.statement_count;
     object->attribute_count = result.attribute_count;
+    object->sampler_uniform_count = result.sampler_uniform_count;
+    memcpy(object->sampler_uniform_names, result.sampler_uniform_names,
+           sizeof(object->sampler_uniform_names));
 }
 
 uint32_t ringl_get_shader_compile_status(uint32_t shader)

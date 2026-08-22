@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define RINGL_MAX_SHADER_SOURCE_BYTES UINT64_C(16777216)
+
 static int ringl_shader_type_valid(uint32_t type)
 {
     return type == RINGL_VERTEX_SHADER || type == RINGL_FRAGMENT_SHADER;
@@ -82,6 +84,7 @@ void ringl_shader_source(uint32_t shader, const char* source, int64_t length)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLShaderObject* object;
+    uint64_t source_length64;
     size_t source_length;
     char* copy;
 
@@ -97,11 +100,27 @@ void ringl_shader_source(uint32_t shader, const char* source, int64_t length)
         return;
     }
 
-    source_length = length < 0 ? strlen(source) : (size_t)length;
-    if ((uint64_t)source_length > UINT64_C(16777216)) {
+    if (length < 0) {
+        source_length = strlen(source);
+        source_length64 = (uint64_t)source_length;
+    } else {
+        source_length64 = (uint64_t)length;
+        if (source_length64 > RINGL_MAX_SHADER_SOURCE_BYTES) {
+            ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+            return;
+        }
+        source_length = (size_t)source_length64;
+        if ((uint64_t)source_length != source_length64) {
+            ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+            return;
+        }
+    }
+
+    if (source_length64 > RINGL_MAX_SHADER_SOURCE_BYTES) {
         ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
         return;
     }
+
     copy = malloc(source_length + 1u);
     if (copy == NULL) {
         ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
@@ -112,7 +131,7 @@ void ringl_shader_source(uint32_t shader, const char* source, int64_t length)
 
     free(object->source);
     object->source = copy;
-    object->source_length = (uint64_t)source_length;
+    object->source_length = source_length64;
 }
 
 uint32_t ringl_get_shader_type(uint32_t shader)

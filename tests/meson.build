@@ -30,6 +30,14 @@ buffer_storage_test = executable(
 
 test('buffer-storage', buffer_storage_test)
 
+texture_test = executable(
+  'ringl-texture-test',
+  'texture_test.c',
+  dependencies: ringl_dep,
+)
+
+test('texture', texture_test)
+
 vertex_attrib_test = executable(
   'ringl-vertex-attrib-test',
   'vertex_attrib_test.c',

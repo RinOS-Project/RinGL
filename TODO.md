@@ -35,13 +35,13 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 
 - [x] Define the supported initial GLSL ES language/version profile.
 - [x] Implement shader object lifecycle and source storage.
-- [ ] Implement a GLSL ES lexer/parser or integrate a deliberately chosen frontend.
+- [x] Implement a bounded GLSL ES lexer/parser with initial semantic validation.
 - [ ] Lower supported GLSL ES constructs directly to RinShader IR.
 - [ ] Reuse RinShader validation before shader modules reach a RinGPU backend.
 - [ ] Implement vertex/fragment shader linking and interface checks.
 - [ ] Implement program object lifecycle and `glUseProgram`.
 - [ ] Add uniform/reflection metadata needed by the first rendering slice.
-- [ ] Add positive and negative shader compiler tests.
+- [x] Add positive and negative shader frontend tests.
 
 ## Phase 4 — First hardware-rendered triangle
 

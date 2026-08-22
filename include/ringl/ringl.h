@@ -31,6 +31,10 @@ extern "C" {
 #define RINGL_STATIC_DRAW           0x88e4u
 #define RINGL_DYNAMIC_DRAW          0x88e8u
 
+#define RINGL_TEXTURE_2D 0x0de1u
+#define RINGL_TEXTURE0   0x84c0u
+#define RINGL_MAX_TEXTURE_UNITS 8u
+
 #define RINGL_VERTEX_SHADER   0x8b31u
 #define RINGL_FRAGMENT_SHADER 0x8b30u
 
@@ -173,7 +177,6 @@ typedef struct RinGLRinGpuOpsV1 {
     RinGLRinGpuPresentFn present;
     RinGLRinGpuCloseCommandListFn close_command_list;
     RinGLRinGpuQueueSubmitFn queue_submit;
-    /* Appended v1 operation. Older operation-table prefixes remain valid. */
     RinGLRinGpuDrawIndexedFn draw_indexed;
 } RinGLRinGpuOpsV1;
 
@@ -248,6 +251,14 @@ void ringl_buffer_data(uint32_t target,
                        uint32_t usage);
 uint64_t ringl_get_buffer_size(uint32_t target);
 uint32_t ringl_get_buffer_usage(uint32_t target);
+
+void ringl_gen_textures(int32_t count, uint32_t* textures);
+void ringl_delete_textures(int32_t count, const uint32_t* textures);
+void ringl_bind_texture(uint32_t target, uint32_t texture);
+int ringl_is_texture(uint32_t texture);
+void ringl_active_texture(uint32_t texture_unit);
+uint32_t ringl_get_active_texture(void);
+uint32_t ringl_get_bound_texture(uint32_t target);
 
 void ringl_enable_vertex_attrib_array(uint32_t index);
 void ringl_disable_vertex_attrib_array(uint32_t index);

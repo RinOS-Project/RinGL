@@ -145,6 +145,15 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   destination-alpha factors, all five equations, and per-channel write masks.
   The focused RinGL-to-RinGPU-to-Aquamarine output test covers separate
   source-over, subtract/reverse-subtract/min/max, and masked channels.
+- [x] Add the GLES/WebGL core `SRC_COLOR`/`ONE_MINUS_SRC_COLOR` and
+  `DST_COLOR`/`ONE_MINUS_DST_COLOR` blend factors to RinGL state, native
+  RinGPU pipeline translation, validation, and software execution. The
+  focused bridge output test verifies component-wise source and destination
+  factors rather than accidentally treating them as alpha factors.
+- [ ] Add constant-color/constant-alpha and `SRC_ALPHA_SATURATE` factors only
+  with a versioned RinGPU pipeline descriptor that carries a validated blend
+  constant; current unsupported values remain `INVALID_ENUM` rather than
+  silently receiving alpha-factor semantics.
 - [x] Expose a versioned snapshot of mutable clear values so an embedding can perform the WebGL default-buffer clear without overwriting application clear state.
 - [x] Add a state-neutral default-framebuffer clear for trusted presentation
   embeddings: it forces WebGL's color/depth/stencil defaults without observing

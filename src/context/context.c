@@ -14,9 +14,12 @@ static int ringl_context_is_valid(const RinGLContext* context)
 
 static int ringl_validate_ringpu_ops(const RinGLRinGpuOpsV1* ops)
 {
+    const size_t minimum_size = offsetof(RinGLRinGpuOpsV1,
+                                         create_shader_module);
+
     if (ops == NULL)
         return 1;
-    if (ops->struct_size < sizeof(*ops) ||
+    if (ops->struct_size < minimum_size ||
         ops->api_version != RINGL_API_VERSION ||
         ops->create_buffer == NULL ||
         ops->upload_buffer == NULL ||
@@ -75,8 +78,11 @@ int ringl_context_create(const RinGLContextDescV1* desc,
             memcpy(&context->ringpu, desc->ringpu, sizeof(context->ringpu));
             context->has_ringpu = 1;
             if (desc->ringpu->ops != NULL) {
-                memcpy(&context->ringpu_ops, desc->ringpu->ops,
-                       sizeof(context->ringpu_ops));
+                size_t copy_size = desc->ringpu->ops->struct_size;
+                if (copy_size > sizeof(context->ringpu_ops))
+                    copy_size = sizeof(context->ringpu_ops);
+                memset(&context->ringpu_ops, 0, sizeof(context->ringpu_ops));
+                memcpy(&context->ringpu_ops, desc->ringpu->ops, copy_size);
                 context->ringpu.ops = &context->ringpu_ops;
                 context->has_ringpu_ops = 1;
             }

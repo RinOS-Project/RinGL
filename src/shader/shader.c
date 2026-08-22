@@ -24,11 +24,22 @@ static RinGLShaderObject* ringl_shader_object(RinGLContext* context,
     return &context->shaders[index];
 }
 
-static void ringl_shader_reset_compile_state(RinGLShaderObject* object)
+static void ringl_shader_discard_artifacts(RinGLContext* context,
+                                           RinGLShaderObject* object)
 {
+    if (object->ringpu_module != 0u) {
+        ringl_backend_destroy_object(context, object->ringpu_module);
+        object->ringpu_module = 0u;
+    }
     free(object->rsh1);
     object->rsh1 = NULL;
     object->rsh1_size = 0u;
+}
+
+static void ringl_shader_reset_compile_state(RinGLContext* context,
+                                             RinGLShaderObject* object)
+{
+    ringl_shader_discard_artifacts(context, object);
     object->compile_status = RINGL_FALSE;
     object->declaration_count = 0u;
     object->statement_count = 0u;
@@ -64,7 +75,7 @@ uint32_t ringl_create_shader(uint32_t shader_type)
         return 0u;
     }
     object->shader_type = shader_type;
-    ringl_shader_reset_compile_state(object);
+    ringl_shader_reset_compile_state(context, object);
     ringl_object_promote(slot);
     return shader;
 }
@@ -80,7 +91,7 @@ void ringl_delete_shader(uint32_t shader)
     if (object == NULL)
         return;
     free(object->source);
-    free(object->rsh1);
+    ringl_shader_discard_artifacts(context, object);
     memset(object, 0, sizeof(*object));
     ringl_object_release(context, shader, RINGL_OBJECT_SHADER);
 }
@@ -147,7 +158,7 @@ void ringl_shader_source(uint32_t shader, const char* source, int64_t length)
     free(object->source);
     object->source = copy;
     object->source_length = source_length64;
-    ringl_shader_reset_compile_state(object);
+    ringl_shader_reset_compile_state(context, object);
 }
 
 void ringl_compile_shader(uint32_t shader)
@@ -164,9 +175,10 @@ void ringl_compile_shader(uint32_t shader)
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
-    ringl_shader_reset_compile_state(object);
+    ringl_shader_reset_compile_state(context, object);
     if (object->source == NULL) {
-        (void)strncpy(object->info_log, "no shader source", sizeof(object->info_log) - 1u);
+        (void)strncpy(object->info_log, "no shader source",
+                      sizeof(object->info_log) - 1u);
         object->info_log[sizeof(object->info_log) - 1u] = '\0';
         return;
     }
@@ -264,7 +276,7 @@ void ringl_shader_objects_destroy_all(RinGLContext* context)
             context->objects[index].state == RINGL_OBJECT_FREE)
             continue;
         free(context->shaders[index].source);
-        free(context->shaders[index].rsh1);
+        ringl_shader_discard_artifacts(context, &context->shaders[index]);
         memset(&context->shaders[index], 0, sizeof(context->shaders[index]));
     }
 }

@@ -88,19 +88,30 @@ int ringl_resolve_depth_target(RinGLContext* context, RinGLDepthTarget* target)
         if (framebuffer->depth_attachment_kind ==
             RINGL_FRAMEBUFFER_ATTACHMENT_NONE)
             return 1;
-        if (framebuffer->depth_attachment_kind !=
-            RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER ||
-            ringl_renderbuffer_realize_depth_target(
-                context, framebuffer->depth_attachment_object, &target->image,
-                &target->state, &width, &height) != 0)
+        if (framebuffer->depth_attachment_kind ==
+            RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER) {
+            if (ringl_renderbuffer_realize_depth_target(
+                    context, framebuffer->depth_attachment_object,
+                    &target->image, &target->state, &width, &height) != 0)
+                return -1;
+            index = ringl_object_slot_index(
+                framebuffer->depth_attachment_object);
+            if (index >= RINGL_OBJECT_SLOT_COUNT)
+                return -1;
+            target->format = context->renderbuffers[index].internal_format ==
+                    RINGL_DEPTH24_STENCIL8
+                ? RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT
+                : RINGL_RIN_GPU_FORMAT_D32_FLOAT;
+        } else if (framebuffer->depth_attachment_kind ==
+                   RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D) {
+            if (ringl_texture_realize_depth_target(
+                    context, framebuffer->depth_attachment_object,
+                    &target->image, &target->state, &width, &height) != 0)
+                return -1;
+            target->format = RINGL_RIN_GPU_FORMAT_D32_FLOAT;
+        } else {
             return -1;
-        index = ringl_object_slot_index(framebuffer->depth_attachment_object);
-        if (index >= RINGL_OBJECT_SLOT_COUNT)
-            return -1;
-        target->format = context->renderbuffers[index].internal_format ==
-                RINGL_DEPTH24_STENCIL8
-            ? RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT
-            : RINGL_RIN_GPU_FORMAT_D32_FLOAT;
+        }
         return target->image != 0u && target->state != NULL && width != 0u &&
                        height != 0u
             ? 0

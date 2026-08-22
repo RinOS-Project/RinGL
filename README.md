@@ -157,11 +157,12 @@ The bounded first-triangle and textured-triangle translation paths are
 implemented and covered by strict C11 mock-RinGPU tests. Level-zero RGBA8
 texture/renderbuffer color attachments are completeness-checked, realized as
 RinGPU color targets, used by clear/draw render passes, and read back through
-`COPY_SOURCE`. A matching `DEPTH_COMPONENT32F` renderbuffer can now be
-attached as `DEPTH_ATTACHMENT`; the pair is rejected on an invalid attachment
-or dimension mismatch, and its D32 image is realized lazily as a RinGPU depth
-target. The RinOS surface integration test verifies a depth-only clear while
-preserving color and depth-tested triangle output from such a custom FBO. The
+`COPY_SOURCE`. A matching `DEPTH_COMPONENT32F` renderbuffer or level-zero
+`DEPTH_COMPONENT32F`/`DEPTH_COMPONENT`/`FLOAT` texture can now be attached as
+`DEPTH_ATTACHMENT`; the pair is rejected on an invalid attachment or dimension
+mismatch, and its D32 image is realized lazily as a RinGPU depth target. The
+RinOS surface integration test verifies a depth-only clear while preserving
+color and depth-tested triangle output from either custom FBO kind. The
 RinGPU depth pipeline supports every GLES comparison predicate: `NEVER`,
 `LESS`, `EQUAL`, `LEQUAL`, `GREATER`, `NOTEQUAL`, `GEQUAL`, and `ALWAYS`.
 A trusted embedding can query the default color image's post-submit
@@ -192,8 +193,9 @@ the caller-owned BGRA target and offscreen RGBA FBO targets.
 This remains a bounded profile. A default caller-owned D32 surface has no
 stencil storage unless its embedding explicitly supplies the matching S8
 plane; that D32S8 default target executes the same front/back stencil path.
-Texture depth/stencil attachments, multisampling, multiple color attachments,
-and broad GLES framebuffer semantics are not implemented.
+Depth textures are attachment-only in this slice: D32S8 depth-stencil
+textures and depth-texture sampling, multisampling, multiple color
+attachments, and broad GLES framebuffer semantics are not implemented.
 
 RinGL is not a GLES conformance claim. Broader shader expressions, device-loss
 handling, and browser-facing context-loss policy also remain unfinished. No API

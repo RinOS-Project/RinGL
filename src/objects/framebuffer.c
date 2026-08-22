@@ -127,27 +127,51 @@ static int depth_attachment_dimensions(RinGLContext* context,
                                        uint32_t* width_out, uint32_t* height_out)
 {
     uint32_t index;
-    RinGLRenderbufferObject* renderbuffer;
 
     if (context == NULL || framebuffer == NULL || width_out == NULL ||
-        height_out == NULL || framebuffer->depth_attachment_kind !=
+        height_out == NULL)
+        return -1;
+    if (framebuffer->depth_attachment_kind ==
+        RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D) {
+        RinGLTextureObject* texture;
+
+        if (framebuffer->depth_attachment_has_stencil != 0u ||
+            ringl_object_lookup(context, framebuffer->depth_attachment_object,
+                                RINGL_OBJECT_TEXTURE) == NULL)
+            return -1;
+        index = ringl_object_slot_index(framebuffer->depth_attachment_object);
+        if (index >= RINGL_OBJECT_SLOT_COUNT)
+            return -1;
+        texture = &context->textures[index];
+        if (!texture->defined || texture->format != RINGL_DEPTH_COMPONENT32F ||
+            texture->width == 0u || texture->height == 0u)
+            return -1;
+        *width_out = texture->width;
+        *height_out = texture->height;
+        return 0;
+    }
+    if (framebuffer->depth_attachment_kind !=
             RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER ||
         ringl_object_lookup(context, framebuffer->depth_attachment_object,
                             RINGL_OBJECT_RENDERBUFFER) == NULL)
         return -1;
-    index = ringl_object_slot_index(framebuffer->depth_attachment_object);
-    if (index >= RINGL_OBJECT_SLOT_COUNT)
-        return -1;
-    renderbuffer = &context->renderbuffers[index];
-    if (!renderbuffer->defined ||
-        renderbuffer->internal_format !=
-            (framebuffer->depth_attachment_has_stencil != 0u
-                 ? RINGL_DEPTH24_STENCIL8
-                 : RINGL_DEPTH_COMPONENT32F) ||
-        renderbuffer->width == 0u || renderbuffer->height == 0u)
-        return -1;
-    *width_out = renderbuffer->width;
-    *height_out = renderbuffer->height;
+    {
+        RinGLRenderbufferObject* renderbuffer;
+
+        index = ringl_object_slot_index(framebuffer->depth_attachment_object);
+        if (index >= RINGL_OBJECT_SLOT_COUNT)
+            return -1;
+        renderbuffer = &context->renderbuffers[index];
+        if (!renderbuffer->defined ||
+            renderbuffer->internal_format !=
+                (framebuffer->depth_attachment_has_stencil != 0u
+                     ? RINGL_DEPTH24_STENCIL8
+                     : RINGL_DEPTH_COMPONENT32F) ||
+            renderbuffer->width == 0u || renderbuffer->height == 0u)
+            return -1;
+        *width_out = renderbuffer->width;
+        *height_out = renderbuffer->height;
+    }
     return 0;
 }
 
@@ -289,7 +313,8 @@ void ringl_framebuffer_texture_2d(uint32_t target, uint32_t attachment,
 
     if (context == NULL)
         return;
-    if (!framebuffer_target_valid(target) || !color_attachment_valid(attachment) ||
+    if (!framebuffer_target_valid(target) ||
+        (!color_attachment_valid(attachment) && !depth_attachment_valid(attachment)) ||
         textarget != RINGL_TEXTURE_2D) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
@@ -307,9 +332,11 @@ void ringl_framebuffer_texture_2d(uint32_t target, uint32_t attachment,
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
-    if (texture == 0u) {
+    if (texture == 0u && color_attachment_valid(attachment)) {
         reset_color_attachment(framebuffer);
-    } else {
+    } else if (texture == 0u) {
+        reset_depth_attachment(framebuffer);
+    } else if (color_attachment_valid(attachment)) {
         if (ringl_texture_require_color_target(context, texture) != 0) {
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return;
@@ -318,6 +345,21 @@ void ringl_framebuffer_texture_2d(uint32_t target, uint32_t attachment,
             RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D;
         framebuffer->color_attachment_object = texture;
         framebuffer->color_attachment_level = level;
+    } else {
+        uint32_t texture_index = ringl_object_slot_index(texture);
+
+        if (attachment != RINGL_DEPTH_ATTACHMENT ||
+            texture_index >= RINGL_OBJECT_SLOT_COUNT ||
+            (context->textures[texture_index].defined != 0u &&
+             context->textures[texture_index].format !=
+                 RINGL_DEPTH_COMPONENT32F)) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return;
+        }
+        framebuffer->depth_attachment_kind =
+            RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D;
+        framebuffer->depth_attachment_object = texture;
+        framebuffer->depth_attachment_has_stencil = RINGL_FALSE;
     }
     ringl_context_mark_dirty(context, RINGL_DIRTY_FRAMEBUFFER);
 }
@@ -692,14 +734,21 @@ void ringl_framebuffer_detach_texture(RinGLContext* context, uint32_t texture)
         RinGLFramebufferObject* framebuffer = &context->framebuffers[index];
 
         if (context->objects[index].type != RINGL_OBJECT_FRAMEBUFFER ||
-            context->objects[index].state == RINGL_OBJECT_FREE ||
-            framebuffer->color_attachment_kind !=
-                RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D ||
-            framebuffer->color_attachment_object != texture) {
+            context->objects[index].state == RINGL_OBJECT_FREE) {
             continue;
         }
-        reset_color_attachment(framebuffer);
-        ringl_context_mark_dirty(context, RINGL_DIRTY_FRAMEBUFFER);
+        if (framebuffer->color_attachment_kind ==
+                RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D &&
+            framebuffer->color_attachment_object == texture) {
+            reset_color_attachment(framebuffer);
+            ringl_context_mark_dirty(context, RINGL_DIRTY_FRAMEBUFFER);
+        }
+        if (framebuffer->depth_attachment_kind ==
+                RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D &&
+            framebuffer->depth_attachment_object == texture) {
+            reset_depth_attachment(framebuffer);
+            ringl_context_mark_dirty(context, RINGL_DIRTY_FRAMEBUFFER);
+        }
     }
 }
 

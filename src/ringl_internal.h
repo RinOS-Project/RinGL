@@ -341,6 +341,12 @@ int ringl_texture_realize_color_target(RinGLContext* context,
                                        uint32_t** image_state_out,
                                        uint32_t* width_out,
                                        uint32_t* height_out);
+int ringl_texture_realize_depth_target(RinGLContext* context,
+                                       uint32_t texture,
+                                       uint64_t* image_out,
+                                       uint32_t** image_state_out,
+                                       uint32_t* width_out,
+                                       uint32_t* height_out);
 int ringl_texture_realize_unit(RinGLContext* context, uint32_t unit,
                                uint64_t* image_out, uint64_t* sampler_out);
 void ringl_shader_objects_destroy_all(RinGLContext* context);

@@ -90,9 +90,9 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 
 ## Phase 6 — Framebuffers and fixed-function state
 
-- [x] Implement framebuffer/renderbuffer object models (bounded lifecycle, binding, level-zero color attachment tracking, RGBA4 renderbuffer storage metadata, and automatic detach on texture/renderbuffer deletion; completeness validation and RinGPU rendering remain separate tasks).
-- [ ] Map FBO attachments to RinGPU render-pass attachments.
-- [ ] Implement framebuffer completeness validation for supported combinations.
+- [x] Implement framebuffer/renderbuffer object models (bounded lifecycle, binding, level-zero `COLOR_ATTACHMENT0` tracking, RGBA8 renderbuffer storage, and automatic detach on texture/renderbuffer deletion).
+- [x] Map supported RGBA8 color FBO texture/renderbuffer attachments to lazy RinGPU color targets, including image-state transitions, render-pass clear/draw targets, and `COPY_SOURCE` readback capability.
+- [x] Implement framebuffer completeness validation for the supported single level-zero RGBA8 color-attachment combinations.
 - [x] Implement viewport and scissor GL state, validation, defaults, and queries.
 - [x] Implement face-culling/front-face GL state, validation, defaults, and queries.
 - [x] Implement depth-test function/write-mask GL state, defaults, validation, dirty tracking, and queries.
@@ -108,7 +108,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [ ] Implement clear/copy paths that must end or split render passes.
 - [x] Implement current immediate-submit `glFlush` semantics.
 - [x] Implement `glFinish` using an optional versioned sync extension, RinGPU fences, fenced queue submission, and `ringpu_wait_fence()`.
-- [x] Implement bounded default-framebuffer `RGBA/UNSIGNED_BYTE` `glReadPixels` logic through COPY_SOURCE transition, completion wait, RinGPU image readback, and BGRA-to-RGBA swizzle.
+- [x] Implement bounded current-color-framebuffer `RGBA/UNSIGNED_BYTE` `glReadPixels` logic through COPY_SOURCE transition, completion wait, RinGPU image readback, and BGRA-to-RGBA swizzle where required.
 - [x] Add a fake-RinGPU synchronization/readback test covering monotonic fence values, waits, COPY_SOURCE transition, and pixel swizzle.
 - [x] Enable readback on the RinOS WebGL surface color image by creating it with `COPY_SOURCE` usage and `CPU_READABLE` in addition to its existing present/color-target flags; the focused `rin_webgl_ringl_bridge_test` verifies clear, BGRA-to-RGBA readback, and present through the shared surface.
 - [ ] Define device-loss handling and GL-visible failure behavior.
@@ -138,6 +138,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Add a native-contract mock test for textured resource/raster ordering.
 - [x] Add RSH1 regression coverage for the initial varying-backed texture path.
 - [x] Add mock synchronization/readback coverage for `finish` and default-framebuffer `readPixels`.
+- [x] Add a real RinGPU surface integration test that reads texture-FBO clear/draw output and renderbuffer-FBO clear output back as RGBA pixels.
 - [x] Keep the standalone Meson build clean under its C11/`-Werror` policy, including public-header self-containment and texture-module realization coverage.
 - [ ] Add hardware/QEMU integration tests where RinGPU support exists.
 - [ ] Add shader compiler differential/negative tests.

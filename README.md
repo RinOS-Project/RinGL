@@ -154,12 +154,16 @@ tests/               unit and integration tests
 ## Status
 
 The bounded first-triangle and textured-triangle translation paths are
-implemented and covered by strict C11 mock-RinGPU tests. Framebuffer and
-renderbuffer objects now have a bounded state-model slice: lifecycle/binding,
-level-zero color attachment tracking, RGBA4 renderbuffer storage metadata, and
-automatic attachment detachment when an attached texture or renderbuffer is
-deleted. They are not yet GPU render targets: framebuffer completeness,
-depth/stencil attachments, and custom-FBO rendering remain unfinished.
+implemented and covered by strict C11 mock-RinGPU tests. A color-only FBO
+slice is also implemented: level-zero RGBA8 texture and renderbuffer
+attachments are completeness-checked, realized as RinGPU color targets, used
+by clear/draw render passes, and read back through `COPY_SOURCE`. The RinOS
+surface integration test verifies texture-FBO clear and triangle output plus
+renderbuffer-FBO clear as actual RGBA pixels.
+
+This remains a bounded profile. Depth/stencil attachments, multisampling,
+multiple color attachments, and broad GLES framebuffer semantics are not
+implemented.
 
 RinGL is not a GLES conformance claim. Broader shader expressions, device-loss
 handling, and browser-facing context-loss policy also remain unfinished. No API

@@ -66,9 +66,10 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Retain bounded buffer shadow contents so indexed draws can reject unsafe vertex fetches before RinGPU submission.
 - [x] Map indexed draws through the append-only RinGPU adapter boundary.
 - [ ] Add `UNSIGNED_BYTE` index support required by the GLES 2.0 profile.
-- [ ] Implement texture object lifecycle and texture-unit state.
-- [ ] Implement the first 2D color texture formats.
-- [ ] Implement texture upload/sub-upload.
+- [x] Implement texture object lifecycle and eight texture-unit bindings.
+- [x] Implement initial level-0 `RGBA`/`UNSIGNED_BYTE` 2D texture storage with bounded dimensions.
+- [x] Implement robust CPU-side `texImage2D` zero initialization and bounded `texSubImage2D` updates.
+- [ ] Realize defined texture storage as RinGPU sampled images and upload/copy shadow contents.
 - [ ] Implement sampler state and map it to RinGPU sampler objects.
 - [ ] Implement sampled-image/program bindings.
 - [ ] Add a textured-triangle integration test.

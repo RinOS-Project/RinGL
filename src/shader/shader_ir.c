@@ -51,6 +51,11 @@ int ringl_lower_shader_rsh1(uint32_t shader)
         return -1;
     }
     memcpy(copy, lowered.bytes, lowered.byte_size);
+
+    if (object->ringpu_module != 0u) {
+        ringl_backend_destroy_object(context, object->ringpu_module);
+        object->ringpu_module = 0u;
+    }
     free(object->rsh1);
     object->rsh1 = copy;
     object->rsh1_size = lowered.byte_size;
@@ -90,4 +95,54 @@ uint32_t ringl_copy_shader_rsh1(uint32_t shader, void* output, uint32_t capacity
     }
     memcpy(output, object->rsh1, object->rsh1_size);
     return object->rsh1_size;
+}
+
+int ringl_realize_shader_module(uint32_t shader)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLShaderObject* object;
+    uint64_t module = 0u;
+    int rc;
+
+    if (context == NULL)
+        return -1;
+    object = shader_object(context, shader);
+    if (object == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+    if (object->rsh1 == NULL || object->rsh1_size == 0u) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+
+    rc = ringl_backend_create_shader_module(context, object->rsh1,
+                                            object->rsh1_size, &module);
+    if (rc != 0 || module == 0u) {
+        (void)strncpy(object->info_log, "RinGPU rejected shader module",
+                      sizeof(object->info_log) - 1u);
+        object->info_log[sizeof(object->info_log) - 1u] = '\0';
+        return -1;
+    }
+
+    if (object->ringpu_module != 0u)
+        ringl_backend_destroy_object(context, object->ringpu_module);
+    object->ringpu_module = module;
+    object->info_log[0] = '\0';
+    return 0;
+}
+
+uint64_t ringl_get_shader_module(uint32_t shader)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLShaderObject* object;
+
+    if (context == NULL)
+        return 0u;
+    object = shader_object(context, shader);
+    if (object == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return 0u;
+    }
+    return object->ringpu_module;
 }

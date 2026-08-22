@@ -14,6 +14,7 @@
 typedef struct RinGLBufferObject {
     uint64_t ringpu_handle;
     uint64_t size_bytes;
+    uint8_t* shadow_bytes;
     uint32_t usage;
     uint32_t reserved0;
 } RinGLBufferObject;
@@ -131,6 +132,9 @@ int ringl_backend_begin_render_pass(RinGLContext* context,
 int ringl_backend_draw_vertices(RinGLContext* context,
                                 uint64_t command_list,
                                 const RinGLRinGpuDrawVerticesV1* draw);
+int ringl_backend_draw_indexed(RinGLContext* context,
+                               uint64_t command_list,
+                               const RinGLRinGpuDrawIndexedV1* draw);
 int ringl_backend_end_render_pass(RinGLContext* context,
                                   uint64_t command_list);
 int ringl_backend_present(RinGLContext* context,
@@ -155,5 +159,10 @@ int ringl_validate_vertex_fetch(const RinGLContext* context,
                                 uint32_t first_vertex,
                                 uint32_t vertex_count,
                                 RinGLResolvedVertexLayout* layout);
+int ringl_validate_index_fetch(const RinGLContext* context,
+                               uint32_t index_type,
+                               uint64_t offset,
+                               uint32_t count,
+                               uint32_t* max_index_out);
 
 #endif /* RINGL_INTERNAL_H */

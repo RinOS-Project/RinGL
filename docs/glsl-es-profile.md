@@ -48,9 +48,24 @@ built-ins remain incremental work.
 
 ## Vertex input mapping
 
-The current native RinGPU vertex profile exposes scalar `FLOAT32` attributes. RinGL expands a GL `size=2` floating-point attribute into two consecutive native scalar locations at offsets `base` and `base + 4`. A tightly packed vec2 therefore has an effective stride of 8 bytes.
+RinGL expands a GL `size=2` attribute into two consecutive scalar RinGPU
+inputs at offsets `base` and `base + component-size`. A tightly packed vec2
+therefore has an effective stride of 8 bytes for `FLOAT` input.
 
-For the bootstrap profile, enabled GL attributes are resolved in ascending attribute-index order and flattened into consecutive RSH1 input locations. The first triangle uses one vec2 at GL attribute index 0. Full GLSL attribute-location linking/reflection is later compatibility work.
+`ringl_bind_attrib_location()` records a generic vertex-array index by name
+for the program's next successful link. Link assigns every remaining active
+attribute the first unused generic index, and `ringl_get_attrib_location()`
+reports that linked value. At draw time RinGL uses the linked index to select
+the matching `vertexAttribPointer` state, then flattens only the active shader
+components into dense RSH1 locations. This keeps the generic GL namespace out
+of the RinGPU ABI while ensuring that an unrelated enabled array is not
+silently fetched.
+
+The bounded renderer requires each active attribute array to be enabled and
+all active arrays to share one buffer and effective stride. WebGL generic
+attribute constants for disabled arrays and multi-buffer vertex pulling remain
+unsupported; this is a documented compatibility limit, not an implicit zero
+or stale-data fallback.
 
 ## Compiler boundary
 

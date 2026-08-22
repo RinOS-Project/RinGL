@@ -55,9 +55,87 @@ static uint32_t ringl_native_vertex_format_bytes(uint32_t format)
     return 0u;
 }
 
+static int ringl_append_vertex_attrib(
+    const RinGLContext* context, const RinGLVertexAttribState* attrib,
+    uint32_t component_count, uint32_t* common_buffer,
+    uint32_t* common_stride, uint32_t* scalar_location,
+    RinGLResolvedVertexLayout* layout)
+{
+    uint32_t effective_stride;
+    uint32_t component_bytes;
+    uint32_t format;
+    uint32_t component;
+
+    if (context == NULL || attrib == NULL || component_count == 0u ||
+        component_count > attrib->size || common_buffer == NULL ||
+        common_stride == NULL || scalar_location == NULL || layout == NULL ||
+        !attrib->enabled || attrib->buffer == 0u ||
+        (attrib->size != 1u && attrib->size != 2u && attrib->size != 3u &&
+         attrib->size != 4u) ||
+        (attrib->normalized != RINGL_FALSE &&
+         attrib->normalized != RINGL_TRUE)) {
+        return -1;
+    }
+    format = ringl_native_vertex_format(attrib->type, attrib->normalized,
+                                        &component_bytes);
+    if (format == 0u ||
+        ringl_object_lookup_const(context, attrib->buffer,
+                                  RINGL_OBJECT_BUFFER) == NULL ||
+        attrib->offset > UINT32_MAX ||
+        (uint64_t)attrib->offset +
+                (uint64_t)component_count * component_bytes > UINT32_MAX) {
+        return -1;
+    }
+
+    effective_stride = attrib->stride == 0u
+        ? attrib->size * component_bytes : attrib->stride;
+    if (effective_stride > 2048u ||
+        effective_stride < attrib->size * component_bytes) {
+        return -1;
+    }
+    if (*common_buffer == 0u) {
+        *common_buffer = attrib->buffer;
+        *common_stride = effective_stride;
+    } else if (*common_buffer != attrib->buffer ||
+               *common_stride != effective_stride) {
+        return -1;
+    }
+
+    if (layout->attribute_count + component_count >
+        RINGL_MAX_VERTEX_INPUT_COMPONENTS) {
+        return -1;
+    }
+    for (component = 0u; component < component_count; ++component) {
+        RinGLResolvedVertexAttribute* resolved =
+            &layout->attributes[layout->attribute_count++];
+        resolved->location = (*scalar_location)++;
+        resolved->format = format;
+        resolved->offset = (uint32_t)attrib->offset +
+            component * component_bytes;
+    }
+    return 0;
+}
+
+static const RinGLProgramObject* ringl_layout_current_program(
+    const RinGLContext* context)
+{
+    uint32_t index;
+
+    if (context == NULL || context->current_program == 0u ||
+        ringl_object_lookup_const(context, context->current_program,
+                                  RINGL_OBJECT_PROGRAM) == NULL) {
+        return NULL;
+    }
+    index = ringl_object_slot_index(context->current_program);
+    if (index >= RINGL_OBJECT_SLOT_COUNT)
+        return NULL;
+    return &context->programs[index];
+}
+
 int ringl_resolve_vertex_layout(const RinGLContext* context,
                                 RinGLResolvedVertexLayout* layout)
 {
+    const RinGLProgramObject* program;
     uint32_t index;
     uint32_t common_buffer = 0u;
     uint32_t common_stride = 0u;
@@ -67,57 +145,37 @@ int ringl_resolve_vertex_layout(const RinGLContext* context,
         return -1;
     memset(layout, 0, sizeof(*layout));
 
-    for (index = 0; index < RINGL_MAX_VERTEX_ATTRIBS; ++index) {
-        const RinGLVertexAttribState* attrib = &context->vertex_attribs[index];
-        uint32_t effective_stride;
-        uint32_t component_bytes;
-        uint32_t format;
-        uint32_t component;
-
-        if (!attrib->enabled)
-            continue;
-        if (attrib->buffer == 0u ||
-            (attrib->size != 1u && attrib->size != 2u && attrib->size != 3u &&
-             attrib->size != 4u) ||
-            (attrib->normalized != RINGL_FALSE &&
-             attrib->normalized != RINGL_TRUE))
-            return -1;
-        format = ringl_native_vertex_format(attrib->type, attrib->normalized,
-                                            &component_bytes);
-        if (format == 0u)
-            return -1;
-        if (ringl_object_lookup_const(context, attrib->buffer,
-                                      RINGL_OBJECT_BUFFER) == NULL)
-            return -1;
-        if (attrib->offset > UINT32_MAX)
-            return -1;
-        if ((uint64_t)attrib->offset +
-                (uint64_t)attrib->size * component_bytes > UINT32_MAX)
-            return -1;
-
-        effective_stride = attrib->stride == 0u
-            ? attrib->size * component_bytes : attrib->stride;
-        if (effective_stride > 2048u ||
-            effective_stride < attrib->size * component_bytes)
-            return -1;
-
-        if (common_buffer == 0u) {
-            common_buffer = attrib->buffer;
-            common_stride = effective_stride;
-        } else if (common_buffer != attrib->buffer ||
-                   common_stride != effective_stride) {
-            return -1;
+    program = ringl_layout_current_program(context);
+    if (context->current_program != 0u &&
+        (program == NULL || !program->link_status)) {
+        return -1;
+    }
+    if (program != NULL) {
+        /* RSH1 uses dense scalar input locations. A linked generic GL index
+         * selects the source pointer; it is not leaked into the RinGPU ABI. */
+        for (index = 0u; index < program->attribute_count; ++index) {
+            const RinGLProgramAttribute* attribute = &program->attributes[index];
+            if (attribute->location >= RINGL_MAX_VERTEX_ATTRIBS ||
+                ringl_append_vertex_attrib(
+                    context, &context->vertex_attribs[attribute->location],
+                    attribute->width, &common_buffer, &common_stride,
+                    &scalar_location, layout) != 0) {
+                return -1;
+            }
         }
-
-        if (layout->attribute_count + attrib->size > RINGL_MAX_VERTEX_ATTRIBS)
-            return -1;
-        for (component = 0u; component < attrib->size; ++component) {
-            RinGLResolvedVertexAttribute* resolved =
-                &layout->attributes[layout->attribute_count++];
-            resolved->location = scalar_location++;
-            resolved->format = format;
-            resolved->offset = (uint32_t)attrib->offset +
-                component * component_bytes;
+    } else {
+        /* Keep the pre-link diagnostic helper useful to callers and tests.
+         * Actual draws always use the linked-program branch above. */
+        for (index = 0u; index < RINGL_MAX_VERTEX_ATTRIBS; ++index) {
+            const RinGLVertexAttribState* attrib =
+                &context->vertex_attribs[index];
+            if (!attrib->enabled)
+                continue;
+            if (ringl_append_vertex_attrib(context, attrib, attrib->size,
+                                           &common_buffer, &common_stride,
+                                           &scalar_location, layout) != 0) {
+                return -1;
+            }
         }
     }
 

@@ -193,9 +193,15 @@ using its linked shader pair when later attach/detach calls change the pending
 link inputs.
 
 Linked vertex shaders retain their active attribute declaration order and
-widths. `ringl_get_attrib_location()` exposes those stable vertex-array
-locations to the Ladybird adapter; names that are not active return `-1`
-without manufacturing a location.
+widths. `ringl_bind_attrib_location()` records a requested generic
+vertex-array index for the next successful link, and
+`ringl_get_attrib_location()` returns the index in the linked executable.
+During a draw RinGL resolves only those active, linked indices into dense RSH1
+scalar inputs before it builds the RinGPU pipeline. An unrelated enabled array
+therefore cannot alter the shader interface or be fetched accidentally. The
+bounded renderer currently requires every active attribute array to be enabled
+and to share its buffer/stride with the other active arrays; disabled generic
+attribute constants and independent vertex buffers remain unimplemented.
 
 Custom RGBA8 renderbuffer FBOs may additionally attach a matching
 `DEPTH24_STENCIL8` renderbuffer or level-zero
@@ -267,13 +273,15 @@ RGBA pixels. This does not make arbitrary varying declarations or expressions
 available: multiple independent varyings and general expressions remain outside
 the bounded profile.
 
-`vertexAttribPointer` now accepts the WebGL 1 scalar source types `FLOAT`,
+`vertexAttribPointer` accepts the WebGL 1 scalar source types `FLOAT`,
 `BYTE`, `UNSIGNED_BYTE`, `SHORT`, and `UNSIGNED_SHORT`, including normalized
 integer conversion. RinGL expands every component into a typed scalar RinGPU
 input and preserves byte strides rather than silently requiring Float32
-alignment. The current bounded renderer still requires enabled arrays to share
-one buffer and one effective stride; independent buffer bindings, WebGL 2
-integer attributes, and general vertex pulling remain outside this slice.
+alignment. The active program's linked generic locations select which arrays
+become those inputs. The current bounded renderer still requires active arrays
+to share one buffer and one effective stride; disabled generic values,
+independent buffer bindings, WebGL 2 integer attributes, and general vertex
+pulling remain outside this slice.
 
 The corresponding bounded RGB profile accepts `attribute vec3 color` and
 `varying vec3 vertexColor`, with `gl_FragColor = vec4(vertexColor, 1.0)`.

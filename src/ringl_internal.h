@@ -24,6 +24,9 @@
 #define RINGL_MAX_SAMPLER_UNIFORMS 8u
 #define RINGL_MAX_VARYINGS 8u
 #define RINGL_UNIFORM_NAME_MAX 64u
+/* RSH1 and the public RinGPU adapter both admit 32 scalar vertex inputs. The
+ * public GL limit remains 16 generic vertex-array indices. */
+#define RINGL_MAX_VERTEX_INPUT_COMPONENTS 32u
 
 typedef struct RinGLBufferObject {
     uint64_t ringpu_handle;
@@ -99,6 +102,12 @@ typedef struct RinGLProgramAttribute {
     uint32_t location;
 } RinGLProgramAttribute;
 
+typedef struct RinGLProgramAttributeBinding {
+    char name[RINGL_UNIFORM_NAME_MAX];
+    uint32_t location;
+    uint32_t active;
+} RinGLProgramAttributeBinding;
+
 typedef struct RinGLProgramVarying {
     char name[RINGL_UNIFORM_NAME_MAX];
     uint32_t width;
@@ -116,6 +125,11 @@ typedef struct RinGLProgramObject {
     uint32_t sampler_uniform_count;
     uint32_t varying_count;
     RinGLProgramAttribute attributes[RINGL_MAX_VERTEX_ATTRIBS];
+    /* Pending bindAttribLocation requests deliberately live outside the
+     * linked reflection fields: they survive link attempts and only affect a
+     * later successful executable. */
+    RinGLProgramAttributeBinding
+        attribute_bindings[RINGL_MAX_VERTEX_ATTRIBS];
     RinGLProgramSamplerUniform sampler_uniforms[RINGL_MAX_SAMPLER_UNIFORMS];
     RinGLProgramVarying varyings[RINGL_MAX_VARYINGS];
     char info_log[RINGL_PROGRAM_LOG_MAX];
@@ -141,7 +155,8 @@ typedef struct RinGLResolvedVertexLayout {
     uint32_t buffer;
     uint32_t stride;
     uint32_t attribute_count;
-    RinGLResolvedVertexAttribute attributes[RINGL_MAX_VERTEX_ATTRIBS];
+    RinGLResolvedVertexAttribute
+        attributes[RINGL_MAX_VERTEX_INPUT_COMPONENTS];
 } RinGLResolvedVertexLayout;
 
 typedef struct RinGLColorTarget {

@@ -344,11 +344,12 @@ static int create_pipeline(RinGLContext* context,
                            const RinGLPipelineKey* key,
                            uint64_t* pipeline_out)
 {
-    RinGLRinGpuVertexAttributeV1 attributes[RINGL_MAX_VERTEX_ATTRIBS];
+    RinGLRinGpuVertexAttributeV1
+        attributes[RINGL_MAX_VERTEX_INPUT_COMPONENTS];
     uint32_t index;
 
     if (context == NULL || key == NULL || pipeline_out == NULL ||
-        key->attribute_count > RINGL_MAX_VERTEX_ATTRIBS ||
+        key->attribute_count > RINGL_MAX_VERTEX_INPUT_COMPONENTS ||
         key->varying_count > RINGL_PIPELINE_MAX_SCALAR_VARYINGS)
         return -1;
 

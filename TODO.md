@@ -35,6 +35,8 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   - [x] Map WebGL 1 `FLOAT`/`BYTE`/`UNSIGNED_BYTE`/`SHORT`/`UNSIGNED_SHORT`
     attributes, including normalized 8/16-bit conversion and byte strides, to
     executable scalar RinGPU input formats.
+  - [x] Resolve a linked program's active generic attribute locations to its
+    dense scalar RinGPU inputs, so unrelated enabled arrays are not fetched.
 - [x] Reject unsupported or out-of-range vertex fetches before submission.
 - [x] Add buffer lifetime and bounds tests.
 
@@ -52,7 +54,8 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Implement program object lifecycle and `glUseProgram`.
 - [x] Add first-slice program reflection for shader I/O and shader-module handles.
   - [x] Preserve linked vertex attribute names/widths and expose stable active
-    attribute locations for the bounded supported shader profiles.
+    attribute locations for the bounded supported shader profiles, including
+    `bindAttribLocation` requests applied only by the next successful link.
 - [x] Add positive and negative shader frontend tests.
 - [x] Add RSH1 lowering tests for header, stage, input/output counts, and IR invalidation.
 - [x] Add RinGPU shader-module realization and lifetime tests.
@@ -169,6 +172,9 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [ ] Inventory required OpenGL ES 2.0 entry points, enums, limits, and queries.
 - [ ] Track implementation status per API instead of claiming version support early.
 - [ ] Close GLES 2.0 semantic gaps found by conformance-style tests.
+- [ ] Implement WebGL generic attribute constants for disabled arrays and
+  independent vertex-buffer bindings; the current bounded draw path rejects
+  missing active arrays instead of manufacturing fallback input values.
 - [ ] Decide the boundary for OpenGL ES 3.x features.
 - [ ] Add VAOs, instancing, additional texture formats, MRT, and other GLES 3.x features only after the underlying RinGPU contracts are ready.
 

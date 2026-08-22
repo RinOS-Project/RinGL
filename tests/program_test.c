@@ -41,6 +41,15 @@ int main(void)
     assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
     assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
 
+    ringl_bind_attrib_location(program, 3u, "position");
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_bind_attrib_location(program, RINGL_MAX_VERTEX_ATTRIBS, "position");
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    ringl_bind_attrib_location(program, 0u, "gl_reserved");
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    ringl_bind_attrib_location(program, 0u, NULL);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+
     /* A validation-only context may link the GL program and expose uniforms
      * even though the current shared RSH1 ABI cannot lower texture2D yet. */
     ringl_attach_shader(program, vertex);
@@ -48,9 +57,16 @@ int main(void)
     ringl_link_program(program);
     assert(ringl_get_program_link_status(program) == RINGL_TRUE);
     assert(ringl_get_program_info_log(program, log, sizeof(log)) == 0u);
-    assert(ringl_get_attrib_location(program, "position") == 0);
+    assert(ringl_get_attrib_location(program, "position") == 3);
     assert(ringl_get_attrib_location(program, "missing") == -1);
     assert(ringl_get_error() == RINGL_NO_ERROR);
+
+    /* A request after link does not mutate the currently linked executable. */
+    ringl_bind_attrib_location(program, 1u, "position");
+    assert(ringl_get_attrib_location(program, "position") == 3);
+    ringl_link_program(program);
+    assert(ringl_get_program_link_status(program) == RINGL_TRUE);
+    assert(ringl_get_attrib_location(program, "position") == 1);
 
     location = ringl_get_uniform_location(program, "colorTexture");
     assert(location == 0);
@@ -91,6 +107,21 @@ int main(void)
     assert(ringl_get_attrib_location(multi_program, "position") == 0);
     assert(ringl_get_attrib_location(multi_program, "colorRG") == 1);
     assert(ringl_get_attrib_location(multi_program, "colorBA") == 2);
+
+    /* Two active names cannot occupy one generic array index. The failed link
+     * must be observable, and a repaired binding must produce a fresh,
+     * deterministic executable. */
+    ringl_bind_attrib_location(multi_program, 4u, "position");
+    ringl_bind_attrib_location(multi_program, 4u, "colorBA");
+    ringl_link_program(multi_program);
+    assert(ringl_get_program_link_status(multi_program) == RINGL_FALSE);
+    assert(ringl_get_program_info_log(multi_program, log, sizeof(log)) > 0u);
+    ringl_bind_attrib_location(multi_program, 5u, "colorBA");
+    ringl_link_program(multi_program);
+    assert(ringl_get_program_link_status(multi_program) == RINGL_TRUE);
+    assert(ringl_get_attrib_location(multi_program, "position") == 4);
+    assert(ringl_get_attrib_location(multi_program, "colorRG") == 0);
+    assert(ringl_get_attrib_location(multi_program, "colorBA") == 5);
     ringl_delete_program(multi_program);
 
     ringl_delete_program(program);

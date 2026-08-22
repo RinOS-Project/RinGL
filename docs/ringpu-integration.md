@@ -98,7 +98,13 @@ RinGPU backend shader module
 
 ## Graphics pipeline path
 
-RinGL builds a deterministic first-slice pipeline key from the linked vertex/fragment shader modules, color attachment format, triangle-list topology, vertex stride, and resolved vertex attributes. A bounded cache reuses identical pipelines and evicts old entries in FIFO order.
+RinGL builds a deterministic first-slice pipeline key from the linked
+vertex/fragment shader modules, color attachment format, triangle-list
+topology, vertex stride, and resolved vertex attributes. Active program
+attributes are selected through their linked generic GL locations, then emitted
+as dense scalar RSH1/RinGPU inputs. This means `bindAttribLocation` affects the
+actual vertex fetch source without exposing sparse GL indices to RinGPU. A
+bounded cache reuses identical pipelines and evicts old entries in FIFO order.
 
 The adapter's `create_graphics_pipeline` callback maps directly to `ringpu_create_graphics_pipeline_vertex()`. The RinOS adapter fills a `RinGpuGraphicsPipelineVertexDescV1`, converts each `RinGLRinGpuVertexAttributeV1` to `RinGpuVertexAttributeV1`, and forwards the linked RinGPU shader-module handles unchanged.
 

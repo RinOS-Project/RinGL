@@ -85,6 +85,8 @@ static int ringl_program_collect_attributes(RinGLProgramObject* program,
                                             const RinGLShaderObject* vertex)
 {
     RinGLGlslParseResult result;
+    uint32_t assigned_locations = 0u;
+    uint32_t scalar_width = 0u;
     uint32_t index;
 
     program->attribute_count = 0u;
@@ -99,7 +101,60 @@ static int ringl_program_collect_attributes(RinGLProgramObject* program,
                             sizeof(program->attributes[index].name),
                             result.attribute_names[index]);
         program->attributes[index].width = result.attribute_widths[index];
-        program->attributes[index].location = index;
+        if (program->attributes[index].width == 0u ||
+            program->attributes[index].width >
+                RINGL_MAX_VERTEX_INPUT_COMPONENTS ||
+            scalar_width > RINGL_MAX_VERTEX_INPUT_COMPONENTS -
+                program->attributes[index].width) {
+            return 0;
+        }
+        scalar_width += program->attributes[index].width;
+        program->attributes[index].location = UINT32_MAX;
+    }
+
+    /* A requested location may name an attribute which is inactive in this
+     * executable. Such a request is retained but cannot collide until both
+     * names become active on a later link. */
+    for (index = 0u; index < result.attribute_count; ++index) {
+        uint32_t binding_index;
+        for (binding_index = 0u;
+             binding_index < RINGL_MAX_VERTEX_ATTRIBS;
+             ++binding_index) {
+            const RinGLProgramAttributeBinding* binding =
+                &program->attribute_bindings[binding_index];
+            uint32_t location_bit;
+
+            if (!binding->active ||
+                strcmp(binding->name, program->attributes[index].name) != 0) {
+                continue;
+            }
+            location_bit = UINT32_C(1) << binding->location;
+            if ((assigned_locations & location_bit) != 0u)
+                return 0;
+            program->attributes[index].location = binding->location;
+            assigned_locations |= location_bit;
+            break;
+        }
+    }
+
+    /* WebGL permits the implementation to choose unbound locations. Choose
+     * the first remaining generic index deterministically, rather than
+     * accidentally colliding with a later explicit binding. */
+    for (index = 0u; index < result.attribute_count; ++index) {
+        uint32_t location;
+
+        if (program->attributes[index].location != UINT32_MAX)
+            continue;
+        for (location = 0u; location < RINGL_MAX_VERTEX_ATTRIBS; ++location) {
+            uint32_t location_bit = UINT32_C(1) << location;
+            if ((assigned_locations & location_bit) == 0u) {
+                program->attributes[index].location = location;
+                assigned_locations |= location_bit;
+                break;
+            }
+        }
+        if (location == RINGL_MAX_VERTEX_ATTRIBS)
+            return 0;
     }
     program->attribute_count = result.attribute_count;
     return 1;
@@ -390,6 +445,66 @@ uint64_t ringl_get_program_info_log(uint32_t program, char* buffer,
     memcpy(buffer, object->info_log, copy_length);
     buffer[copy_length] = '\0';
     return (uint64_t)length;
+}
+
+static int ringl_program_binding_name_valid(const char* name)
+{
+    size_t length = 0u;
+
+    if (name == NULL || name[0] == '\0')
+        return 0;
+    while (length < RINGL_UNIFORM_NAME_MAX && name[length] != '\0')
+        ++length;
+    return length != RINGL_UNIFORM_NAME_MAX;
+}
+
+void ringl_bind_attrib_location(uint32_t program, uint32_t index,
+                                const char* name)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLProgramObject* object;
+    uint32_t binding_index;
+
+    if (context == NULL)
+        return;
+    object = ringl_program_object(context, program);
+    if (object == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if (index >= RINGL_MAX_VERTEX_ATTRIBS ||
+        !ringl_program_binding_name_valid(name)) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if (name[0] == 'g' && name[1] == 'l' && name[2] == '_') {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+
+    for (binding_index = 0u;
+         binding_index < RINGL_MAX_VERTEX_ATTRIBS;
+         ++binding_index) {
+        RinGLProgramAttributeBinding* binding =
+            &object->attribute_bindings[binding_index];
+        if (binding->active && strcmp(binding->name, name) == 0) {
+            binding->location = index;
+            return;
+        }
+    }
+    for (binding_index = 0u;
+         binding_index < RINGL_MAX_VERTEX_ATTRIBS;
+         ++binding_index) {
+        RinGLProgramAttributeBinding* binding =
+            &object->attribute_bindings[binding_index];
+        if (!binding->active) {
+            ringl_copy_c_string(binding->name, sizeof(binding->name), name);
+            binding->location = index;
+            binding->active = RINGL_TRUE;
+            return;
+        }
+    }
+    ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
 }
 
 void ringl_use_program(uint32_t program)

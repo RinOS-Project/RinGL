@@ -69,7 +69,7 @@ static int fake_create_graphics_pipeline(
     assert(desc != NULL && pipeline_out != NULL);
     assert(desc->vertex_shader != 0u && desc->fragment_shader != 0u);
     assert(desc->primitive_topology == 1u);
-    assert(desc->vertex_stride == 8u);
+    assert(desc->vertex_stride == 16u);
     assert(attribute_count == 2u && attributes != NULL);
     assert(attributes[0].location == 0u);
     assert(attributes[0].offset == 0u);
@@ -244,10 +244,10 @@ int main(void)
     uint32_t vertex;
     uint32_t fragment;
     uint32_t program;
-    const float vertices[6] = {
-        -0.75f, -0.75f,
-         0.75f, -0.75f,
-         0.00f,  0.75f,
+    const float vertices[12] = {
+        -0.75f, -0.75f,  99.0f,  98.0f,
+         0.75f, -0.75f,  97.0f,  96.0f,
+         0.00f,  0.75f,  95.0f,  94.0f,
     };
     const uint16_t indices[3] = {0u, 1u, 2u};
     const uint8_t byte_indices[3] = {0u, 1u, 2u};
@@ -262,8 +262,12 @@ int main(void)
     ringl_bind_buffer(RINGL_ARRAY_BUFFER, vertex_buffer);
     ringl_buffer_data(RINGL_ARRAY_BUFFER, sizeof(vertices), vertices,
                       RINGL_STATIC_DRAW);
-    ringl_vertex_attrib_pointer(0u, 2, RINGL_FLOAT, RINGL_FALSE, 0, 0u);
+    /* Attribute 0 is deliberately enabled but unused by the linked shader.
+     * The requested position location must select attribute 3 instead. */
+    ringl_vertex_attrib_pointer(0u, 2, RINGL_FLOAT, RINGL_FALSE, 16, 8u);
     ringl_enable_vertex_attrib_array(0u);
+    ringl_vertex_attrib_pointer(3u, 2, RINGL_FLOAT, RINGL_FALSE, 16, 0u);
+    ringl_enable_vertex_attrib_array(3u);
 
     ringl_gen_buffers(1, &index_buffer);
     ringl_bind_buffer(RINGL_ELEMENT_ARRAY_BUFFER, index_buffer);
@@ -286,8 +290,10 @@ int main(void)
     ringl_compile_shader(fragment);
     ringl_attach_shader(program, vertex);
     ringl_attach_shader(program, fragment);
+    ringl_bind_attrib_location(program, 3u, "position");
     ringl_link_program(program);
     assert(ringl_get_program_link_status(program) == RINGL_TRUE);
+    assert(ringl_get_attrib_location(program, "position") == 3);
     ringl_use_program(program);
 
     ringl_clear_color(-1.0f, 0.25f, 2.0f, 1.0f);

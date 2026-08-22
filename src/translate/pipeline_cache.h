@@ -47,7 +47,8 @@ typedef struct RinGLPipelineKey {
     uint32_t color_write_mask;
     uint32_t cull_mode;
     uint32_t front_face;
-    RinGLResolvedVertexAttribute attributes[RINGL_MAX_VERTEX_ATTRIBS];
+    RinGLResolvedVertexAttribute
+        attributes[RINGL_MAX_VERTEX_INPUT_COMPONENTS];
     RinGLRinGpuVaryingV1 varyings[RINGL_PIPELINE_MAX_SCALAR_VARYINGS];
 } RinGLPipelineKey;
 

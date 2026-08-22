@@ -782,10 +782,15 @@ uint32_t ringl_get_program_link_status(uint32_t program);
 uint64_t ringl_get_program_info_log(uint32_t program,
                                     char* buffer,
                                     uint64_t buffer_size);
+/* Requests the generic vertex-array index for an active vertex attribute on
+ * the program's next successful link. Existing linked executables retain
+ * their locations until that relink succeeds. */
+void ringl_bind_attrib_location(uint32_t program, uint32_t index,
+                                const char* name);
 void ringl_use_program(uint32_t program);
 uint32_t ringl_get_current_program(void);
-/* Returns the stable per-attribute vertex-array location for a linked
- * program, or -1 when the name is not active. */
+/* Returns the linked generic vertex-array index for an active program
+ * attribute, or -1 when the name is not active. */
 int32_t ringl_get_attrib_location(uint32_t program, const char* name);
 int32_t ringl_get_uniform_location(uint32_t program, const char* name);
 void ringl_uniform_1i(int32_t location, int32_t value);

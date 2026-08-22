@@ -7,6 +7,7 @@
 #include "../ringl_internal.h"
 
 #define RINGL_NATIVE_PRIMITIVE_TRIANGLE_LIST 1u
+#define RINGL_PIPELINE_CACHE_CAPACITY 32u
 
 typedef struct RinGLPipelineKey {
     uint64_t vertex_shader_module;
@@ -24,5 +25,11 @@ int ringl_build_pipeline_key(RinGLContext* context,
 uint64_t ringl_pipeline_key_hash(const RinGLPipelineKey* key);
 int ringl_pipeline_key_equal(const RinGLPipelineKey* left,
                              const RinGLPipelineKey* right);
+int ringl_pipeline_cache_get_or_create(RinGLContext* context,
+                                       const RinGLPipelineKey* key,
+                                       uint64_t* pipeline_out);
+int ringl_get_or_create_graphics_pipeline(RinGLContext* context,
+                                          uint32_t color_format,
+                                          uint64_t* pipeline_out);
 
 #endif /* RINGL_PIPELINE_CACHE_H */

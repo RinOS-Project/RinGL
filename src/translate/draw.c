@@ -4,6 +4,8 @@
 
 #include <string.h>
 
+#define RINGL_NATIVE_INDEX_UINT8 3u
+
 static float clamp_color(float value)
 {
     if (!(value >= 0.0f))
@@ -233,7 +235,8 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
-    if (type != RINGL_UNSIGNED_SHORT && type != RINGL_UNSIGNED_INT) {
+    if (type != RINGL_UNSIGNED_BYTE && type != RINGL_UNSIGNED_SHORT &&
+        type != RINGL_UNSIGNED_INT) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
@@ -288,8 +291,12 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
     draw.vertex_buffer = vertex_buffer->ringpu_handle;
     draw.index_buffer = index_buffer->ringpu_handle;
     draw.index_offset = offset;
-    draw.index_format = type == RINGL_UNSIGNED_SHORT
-        ? RINGL_RIN_GPU_INDEX_UINT16 : RINGL_RIN_GPU_INDEX_UINT32;
+    if (type == RINGL_UNSIGNED_BYTE)
+        draw.index_format = RINGL_NATIVE_INDEX_UINT8;
+    else if (type == RINGL_UNSIGNED_SHORT)
+        draw.index_format = RINGL_RIN_GPU_INDEX_UINT16;
+    else
+        draw.index_format = RINGL_RIN_GPU_INDEX_UINT32;
     draw.index_count = (uint32_t)count;
     draw.vertex_count = vertex_count;
     draw.instance_count = 1u;

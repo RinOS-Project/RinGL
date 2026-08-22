@@ -56,9 +56,12 @@ The surface color image declares `COPY_SOURCE` and `CPU_READABLE` as well as
 its existing `COPY_DESTINATION`, `COLOR_TARGET`, and `PRESENT` uses. Its
 backend supplies bounded readback, so RinGL's default-framebuffer
 `RGBA/UNSIGNED_BYTE` `readPixels` path can transition to `COPY_SOURCE`, wait,
-read back, and swizzle BGRA storage to RGBA. The focused OS-Core
+read back, and swizzle BGRA storage to RGBA. The same fenced snapshot powers
+the bounded `copyTexSubImage2D` path into a defined level-zero RGBA texture;
+source/destination rectangles are checked before allocation, and the shadow is
+changed only after readback succeeds. The focused OS-Core
 `rin_webgl_ringl_bridge_test` covers clear, readback, and present through this
-borrowed surface.
+borrowed surface. Custom-FBO copy sources remain outside this slice.
 
 ## Shader module validation path
 

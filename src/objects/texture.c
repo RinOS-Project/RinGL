@@ -791,6 +791,83 @@ void ringl_tex_sub_image_2d(uint32_t target, int32_t level,
     ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
 }
 
+void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
+                                 int32_t xoffset, int32_t yoffset,
+                                 int32_t x, int32_t y,
+                                 int32_t width, int32_t height)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLTextureObject* texture;
+    RinGLColorTarget source;
+    uint64_t size;
+    uint8_t* replacement;
+    uint32_t row;
+
+    if (context == NULL)
+        return;
+    if (!texture_target_valid(target)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return;
+    }
+    if (level != 0 || xoffset < 0 || yoffset < 0 || x < 0 || y < 0 ||
+        width < 0 || height < 0) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    texture = bound_texture_2d(context);
+    if (texture == NULL || !texture->defined || texture->format != RINGL_RGBA ||
+        texture->shadow_bytes == NULL || context->framebuffer_binding != 0u) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    if ((uint32_t)xoffset > texture->width ||
+        (uint32_t)yoffset > texture->height ||
+        (uint32_t)width > texture->width - (uint32_t)xoffset ||
+        (uint32_t)height > texture->height - (uint32_t)yoffset) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if (ringl_resolve_color_target(context, &source) != 0) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    if ((uint64_t)(uint32_t)x + (uint64_t)(uint32_t)width > source.width ||
+        (uint64_t)(uint32_t)y + (uint64_t)(uint32_t)height > source.height) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if (width == 0 || height == 0)
+        return;
+    size = (uint64_t)(uint32_t)width * (uint64_t)(uint32_t)height * 4u;
+    if (size > SIZE_MAX) {
+        ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+        return;
+    }
+    replacement = malloc((size_t)size);
+    if (replacement == NULL) {
+        ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+        return;
+    }
+    if (ringl_read_color_target_rgba(context, x, y, width, height,
+                                     replacement) != 0) {
+        free(replacement);
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    for (row = 0u; row < (uint32_t)height; ++row) {
+        uint64_t destination_offset =
+            ((uint64_t)((uint32_t)yoffset + row) * texture->width +
+             (uint32_t)xoffset) * 4u;
+
+        memcpy(texture->shadow_bytes + destination_offset,
+               replacement + (uint64_t)row * (uint32_t)width * 4u,
+               (size_t)(uint32_t)width * 4u);
+    }
+    free(replacement);
+    texture_discard_image(context, texture);
+    ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
+}
+
 void ringl_texture_objects_destroy_all(RinGLContext* context)
 {
     uint32_t index;

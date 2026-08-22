@@ -698,6 +698,12 @@ void ringl_tex_sub_image_2d(uint32_t target, int32_t level,
                             int32_t width, int32_t height,
                             uint32_t format, uint32_t type,
                             const void* pixels);
+/* Bounded copy path: the current default RGBA color buffer to a level-zero
+ * RGBA texture. Custom-FBO sources and non-RGBA destinations remain rejected. */
+void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
+                                 int32_t xoffset, int32_t yoffset,
+                                 int32_t x, int32_t y,
+                                 int32_t width, int32_t height);
 
 void ringl_gen_framebuffers(int32_t count, uint32_t* framebuffers);
 void ringl_delete_framebuffers(int32_t count, const uint32_t* framebuffers);

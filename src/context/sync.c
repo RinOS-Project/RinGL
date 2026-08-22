@@ -139,12 +139,9 @@ static void swizzle_bgra_to_rgba(uint8_t* bytes, uint64_t pixel_count)
     }
 }
 
-void ringl_read_pixels(int32_t x, int32_t y,
-                       int32_t width, int32_t height,
-                       uint32_t format, uint32_t type,
-                       void* pixels)
+int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
+                                 int32_t width, int32_t height, void* pixels)
 {
-    RinGLContext* context = ringl_get_current_context();
     RinGLRinGpuImageReadback2DV1 readback;
     uint64_t command_list;
     uint64_t row_bytes;
@@ -153,17 +150,12 @@ void ringl_read_pixels(int32_t x, int32_t y,
     uint32_t old_state;
 
     if (context == NULL)
-        return;
+        return -1;
     if (width < 0 || height < 0) {
-        ringl_context_record_error(context, RINGL_INVALID_VALUE);
-        return;
-    }
-    if (format != RINGL_RGBA || type != RINGL_UNSIGNED_BYTE) {
-        ringl_context_record_error(context, RINGL_INVALID_ENUM);
-        return;
+        return -1;
     }
     if (width == 0 || height == 0)
-        return;
+        return 0;
     if (!context->has_sync_ops || context->sync_ops.readback_image_2d == NULL ||
         pixels == NULL || ringl_resolve_color_target(context, &target) != 0 ||
         x < 0 || y < 0 ||
@@ -171,8 +163,7 @@ void ringl_read_pixels(int32_t x, int32_t y,
             target.width ||
         (uint64_t)(uint32_t)y + (uint64_t)(uint32_t)height >
             target.height) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
+        return -1;
     }
     row_bytes = (uint64_t)(uint32_t)width * 4u;
     total_bytes = row_bytes * (uint64_t)(uint32_t)height;
@@ -185,8 +176,7 @@ void ringl_read_pixels(int32_t x, int32_t y,
                                         old_state,
                                         RINGL_RIN_GPU_IMAGE_COPY_SOURCE) != 0) ||
         submit_and_wait(context, command_list) != 0) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
+        return -1;
     }
     *target.state = RINGL_RIN_GPU_IMAGE_COPY_SOURCE;
 
@@ -199,14 +189,35 @@ void ringl_read_pixels(int32_t x, int32_t y,
     if (context->sync_ops.readback_image_2d(
             context->ringpu.session, target.image,
             &readback, pixels, total_bytes) != 0) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
+        return -1;
     }
 
     if (target.format == RINGL_RIN_GPU_FORMAT_BGRA8_UNORM) {
         swizzle_bgra_to_rgba((uint8_t*)pixels,
                              (uint64_t)(uint32_t)width * (uint32_t)height);
     } else if (target.format != RINGL_RIN_GPU_FORMAT_RGBA8_UNORM) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
     }
+    return 0;
+}
+
+void ringl_read_pixels(int32_t x, int32_t y,
+                       int32_t width, int32_t height,
+                       uint32_t format, uint32_t type,
+                       void* pixels)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL)
+        return;
+    if (format != RINGL_RGBA || type != RINGL_UNSIGNED_BYTE) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return;
+    }
+    if (width < 0 || height < 0) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if (ringl_read_color_target_rgba(context, x, y, width, height, pixels) != 0)
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
 }

@@ -138,6 +138,11 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 ## Phase 7 — Data movement, synchronization, and observability
 
 - [ ] Implement clear/copy paths that must end or split render passes.
+  - [x] Add a bounded `copyTexSubImage2D` path from the default RGBA color
+    buffer to a defined level-zero RGBA texture through fenced image readback.
+    The copy validates source/destination ranges before allocation and updates
+    texture storage only after the full BGRA/RGBA-normalized snapshot succeeds.
+    Custom-FBO sources and unsupported destination formats remain rejected.
 - [x] Implement current immediate-submit `glFlush` semantics.
 - [x] Implement `glFinish` using an optional versioned sync extension, RinGPU fences, fenced queue submission, and `ringpu_wait_fence()`.
 - [x] Implement bounded current-color-framebuffer `RGBA/UNSIGNED_BYTE` `glReadPixels` logic through COPY_SOURCE transition, completion wait, RinGPU image readback, and BGRA-to-RGBA swizzle where required.

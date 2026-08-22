@@ -6,6 +6,8 @@
 #include <ringl/ringl.h>
 #include <ringl/ringl_sync.h>
 
+#include "../src/ringl_internal.h"
+
 typedef struct FakeBackend {
     uint64_t next_handle;
     uint64_t fence;
@@ -173,6 +175,7 @@ int main(void)
         .height = 8u,
     };
     RinGLContext* context = NULL;
+    uint32_t texture = 0u;
     uint8_t pixels[8] = {0};
     const uint8_t expected_rgba[8] = {
         10u, 20u, 30u, 255u,
@@ -196,6 +199,21 @@ int main(void)
     assert(backend.submits == 2u && backend.waits == 2u);
     assert(backend.readbacks == 1u);
     assert(memcmp(pixels, expected_rgba, sizeof(pixels)) == 0);
+
+    ringl_gen_textures(1, &texture);
+    ringl_bind_texture(RINGL_TEXTURE_2D, texture);
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 2, 1, 0,
+                       RINGL_RGBA, RINGL_UNSIGNED_BYTE, NULL);
+    ringl_copy_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 1, 2, 2, 1);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(backend.transitions == 1u);
+    assert(backend.submits == 3u && backend.waits == 3u);
+    assert(backend.readbacks == 2u);
+    assert(memcmp(context->textures[ringl_object_slot_index(texture)].shadow_bytes,
+                  expected_rgba, sizeof(expected_rgba)) == 0);
+    ringl_copy_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 7, 2, 2, 1);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    assert(backend.readbacks == 2u);
 
     assert(ringl_context_set_sync_ops(context, NULL) == 0);
     assert(backend.destroys == 1u); /* fence */

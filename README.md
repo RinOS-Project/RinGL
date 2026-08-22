@@ -234,6 +234,15 @@ one. The strict C11 RinGL tests cover format normalization, tightly-packed RGB
 image/sub-image data, and padded D32 source rows; the surface integration test
 renders a normalized RGB texture through the real RinGPU resource binding.
 
+`copyTexSubImage2D` has a bounded data-movement path from the current default
+RGBA color buffer into a defined level-zero `RGBA` texture. It validates both
+source and destination rectangles before allocating a temporary RGBA snapshot,
+uses the existing fenced RinGPU readback path (including BGRA-to-RGBA swizzle),
+and updates the canonical texture shadow only after that readback succeeds.
+Custom-FBO sources, non-RGBA destination textures, and out-of-range rectangles
+are rejected; this avoids feedback-loop or partial-copy semantics that the
+current profile cannot represent.
+
 The one-sampler constant texture profile accepts both `vec2(u, v)` and the
 GLSL scalar-splat form `vec2(value)`. The latter requires a finite literal and
 stores that exact Float32 value in both RSH1 texture-coordinate registers, so

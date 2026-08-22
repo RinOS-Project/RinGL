@@ -66,16 +66,24 @@ static int fake_create_pipeline_native(
     FakeBackend* backend = session;
     assert(desc != NULL && pipeline_out != NULL);
     assert(desc->vertex_shader != 0u && desc->fragment_shader != 0u);
-    assert(desc->vertex_stride == 8u);
+    assert(desc->vertex_stride == 16u);
     assert(desc->position_output_location == 0u);
     assert(desc->blend_enabled == 0u);
     assert(desc->color_write_mask == RINGL_RIN_GPU_COLOR_WRITE_ALL);
     assert(desc->cull_mode == RINGL_RIN_GPU_CULL_NONE);
     assert(desc->front_face == RINGL_RIN_GPU_FRONT_FACE_CCW);
-    assert(attribute_count == 2u && attributes != NULL);
+    assert(attribute_count == 4u && attributes != NULL);
     assert(attributes[0].location == 0u && attributes[0].offset == 0u);
     assert(attributes[1].location == 1u && attributes[1].offset == 4u);
-    assert(varying_count == 0u && varyings == NULL);
+    assert(attributes[2].location == 2u && attributes[2].offset == 8u);
+    assert(attributes[3].location == 3u && attributes[3].offset == 12u);
+    assert(varying_count == 2u && varyings != NULL);
+    assert(varyings[0].vertex_output_location == 4u);
+    assert(varyings[0].fragment_input_location == 0u);
+    assert(varyings[0].type == 1u && varyings[0].interpolation == 1u);
+    assert(varyings[1].vertex_output_location == 5u);
+    assert(varyings[1].fragment_input_location == 1u);
+    assert(varyings[1].type == 1u && varyings[1].interpolation == 1u);
     backend->pipeline = ++backend->next_handle;
     *pipeline_out = backend->pipeline;
     return 0;
@@ -131,7 +139,7 @@ static int fake_set_raster_state(void* session, uint64_t command_list,
 {
     FakeBackend* backend = session;
     assert(command_list != 0u && state != NULL);
-    assert(state->viewport_x == 1.0f && state->viewport_y == 2.0f);
+    assert(state->viewport_x == -9.0f && state->viewport_y == -4.0f);
     assert(state->viewport_width == 100.0f && state->viewport_height == 80.0f);
     assert(state->min_depth == 0.0f && state->max_depth == 1.0f);
     assert(state->scissor_enabled == 1u);
@@ -294,9 +302,9 @@ int main(void)
     uint32_t program;
     int32_t sampler_location;
     const float vertices[] = {
-        -0.75f, -0.75f,
-         0.75f, -0.75f,
-         0.0f,   0.75f,
+        -0.75f, -0.75f, 0.0f, 0.0f,
+         0.75f, -0.75f, 1.0f, 0.0f,
+         0.0f,   0.75f, 0.5f, 1.0f,
     };
     const uint8_t pixels[16] = {
         255u, 0u, 0u, 255u, 0u, 255u, 0u, 255u,
@@ -312,8 +320,10 @@ int main(void)
     ringl_bind_buffer(RINGL_ARRAY_BUFFER, buffer);
     ringl_buffer_data(RINGL_ARRAY_BUFFER, sizeof(vertices), vertices,
                       RINGL_STATIC_DRAW);
-    ringl_vertex_attrib_pointer(0u, 2, RINGL_FLOAT, RINGL_FALSE, 0, 0u);
+    ringl_vertex_attrib_pointer(0u, 2, RINGL_FLOAT, RINGL_FALSE, 16, 0u);
     ringl_enable_vertex_attrib_array(0u);
+    ringl_vertex_attrib_pointer(1u, 2, RINGL_FLOAT, RINGL_FALSE, 16, 8u);
+    ringl_enable_vertex_attrib_array(1u);
 
     ringl_gen_textures(1, &texture);
     ringl_active_texture(RINGL_TEXTURE0);
@@ -328,11 +338,13 @@ int main(void)
     program = ringl_create_program();
     ringl_shader_source(
         vertex,
-        "attribute vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }",
+        "attribute vec2 position; attribute vec2 texCoord; varying vec2 uv; "
+        "void main() { gl_Position = vec4(position, 0.0, 1.0); uv = texCoord; }",
         -1);
     ringl_shader_source(
         fragment,
-        "uniform sampler2D colorTexture; void main() { gl_FragColor = texture2D(colorTexture, vec2(0.25, 0.75)); }",
+        "uniform sampler2D colorTexture; varying vec2 uv; "
+        "void main() { gl_FragColor = texture2D(colorTexture, uv); }",
         -1);
     ringl_compile_shader(vertex);
     ringl_compile_shader(fragment);
@@ -347,7 +359,7 @@ int main(void)
     assert(sampler_location == 0);
     ringl_uniform_1i(sampler_location, 0);
 
-    ringl_viewport(1, 2, 100, 80);
+    ringl_viewport(-9, -4, 100, 80);
     ringl_scissor(-5, 3, 20, 30);
     ringl_enable(RINGL_SCISSOR_TEST);
     ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);

@@ -40,10 +40,11 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Reuse RinShader validation through public `ringpu_create_shader_module()` before backend shader creation.
 - [x] Implement the initial vertex/fragment shader linking checks.
 - [x] Implement program object lifecycle and `glUseProgram`.
-- [ ] Add uniform/reflection metadata needed by the first rendering slice.
+- [x] Add first-slice program reflection for shader I/O, shader-module handles, and the current zero-uniform profile.
 - [x] Add positive and negative shader frontend tests.
 - [x] Add RSH1 lowering tests for header, stage, input/output counts, and IR invalidation.
 - [x] Add RinGPU shader-module realization and lifetime tests.
+- [x] Add linked-program reflection tests.
 
 ## Phase 4 — First hardware-rendered triangle
 

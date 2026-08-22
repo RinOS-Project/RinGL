@@ -20,11 +20,11 @@ extern "C" {
 #define RINGL_TRUE  1u
 #define RINGL_FLOAT 0x1406u
 
-#define RINGL_ARRAY_BUFFER         0x8892u
-#define RINGL_ELEMENT_ARRAY_BUFFER 0x8893u
-#define RINGL_STREAM_DRAW          0x88e0u
-#define RINGL_STATIC_DRAW          0x88e4u
-#define RINGL_DYNAMIC_DRAW         0x88e8u
+#define RINGL_ARRAY_BUFFER          0x8892u
+#define RINGL_ELEMENT_ARRAY_BUFFER  0x8893u
+#define RINGL_STREAM_DRAW           0x88e0u
+#define RINGL_STATIC_DRAW           0x88e4u
+#define RINGL_DYNAMIC_DRAW          0x88e8u
 
 #define RINGL_VERTEX_SHADER   0x8b31u
 #define RINGL_FRAGMENT_SHADER 0x8b30u
@@ -39,9 +39,19 @@ extern "C" {
 
 typedef struct RinGLContext RinGLContext;
 
-typedef int (*RinGLRinGpuCreateBufferFn)(void* session, uint64_t size_bytes, uint64_t* buffer_out);
-typedef int (*RinGLRinGpuUploadBufferFn)(void* session, uint64_t buffer, uint64_t offset, const void* data, uint64_t size_bytes);
+typedef int (*RinGLRinGpuCreateBufferFn)(void* session,
+                                         uint64_t size_bytes,
+                                         uint64_t* buffer_out);
+typedef int (*RinGLRinGpuUploadBufferFn)(void* session,
+                                         uint64_t buffer,
+                                         uint64_t offset,
+                                         const void* data,
+                                         uint64_t size_bytes);
 typedef int (*RinGLRinGpuDestroyObjectFn)(void* session, uint64_t object);
+typedef int (*RinGLRinGpuCreateShaderModuleFn)(void* session,
+                                               const void* rsh1,
+                                               uint64_t size_bytes,
+                                               uint64_t* shader_module_out);
 
 typedef struct RinGLRinGpuOpsV1 {
     uint32_t struct_size;
@@ -49,6 +59,7 @@ typedef struct RinGLRinGpuOpsV1 {
     RinGLRinGpuCreateBufferFn create_buffer;
     RinGLRinGpuUploadBufferFn upload_buffer;
     RinGLRinGpuDestroyObjectFn destroy_object;
+    RinGLRinGpuCreateShaderModuleFn create_shader_module;
 } RinGLRinGpuOpsV1;
 
 typedef struct RinGLRinGpuBindingV1 {
@@ -81,7 +92,8 @@ typedef struct RinGLVertexAttribInfoV1 {
     uint64_t offset;
 } RinGLVertexAttribInfoV1;
 
-int ringl_context_create(const RinGLContextDescV1* desc, RinGLContext** context_out);
+int ringl_context_create(const RinGLContextDescV1* desc,
+                         RinGLContext** context_out);
 void ringl_context_destroy(RinGLContext* context);
 int ringl_make_current(RinGLContext* context);
 RinGLContext* ringl_get_current_context(void);
@@ -93,13 +105,21 @@ void ringl_delete_buffers(int32_t count, const uint32_t* buffers);
 void ringl_bind_buffer(uint32_t target, uint32_t buffer);
 int ringl_is_buffer(uint32_t buffer);
 uint32_t ringl_get_bound_buffer(uint32_t target);
-void ringl_buffer_data(uint32_t target, int64_t size_bytes, const void* data, uint32_t usage);
+void ringl_buffer_data(uint32_t target,
+                       int64_t size_bytes,
+                       const void* data,
+                       uint32_t usage);
 uint64_t ringl_get_buffer_size(uint32_t target);
 uint32_t ringl_get_buffer_usage(uint32_t target);
 
 void ringl_enable_vertex_attrib_array(uint32_t index);
 void ringl_disable_vertex_attrib_array(uint32_t index);
-void ringl_vertex_attrib_pointer(uint32_t index, int32_t size, uint32_t type, uint32_t normalized, int32_t stride, uint64_t offset);
+void ringl_vertex_attrib_pointer(uint32_t index,
+                                 int32_t size,
+                                 uint32_t type,
+                                 uint32_t normalized,
+                                 int32_t stride,
+                                 uint64_t offset);
 int ringl_get_vertex_attrib(uint32_t index, RinGLVertexAttribInfoV1* info);
 
 uint32_t ringl_create_shader(uint32_t shader_type);
@@ -110,10 +130,16 @@ void ringl_compile_shader(uint32_t shader);
 uint32_t ringl_get_shader_compile_status(uint32_t shader);
 uint32_t ringl_get_shader_type(uint32_t shader);
 uint64_t ringl_get_shader_source_length(uint32_t shader);
-uint64_t ringl_get_shader_info_log(uint32_t shader, char* buffer, uint64_t buffer_size);
+uint64_t ringl_get_shader_info_log(uint32_t shader,
+                                   char* buffer,
+                                   uint64_t buffer_size);
 int ringl_lower_shader_rsh1(uint32_t shader);
 uint32_t ringl_get_shader_rsh1_size(uint32_t shader);
-uint32_t ringl_copy_shader_rsh1(uint32_t shader, void* output, uint32_t capacity);
+uint32_t ringl_copy_shader_rsh1(uint32_t shader,
+                                void* output,
+                                uint32_t capacity);
+int ringl_realize_shader_module(uint32_t shader);
+uint64_t ringl_get_shader_module(uint32_t shader);
 
 uint32_t ringl_create_program(void);
 void ringl_delete_program(uint32_t program);
@@ -121,7 +147,9 @@ int ringl_is_program(uint32_t program);
 void ringl_attach_shader(uint32_t program, uint32_t shader);
 void ringl_link_program(uint32_t program);
 uint32_t ringl_get_program_link_status(uint32_t program);
-uint64_t ringl_get_program_info_log(uint32_t program, char* buffer, uint64_t buffer_size);
+uint64_t ringl_get_program_info_log(uint32_t program,
+                                    char* buffer,
+                                    uint64_t buffer_size);
 void ringl_use_program(uint32_t program);
 uint32_t ringl_get_current_program(void);
 

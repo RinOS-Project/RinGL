@@ -139,6 +139,12 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Implement depth-test function/write-mask GL state, defaults, validation, dirty tracking, and queries.
 - [x] Implement initial blend factor/equation and color-write-mask GL state, defaults, validation, dirty tracking, and queries.
 - [x] Map supported blend, cull, front-face, and color-write state into native RinGPU graphics pipelines and include it in pipeline caching.
+- [ ] Execute the currently translated blend pipeline state in the RinGPU
+  software surface backend. Its descriptor path presently rejects
+  `blend_enabled != 0`, so the existing `ZERO`/`ONE`/source-alpha/
+  destination-alpha factors, five equations, and color write masks cannot be
+  advertised as working until the backend consumes them and focused output
+  tests cover source-over, subtract/min/max, and masked channels.
 - [x] Expose a versioned snapshot of mutable clear values so an embedding can perform the WebGL default-buffer clear without overwriting application clear state.
 - [x] Add a state-neutral default-framebuffer clear for trusted presentation
   embeddings: it forces WebGL's color/depth/stencil defaults without observing

@@ -104,6 +104,7 @@ struct RinGLContext {
     uint32_t has_default_framebuffer;
     uint32_t default_framebuffer_state;
     uint64_t graphics_command_list;
+    uint64_t graphics_bind_group;
     float clear_red;
     float clear_green;
     float clear_blue;
@@ -179,6 +180,14 @@ int ringl_backend_create_graphics_pipeline(
     const RinGLRinGpuVertexAttributeV1* attributes,
     uint32_t attribute_count,
     uint64_t* pipeline_out);
+int ringl_backend_create_graphics_pipeline_native(
+    RinGLContext* context,
+    const RinGLRinGpuGraphicsPipelineNativeV1* desc,
+    const RinGLRinGpuVertexAttributeV1* attributes,
+    uint32_t attribute_count,
+    const RinGLRinGpuVaryingV1* varyings,
+    uint32_t varying_count,
+    uint64_t* pipeline_out);
 int ringl_backend_create_command_list(RinGLContext* context,
                                       uint32_t capabilities,
                                       uint64_t* command_list_out);
@@ -192,6 +201,16 @@ int ringl_backend_transition_image(RinGLContext* context,
 int ringl_backend_begin_render_pass(RinGLContext* context,
                                     uint64_t command_list,
                                     const RinGLRinGpuRenderPassV1* render_pass);
+int ringl_backend_set_raster_state(RinGLContext* context,
+                                   uint64_t command_list,
+                                   const RinGLRinGpuRasterStateV1* state);
+int ringl_backend_create_graphics_bind_group(
+    RinGLContext* context, uint64_t pipeline,
+    const RinGLRinGpuGraphicsBindingV1* bindings,
+    uint32_t binding_count, uint64_t* bind_group_out);
+int ringl_backend_bind_graphics_resources(RinGLContext* context,
+                                          uint64_t command_list,
+                                          uint64_t bind_group);
 int ringl_backend_draw_vertices(RinGLContext* context,
                                 uint64_t command_list,
                                 const RinGLRinGpuDrawVerticesV1* draw);

@@ -19,6 +19,13 @@ static int framebuffer_valid(const RinGLDefaultFramebufferV1* framebuffer)
     return 1;
 }
 
+static int framebuffer_state_valid(uint32_t state)
+{
+    return state == RINGL_RIN_GPU_IMAGE_UNDEFINED ||
+           state == RINGL_RIN_GPU_IMAGE_COLOR_TARGET ||
+           state == RINGL_RIN_GPU_IMAGE_PRESENT;
+}
+
 int ringl_set_default_framebuffer(const RinGLDefaultFramebufferV1* framebuffer)
 {
     RinGLContext* context = ringl_get_current_context();
@@ -30,7 +37,7 @@ int ringl_set_default_framebuffer(const RinGLDefaultFramebufferV1* framebuffer)
         memset(&context->default_framebuffer, 0,
                sizeof(context->default_framebuffer));
         context->has_default_framebuffer = 0u;
-        context->default_framebuffer_state = 0u;
+        context->default_framebuffer_state = RINGL_RIN_GPU_IMAGE_UNDEFINED;
         ringl_context_mark_dirty(context,
                                  RINGL_DIRTY_FRAMEBUFFER |
                                  RINGL_DIRTY_PIPELINE);
@@ -48,6 +55,25 @@ int ringl_set_default_framebuffer(const RinGLDefaultFramebufferV1* framebuffer)
     context->has_default_framebuffer = 1u;
     context->default_framebuffer_state = RINGL_RIN_GPU_IMAGE_PRESENT;
     ringl_context_mark_dirty(context, dirty);
+    return 0;
+}
+
+int ringl_set_default_framebuffer_state(uint32_t state)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL)
+        return -1;
+    if (!context->has_default_framebuffer) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    if (!framebuffer_state_valid(state)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
+    context->default_framebuffer_state = state;
+    ringl_context_mark_dirty(context, RINGL_DIRTY_FRAMEBUFFER);
     return 0;
 }
 

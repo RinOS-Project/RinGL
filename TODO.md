@@ -33,8 +33,8 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 
 ## Phase 3 — Shaders and programs
 
-- [ ] Define the supported initial GLSL ES language/version profile.
-- [ ] Implement shader object lifecycle and source storage.
+- [x] Define the supported initial GLSL ES language/version profile.
+- [x] Implement shader object lifecycle and source storage.
 - [ ] Implement a GLSL ES lexer/parser or integrate a deliberately chosen frontend.
 - [ ] Lower supported GLSL ES constructs directly to RinShader IR.
 - [ ] Reuse RinShader validation before shader modules reach a RinGPU backend.

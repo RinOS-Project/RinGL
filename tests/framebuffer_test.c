@@ -27,10 +27,22 @@ int main(void)
     memset(&copy, 0xff, sizeof(copy));
     assert(ringl_get_default_framebuffer(&copy) == 1);
     assert(copy.color_target == 0u);
+    assert(ringl_set_default_framebuffer_state(
+               RINGL_RIN_GPU_IMAGE_UNDEFINED) == -1);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
 
     assert(ringl_set_default_framebuffer(&framebuffer) == 0);
     assert((ringl_context_dirty_bits(context) & RINGL_DIRTY_FRAMEBUFFER) != 0u);
     assert((ringl_context_dirty_bits(context) & RINGL_DIRTY_PIPELINE) != 0u);
+    assert(ringl_set_default_framebuffer_state(
+               RINGL_RIN_GPU_IMAGE_UNDEFINED) == 0);
+    assert(ringl_set_default_framebuffer_state(
+               RINGL_RIN_GPU_IMAGE_COLOR_TARGET) == 0);
+    assert(ringl_set_default_framebuffer_state(
+               RINGL_RIN_GPU_IMAGE_PRESENT) == 0);
+    assert(ringl_set_default_framebuffer_state(99u) == -1);
+    assert(ringl_get_error() == RINGL_INVALID_ENUM);
+
     memset(&copy, 0, sizeof(copy));
     assert(ringl_get_default_framebuffer(&copy) == 0);
     assert(copy.color_target == framebuffer.color_target);

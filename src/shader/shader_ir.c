@@ -36,6 +36,20 @@ int ringl_lower_shader_rsh1(uint32_t shader)
         return -1;
     }
 
+    /* The GLSL frontend already validates the initial texture2D form. Do not
+     * invent a private RinShader encoding here: RSH1 v1 SAMPLE_IMAGE_F32 has a
+     * scalar coordinate and scalar result, while GLES texture2D requires a vec2
+     * coordinate and vec4 result. Keep compilation useful, but fail lowering
+     * with a precise diagnostic until the shared IR contract grows that form. */
+    if (object->sampler_uniform_count != 0u &&
+        strstr(object->source, "texture2D") != NULL) {
+        (void)strncpy(object->info_log,
+                      "RSH1 v1 cannot lower texture2D(vec2) to vec4 yet",
+                      sizeof(object->info_log) - 1u);
+        object->info_log[sizeof(object->info_log) - 1u] = '\0';
+        return -1;
+    }
+
     rc = ringl_glsl_lower_rsh1(object->shader_type, object->source,
                                (size_t)object->source_length, &lowered);
     if (rc != 0 || !lowered.ok) {

@@ -67,8 +67,12 @@ static int fake_create_graphics_pipeline(
     assert(desc != NULL && pipeline_out != NULL);
     assert(desc->vertex_shader != 0u && desc->fragment_shader != 0u);
     assert(desc->primitive_topology == 1u);
-    assert(attribute_count == 1u && attributes != NULL);
+    assert(desc->vertex_stride == 8u);
+    assert(attribute_count == 2u && attributes != NULL);
     assert(attributes[0].location == 0u);
+    assert(attributes[0].offset == 0u);
+    assert(attributes[1].location == 1u);
+    assert(attributes[1].offset == 4u);
     ++backend->pipeline_creates;
     *pipeline_out = ++backend->next_handle;
     return 0;
@@ -220,7 +224,11 @@ int main(void)
     uint32_t vertex;
     uint32_t fragment;
     uint32_t program;
-    const float vertices[3] = {-0.5f, 0.0f, 0.5f};
+    const float vertices[6] = {
+        -0.75f, -0.75f,
+         0.75f, -0.75f,
+         0.00f,  0.75f,
+    };
     char commands[65];
 
     assert(ringl_context_create(&desc, &context) == 0);
@@ -231,18 +239,21 @@ int main(void)
     ringl_bind_buffer(RINGL_ARRAY_BUFFER, buffer);
     ringl_buffer_data(RINGL_ARRAY_BUFFER, sizeof(vertices), vertices,
                       RINGL_STATIC_DRAW);
-    ringl_vertex_attrib_pointer(0u, 1, RINGL_FLOAT, RINGL_FALSE, 0, 0u);
+    ringl_vertex_attrib_pointer(0u, 2, RINGL_FLOAT, RINGL_FALSE, 0, 0u);
     ringl_enable_vertex_attrib_array(0u);
     assert(ringl_get_error() == RINGL_NO_ERROR);
 
     vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
     fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
     program = ringl_create_program();
-    ringl_shader_source(vertex,
-                        "attribute float position; void main() { gl_Position = position; }",
-                        -1);
-    ringl_shader_source(fragment,
-                        "void main() { gl_FragColor = 1.0; }", -1);
+    ringl_shader_source(
+        vertex,
+        "attribute vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }",
+        -1);
+    ringl_shader_source(
+        fragment,
+        "void main() { gl_FragColor = vec4(1.0, 0.25, 0.0, 1.0); }",
+        -1);
     ringl_compile_shader(vertex);
     ringl_compile_shader(fragment);
     ringl_attach_shader(program, vertex);

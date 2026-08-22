@@ -30,20 +30,18 @@ int main(void)
 
     slot_index = ringl_object_slot_index(buffer);
     assert(slot_index < RINGL_OBJECT_SLOT_COUNT);
-    context->buffers[slot_index].size_bytes = 16u;
+    context->buffers[slot_index].size_bytes = 24u;
 
-    ringl_vertex_attrib_pointer(0u, 1, RINGL_FLOAT, RINGL_FALSE, 8, 0u);
-    ringl_vertex_attrib_pointer(1u, 1, RINGL_FLOAT, RINGL_FALSE, 8, 4u);
+    ringl_vertex_attrib_pointer(0u, 2, RINGL_FLOAT, RINGL_FALSE, 0, 0u);
     ringl_enable_vertex_attrib_array(0u);
-    ringl_enable_vertex_attrib_array(1u);
 
-    assert(ringl_get_vertex_attrib(1u, &info) == 0);
+    assert(ringl_get_vertex_attrib(0u, &info) == 0);
     assert(info.enabled == RINGL_TRUE);
-    assert(info.size == 1u);
+    assert(info.size == 2u);
     assert(info.type == RINGL_FLOAT);
-    assert(info.stride == 8u);
+    assert(info.stride == 0u);
     assert(info.buffer == buffer);
-    assert(info.offset == 4u);
+    assert(info.offset == 0u);
 
     assert(ringl_resolve_vertex_layout(context, &layout) == 0);
     assert(layout.buffer == buffer);
@@ -53,20 +51,27 @@ int main(void)
     assert(layout.attributes[0].format == RINGL_NATIVE_VERTEX_FLOAT32);
     assert(layout.attributes[0].offset == 0u);
     assert(layout.attributes[1].location == 1u);
+    assert(layout.attributes[1].format == RINGL_NATIVE_VERTEX_FLOAT32);
     assert(layout.attributes[1].offset == 4u);
 
-    assert(ringl_validate_vertex_fetch(context, 0u, 2u, &layout) == 0);
-    assert(ringl_validate_vertex_fetch(context, 0u, 3u, &layout) != 0);
+    assert(ringl_validate_vertex_fetch(context, 0u, 3u, &layout) == 0);
+    assert(ringl_validate_vertex_fetch(context, 0u, 4u, &layout) != 0);
     assert(ringl_validate_vertex_fetch(context, UINT32_MAX, 2u, &layout) != 0);
 
-    ringl_vertex_attrib_pointer(2u, 2, RINGL_FLOAT, RINGL_FALSE, 8, 0u);
+    ringl_disable_vertex_attrib_array(0u);
+    ringl_vertex_attrib_pointer(0u, 1, RINGL_FLOAT, RINGL_FALSE, 8, 0u);
+    ringl_vertex_attrib_pointer(1u, 1, RINGL_FLOAT, RINGL_FALSE, 8, 4u);
+    ringl_enable_vertex_attrib_array(0u);
+    ringl_enable_vertex_attrib_array(1u);
+    assert(ringl_resolve_vertex_layout(context, &layout) == 0);
+    assert(layout.attribute_count == 2u);
+    assert(layout.attributes[0].location == 0u);
+    assert(layout.attributes[1].location == 1u);
+
+    ringl_vertex_attrib_pointer(2u, 3, RINGL_FLOAT, RINGL_FALSE, 12, 0u);
     assert(ringl_get_error() == RINGL_INVALID_VALUE);
     ringl_vertex_attrib_pointer(2u, 1, 0x1405u, RINGL_FALSE, 8, 0u);
     assert(ringl_get_error() == RINGL_INVALID_ENUM);
-
-    ringl_disable_vertex_attrib_array(1u);
-    assert(ringl_resolve_vertex_layout(context, &layout) == 0);
-    assert(layout.attribute_count == 1u);
 
     ringl_delete_buffers(1, &buffer);
     assert(ringl_resolve_vertex_layout(context, &layout) != 0);

@@ -519,6 +519,14 @@ static int attribute_declaration(Parser* parser)
     name = parser->token;
     if (!add_symbol(parser, &name, SYMBOL_ATTRIBUTE, width))
         return 0;
+    if (parser->result->attribute_count >= RINGL_GLSL_MAX_ATTRIBUTES) {
+        fail(parser, "too many attributes");
+        return 0;
+    }
+    memcpy(parser->result->attribute_names[parser->result->attribute_count],
+           name.begin, name.length);
+    parser->result->attribute_names[parser->result->attribute_count][name.length] = '\0';
+    parser->result->attribute_widths[parser->result->attribute_count] = width;
     next_token(parser);
     if (!expect(parser, TOK_SEMI, "expected ';' after attribute"))
         return 0;

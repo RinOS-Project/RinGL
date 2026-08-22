@@ -48,6 +48,8 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Implement the initial vertex/fragment shader linking checks.
 - [x] Implement program object lifecycle and `glUseProgram`.
 - [x] Add first-slice program reflection for shader I/O and shader-module handles.
+  - [x] Preserve linked vertex attribute names/widths and expose stable active
+    attribute locations for the bounded supported shader profiles.
 - [x] Add positive and negative shader frontend tests.
 - [x] Add RSH1 lowering tests for header, stage, input/output counts, and IR invalidation.
 - [x] Add RinGPU shader-module realization and lifetime tests.

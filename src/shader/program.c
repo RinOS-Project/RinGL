@@ -81,6 +81,30 @@ static int ringl_program_collect_sampler_uniforms(RinGLProgramObject* program,
     return 1;
 }
 
+static int ringl_program_collect_attributes(RinGLProgramObject* program,
+                                            const RinGLShaderObject* vertex)
+{
+    RinGLGlslParseResult result;
+    uint32_t index;
+
+    program->attribute_count = 0u;
+    memset(program->attributes, 0, sizeof(program->attributes));
+    if (ringl_glsl_parse(RINGL_VERTEX_SHADER, vertex->source,
+                         (size_t)vertex->source_length, &result) != 0 ||
+        !result.ok || result.attribute_count > RINGL_MAX_VERTEX_ATTRIBS)
+        return 0;
+
+    for (index = 0u; index < result.attribute_count; ++index) {
+        ringl_copy_c_string(program->attributes[index].name,
+                            sizeof(program->attributes[index].name),
+                            result.attribute_names[index]);
+        program->attributes[index].width = result.attribute_widths[index];
+        program->attributes[index].location = index;
+    }
+    program->attribute_count = result.attribute_count;
+    return 1;
+}
+
 static int ringl_program_collect_varyings(RinGLProgramObject* program,
                                           const RinGLShaderObject* vertex,
                                           const RinGLShaderObject* fragment)
@@ -276,8 +300,10 @@ void ringl_link_program(uint32_t program)
         return;
     }
     object->link_status = RINGL_FALSE;
+    object->attribute_count = 0u;
     object->sampler_uniform_count = 0u;
     object->varying_count = 0u;
+    memset(object->attributes, 0, sizeof(object->attributes));
     memset(object->sampler_uniforms, 0, sizeof(object->sampler_uniforms));
     memset(object->varyings, 0, sizeof(object->varyings));
     if (object->vertex_shader == 0u || object->fragment_shader == 0u) {
@@ -292,6 +318,10 @@ void ringl_link_program(uint32_t program)
     }
     if (!vertex->compile_status || !fragment->compile_status) {
         ringl_program_set_log(object, "all attached shaders must compile successfully");
+        return;
+    }
+    if (!ringl_program_collect_attributes(object, vertex)) {
+        ringl_program_set_log(object, "invalid active attribute interface");
         return;
     }
     if (!ringl_program_collect_sampler_uniforms(object, vertex, fragment)) {
@@ -392,6 +422,30 @@ uint32_t ringl_get_current_program(void)
 {
     RinGLContext* context = ringl_get_current_context();
     return context == NULL ? 0u : context->current_program;
+}
+
+int32_t ringl_get_attrib_location(uint32_t program, const char* name)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLProgramObject* object;
+    uint32_t index;
+
+    if (context == NULL)
+        return -1;
+    object = ringl_program_object(context, program);
+    if (object == NULL || name == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+    if (!object->link_status) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    for (index = 0u; index < object->attribute_count; ++index) {
+        if (strcmp(object->attributes[index].name, name) == 0)
+            return (int32_t)object->attributes[index].location;
+    }
+    return -1;
 }
 
 int32_t ringl_get_uniform_location(uint32_t program, const char* name)

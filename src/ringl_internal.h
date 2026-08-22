@@ -83,6 +83,12 @@ typedef struct RinGLProgramSamplerUniform {
     int32_t texture_unit;
 } RinGLProgramSamplerUniform;
 
+typedef struct RinGLProgramAttribute {
+    char name[RINGL_UNIFORM_NAME_MAX];
+    uint32_t width;
+    uint32_t location;
+} RinGLProgramAttribute;
+
 typedef struct RinGLProgramVarying {
     char name[RINGL_UNIFORM_NAME_MAX];
     uint32_t width;
@@ -96,8 +102,10 @@ typedef struct RinGLProgramObject {
     uint32_t linked_vertex_shader;
     uint32_t linked_fragment_shader;
     uint32_t link_status;
+    uint32_t attribute_count;
     uint32_t sampler_uniform_count;
     uint32_t varying_count;
+    RinGLProgramAttribute attributes[RINGL_MAX_VERTEX_ATTRIBS];
     RinGLProgramSamplerUniform sampler_uniforms[RINGL_MAX_SAMPLER_UNIFORMS];
     RinGLProgramVarying varyings[RINGL_MAX_VARYINGS];
     char info_log[RINGL_PROGRAM_LOG_MAX];

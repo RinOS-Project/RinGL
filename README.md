@@ -192,6 +192,11 @@ destruction releases the final pending reference. A linked executable keeps
 using its linked shader pair when later attach/detach calls change the pending
 link inputs.
 
+Linked vertex shaders retain their active attribute declaration order and
+widths. `ringl_get_attrib_location()` exposes those stable vertex-array
+locations to the Ladybird adapter; names that are not active return `-1`
+without manufacturing a location.
+
 Custom RGBA8 renderbuffer FBOs may additionally attach a matching
 `DEPTH24_STENCIL8` renderbuffer or level-zero
 `DEPTH24_STENCIL8`/`DEPTH_STENCIL`/`UNSIGNED_INT_24_8` texture through

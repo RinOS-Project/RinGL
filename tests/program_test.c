@@ -48,6 +48,9 @@ int main(void)
     ringl_link_program(program);
     assert(ringl_get_program_link_status(program) == RINGL_TRUE);
     assert(ringl_get_program_info_log(program, log, sizeof(log)) == 0u);
+    assert(ringl_get_attrib_location(program, "position") == 0);
+    assert(ringl_get_attrib_location(program, "missing") == -1);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
 
     location = ringl_get_uniform_location(program, "colorTexture");
     assert(location == 0);
@@ -85,6 +88,9 @@ int main(void)
     ringl_attach_shader(multi_program, multi_fragment);
     ringl_link_program(multi_program);
     assert(ringl_get_program_link_status(multi_program) == RINGL_TRUE);
+    assert(ringl_get_attrib_location(multi_program, "position") == 0);
+    assert(ringl_get_attrib_location(multi_program, "colorRG") == 1);
+    assert(ringl_get_attrib_location(multi_program, "colorBA") == 2);
     ringl_delete_program(multi_program);
 
     ringl_delete_program(program);

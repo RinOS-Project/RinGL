@@ -37,6 +37,40 @@ int main(void)
     assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
 
     ringl_shader_source(fragment,
+        "uniform sampler2D colorTexture;\n"
+        "void main() { gl_FragColor = texture2D(colorTexture, vec2(0.25, 0.75)); }\n",
+        -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+    assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) == 0u);
+
+    ringl_shader_source(fragment,
+        "uniform sampler2D colorTexture;\n"
+        "void main() { gl_FragColor = texture2D(missing, vec2(0.0, 1.0)); }\n",
+        -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
+    assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) > 0u);
+    assert(strstr(log, "sampler2D") != NULL);
+
+    ringl_shader_source(fragment,
+        "uniform sampler2D colorTexture;\n"
+        "void main() { gl_FragColor = texture2D(colorTexture, 0.5); }\n", -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
+    assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) > 0u);
+    assert(strstr(log, "vec2") != NULL);
+
+    ringl_shader_source(vertex,
+        "uniform sampler2D colorTexture;\n"
+        "void main() { gl_Position = texture2D(colorTexture, vec2(0.0, 0.0)); }\n",
+        -1);
+    ringl_compile_shader(vertex);
+    assert(ringl_get_shader_compile_status(vertex) == RINGL_FALSE);
+    assert(ringl_get_shader_info_log(vertex, log, sizeof(log)) > 0u);
+    assert(strstr(log, "fragment") != NULL);
+
+    ringl_shader_source(fragment,
         "uniform float invalid; void main() { gl_FragColor = 1.0; }", -1);
     ringl_compile_shader(fragment);
     assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);

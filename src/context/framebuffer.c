@@ -30,6 +30,7 @@ int ringl_set_default_framebuffer(const RinGLDefaultFramebufferV1* framebuffer)
         memset(&context->default_framebuffer, 0,
                sizeof(context->default_framebuffer));
         context->has_default_framebuffer = 0u;
+        context->default_framebuffer_state = 0u;
         ringl_context_mark_dirty(context,
                                  RINGL_DIRTY_FRAMEBUFFER |
                                  RINGL_DIRTY_PIPELINE);
@@ -45,6 +46,7 @@ int ringl_set_default_framebuffer(const RinGLDefaultFramebufferV1* framebuffer)
     }
     context->default_framebuffer = *framebuffer;
     context->has_default_framebuffer = 1u;
+    context->default_framebuffer_state = RINGL_RIN_GPU_IMAGE_PRESENT;
     ringl_context_mark_dirty(context, dirty);
     return 0;
 }

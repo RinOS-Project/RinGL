@@ -65,6 +65,9 @@ static void ringl_shader_discard_artifacts(RinGLContext* context,
     free(object->rsh1);
     object->rsh1 = NULL;
     object->rsh1_size = 0u;
+    object->rsh1_sampler_binding_count = 0u;
+    memset(object->rsh1_sampler_binding_indices, 0,
+           sizeof(object->rsh1_sampler_binding_indices));
 }
 
 static void ringl_shader_destroy(RinGLContext* context, uint32_t shader)
@@ -89,8 +92,11 @@ static void ringl_shader_reset_compile_state(RinGLContext* context,
     object->statement_count = 0u;
     object->attribute_count = 0u;
     object->sampler_uniform_count = 0u;
+    object->rsh1_sampler_binding_count = 0u;
     memset(object->sampler_uniform_names, 0,
            sizeof(object->sampler_uniform_names));
+    memset(object->rsh1_sampler_binding_indices, 0,
+           sizeof(object->rsh1_sampler_binding_indices));
     object->info_log[0] = '\0';
 }
 

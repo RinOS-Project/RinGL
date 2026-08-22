@@ -89,12 +89,12 @@ int main(void)
         "  gl_FragColor = texture2D(colorTexture, vec2(0.25)) + "
         "texture2D(colorTexture, vec2(0.75));\n"
         "}\n";
-    const char* unused_sampler_source =
+    const char* partial_sampler_source =
         "uniform sampler2D firstTexture;\n"
         "uniform sampler2D secondTexture;\n"
         "void main() {\n"
-        "  gl_FragColor = texture2D(firstTexture, vec2(0.25)) + "
-        "texture2D(firstTexture, vec2(0.75));\n"
+        "  gl_FragColor = texture2D(secondTexture, vec2(0.25)) + "
+        "texture2D(secondTexture, vec2(0.75));\n"
         "}\n";
     const char* eight_sampler_source =
         "uniform sampler2D s0; uniform sampler2D s1; "
@@ -216,12 +216,26 @@ int main(void)
         assert(two_sampler_instructions[12u + component].immediate == 1u);
     }
 
-    /* RinGPU validates each declared resource as typed and used. Do not hide
-     * an unused declaration by silently manufacturing a dummy resource use. */
-    ringl_shader_source(shader, unused_sampler_source, -1);
+    /* Active resource pairs are dense, not declaration-indexed: the unused
+     * first sampler has no RSH1 resource and the repeated second sampler
+     * becomes pair [0, 1]. */
+    ringl_shader_source(shader, partial_sampler_source, -1);
     ringl_compile_shader(shader);
     assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
-    assert(ringl_lower_shader_rsh1(shader) != 0);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + sizeof(two_sampler_instructions));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    memcpy(two_sampler_instructions, blob + sizeof(header),
+           sizeof(two_sampler_instructions));
+    assert(header.resource_count == 2u);
+    for (component = 0u; component < 4u; ++component) {
+        assert(two_sampler_instructions[8u + component].resource == 0u);
+        assert(two_sampler_instructions[8u + component].immediate == 1u);
+        assert(two_sampler_instructions[12u + component].resource == 0u);
+        assert(two_sampler_instructions[12u + component].immediate == 1u);
+    }
 
     ringl_shader_source(shader, three_sampler_source, -1);
     ringl_compile_shader(shader);

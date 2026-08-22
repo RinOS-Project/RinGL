@@ -228,7 +228,9 @@ static void store_result(RinGLGlslLowerResult* result,
  * making the already-general RinGPU binding table reachable up to its RinGL
  * texture-call limit. */
 static void emit_texture_sum(const TextureCall* calls, uint32_t call_count,
-                             uint32_t resource_count,
+                             const uint32_t* sampler_resource_indices,
+                             const uint32_t* sampler_binding_indices,
+                             uint32_t sampler_binding_count,
                              RinGLGlslLowerResult* result)
 {
     RinGLRsh1HeaderV1 header;
@@ -267,7 +269,8 @@ static void emit_texture_sum(const TextureCall* calls, uint32_t call_count,
         instructions[coordinate_instruction + 1u].immediate = v_bits;
     }
     for (sampler = 0u; sampler < call_count; ++sampler) {
-        uint32_t resource = calls[sampler].sampler_index * 2u;
+        uint32_t resource =
+            sampler_resource_indices[calls[sampler].sampler_index] * 2u;
         for (component = 0u; component < 4u; ++component) {
             uint32_t instruction = 4u + call_count * 2u +
                 sampler * 4u + component;
@@ -318,8 +321,11 @@ static void emit_texture_sum(const TextureCall* calls, uint32_t call_count,
     header.register_count = call_count * 10u;
     header.input_count = 4u;
     header.output_count = 4u;
-    header.resource_count = resource_count;
+    header.resource_count = sampler_binding_count * 2u;
     store_result(result, &header, instructions);
+    result->sampler_binding_count = sampler_binding_count;
+    memcpy(result->sampler_binding_indices, sampler_binding_indices,
+           (size_t)sampler_binding_count * sizeof(sampler_binding_indices[0]));
 }
 
 int ringl_glsl_lower_texture2d_rsh1(
@@ -333,9 +339,11 @@ int ringl_glsl_lower_texture2d_rsh1(
     const char* end;
     const char* cursor;
     TextureCall calls[RINGL_TEXTURE_MAX_CALLS];
-    uint32_t seen_samplers = 0u;
+    uint32_t sampler_resource_indices[RINGL_TEXTURE_MAX_SAMPLERS] = {0};
+    uint32_t sampler_binding_indices[RINGL_TEXTURE_MAX_SAMPLERS] = {0};
     uint32_t call_index;
     uint32_t call_count;
+    uint32_t sampler_binding_count = 0u;
 
     if (source == NULL || sampler_names == NULL || sampler_name_stride == 0u ||
         result == NULL)
@@ -359,31 +367,38 @@ int ringl_glsl_lower_texture2d_rsh1(
         return 1;
     }
     for (call_index = 0u; call_index < call_count; ++call_index) {
-        uint32_t sampler_bit;
-
         if ((call_index != 0u && !expect_char(&cursor, end, '+')) ||
             !parse_texture_call(&cursor, end, sampler_names,
                                 sampler_name_stride, sampler_count,
                                 &calls[call_index])) {
             (void)snprintf(result->diagnostic, sizeof(result->diagnostic),
-                           "bounded texture2D lowering requires one constant-coordinate texture2D call per sampler combined with '+'");
+                           "bounded texture2D lowering requires finite constant-coordinate texture2D calls combined with '+'");
             return 1;
         }
-        sampler_bit = UINT32_C(1) << calls[call_index].sampler_index;
-        if (sampler_count != 1u && (seen_samplers & sampler_bit) != 0u) {
-            (void)snprintf(result->diagnostic, sizeof(result->diagnostic),
-                           "bounded texture2D lowering requires each declared sampler exactly once");
-            return 1;
-        }
-        seen_samplers |= sampler_bit;
     }
     if (!expect_char(&cursor, end, ';') ||
-        count_texture_calls(source, end) != call_count ||
-        (sampler_count != 1u && call_count != sampler_count)) {
+        count_texture_calls(source, end) != call_count) {
         (void)snprintf(result->diagnostic, sizeof(result->diagnostic),
-                       "bounded multi-sampler lowering requires exactly one constant-coordinate texture2D call per sampler");
+                       "bounded texture2D lowering requires a constant-coordinate texture2D '+' chain");
         return 1;
     }
-    emit_texture_sum(calls, call_count, sampler_count * 2u, result);
+    for (call_index = 0u; call_index < sampler_count; ++call_index) {
+        uint32_t sample_index;
+
+        for (sample_index = 0u; sample_index < call_count; ++sample_index) {
+            if (calls[sample_index].sampler_index != call_index)
+                continue;
+            sampler_resource_indices[call_index] = sampler_binding_count;
+            sampler_binding_indices[sampler_binding_count++] = call_index;
+            break;
+        }
+    }
+    if (sampler_binding_count == 0u) {
+        (void)snprintf(result->diagnostic, sizeof(result->diagnostic),
+                       "bounded texture2D lowering requires an active sampler");
+        return 1;
+    }
+    emit_texture_sum(calls, call_count, sampler_resource_indices,
+                     sampler_binding_indices, sampler_binding_count, result);
     return 0;
 }

@@ -269,21 +269,22 @@ stores that exact Float32 value in both RSH1 texture-coordinate registers, so
 the resource-aware RinGPU surface path samples `(value, value)` rather than
 silently using an arbitrary second coordinate.
 
-A bounded fragment profile permits one declared `sampler2D` to appear in one
-through eight finite constant-coordinate calls in a left-to-right `+` chain for
-`gl_FragColor`; every call references its one typed RSH1 image/sampler pair.
-For multiple declarations, each sampler occurs exactly once and the lowerer
-assigns declaration-ordered pairs regardless of call order. Both cases use at
-most 85 instructions and 80 registers (within RinGL's 96-register ceiling and
-RinGPU's public 256-register limit). RinGL realizes every selected texture
-unit, records transitions for distinct images before the draw, and publishes
-tracked states only after submission succeeds. The focused
-RinGL-to-RinGPU-to-Aquamarine test verifies a repeated one-sampler clamped-red
-draw, reverse-order red + green + blue, and all eight samplers (sixteen typed
-resources) producing actual white pixels. This is not general multi-texture
-GLSL: repeated samples with an unused second declaration, arbitrary
-expressions, nonconstant coordinates, and varying-coordinate multi-sampler
-shaders remain unsupported.
+A bounded fragment profile permits one through eight finite constant-coordinate
+calls in a left-to-right `+` chain for `gl_FragColor`. Each active declaration
+is compacted in declaration order into a dense typed RSH1 image/sampler pair;
+every call then references its active pair, so repeated samples and unused
+declarations do not fabricate invalid RinGPU resources. RinGL maps that compact
+pair table back to linked program uniform names when it builds the selective
+bind group. The profile uses at most 85 instructions and 80 registers (within
+RinGL's 96-register ceiling and RinGPU's public 256-register limit). RinGL
+realizes every selected texture unit, records transitions for distinct images
+before the draw, and publishes tracked states only after submission succeeds.
+The focused RinGL-to-RinGPU-to-Aquamarine test leaves a first declaration
+unbound while repeated reads of the second draw their actual clamped result;
+it also verifies reverse-order red + green + blue and all eight samplers
+(sixteen typed resources) producing actual white pixels. This is not general
+multi-texture GLSL: arbitrary expressions, nonconstant coordinates, and
+varying-coordinate multi-sampler shaders remain unsupported.
 
 The initial varying bridge now also executes a bounded vertex-color profile:
 `attribute vec2 position; attribute vec4 color; varying vec4 vertexColor;`

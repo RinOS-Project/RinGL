@@ -135,11 +135,12 @@ For every linked sampler RinGL realizes the selected texture unit, validates it
 is not the active color target, creates one typed graphics bind group containing
 all pairs, and records each distinct image transition to `SHADER_READ` before
 the render pass. Its texture state is published only after the queue accepts the
-submission. The current GLSL lowerer generates either the existing one-sampler
-forms (including a bounded one-through-eight-call repeated-sampler addition
-chain) or a one-through-eight-declaration constant-coordinate addition chain;
-the operation table and RinGPU surface backend validate the complete reflected
-pair table rather than silently selecting only its first entry.
+submission. The current GLSL lowerer generates a bounded one-through-eight-call
+constant-coordinate addition chain and compacts its active sampler declarations
+into the complete reflected pair table. RinGL retains that declaration map and
+builds a selective typed bind group by linked uniform name, while the operation
+table and RinGPU surface backend validate every resulting pair rather than
+silently selecting only its first entry.
 
 Before cache eviction during a draw, RinGL resets its reusable command list. This releases references retained by the previous recorded submission before an old pipeline is destroyed.
 

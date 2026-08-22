@@ -459,6 +459,40 @@ static RinGLProgramObject* current_program(RinGLContext* context)
     return &context->programs[index];
 }
 
+static RinGLShaderObject* linked_fragment_shader(
+    RinGLContext* context, const RinGLProgramObject* program)
+{
+    uint32_t index;
+
+    if (context == NULL || program == NULL ||
+        program->linked_fragment_shader == 0u ||
+        ringl_object_lookup(context, program->linked_fragment_shader,
+                            RINGL_OBJECT_SHADER) == NULL) {
+        return NULL;
+    }
+    index = ringl_object_slot_index(program->linked_fragment_shader);
+    if (index >= RINGL_OBJECT_SLOT_COUNT)
+        return NULL;
+    return &context->shaders[index];
+}
+
+static int program_sampler_index_for_name(const RinGLProgramObject* program,
+                                          const char* name,
+                                          uint32_t* index_out)
+{
+    uint32_t index;
+
+    if (program == NULL || name == NULL || index_out == NULL)
+        return -1;
+    for (index = 0u; index < program->sampler_uniform_count; ++index) {
+        if (strcmp(program->sampler_uniforms[index].name, name) == 0) {
+            *index_out = index;
+            return 0;
+        }
+    }
+    return -1;
+}
+
 typedef struct RinGLTextureTransitionSet {
     uint32_t texture_indices[RINGL_MAX_SAMPLER_UNIFORMS];
     uint32_t count;
@@ -495,13 +529,14 @@ static int prepare_graphics_resources(RinGLContext* context,
                                           transitioned_out)
 {
     RinGLProgramObject* program;
+    RinGLShaderObject* fragment;
     RinGLRinGpuGraphicsBindingV1
         bindings[RINGL_MAX_SAMPLER_UNIFORMS * 2u];
     uint64_t image;
     uint64_t sampler;
     uint32_t texture_name;
     uint32_t texture_index;
-    uint32_t sampler_index;
+    uint32_t sampler_binding_index;
     uint32_t binding_count;
     RinGLTextureTransitionSet transitioned = {0};
     int32_t unit;
@@ -512,21 +547,34 @@ static int prepare_graphics_resources(RinGLContext* context,
     program = current_program(context);
     if (program == NULL)
         return -1;
-    if (program->sampler_uniform_count == 0u)
+    fragment = linked_fragment_shader(context, program);
+    if (fragment == NULL)
+        return -1;
+    if (fragment->rsh1_sampler_binding_count == 0u)
         return 0;
     if (program->sampler_uniform_count > RINGL_MAX_SAMPLER_UNIFORMS ||
+        fragment->rsh1_sampler_binding_count > RINGL_MAX_SAMPLER_UNIFORMS ||
         context->ringpu_ops.create_graphics_bind_group == NULL ||
         context->ringpu_ops.bind_graphics_resources == NULL)
         return -1;
 
     memset(bindings, 0, sizeof(bindings));
-    binding_count = program->sampler_uniform_count * 2u;
-    for (sampler_index = 0u;
-         sampler_index < program->sampler_uniform_count;
-         ++sampler_index) {
+    binding_count = fragment->rsh1_sampler_binding_count * 2u;
+    for (sampler_binding_index = 0u;
+         sampler_binding_index < fragment->rsh1_sampler_binding_count;
+         ++sampler_binding_index) {
         RinGLTextureObject* texture;
+        uint32_t shader_sampler_index =
+            fragment->rsh1_sampler_binding_indices[sampler_binding_index];
+        uint32_t program_sampler_index;
 
-        unit = program->sampler_uniforms[sampler_index].texture_unit;
+        if (shader_sampler_index >= fragment->sampler_uniform_count ||
+            program_sampler_index_for_name(
+                program, fragment->sampler_uniform_names[shader_sampler_index],
+                &program_sampler_index) != 0) {
+            return -1;
+        }
+        unit = program->sampler_uniforms[program_sampler_index].texture_unit;
         if (unit < 0 || (uint32_t)unit >= RINGL_MAX_TEXTURE_UNITS)
             return -1;
         texture_name = context->bound_texture_2d[(uint32_t)unit];
@@ -555,15 +603,18 @@ static int prepare_graphics_resources(RinGLContext* context,
             if (texture_transition_set_add(&transitioned, texture_index) != 0)
                 return -1;
         }
-        bindings[sampler_index * 2u].binding = sampler_index * 2u;
-        bindings[sampler_index * 2u].kind =
+        bindings[sampler_binding_index * 2u].binding =
+            sampler_binding_index * 2u;
+        bindings[sampler_binding_index * 2u].kind =
             RINGL_RIN_GPU_RESOURCE_SAMPLED_IMAGE;
-        bindings[sampler_index * 2u].access = RINGL_RIN_GPU_RESOURCE_READ;
-        bindings[sampler_index * 2u].resource = image;
-        bindings[sampler_index * 2u + 1u].binding = sampler_index * 2u + 1u;
-        bindings[sampler_index * 2u + 1u].kind =
+        bindings[sampler_binding_index * 2u].access =
+            RINGL_RIN_GPU_RESOURCE_READ;
+        bindings[sampler_binding_index * 2u].resource = image;
+        bindings[sampler_binding_index * 2u + 1u].binding =
+            sampler_binding_index * 2u + 1u;
+        bindings[sampler_binding_index * 2u + 1u].kind =
             RINGL_RIN_GPU_RESOURCE_SAMPLER;
-        bindings[sampler_index * 2u + 1u].resource = sampler;
+        bindings[sampler_binding_index * 2u + 1u].resource = sampler;
     }
 
     if (ringl_backend_create_graphics_bind_group(

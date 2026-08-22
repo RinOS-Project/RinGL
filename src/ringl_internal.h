@@ -83,9 +83,11 @@ typedef struct RinGLShaderObject {
     uint32_t statement_count;
     uint32_t attribute_count;
     uint32_t sampler_uniform_count;
+    uint32_t rsh1_sampler_binding_count;
     uint32_t varying_count;
     uint32_t delete_pending;
     char sampler_uniform_names[RINGL_MAX_SAMPLER_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
+    uint32_t rsh1_sampler_binding_indices[RINGL_MAX_SAMPLER_UNIFORMS];
     char varying_names[RINGL_MAX_VARYINGS][RINGL_UNIFORM_NAME_MAX];
     uint32_t varying_widths[RINGL_MAX_VARYINGS];
     char info_log[RINGL_SHADER_LOG_MAX];

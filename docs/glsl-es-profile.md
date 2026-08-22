@@ -45,20 +45,19 @@ void main() {
 
 The normal texture path is intentionally narrow: it accepts exactly one sampler
 and one sample operation, and the varying path recognizes the canonical
-position/UV textured-triangle form. The constant-coordinate profile permits a
-single declaration in one through eight calls, or one through eight declarations
-with one finite sample from each declaration, in an exact left-to-right
-`texture2D(a, vec2(...)) + ...` assignment. A repeated one-sampler call shares
-its one image/sampler pair; multi-declaration pairs remain declaration ordered
-(`[0, 1]`, then `[2, 3]`, and so on), so calls may appear in a different order
-without changing bindings. The profile has a formulaic maximum of 85
-instructions and 80 registers, below RinGL's 96-register ceiling and RinGPU's
-public 256-register limit. A repeated sample with another declared-but-unused
-sampler remains rejected until active-resource reflection can construct a
-selective typed bind group. Nonconstant coordinates in this profile, other
-arithmetic, vector locals, matrices, other uniform types, additional varying
-types, derivatives, loops, user functions, precision edge cases, and broader
-GLSL ES built-ins remain incremental work.
+position/UV textured-triangle form. The constant-coordinate profile permits one
+through eight calls over one through eight declarations in an exact
+left-to-right `texture2D(a, vec2(...)) + ...` assignment. It compacts only
+active declarations, in declaration order, into image/sampler pairs (`[0, 1]`,
+then `[2, 3]`, and so on); every repeated call references the corresponding
+pair. RinGL uses the saved active-declaration map to make the matching selective
+typed bind group, so unused declarations need no fabricated resource use. The
+profile has a formulaic maximum of 85 instructions and 80 registers, below
+RinGL's 96-register ceiling and RinGPU's public 256-register limit.
+Nonconstant coordinates in this profile, other arithmetic, vector locals,
+matrices, other uniform types, additional varying types, derivatives, loops,
+user functions, precision edge cases, and broader GLSL ES built-ins remain
+incremental work.
 
 ## Vertex input mapping
 

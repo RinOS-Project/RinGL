@@ -65,6 +65,19 @@ int ringl_lower_shader_rsh1(uint32_t shader)
                             lowered.diagnostic);
         return -1;
     }
+    if (lowered.sampler_binding_count > object->sampler_uniform_count) {
+        ringl_copy_c_string(object->info_log, sizeof(object->info_log),
+                            "invalid active sampler reflection");
+        return -1;
+    }
+    for (uint32_t index = 0u; index < lowered.sampler_binding_count; ++index) {
+        if (lowered.sampler_binding_indices[index] >=
+            object->sampler_uniform_count) {
+            ringl_copy_c_string(object->info_log, sizeof(object->info_log),
+                                "invalid active sampler reflection");
+            return -1;
+        }
+    }
 
     copy = malloc(lowered.byte_size);
     if (copy == NULL) {
@@ -81,6 +94,10 @@ int ringl_lower_shader_rsh1(uint32_t shader)
     free(object->rsh1);
     object->rsh1 = copy;
     object->rsh1_size = lowered.byte_size;
+    object->rsh1_sampler_binding_count = lowered.sampler_binding_count;
+    memcpy(object->rsh1_sampler_binding_indices,
+           lowered.sampler_binding_indices,
+           sizeof(object->rsh1_sampler_binding_indices));
     object->info_log[0] = '\0';
     return 0;
 }

@@ -5,6 +5,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "glsl_parser.h"
+
 #define RINGL_GLSL_RSH1_MAX_BYTES (64u + 128u * 16u)
 
 typedef struct RinGLGlslLowerResult {
@@ -14,6 +16,8 @@ typedef struct RinGLGlslLowerResult {
     uint32_t input_count;
     uint32_t output_count;
     uint32_t byte_size;
+    uint32_t sampler_binding_count;
+    uint32_t sampler_binding_indices[RINGL_GLSL_MAX_SAMPLER_UNIFORMS];
     char diagnostic[160];
     uint8_t bytes[RINGL_GLSL_RSH1_MAX_BYTES];
 } RinGLGlslLowerResult;

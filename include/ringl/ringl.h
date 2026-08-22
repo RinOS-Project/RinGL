@@ -164,6 +164,11 @@ extern "C" {
 #define RINGL_RIN_GPU_COMPARE_LESS          1u
 #define RINGL_RIN_GPU_COMPARE_LEQUAL        2u
 #define RINGL_RIN_GPU_COMPARE_ALWAYS        3u
+#define RINGL_RIN_GPU_COMPARE_NEVER         4u
+#define RINGL_RIN_GPU_COMPARE_EQUAL         5u
+#define RINGL_RIN_GPU_COMPARE_GREATER       6u
+#define RINGL_RIN_GPU_COMPARE_NOTEQUAL      7u
+#define RINGL_RIN_GPU_COMPARE_GEQUAL        8u
 #define RINGL_RIN_GPU_BLEND_ZERO             1u
 #define RINGL_RIN_GPU_BLEND_ONE              2u
 #define RINGL_RIN_GPU_BLEND_SRC_ALPHA        3u

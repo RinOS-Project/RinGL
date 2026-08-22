@@ -134,8 +134,13 @@ static uint32_t native_front_face(uint32_t front_face)
 static uint32_t native_depth_compare(uint32_t compare)
 {
     switch (compare) {
+    case RINGL_NEVER: return RINGL_RIN_GPU_COMPARE_NEVER;
     case RINGL_LESS: return RINGL_RIN_GPU_COMPARE_LESS;
+    case RINGL_EQUAL: return RINGL_RIN_GPU_COMPARE_EQUAL;
     case RINGL_LEQUAL: return RINGL_RIN_GPU_COMPARE_LEQUAL;
+    case RINGL_GREATER: return RINGL_RIN_GPU_COMPARE_GREATER;
+    case RINGL_NOTEQUAL: return RINGL_RIN_GPU_COMPARE_NOTEQUAL;
+    case RINGL_GEQUAL: return RINGL_RIN_GPU_COMPARE_GEQUAL;
     case RINGL_ALWAYS: return RINGL_RIN_GPU_COMPARE_ALWAYS;
     default: return 0u;
     }

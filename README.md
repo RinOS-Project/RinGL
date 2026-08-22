@@ -161,16 +161,18 @@ RinGPU color targets, used by clear/draw render passes, and read back through
 attached as `DEPTH_ATTACHMENT`; the pair is rejected on an invalid attachment
 or dimension mismatch, and its D32 image is realized lazily as a RinGPU depth
 target. The RinOS surface integration test verifies a depth-only clear while
-preserving color and `LESS` depth-tested triangle output from such a custom
-FBO. A trusted embedding can query the default color image's post-submit
+preserving color and depth-tested triangle output from such a custom FBO. The
+RinGPU depth pipeline supports every GLES comparison predicate: `NEVER`,
+`LESS`, `EQUAL`, `LEQUAL`, `GREATER`, `NOTEQUAL`, `GEQUAL`, and `ALWAYS`.
+A trusted embedding can query the default color image's post-submit
 state, allowing its caller-owned presentation surface to remain synchronized
 across RinGL `present()` and later content updates. When that embedding
-supplies a D32 target, RinGL also executes default-framebuffer depth clear and
-`LESS`/`LEQUAL`/`ALWAYS` depth-tested draws through a RinGPU depth render pass.
+supplies a D32 target, RinGL executes default-framebuffer depth clear and all
+eight depth-tested draw predicates through a RinGPU depth render pass.
 
 This remains a bounded profile. Texture depth attachments, stencil,
-multisampling, multiple color attachments, remaining depth comparisons, and
-broad GLES framebuffer semantics are not implemented.
+multisampling, multiple color attachments, and broad GLES framebuffer
+semantics are not implemented.
 
 RinGL is not a GLES conformance claim. Broader shader expressions, device-loss
 handling, and browser-facing context-loss policy also remain unfinished. No API

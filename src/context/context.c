@@ -73,6 +73,15 @@ int ringl_context_create(const RinGLContextDescV1* desc,
     context->dirty_bits = RINGL_DIRTY_ALL;
     context->cull_face_mode = RINGL_BACK;
     context->front_face = RINGL_CCW;
+    context->depth_func = RINGL_LESS;
+    context->depth_write_mask = RINGL_TRUE;
+    context->blend_source_rgb = RINGL_ONE;
+    context->blend_destination_rgb = RINGL_ZERO;
+    context->blend_source_alpha = RINGL_ONE;
+    context->blend_destination_alpha = RINGL_ZERO;
+    context->blend_equation_rgb = RINGL_FUNC_ADD;
+    context->blend_equation_alpha = RINGL_FUNC_ADD;
+    context->color_write_mask = 0x0fu;
 
     if (desc != NULL) {
         context->flags = desc->flags;

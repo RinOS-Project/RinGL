@@ -9,11 +9,20 @@ static int framebuffer_valid(const RinGLDefaultFramebufferV1* framebuffer)
         return 0;
     if (framebuffer->struct_size < sizeof(*framebuffer) ||
         framebuffer->api_version != RINGL_API_VERSION ||
-        framebuffer->reserved0 != 0u || framebuffer->flags != 0u) {
+        framebuffer->reserved0 != 0u || framebuffer->reserved1 != 0u ||
+        framebuffer->flags != 0u) {
         return 0;
     }
     if (framebuffer->color_target == 0u || framebuffer->color_format == 0u ||
         framebuffer->width == 0u || framebuffer->height == 0u) {
+        return 0;
+    }
+    if ((framebuffer->depth_target == 0u) !=
+        (framebuffer->depth_format == 0u)) {
+        return 0;
+    }
+    if (framebuffer->depth_target != 0u &&
+        framebuffer->depth_format != RINGL_RIN_GPU_FORMAT_D32_FLOAT) {
         return 0;
     }
     return 1;
@@ -24,6 +33,12 @@ static int framebuffer_state_valid(uint32_t state)
     return state == RINGL_RIN_GPU_IMAGE_UNDEFINED ||
            state == RINGL_RIN_GPU_IMAGE_COLOR_TARGET ||
            state == RINGL_RIN_GPU_IMAGE_PRESENT;
+}
+
+static int depth_framebuffer_state_valid(uint32_t state)
+{
+    return state == RINGL_RIN_GPU_IMAGE_UNDEFINED ||
+           state == RINGL_RIN_GPU_IMAGE_DEPTH_TARGET;
 }
 
 int ringl_set_default_framebuffer(const RinGLDefaultFramebufferV1* framebuffer)
@@ -38,6 +53,8 @@ int ringl_set_default_framebuffer(const RinGLDefaultFramebufferV1* framebuffer)
                sizeof(context->default_framebuffer));
         context->has_default_framebuffer = 0u;
         context->default_framebuffer_state = RINGL_RIN_GPU_IMAGE_UNDEFINED;
+        context->default_depth_framebuffer_state =
+            RINGL_RIN_GPU_IMAGE_UNDEFINED;
         ringl_context_mark_dirty(context,
                                  RINGL_DIRTY_FRAMEBUFFER |
                                  RINGL_DIRTY_PIPELINE);
@@ -54,6 +71,7 @@ int ringl_set_default_framebuffer(const RinGLDefaultFramebufferV1* framebuffer)
     context->default_framebuffer = *framebuffer;
     context->has_default_framebuffer = 1u;
     context->default_framebuffer_state = RINGL_RIN_GPU_IMAGE_PRESENT;
+    context->default_depth_framebuffer_state = RINGL_RIN_GPU_IMAGE_UNDEFINED;
     if (!context->viewport_initialized) {
         context->viewport_x = 0;
         context->viewport_y = 0;
@@ -85,6 +103,26 @@ int ringl_set_default_framebuffer_state(uint32_t state)
     return 0;
 }
 
+int ringl_set_default_depth_framebuffer_state(uint32_t state)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL)
+        return -1;
+    if (!context->has_default_framebuffer ||
+        context->default_framebuffer.depth_target == 0u) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    if (!depth_framebuffer_state_valid(state)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
+    context->default_depth_framebuffer_state = state;
+    ringl_context_mark_dirty(context, RINGL_DIRTY_FRAMEBUFFER);
+    return 0;
+}
+
 int ringl_get_default_framebuffer(RinGLDefaultFramebufferV1* framebuffer)
 {
     RinGLContext* context = ringl_get_current_context();
@@ -108,5 +146,19 @@ int ringl_get_default_framebuffer_state(uint32_t* state)
     if (!context->has_default_framebuffer)
         return 1;
     *state = context->default_framebuffer_state;
+    return 0;
+}
+
+int ringl_get_default_depth_framebuffer_state(uint32_t* state)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL || state == NULL)
+        return -1;
+    if (!context->has_default_framebuffer ||
+        context->default_framebuffer.depth_target == 0u) {
+        return 1;
+    }
+    *state = context->default_depth_framebuffer_state;
     return 0;
 }

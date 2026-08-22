@@ -65,6 +65,24 @@ int ringl_resolve_color_target(RinGLContext* context,
            target->width != 0u && target->height != 0u ? 0 : -1;
 }
 
+int ringl_resolve_depth_target(RinGLContext* context, RinGLDepthTarget* target)
+{
+    if (context == NULL || target == NULL)
+        return -1;
+    memset(target, 0, sizeof(*target));
+    if (context->framebuffer_binding != 0u || !context->has_default_framebuffer ||
+        context->default_framebuffer.depth_target == 0u) {
+        return 1;
+    }
+    target->image = context->default_framebuffer.depth_target;
+    target->format = context->default_framebuffer.depth_format;
+    target->state = &context->default_depth_framebuffer_state;
+    return target->format == RINGL_RIN_GPU_FORMAT_D32_FLOAT &&
+                   target->state != NULL
+        ? 0
+        : -1;
+}
+
 static int command_ops_ready(const RinGLContext* context)
 {
     return context != NULL && context->has_ringpu_ops &&
@@ -87,11 +105,18 @@ static int legacy_pipeline_state_supported(const RinGLContext* context)
 }
 
 static int draw_state_supported(const RinGLContext* context,
-                                const RinGLColorTarget* target)
+                                const RinGLColorTarget* target,
+                                const RinGLDepthTarget* depth_target)
 {
     if (context == NULL || target == NULL || target->image == 0u ||
-        target->width == 0u || target->height == 0u ||
-        context->depth_test_enabled)
+        target->width == 0u || target->height == 0u)
+        return 0;
+    if (context->depth_test_enabled &&
+        (depth_target == NULL || depth_target->image == 0u ||
+         depth_target->format != RINGL_RIN_GPU_FORMAT_D32_FLOAT ||
+         depth_target->state == NULL ||
+         context->ringpu_ops.begin_render_pass_depth == NULL ||
+         context->ringpu_ops.create_graphics_pipeline_native == NULL))
         return 0;
     if (context->ringpu_ops.create_graphics_pipeline_native == NULL &&
         !legacy_pipeline_state_supported(context))
@@ -179,6 +204,20 @@ static int transition_to_color_target(RinGLContext* context,
         RINGL_RIN_GPU_IMAGE_COLOR_TARGET);
 }
 
+static int transition_to_depth_target(RinGLContext* context,
+                                      uint64_t command_list,
+                                      RinGLDepthTarget* target)
+{
+    if (context == NULL || target == NULL || target->image == 0u ||
+        target->state == NULL)
+        return -1;
+    if (*target->state == RINGL_RIN_GPU_IMAGE_DEPTH_TARGET)
+        return 0;
+    return ringl_backend_transition_image(
+        context, command_list, target->image, *target->state,
+        RINGL_RIN_GPU_IMAGE_DEPTH_TARGET);
+}
+
 static int begin_color_pass(RinGLContext* context,
                             uint64_t command_list,
                             const RinGLColorTarget* target,
@@ -199,6 +238,35 @@ static int begin_color_pass(RinGLContext* context,
         render_pass.clear_alpha = clamp_color(context->clear_alpha);
     }
     return ringl_backend_begin_render_pass(context, command_list, &render_pass);
+}
+
+static int begin_depth_pass(RinGLContext* context, uint64_t command_list,
+                            const RinGLColorTarget* color_target,
+                            const RinGLDepthTarget* depth_target,
+                            uint32_t color_load_op, uint32_t depth_load_op)
+{
+    RinGLRinGpuRenderPassDepthV1 render_pass;
+
+    if (context == NULL || color_target == NULL || depth_target == NULL ||
+        color_target->image == 0u || depth_target->image == 0u)
+        return -1;
+    memset(&render_pass, 0, sizeof(render_pass));
+    render_pass.color_target = color_target->image;
+    render_pass.depth_target = depth_target->image;
+    render_pass.color_load_op = color_load_op;
+    render_pass.color_store_op = RINGL_RIN_GPU_RENDER_STORE;
+    render_pass.depth_load_op = depth_load_op;
+    render_pass.depth_store_op = RINGL_RIN_GPU_RENDER_STORE;
+    if (color_load_op == RINGL_RIN_GPU_RENDER_CLEAR) {
+        render_pass.clear_red = clamp_color(context->clear_red);
+        render_pass.clear_green = clamp_color(context->clear_green);
+        render_pass.clear_blue = clamp_color(context->clear_blue);
+        render_pass.clear_alpha = clamp_color(context->clear_alpha);
+    }
+    if (depth_load_op == RINGL_RIN_GPU_RENDER_CLEAR)
+        render_pass.clear_depth = clamp_color(context->clear_depth);
+    return ringl_backend_begin_render_pass_depth(context, command_list,
+                                                  &render_pass);
 }
 
 static int set_raster_state(RinGLContext* context, uint64_t command_list,
@@ -379,15 +447,29 @@ void ringl_clear_color(float red, float green, float blue, float alpha)
     context->clear_alpha = alpha;
 }
 
+void ringl_clear_depth(float depth)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL)
+        return;
+    context->clear_depth = depth;
+}
+
 void ringl_clear(uint32_t mask)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLColorTarget target;
+    RinGLDepthTarget depth_target;
     uint64_t command_list;
+    int depth_status;
+    int use_depth_pass;
+    uint32_t color_load_op;
+    uint32_t depth_load_op;
 
     if (context == NULL || mask == 0u)
         return;
-    if ((mask & ~RINGL_COLOR_BUFFER_BIT) != 0u) {
+    if ((mask & ~(RINGL_COLOR_BUFFER_BIT | RINGL_DEPTH_BUFFER_BIT)) != 0u) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
@@ -396,16 +478,38 @@ void ringl_clear(uint32_t mask)
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
+    depth_status = ringl_resolve_depth_target(context, &depth_target);
+    use_depth_pass = (mask & RINGL_DEPTH_BUFFER_BIT) != 0u;
+    if (depth_status < 0 ||
+        (use_depth_pass && depth_status != 0) ||
+        (use_depth_pass &&
+         context->ringpu_ops.begin_render_pass_depth == NULL)) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    color_load_op = (mask & RINGL_COLOR_BUFFER_BIT) != 0u
+        ? RINGL_RIN_GPU_RENDER_CLEAR
+        : RINGL_RIN_GPU_RENDER_LOAD;
+    depth_load_op = (mask & RINGL_DEPTH_BUFFER_BIT) != 0u
+        ? RINGL_RIN_GPU_RENDER_CLEAR
+        : RINGL_RIN_GPU_RENDER_LOAD;
     if (begin_commands(context, &command_list) != 0 ||
         transition_to_color_target(context, command_list, &target) != 0 ||
-        begin_color_pass(context, command_list, &target,
-                         RINGL_RIN_GPU_RENDER_CLEAR) != 0 ||
+        (use_depth_pass &&
+         transition_to_depth_target(context, command_list, &depth_target) != 0) ||
+        (use_depth_pass
+             ? begin_depth_pass(context, command_list, &target, &depth_target,
+                                color_load_op, depth_load_op)
+             : begin_color_pass(context, command_list, &target,
+                                color_load_op)) != 0 ||
         ringl_backend_end_render_pass(context, command_list) != 0 ||
         submit_commands(context, command_list) != 0) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
     *target.state = RINGL_RIN_GPU_IMAGE_COLOR_TARGET;
+    if (use_depth_pass)
+        *depth_target.state = RINGL_RIN_GPU_IMAGE_DEPTH_TARGET;
     ringl_context_clear_dirty(context, RINGL_DIRTY_FRAMEBUFFER);
 }
 
@@ -416,11 +520,13 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
     RinGLBufferObject* vertex_buffer;
     RinGLRinGpuDrawVerticesV1 draw;
     RinGLColorTarget target;
+    RinGLDepthTarget depth_target;
     uint64_t command_list;
     uint64_t pipeline;
     uint32_t buffer_index;
     uint32_t texture_index = UINT32_MAX;
     uint32_t texture_transitioned = 0u;
+    int depth_status;
 
     if (context == NULL)
         return;
@@ -434,12 +540,16 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
     }
     if (count == 0 || draw_is_noop(context))
         return;
+    depth_status = ringl_resolve_depth_target(context, &depth_target);
     if (!command_ops_ready(context) ||
         ringl_resolve_color_target(context, &target) != 0 ||
+        depth_status < 0 ||
+        (context->depth_test_enabled && depth_status != 0) ||
         context->ringpu_ops.draw_vertices == NULL ||
         (context->ringpu_ops.create_graphics_pipeline == NULL &&
          context->ringpu_ops.create_graphics_pipeline_native == NULL) ||
-        !draw_state_supported(context, &target)) {
+        !draw_state_supported(context, &target,
+                              depth_status == 0 ? &depth_target : NULL)) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
@@ -462,14 +572,22 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
 
     if (begin_commands(context, &command_list) != 0 ||
         ringl_get_or_create_graphics_pipeline(
-            context, target.format, &pipeline) != 0 ||
+            context, target.format,
+            context->depth_test_enabled ? depth_target.format : 0u,
+            &pipeline) != 0 ||
         pipeline == 0u ||
         prepare_graphics_resources(context, command_list, pipeline, target.image,
                                    &texture_index,
                                    &texture_transitioned) != 0 ||
         transition_to_color_target(context, command_list, &target) != 0 ||
-        begin_color_pass(context, command_list, &target,
-                         RINGL_RIN_GPU_RENDER_LOAD) != 0 ||
+        (context->depth_test_enabled &&
+         transition_to_depth_target(context, command_list, &depth_target) != 0) ||
+        (context->depth_test_enabled
+             ? begin_depth_pass(context, command_list, &target, &depth_target,
+                                RINGL_RIN_GPU_RENDER_LOAD,
+                                RINGL_RIN_GPU_RENDER_LOAD)
+             : begin_color_pass(context, command_list, &target,
+                                RINGL_RIN_GPU_RENDER_LOAD)) != 0 ||
         set_raster_state(context, command_list, &target) != 0 ||
         bind_graphics_resources(context, command_list) != 0) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
@@ -491,6 +609,8 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
     }
     publish_texture_transition(context, texture_index, texture_transitioned);
     *target.state = RINGL_RIN_GPU_IMAGE_COLOR_TARGET;
+    if (context->depth_test_enabled)
+        *depth_target.state = RINGL_RIN_GPU_IMAGE_DEPTH_TARGET;
     ringl_context_clear_dirty(context, RINGL_DIRTY_PIPELINE |
                                        RINGL_DIRTY_BINDINGS |
                                        RINGL_DIRTY_FRAMEBUFFER |
@@ -506,6 +626,7 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
     RinGLBufferObject* index_buffer;
     RinGLRinGpuDrawIndexedV1 draw;
     RinGLColorTarget target;
+    RinGLDepthTarget depth_target;
     uint64_t command_list;
     uint64_t pipeline;
     uint32_t max_index;
@@ -514,6 +635,7 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
     uint32_t index_buffer_index;
     uint32_t texture_index = UINT32_MAX;
     uint32_t texture_transitioned = 0u;
+    int depth_status;
 
     if (context == NULL)
         return;
@@ -532,12 +654,16 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
     }
     if (count == 0 || draw_is_noop(context))
         return;
+    depth_status = ringl_resolve_depth_target(context, &depth_target);
     if (!command_ops_ready(context) ||
         ringl_resolve_color_target(context, &target) != 0 ||
+        depth_status < 0 ||
+        (context->depth_test_enabled && depth_status != 0) ||
         context->ringpu_ops.draw_indexed == NULL ||
         (context->ringpu_ops.create_graphics_pipeline == NULL &&
          context->ringpu_ops.create_graphics_pipeline_native == NULL) ||
-        !draw_state_supported(context, &target)) {
+        !draw_state_supported(context, &target,
+                              depth_status == 0 ? &depth_target : NULL)) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
@@ -570,14 +696,22 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
 
     if (begin_commands(context, &command_list) != 0 ||
         ringl_get_or_create_graphics_pipeline(
-            context, target.format, &pipeline) != 0 ||
+            context, target.format,
+            context->depth_test_enabled ? depth_target.format : 0u,
+            &pipeline) != 0 ||
         pipeline == 0u ||
         prepare_graphics_resources(context, command_list, pipeline, target.image,
                                    &texture_index,
                                    &texture_transitioned) != 0 ||
         transition_to_color_target(context, command_list, &target) != 0 ||
-        begin_color_pass(context, command_list, &target,
-                         RINGL_RIN_GPU_RENDER_LOAD) != 0 ||
+        (context->depth_test_enabled &&
+         transition_to_depth_target(context, command_list, &depth_target) != 0) ||
+        (context->depth_test_enabled
+             ? begin_depth_pass(context, command_list, &target, &depth_target,
+                                RINGL_RIN_GPU_RENDER_LOAD,
+                                RINGL_RIN_GPU_RENDER_LOAD)
+             : begin_color_pass(context, command_list, &target,
+                                RINGL_RIN_GPU_RENDER_LOAD)) != 0 ||
         set_raster_state(context, command_list, &target) != 0 ||
         bind_graphics_resources(context, command_list) != 0) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
@@ -608,6 +742,8 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
 
     publish_texture_transition(context, texture_index, texture_transitioned);
     *target.state = RINGL_RIN_GPU_IMAGE_COLOR_TARGET;
+    if (context->depth_test_enabled)
+        *depth_target.state = RINGL_RIN_GPU_IMAGE_DEPTH_TARGET;
     ringl_context_clear_dirty(context, RINGL_DIRTY_PIPELINE |
                                        RINGL_DIRTY_BINDINGS |
                                        RINGL_DIRTY_FRAMEBUFFER |

@@ -209,6 +209,19 @@ int ringl_backend_begin_render_pass(RinGLContext* context,
                                                  command_list, render_pass);
 }
 
+int ringl_backend_begin_render_pass_depth(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuRenderPassDepthV1* render_pass)
+{
+    if (context == NULL || command_list == 0u || render_pass == NULL ||
+        !context->has_ringpu_ops ||
+        context->ringpu_ops.begin_render_pass_depth == NULL) {
+        return -1;
+    }
+    return context->ringpu_ops.begin_render_pass_depth(
+        context->ringpu.session, command_list, render_pass);
+}
+
 int ringl_backend_set_raster_state(RinGLContext* context,
                                    uint64_t command_list,
                                    const RinGLRinGpuRasterStateV1* state)

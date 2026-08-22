@@ -27,6 +27,7 @@ extern "C" {
 #define RINGL_FLOAT          0x1406u
 
 #define RINGL_TRIANGLES        0x0004u
+#define RINGL_DEPTH_BUFFER_BIT 0x00000100u
 #define RINGL_COLOR_BUFFER_BIT 0x00004000u
 
 #define RINGL_NEVER    0x0200u
@@ -135,6 +136,7 @@ extern "C" {
 #define RINGL_RIN_GPU_IMAGE_UNDEFINED      0u
 #define RINGL_RIN_GPU_IMAGE_COLOR_TARGET   3u
 #define RINGL_RIN_GPU_IMAGE_PRESENT        4u
+#define RINGL_RIN_GPU_IMAGE_DEPTH_TARGET   5u
 #define RINGL_RIN_GPU_IMAGE_SHADER_READ    6u
 #define RINGL_RIN_GPU_RENDER_LOAD          1u
 #define RINGL_RIN_GPU_RENDER_CLEAR         2u
@@ -143,6 +145,7 @@ extern "C" {
 #define RINGL_RIN_GPU_INDEX_UINT32         2u
 #define RINGL_RIN_GPU_INDEX_UINT8          3u
 #define RINGL_RIN_GPU_FORMAT_RGBA8_UNORM   2u
+#define RINGL_RIN_GPU_FORMAT_D32_FLOAT     4u
 #define RINGL_RIN_GPU_IMAGE_USAGE_COPY_DESTINATION 0x1u
 #define RINGL_RIN_GPU_IMAGE_USAGE_SAMPLED          0x2u
 #define RINGL_RIN_GPU_IMAGE_USAGE_COLOR_TARGET     0x4u
@@ -263,6 +266,20 @@ typedef struct RinGLRinGpuRenderPassV1 {
     float clear_alpha;
 } RinGLRinGpuRenderPassV1;
 
+typedef struct RinGLRinGpuRenderPassDepthV1 {
+    uint64_t color_target;
+    uint64_t depth_target;
+    uint32_t color_load_op;
+    uint32_t color_store_op;
+    uint32_t depth_load_op;
+    uint32_t depth_store_op;
+    float clear_red;
+    float clear_green;
+    float clear_blue;
+    float clear_alpha;
+    float clear_depth;
+} RinGLRinGpuRenderPassDepthV1;
+
 typedef struct RinGLRinGpuDrawVerticesV1 {
     uint64_t pipeline;
     uint64_t color_target;
@@ -360,6 +377,9 @@ typedef int (*RinGLRinGpuTransitionImageFn)(void* session,
 typedef int (*RinGLRinGpuBeginRenderPassFn)(
     void* session, uint64_t command_list,
     const RinGLRinGpuRenderPassV1* render_pass);
+typedef int (*RinGLRinGpuBeginRenderPassDepthFn)(
+    void* session, uint64_t command_list,
+    const RinGLRinGpuRenderPassDepthV1* render_pass);
 typedef int (*RinGLRinGpuSetRasterStateFn)(
     void* session, uint64_t command_list,
     const RinGLRinGpuRasterStateV1* state);
@@ -424,6 +444,7 @@ typedef struct RinGLRinGpuOpsV1 {
     RinGLRinGpuCreateGraphicsBindGroupFn create_graphics_bind_group;
     RinGLRinGpuBindGraphicsResourcesFn bind_graphics_resources;
     RinGLRinGpuCreateImage2DFn create_image_2d;
+    RinGLRinGpuBeginRenderPassDepthFn begin_render_pass_depth;
 } RinGLRinGpuOpsV1;
 
 typedef struct RinGLRinGpuBindingV1 {
@@ -466,6 +487,9 @@ typedef struct RinGLDefaultFramebufferV1 {
     uint32_t display_id;
     uint32_t flags;
     uint32_t reserved0;
+    uint64_t depth_target;
+    uint32_t depth_format;
+    uint32_t reserved1;
 } RinGLDefaultFramebufferV1;
 
 /* This is a read-only description of RinGL's currently bound custom
@@ -509,12 +533,15 @@ void ringl_color_mask(uint32_t red, uint32_t green, uint32_t blue,
 
 int ringl_set_default_framebuffer(const RinGLDefaultFramebufferV1* framebuffer);
 int ringl_set_default_framebuffer_state(uint32_t state);
+int ringl_set_default_depth_framebuffer_state(uint32_t state);
 int ringl_get_default_framebuffer(RinGLDefaultFramebufferV1* framebuffer);
 /* Returns the tracked RinGPU state of the default color target without
  * exposing RinGL internals to the embedding. Returns 1 when no default
  * framebuffer is configured and leaves state unchanged on failure. */
 int ringl_get_default_framebuffer_state(uint32_t* state);
+int ringl_get_default_depth_framebuffer_state(uint32_t* state);
 void ringl_clear_color(float red, float green, float blue, float alpha);
+void ringl_clear_depth(float depth);
 void ringl_clear(uint32_t mask);
 void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count);
 void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,

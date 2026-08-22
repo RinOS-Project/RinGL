@@ -162,11 +162,13 @@ surface integration test verifies texture-FBO clear and triangle output plus
 renderbuffer-FBO clear as actual RGBA pixels. A trusted embedding can query
 the default color image's post-submit state, allowing its caller-owned
 presentation surface to remain synchronized across RinGL `present()` and
-later content updates.
+later content updates. When that embedding supplies a D32 target, RinGL also
+executes default-framebuffer depth clear and `LESS`/`LEQUAL`/`ALWAYS`
+depth-tested draws through a RinGPU depth render pass.
 
-This remains a bounded profile. Depth/stencil attachments, multisampling,
-multiple color attachments, and broad GLES framebuffer semantics are not
-implemented.
+This remains a bounded profile. Custom depth/stencil FBO attachments,
+multisampling, multiple color attachments, remaining depth comparisons, and
+broad GLES framebuffer semantics are not implemented.
 
 RinGL is not a GLES conformance claim. Broader shader expressions, device-loss
 handling, and browser-facing context-loss policy also remain unfinished. No API

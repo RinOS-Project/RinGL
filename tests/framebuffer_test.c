@@ -30,6 +30,8 @@ int main(void)
     assert(copy.color_target == 0u);
     assert(ringl_get_default_framebuffer_state(&framebuffer_state) == 1);
     assert(framebuffer_state == 0xfeedfaceu);
+    assert(ringl_get_default_depth_framebuffer_state(&framebuffer_state) == 1);
+    assert(framebuffer_state == 0xfeedfaceu);
     assert(ringl_set_default_framebuffer_state(
                RINGL_RIN_GPU_IMAGE_UNDEFINED) == -1);
     assert(ringl_get_error() == RINGL_INVALID_OPERATION);
@@ -39,6 +41,9 @@ int main(void)
     assert((ringl_context_dirty_bits(context) & RINGL_DIRTY_PIPELINE) != 0u);
     assert(ringl_get_default_framebuffer_state(&framebuffer_state) == 0);
     assert(framebuffer_state == RINGL_RIN_GPU_IMAGE_PRESENT);
+    assert(ringl_set_default_depth_framebuffer_state(
+               RINGL_RIN_GPU_IMAGE_UNDEFINED) == -1);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
     assert(ringl_set_default_framebuffer_state(
                RINGL_RIN_GPU_IMAGE_UNDEFINED) == 0);
     assert(ringl_set_default_framebuffer_state(
@@ -56,6 +61,19 @@ int main(void)
     assert(copy.color_format == framebuffer.color_format);
     assert(copy.width == framebuffer.width);
     assert(copy.height == framebuffer.height);
+
+    framebuffer.depth_target = 92u;
+    framebuffer.depth_format = RINGL_RIN_GPU_FORMAT_D32_FLOAT;
+    assert(ringl_set_default_framebuffer(&framebuffer) == 0);
+    assert(ringl_get_default_depth_framebuffer_state(&framebuffer_state) == 0);
+    assert(framebuffer_state == RINGL_RIN_GPU_IMAGE_UNDEFINED);
+    assert(ringl_set_default_depth_framebuffer_state(
+               RINGL_RIN_GPU_IMAGE_DEPTH_TARGET) == 0);
+    assert(ringl_get_default_depth_framebuffer_state(&framebuffer_state) == 0);
+    assert(framebuffer_state == RINGL_RIN_GPU_IMAGE_DEPTH_TARGET);
+    assert(ringl_set_default_depth_framebuffer_state(
+               RINGL_RIN_GPU_IMAGE_PRESENT) == -1);
+    assert(ringl_get_error() == RINGL_INVALID_ENUM);
 
     framebuffer.width = 0u;
     assert(ringl_set_default_framebuffer(&framebuffer) == -1);

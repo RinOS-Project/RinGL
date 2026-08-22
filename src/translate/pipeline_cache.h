@@ -14,6 +14,9 @@ typedef struct RinGLPipelineKey {
     uint64_t vertex_shader_module;
     uint64_t fragment_shader_module;
     uint32_t color_format;
+    uint32_t depth_format;
+    uint32_t depth_compare;
+    uint32_t depth_write_enabled;
     uint32_t primitive_topology;
     uint32_t vertex_stride;
     uint32_t attribute_count;
@@ -33,7 +36,7 @@ typedef struct RinGLPipelineKey {
 } RinGLPipelineKey;
 
 int ringl_build_pipeline_key(RinGLContext* context,
-                             uint32_t color_format,
+                             uint32_t color_format, uint32_t depth_format,
                              RinGLPipelineKey* key);
 uint64_t ringl_pipeline_key_hash(const RinGLPipelineKey* key);
 int ringl_pipeline_key_equal(const RinGLPipelineKey* left,
@@ -43,6 +46,7 @@ int ringl_pipeline_cache_get_or_create(RinGLContext* context,
                                        uint64_t* pipeline_out);
 int ringl_get_or_create_graphics_pipeline(RinGLContext* context,
                                           uint32_t color_format,
+                                          uint32_t depth_format,
                                           uint64_t* pipeline_out);
 
 #endif /* RINGL_PIPELINE_CACHE_H */

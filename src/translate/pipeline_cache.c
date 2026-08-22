@@ -131,8 +131,18 @@ static uint32_t native_front_face(uint32_t front_face)
     return 0u;
 }
 
+static uint32_t native_depth_compare(uint32_t compare)
+{
+    switch (compare) {
+    case RINGL_LESS: return RINGL_RIN_GPU_COMPARE_LESS;
+    case RINGL_LEQUAL: return RINGL_RIN_GPU_COMPARE_LEQUAL;
+    case RINGL_ALWAYS: return RINGL_RIN_GPU_COMPARE_ALWAYS;
+    default: return 0u;
+    }
+}
+
 int ringl_build_pipeline_key(RinGLContext* context,
-                             uint32_t color_format,
+                             uint32_t color_format, uint32_t depth_format,
                              RinGLPipelineKey* key)
 {
     RinGLProgramObject* program;
@@ -143,7 +153,10 @@ int ringl_build_pipeline_key(RinGLContext* context,
     uint32_t index;
 
     if (context == NULL || key == NULL || color_format == 0u ||
-        context->depth_test_enabled)
+        (depth_format != 0u && depth_format != RINGL_RIN_GPU_FORMAT_D32_FLOAT) ||
+        (context->depth_test_enabled &&
+         depth_format != RINGL_RIN_GPU_FORMAT_D32_FLOAT) ||
+        (!context->depth_test_enabled && depth_format != 0u))
         return -1;
     program = current_program(context);
     if (program == NULL || !program->link_status)
@@ -160,6 +173,13 @@ int ringl_build_pipeline_key(RinGLContext* context,
     result.vertex_shader_module = vertex->ringpu_module;
     result.fragment_shader_module = fragment->ringpu_module;
     result.color_format = color_format;
+    result.depth_format = depth_format;
+    if (context->depth_test_enabled) {
+        result.depth_compare = native_depth_compare(context->depth_func);
+        if (result.depth_compare == 0u)
+            return -1;
+        result.depth_write_enabled = context->depth_write_mask;
+    }
     result.primitive_topology = RINGL_NATIVE_PRIMITIVE_TRIANGLE_LIST;
     result.vertex_stride = layout.stride;
     result.attribute_count = layout.attribute_count;
@@ -259,7 +279,8 @@ static int create_pipeline(RinGLContext* context,
         uint32_t cull = native_cull_mode(key);
         uint32_t front = native_front_face(key->front_face);
 
-        if (cull == 0u || front == 0u || key->color_write_mask == 0u)
+        if (cull == 0u || front == 0u ||
+            (key->color_write_mask == 0u && key->depth_format == 0u))
             return -1;
         memset(&desc, 0, sizeof(desc));
         desc.vertex_shader = key->vertex_shader_module;
@@ -268,6 +289,9 @@ static int create_pipeline(RinGLContext* context,
         desc.primitive_topology = key->primitive_topology;
         desc.vertex_stride = key->vertex_stride;
         desc.position_output_location = 0u;
+        desc.depth_format = key->depth_format;
+        desc.depth_compare = key->depth_compare;
+        desc.depth_write_enabled = key->depth_write_enabled;
         desc.color_write_mask = key->color_write_mask;
         desc.cull_mode = cull;
         desc.front_face = front;
@@ -296,7 +320,7 @@ static int create_pipeline(RinGLContext* context,
             key->varying_count, pipeline_out);
     }
 
-    if (key->varying_count != 0u || key->blend_enabled ||
+    if (key->depth_format != 0u || key->varying_count != 0u || key->blend_enabled ||
         key->cull_mode != 0u || key->front_face != RINGL_CCW ||
         key->color_write_mask != RINGL_RIN_GPU_COLOR_WRITE_ALL)
         return -1;
@@ -368,11 +392,12 @@ int ringl_pipeline_cache_get_or_create(RinGLContext* context,
 
 int ringl_get_or_create_graphics_pipeline(RinGLContext* context,
                                           uint32_t color_format,
+                                          uint32_t depth_format,
                                           uint64_t* pipeline_out)
 {
     RinGLPipelineKey key;
 
-    if (ringl_build_pipeline_key(context, color_format, &key) != 0)
+    if (ringl_build_pipeline_key(context, color_format, depth_format, &key) != 0)
         return -1;
     return ringl_pipeline_cache_get_or_create(context, &key, pipeline_out);
 }

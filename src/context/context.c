@@ -91,6 +91,7 @@ int ringl_context_create(const RinGLContextDescV1* desc,
     context->front_face = RINGL_CCW;
     context->depth_func = RINGL_LESS;
     context->depth_write_mask = RINGL_TRUE;
+    context->clear_depth = 1.0f;
     context->blend_source_rgb = RINGL_ONE;
     context->blend_destination_rgb = RINGL_ZERO;
     context->blend_source_alpha = RINGL_ONE;

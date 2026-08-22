@@ -129,6 +129,12 @@ typedef struct RinGLColorTarget {
     uint32_t* state;
 } RinGLColorTarget;
 
+typedef struct RinGLDepthTarget {
+    uint64_t image;
+    uint32_t format;
+    uint32_t* state;
+} RinGLDepthTarget;
+
 struct RinGLContext {
     uint32_t magic;
     uint32_t pending_error;
@@ -145,6 +151,7 @@ struct RinGLContext {
     RinGLDefaultFramebufferV1 default_framebuffer;
     uint32_t has_default_framebuffer;
     uint32_t default_framebuffer_state;
+    uint32_t default_depth_framebuffer_state;
     uint64_t graphics_command_list;
     uint64_t graphics_bind_group;
     uint64_t finish_fence;
@@ -153,6 +160,7 @@ struct RinGLContext {
     float clear_green;
     float clear_blue;
     float clear_alpha;
+    float clear_depth;
 
     int32_t viewport_x;
     int32_t viewport_y;
@@ -203,6 +211,8 @@ void ringl_copy_c_string(char* destination, size_t capacity,
                          const char* source);
 int ringl_resolve_color_target(RinGLContext* context,
                                RinGLColorTarget* target);
+int ringl_resolve_depth_target(RinGLContext* context,
+                               RinGLDepthTarget* target);
 
 int ringl_backend_create_buffer(RinGLContext* context,
                                 uint64_t size_bytes,
@@ -256,6 +266,9 @@ int ringl_backend_transition_image(RinGLContext* context,
 int ringl_backend_begin_render_pass(RinGLContext* context,
                                     uint64_t command_list,
                                     const RinGLRinGpuRenderPassV1* render_pass);
+int ringl_backend_begin_render_pass_depth(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuRenderPassDepthV1* render_pass);
 int ringl_backend_set_raster_state(RinGLContext* context,
                                    uint64_t command_list,
                                    const RinGLRinGpuRasterStateV1* state);

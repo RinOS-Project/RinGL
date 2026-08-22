@@ -112,6 +112,16 @@ uint32_t ringl_get_shader_type(uint32_t shader);
 uint64_t ringl_get_shader_source_length(uint32_t shader);
 uint64_t ringl_get_shader_info_log(uint32_t shader, char* buffer, uint64_t buffer_size);
 
+uint32_t ringl_create_program(void);
+void ringl_delete_program(uint32_t program);
+int ringl_is_program(uint32_t program);
+void ringl_attach_shader(uint32_t program, uint32_t shader);
+void ringl_link_program(uint32_t program);
+uint32_t ringl_get_program_link_status(uint32_t program);
+uint64_t ringl_get_program_info_log(uint32_t program, char* buffer, uint64_t buffer_size);
+void ringl_use_program(uint32_t program);
+uint32_t ringl_get_current_program(void);
+
 #ifdef __cplusplus
 }
 #endif

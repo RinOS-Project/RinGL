@@ -37,3 +37,11 @@ shader_test = executable(
 )
 
 test('shader', shader_test)
+
+glsl_parser_test = executable(
+  'ringl-glsl-parser-test',
+  'glsl_parser_test.c',
+  dependencies: ringl_dep,
+)
+
+test('glsl-parser', glsl_parser_test)

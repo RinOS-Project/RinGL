@@ -154,10 +154,14 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   `min(sourceAlpha, 1 - destinationAlpha)` and alpha uses one. RinGL and
   RinGPU reject it in destination slots; the focused bridge test covers the
   component result.
-- [ ] Add constant-color/constant-alpha factors only with a versioned RinGPU
-  pipeline descriptor that carries a validated blend constant; current
-  unsupported values remain `INVALID_ENUM` rather than silently receiving
-  alpha-factor semantics.
+- [x] Add `CONSTANT_COLOR`/`ONE_MINUS_CONSTANT_COLOR` and
+  `CONSTANT_ALPHA`/`ONE_MINUS_CONSTANT_ALPHA` with `ringl_blend_color()`.
+  RinGL clamps finite values to `[0,1]`, keeps state unchanged on NaN/Inf,
+  includes the RGBA value in the pipeline-cache key, and uses an additive V2
+  native descriptor/callback only when a constant factor is active. V1
+  bindings therefore cannot silently use a zero constant; a missing V2 path
+  rejects the draw. The focused RinGL-to-RinGPU-to-Aquamarine test verifies
+  both component constant color and scalar constant alpha output.
 - [x] Expose a versioned snapshot of mutable clear values so an embedding can perform the WebGL default-buffer clear without overwriting application clear state.
 - [x] Add a state-neutral default-framebuffer clear for trusted presentation
   embeddings: it forces WebGL's color/depth/stencil defaults without observing

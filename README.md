@@ -101,7 +101,7 @@ This keeps RinShader IR as the common validated shader boundary while allowing e
 
 OpenGL exposes mutable, implicit state while RinGPU is intentionally explicit. RinGL therefore maintains a context-side state machine and derives backend objects lazily.
 
-For example, blend state, depth state, the linked program, vertex layout, attachment formats, and other draw-relevant state can form a pipeline-cache key. Changing `glEnable(GL_BLEND)` should invalidate the derived pipeline state rather than immediately emit a GPU command.
+For example, blend state, depth state, the linked program, vertex layout, attachment formats, and other draw-relevant state can form a pipeline-cache key. Changing `glEnable(GL_BLEND)` should invalidate the derived pipeline state rather than immediately emit a GPU command. The blend key includes the clamped RGBA `ringl_blend_color()` value. Constant blend factors use an additive native-pipeline V2 descriptor and optional callback tail, preserving the V1 descriptor for existing RinGPU embeddings; an embedding without that V2 path rejects the draw instead of substituting a zero blend constant.
 
 OpenGL also has no explicit render-pass API. RinGL is expected to open and close RinGPU render passes around compatible framebuffer operations and end them when an incompatible operation requires it.
 

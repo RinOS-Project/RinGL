@@ -25,9 +25,8 @@ static RinGLProgramObject* current_program(RinGLContext* context)
     if (context == NULL || context->current_program == 0u)
         return NULL;
     if (ringl_object_lookup(context, context->current_program,
-                            RINGL_OBJECT_PROGRAM) == NULL) {
+                            RINGL_OBJECT_PROGRAM) == NULL)
         return NULL;
-    }
     index = ringl_object_slot_index(context->current_program);
     if (index >= RINGL_OBJECT_SLOT_COUNT)
         return NULL;
@@ -63,6 +62,54 @@ static RinGLPipelineCache* cache_for(RinGLContext* context, int create)
     return cache;
 }
 
+static uint32_t native_blend_factor(uint32_t factor)
+{
+    switch (factor) {
+    case RINGL_ZERO: return RINGL_RIN_GPU_BLEND_ZERO;
+    case RINGL_ONE: return RINGL_RIN_GPU_BLEND_ONE;
+    case RINGL_SRC_ALPHA: return RINGL_RIN_GPU_BLEND_SRC_ALPHA;
+    case RINGL_ONE_MINUS_SRC_ALPHA:
+        return RINGL_RIN_GPU_BLEND_ONE_MINUS_SRC_ALPHA;
+    case RINGL_DST_ALPHA: return RINGL_RIN_GPU_BLEND_DST_ALPHA;
+    case RINGL_ONE_MINUS_DST_ALPHA:
+        return RINGL_RIN_GPU_BLEND_ONE_MINUS_DST_ALPHA;
+    default: return 0u;
+    }
+}
+
+static uint32_t native_blend_op(uint32_t operation)
+{
+    switch (operation) {
+    case RINGL_FUNC_ADD: return RINGL_RIN_GPU_BLEND_ADD;
+    case RINGL_FUNC_SUBTRACT: return RINGL_RIN_GPU_BLEND_SUBTRACT;
+    case RINGL_FUNC_REVERSE_SUBTRACT:
+        return RINGL_RIN_GPU_BLEND_REVERSE_SUBTRACT;
+    case RINGL_MIN: return RINGL_RIN_GPU_BLEND_MINIMUM;
+    case RINGL_MAX: return RINGL_RIN_GPU_BLEND_MAXIMUM;
+    default: return 0u;
+    }
+}
+
+static uint32_t native_cull_mode(const RinGLPipelineKey* key)
+{
+    if (key->cull_mode == 0u)
+        return RINGL_RIN_GPU_CULL_NONE;
+    if (key->cull_mode == RINGL_FRONT)
+        return RINGL_RIN_GPU_CULL_FRONT;
+    if (key->cull_mode == RINGL_BACK)
+        return RINGL_RIN_GPU_CULL_BACK;
+    return 0u;
+}
+
+static uint32_t native_front_face(uint32_t front_face)
+{
+    if (front_face == RINGL_CCW)
+        return RINGL_RIN_GPU_FRONT_FACE_CCW;
+    if (front_face == RINGL_CW)
+        return RINGL_RIN_GPU_FRONT_FACE_CW;
+    return 0u;
+}
+
 int ringl_build_pipeline_key(RinGLContext* context,
                              uint32_t color_format,
                              RinGLPipelineKey* key)
@@ -74,7 +121,8 @@ int ringl_build_pipeline_key(RinGLContext* context,
     RinGLPipelineKey result;
     uint32_t index;
 
-    if (context == NULL || key == NULL || color_format == 0u)
+    if (context == NULL || key == NULL || color_format == 0u ||
+        context->depth_test_enabled)
         return -1;
     program = current_program(context);
     if (program == NULL || !program->link_status)
@@ -82,9 +130,8 @@ int ringl_build_pipeline_key(RinGLContext* context,
     vertex = shader_object(context, program->vertex_shader);
     fragment = shader_object(context, program->fragment_shader);
     if (vertex == NULL || fragment == NULL ||
-        vertex->ringpu_module == 0u || fragment->ringpu_module == 0u) {
+        vertex->ringpu_module == 0u || fragment->ringpu_module == 0u)
         return -1;
-    }
     if (ringl_resolve_vertex_layout(context, &layout) != 0)
         return -1;
 
@@ -95,6 +142,16 @@ int ringl_build_pipeline_key(RinGLContext* context,
     result.primitive_topology = RINGL_NATIVE_PRIMITIVE_TRIANGLE_LIST;
     result.vertex_stride = layout.stride;
     result.attribute_count = layout.attribute_count;
+    result.blend_enabled = context->blend_enabled;
+    result.blend_source_rgb = context->blend_source_rgb;
+    result.blend_destination_rgb = context->blend_destination_rgb;
+    result.blend_equation_rgb = context->blend_equation_rgb;
+    result.blend_source_alpha = context->blend_source_alpha;
+    result.blend_destination_alpha = context->blend_destination_alpha;
+    result.blend_equation_alpha = context->blend_equation_alpha;
+    result.color_write_mask = context->color_write_mask;
+    result.cull_mode = context->cull_face_enabled ? context->cull_face_mode : 0u;
+    result.front_face = context->front_face;
     for (index = 0u; index < layout.attribute_count; ++index)
         result.attributes[index] = layout.attributes[index];
 
@@ -129,31 +186,77 @@ static int create_pipeline(RinGLContext* context,
                            const RinGLPipelineKey* key,
                            uint64_t* pipeline_out)
 {
-    RinGLRinGpuGraphicsPipelineV1 desc;
     RinGLRinGpuVertexAttributeV1 attributes[RINGL_MAX_VERTEX_ATTRIBS];
     uint32_t index;
 
     if (context == NULL || key == NULL || pipeline_out == NULL ||
-        key->attribute_count > RINGL_MAX_VERTEX_ATTRIBS) {
+        key->attribute_count > RINGL_MAX_VERTEX_ATTRIBS)
         return -1;
-    }
 
-    memset(&desc, 0, sizeof(desc));
     memset(attributes, 0, sizeof(attributes));
-    desc.vertex_shader = key->vertex_shader_module;
-    desc.fragment_shader = key->fragment_shader_module;
-    desc.color_format = key->color_format;
-    desc.primitive_topology = key->primitive_topology;
-    desc.vertex_stride = key->vertex_stride;
-    desc.attribute_count = key->attribute_count;
     for (index = 0u; index < key->attribute_count; ++index) {
         attributes[index].location = key->attributes[index].location;
         attributes[index].format = key->attributes[index].format;
         attributes[index].offset = key->attributes[index].offset;
     }
 
-    return ringl_backend_create_graphics_pipeline(
-        context, &desc, attributes, key->attribute_count, pipeline_out);
+    if (context->ringpu_ops.create_graphics_pipeline_native != NULL) {
+        RinGLRinGpuGraphicsPipelineNativeV1 desc;
+        uint32_t cull = native_cull_mode(key);
+        uint32_t front = native_front_face(key->front_face);
+
+        if (cull == 0u || front == 0u || key->color_write_mask == 0u)
+            return -1;
+        memset(&desc, 0, sizeof(desc));
+        desc.vertex_shader = key->vertex_shader_module;
+        desc.fragment_shader = key->fragment_shader_module;
+        desc.color_format = key->color_format;
+        desc.primitive_topology = key->primitive_topology;
+        desc.vertex_stride = key->vertex_stride;
+        desc.position_output_location = 0u;
+        desc.color_write_mask = key->color_write_mask;
+        desc.cull_mode = cull;
+        desc.front_face = front;
+        if (key->blend_enabled) {
+            desc.blend_enabled = 1u;
+            desc.source_color_factor = native_blend_factor(key->blend_source_rgb);
+            desc.destination_color_factor =
+                native_blend_factor(key->blend_destination_rgb);
+            desc.color_operation = native_blend_op(key->blend_equation_rgb);
+            desc.source_alpha_factor =
+                native_blend_factor(key->blend_source_alpha);
+            desc.destination_alpha_factor =
+                native_blend_factor(key->blend_destination_alpha);
+            desc.alpha_operation = native_blend_op(key->blend_equation_alpha);
+            if (desc.source_color_factor == 0u ||
+                desc.destination_color_factor == 0u ||
+                desc.color_operation == 0u ||
+                desc.source_alpha_factor == 0u ||
+                desc.destination_alpha_factor == 0u ||
+                desc.alpha_operation == 0u)
+                return -1;
+        }
+        return ringl_backend_create_graphics_pipeline_native(
+            context, &desc, attributes, key->attribute_count,
+            NULL, 0u, pipeline_out);
+    }
+
+    if (key->blend_enabled || key->cull_mode != 0u ||
+        key->front_face != RINGL_CCW ||
+        key->color_write_mask != RINGL_RIN_GPU_COLOR_WRITE_ALL)
+        return -1;
+    {
+        RinGLRinGpuGraphicsPipelineV1 desc;
+        memset(&desc, 0, sizeof(desc));
+        desc.vertex_shader = key->vertex_shader_module;
+        desc.fragment_shader = key->fragment_shader_module;
+        desc.color_format = key->color_format;
+        desc.primitive_topology = key->primitive_topology;
+        desc.vertex_stride = key->vertex_stride;
+        desc.attribute_count = key->attribute_count;
+        return ringl_backend_create_graphics_pipeline(
+            context, &desc, attributes, key->attribute_count, pipeline_out);
+    }
 }
 
 int ringl_pipeline_cache_get_or_create(RinGLContext* context,
@@ -196,10 +299,8 @@ int ringl_pipeline_cache_get_or_create(RinGLContext* context,
         cache->next_evict = (cache->next_evict + 1u) %
                             RINGL_PIPELINE_CACHE_CAPACITY;
         if (cache->entries[target].valid &&
-            cache->entries[target].pipeline != 0u) {
-            ringl_backend_destroy_object(context,
-                                         cache->entries[target].pipeline);
-        }
+            cache->entries[target].pipeline != 0u)
+            ringl_backend_destroy_object(context, cache->entries[target].pipeline);
     }
 
     cache->entries[target].key = *key;
@@ -232,11 +333,8 @@ void ringl_pipeline_cache_destroy(RinGLContext* context)
     if (cache == NULL)
         return;
     for (index = 0u; index < RINGL_PIPELINE_CACHE_CAPACITY; ++index) {
-        if (cache->entries[index].valid &&
-            cache->entries[index].pipeline != 0u) {
-            ringl_backend_destroy_object(context,
-                                         cache->entries[index].pipeline);
-        }
+        if (cache->entries[index].valid && cache->entries[index].pipeline != 0u)
+            ringl_backend_destroy_object(context, cache->entries[index].pipeline);
     }
     free(cache);
     context->pipeline_cache = NULL;
@@ -250,6 +348,10 @@ void ringl_invalidate_graphics_artifacts(RinGLContext* context)
         ringl_backend_destroy_object(context, context->graphics_command_list);
         context->graphics_command_list = 0u;
     }
+    if (context->graphics_bind_group != 0u) {
+        ringl_backend_destroy_object(context, context->graphics_bind_group);
+        context->graphics_bind_group = 0u;
+    }
     ringl_pipeline_cache_destroy(context);
-    ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
+    ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE | RINGL_DIRTY_BINDINGS);
 }

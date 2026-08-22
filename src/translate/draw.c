@@ -4,8 +4,6 @@
 
 #include <string.h>
 
-#define RINGL_NATIVE_INDEX_UINT8 3u
-
 static float clamp_color(float value)
 {
     if (!(value >= 0.0f))
@@ -27,6 +25,24 @@ static int command_ops_ready(const RinGLContext* context)
         context->ringpu_ops.end_render_pass != NULL &&
         context->ringpu_ops.close_command_list != NULL &&
         context->ringpu_ops.queue_submit != NULL;
+}
+
+static int draw_state_supported(const RinGLContext* context)
+{
+    if (context == NULL || !context->has_default_framebuffer)
+        return 0;
+    if (context->scissor_enabled || context->cull_face_enabled ||
+        context->depth_test_enabled || context->blend_enabled ||
+        context->color_write_mask != 0x0fu) {
+        return 0;
+    }
+    if (context->viewport_initialized &&
+        (context->viewport_x != 0 || context->viewport_y != 0 ||
+         context->viewport_width != context->default_framebuffer.width ||
+         context->viewport_height != context->default_framebuffer.height)) {
+        return 0;
+    }
+    return 1;
 }
 
 static int begin_commands(RinGLContext* context, uint64_t* command_list)
@@ -160,7 +176,8 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
         return;
     if (!context->has_default_framebuffer || !command_ops_ready(context) ||
         context->ringpu_ops.draw_vertices == NULL ||
-        context->ringpu_ops.create_graphics_pipeline == NULL) {
+        context->ringpu_ops.create_graphics_pipeline == NULL ||
+        !draw_state_supported(context)) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
@@ -244,7 +261,8 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
         return;
     if (!context->has_default_framebuffer || !command_ops_ready(context) ||
         context->ringpu_ops.draw_indexed == NULL ||
-        context->ringpu_ops.create_graphics_pipeline == NULL) {
+        context->ringpu_ops.create_graphics_pipeline == NULL ||
+        !draw_state_supported(context)) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
@@ -292,7 +310,7 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
     draw.index_buffer = index_buffer->ringpu_handle;
     draw.index_offset = offset;
     if (type == RINGL_UNSIGNED_BYTE)
-        draw.index_format = RINGL_NATIVE_INDEX_UINT8;
+        draw.index_format = RINGL_RIN_GPU_INDEX_UINT8;
     else if (type == RINGL_UNSIGNED_SHORT)
         draw.index_format = RINGL_RIN_GPU_INDEX_UINT16;
     else

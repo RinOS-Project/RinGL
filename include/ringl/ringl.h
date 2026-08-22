@@ -16,6 +16,12 @@ extern "C" {
 #define RINGL_INVALID_VALUE     0x0501u
 #define RINGL_INVALID_OPERATION 0x0502u
 #define RINGL_OUT_OF_MEMORY     0x0505u
+#define RINGL_CONTEXT_LOST_WEBGL 0x9242u
+
+/* RinGPU adapters report this exact status when their device can no longer
+ * execute commands. RinGL converts it to the sticky GL-visible context-loss
+ * state instead of treating it as an ordinary INVALID_OPERATION. */
+#define RINGL_RIN_GPU_ERROR_DEVICE_LOST (-10)
 
 #define RINGL_FALSE 0u
 #define RINGL_TRUE  1u
@@ -612,6 +618,7 @@ void ringl_context_destroy(RinGLContext* context);
 int ringl_make_current(RinGLContext* context);
 RinGLContext* ringl_get_current_context(void);
 uint32_t ringl_get_error(void);
+uint32_t ringl_context_is_lost(const RinGLContext* context);
 uint32_t ringl_context_dirty_bits(const RinGLContext* context);
 void ringl_get_integerv(uint32_t pname, int32_t* values);
 void ringl_enable(uint32_t capability);

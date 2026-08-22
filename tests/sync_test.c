@@ -18,6 +18,8 @@ typedef struct FakeBackend {
     uint32_t readbacks;
     uint32_t failed_readbacks;
     uint32_t fail_next_readback;
+    uint32_t lose_next_readback;
+    uint32_t lose_next_create_buffer;
     uint32_t render_passes;
     uint32_t queue_submits;
     uint32_t destroys;
@@ -28,6 +30,10 @@ static int fake_create_buffer(void* session, uint64_t size_bytes,
 {
     FakeBackend* backend = session;
     (void)size_bytes;
+    if (backend->lose_next_create_buffer != 0u) {
+        backend->lose_next_create_buffer = 0u;
+        return RINGL_RIN_GPU_ERROR_DEVICE_LOST;
+    }
     *buffer_out = ++backend->next_handle;
     return 0;
 }
@@ -180,8 +186,8 @@ static int fake_readback(void* session, uint64_t image,
         10u, 20u, 30u, 255u,
         40u, 50u, 60u, 128u,
     };
-    assert(image == (backend->readbacks < 2u ? 700u : 701u) &&
-           readback != NULL && destination != NULL);
+    assert((image == 700u || image == 701u) && readback != NULL &&
+           destination != NULL);
     assert(readback->x == 1u && readback->y == 2u);
     assert(readback->width == 2u && readback->height == 1u);
     assert(readback->destination_row_pitch_bytes == 8u);
@@ -190,6 +196,11 @@ static int fake_readback(void* session, uint64_t image,
         backend->fail_next_readback = 0u;
         backend->failed_readbacks++;
         return -1;
+    }
+    if (backend->lose_next_readback != 0u) {
+        backend->lose_next_readback = 0u;
+        backend->failed_readbacks++;
+        return RINGL_RIN_GPU_ERROR_DEVICE_LOST;
     }
     memcpy(destination, image == 700u ? expected_bgra : expected_rgba,
            sizeof(expected_bgra));
@@ -250,6 +261,11 @@ int main(void)
     uint32_t source_framebuffer = 0u;
     uint32_t renderbuffer = 0u;
     uint32_t depth_renderbuffer = 0u;
+    uint32_t texture_before_loss;
+    uint32_t submits_before_loss;
+    uint32_t buffer = 0u;
+    const uint8_t buffer_data[4] = {1u, 2u, 3u, 4u};
+    FakeBackend command_loss_backend = {0};
     uint8_t pixels[8] = {0};
     uint8_t fbo_pixels[8] = {0};
     const uint8_t expected_rgba[8] = {
@@ -349,12 +365,40 @@ int main(void)
     assert(memcmp(context->textures[ringl_object_slot_index(copied_texture)].shadow_bytes,
                   expected_rgba, sizeof(expected_rgba)) == 0);
 
-    assert(ringl_context_set_sync_ops(context, NULL) == 0);
-    assert(backend.destroys == 1u); /* fence */
+    ringl_bind_framebuffer(RINGL_FRAMEBUFFER, 0u);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    texture_before_loss =
+        context->bound_texture_2d[context->active_texture_unit];
+    submits_before_loss = backend.submits;
+    backend.lose_next_readback = 1u;
+    ringl_read_pixels(1, 2, 2, 1, RINGL_RGBA, RINGL_UNSIGNED_BYTE, pixels);
+    assert(ringl_context_is_lost(context) == RINGL_TRUE);
+    assert(ringl_get_current_context() == NULL);
+    assert(ringl_get_error() == RINGL_CONTEXT_LOST_WEBGL);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_bind_texture(RINGL_TEXTURE_2D, 0u);
+    assert(context->bound_texture_2d[context->active_texture_unit] ==
+           texture_before_loss);
     ringl_finish();
-    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    assert(backend.submits == submits_before_loss + 1u);
+    assert(ringl_context_set_sync_ops(context, NULL) == -1);
+    assert(ringl_make_current(context) == -1);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
 
     ringl_context_destroy(context);
     assert(backend.destroys == 3u); /* renderbuffer image + command list + fence */
+
+    binding.session = &command_loss_backend;
+    assert(ringl_context_create(&desc, &context) == 0);
+    assert(ringl_make_current(context) == 0);
+    ringl_gen_buffers(1, &buffer);
+    ringl_bind_buffer(RINGL_ARRAY_BUFFER, buffer);
+    command_loss_backend.lose_next_create_buffer = 1u;
+    ringl_buffer_data(RINGL_ARRAY_BUFFER, sizeof(buffer_data), buffer_data,
+                      RINGL_STATIC_DRAW);
+    assert(ringl_context_is_lost(context) == RINGL_TRUE);
+    assert(ringl_get_error() == RINGL_CONTEXT_LOST_WEBGL);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_context_destroy(context);
     return 0;
 }

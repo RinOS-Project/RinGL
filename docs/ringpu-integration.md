@@ -161,6 +161,22 @@ Shader, pipeline, and command callbacks are optional for validation-only context
 
 `ringl_buffer_data()` uses the buffer callbacks transactionally. It creates and optionally uploads replacement storage first; only after both operations succeed does it destroy the previous backing buffer and publish the new storage in GL state. A failed replacement therefore leaves the previous GL buffer storage intact.
 
+## Device loss
+
+`RINGL_RIN_GPU_ERROR_DEVICE_LOST` is the exact result value shared with
+RinGPU's public `RIN_GPU_ERROR_DEVICE_LOST`. RinGL treats that value specially
+from every v1 command callback and from the optional fence/readback callbacks:
+it latches the context as lost, discards any ordinary pending GL error, and
+prevents all subsequent ordinary entry points from accessing or changing the
+context. `ringl_get_error()` then returns `RINGL_CONTEXT_LOST_WEBGL` once and
+returns `RINGL_NO_ERROR` thereafter. `ringl_context_is_lost()` lets a trusted
+embedding observe the latched state without re-enabling GL access.
+
+This is a bounded native-to-RinGL propagation contract. The Ladybird bridge
+does not yet translate it into browser `webglcontextlost`/restoration events or
+recreate an embedding surface, so it is not a browser-facing WebGL context-loss
+implementation claim.
+
 ## Expected ownership
 
 ```text

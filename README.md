@@ -295,6 +295,9 @@ Depth and depth-stencil textures are attachment-only in this slice:
 depth-texture sampling, multisampling, multiple color attachments, and broad
 GLES framebuffer semantics are not implemented.
 
-RinGL is not a GLES conformance claim. Broader shader expressions, device-loss
-handling, and browser-facing context-loss policy also remain unfinished. No API
-or ABI stability guarantee is made yet.
+RinGL is not a GLES conformance claim. An exact backend
+`RINGL_RIN_GPU_ERROR_DEVICE_LOST` now makes the context sticky-lost: ordinary
+entry points stop observing it, `ringl_get_error()` returns
+`CONTEXT_LOST_WEBGL` once, and subsequent calls cannot mutate its GL state.
+Browser `webglcontextlost` dispatch, restoration, and broader shader expressions
+remain unfinished. No API or ABI stability guarantee is made yet.

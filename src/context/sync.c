@@ -28,6 +28,7 @@ int ringl_context_set_sync_ops(RinGLContext* context,
     size_t copy_size;
 
     if (context == NULL || context->magic != RINGL_CONTEXT_MAGIC ||
+        context->lost ||
         !sync_ops_valid(ops))
         return -1;
 
@@ -52,13 +53,16 @@ int ringl_context_set_sync_ops(RinGLContext* context,
 static int ensure_finish_fence(RinGLContext* context)
 {
     uint64_t fence = 0u;
+    int result;
 
     if (context->finish_fence != 0u)
         return 0;
     if (!context->has_sync_ops || context->sync_ops.create_fence == NULL)
         return -1;
-    if (context->sync_ops.create_fence(context->ringpu.session, 0u, &fence) != 0 ||
-        fence == 0u)
+    result = context->sync_ops.create_fence(context->ringpu.session, 0u, &fence);
+    if (result == RINGL_RIN_GPU_ERROR_DEVICE_LOST)
+        ringl_context_mark_lost(context);
+    if (result != 0 || fence == 0u)
         return -1;
     context->finish_fence = fence;
     return 0;
@@ -67,7 +71,7 @@ static int ensure_finish_fence(RinGLContext* context)
 static int prepare_empty_command_list(RinGLContext* context,
                                       uint64_t* command_list_out)
 {
-    if (context == NULL || command_list_out == NULL ||
+    if (context == NULL || context->lost || command_list_out == NULL ||
         !context->has_ringpu_ops || context->ringpu.graphics_queue == 0u)
         return -1;
 
@@ -88,21 +92,31 @@ static int prepare_empty_command_list(RinGLContext* context,
 static int submit_and_wait(RinGLContext* context, uint64_t command_list)
 {
     uint64_t value;
+    int result;
 
-    if (context == NULL || command_list == 0u || !context->has_sync_ops ||
+    if (context == NULL || context->lost || command_list == 0u ||
+        !context->has_sync_ops ||
         context->sync_ops.queue_submit_fenced == NULL ||
         context->sync_ops.wait_fence == NULL || ensure_finish_fence(context) != 0)
         return -1;
     if (context->finish_value == UINT64_MAX)
         return -1;
     value = ++context->finish_value;
-    if (ringl_backend_close_command_list(context, command_list) != 0 ||
-        context->sync_ops.queue_submit_fenced(
-            context->ringpu.session, context->ringpu.graphics_queue,
-            command_list, context->finish_fence, value) != 0 ||
-        context->sync_ops.wait_fence(
-            context->ringpu.session, context->finish_fence, value,
-            RINGL_TIMEOUT_INFINITE) != 0)
+    if (ringl_backend_close_command_list(context, command_list) != 0)
+        return -1;
+    result = context->sync_ops.queue_submit_fenced(
+        context->ringpu.session, context->ringpu.graphics_queue,
+        command_list, context->finish_fence, value);
+    if (result == RINGL_RIN_GPU_ERROR_DEVICE_LOST)
+        ringl_context_mark_lost(context);
+    if (result != 0)
+        return -1;
+    result = context->sync_ops.wait_fence(context->ringpu.session,
+                                          context->finish_fence, value,
+                                          RINGL_TIMEOUT_INFINITE);
+    if (result == RINGL_RIN_GPU_ERROR_DEVICE_LOST)
+        ringl_context_mark_lost(context);
+    if (result != 0)
         return -1;
     return 0;
 }
@@ -148,8 +162,9 @@ int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
     uint64_t total_bytes;
     RinGLColorTarget target;
     uint32_t old_state;
+    int result;
 
-    if (context == NULL)
+    if (context == NULL || context->lost)
         return -1;
     if (width < 0 || height < 0) {
         return -1;
@@ -190,9 +205,13 @@ int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
     readback.width = (uint32_t)width;
     readback.height = (uint32_t)height;
     readback.destination_row_pitch_bytes = row_bytes;
-    if (context->sync_ops.readback_image_2d(
-            context->ringpu.session, target.image,
-            &readback, pixels, total_bytes) != 0) {
+    result = context->sync_ops.readback_image_2d(
+        context->ringpu.session, target.image, &readback, pixels, total_bytes);
+    if (result == RINGL_RIN_GPU_ERROR_DEVICE_LOST) {
+        ringl_context_mark_lost(context);
+        return -1;
+    }
+    if (result != 0) {
         return -1;
     }
 

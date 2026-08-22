@@ -161,6 +161,8 @@ typedef struct RinGLDepthTarget {
 struct RinGLContext {
     uint32_t magic;
     uint32_t pending_error;
+    uint32_t lost;
+    uint32_t loss_reported;
     uint32_t dirty_bits;
     uint32_t flags;
     RinGLRinGpuBindingV1 ringpu;
@@ -245,6 +247,7 @@ struct RinGLContext {
 };
 
 void ringl_context_record_error(RinGLContext* context, uint32_t error);
+void ringl_context_mark_lost(RinGLContext* context);
 void ringl_context_mark_dirty(RinGLContext* context, uint32_t bits);
 void ringl_context_clear_dirty(RinGLContext* context, uint32_t bits);
 void ringl_copy_c_string(char* destination, size_t capacity,

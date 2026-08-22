@@ -173,11 +173,14 @@ int ringl_make_current(RinGLContext* context)
         return -1;
 
     ringl_current_context = context;
-    return 0;
+    return context != NULL && context->lost ? -1 : 0;
 }
 
 RinGLContext* ringl_get_current_context(void)
 {
+    if (!ringl_context_is_valid(ringl_current_context) ||
+        ringl_current_context->lost)
+        return NULL;
     return ringl_current_context;
 }
 
@@ -189,9 +192,23 @@ uint32_t ringl_get_error(void)
     if (!ringl_context_is_valid(context))
         return RINGL_NO_ERROR;
 
+    if (context->lost) {
+        if (context->loss_reported)
+            return RINGL_NO_ERROR;
+        context->loss_reported = 1u;
+        return RINGL_CONTEXT_LOST_WEBGL;
+    }
+
     error = context->pending_error;
     context->pending_error = RINGL_NO_ERROR;
     return error;
+}
+
+uint32_t ringl_context_is_lost(const RinGLContext* context)
+{
+    if (!ringl_context_is_valid(context))
+        return RINGL_FALSE;
+    return context->lost ? RINGL_TRUE : RINGL_FALSE;
 }
 
 uint32_t ringl_context_dirty_bits(const RinGLContext* context)
@@ -203,11 +220,22 @@ uint32_t ringl_context_dirty_bits(const RinGLContext* context)
 
 void ringl_context_record_error(RinGLContext* context, uint32_t error)
 {
-    if (!ringl_context_is_valid(context) || error == RINGL_NO_ERROR)
+    if (!ringl_context_is_valid(context) || context->lost ||
+        error == RINGL_NO_ERROR)
         return;
 
     if (context->pending_error == RINGL_NO_ERROR)
         context->pending_error = error;
+}
+
+void ringl_context_mark_lost(RinGLContext* context)
+{
+    if (!ringl_context_is_valid(context) || context->lost)
+        return;
+
+    context->lost = 1u;
+    context->loss_reported = 0u;
+    context->pending_error = RINGL_NO_ERROR;
 }
 
 void ringl_context_mark_dirty(RinGLContext* context, uint32_t bits)

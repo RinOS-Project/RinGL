@@ -156,7 +156,12 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Implement bounded current-color-framebuffer `RGBA/UNSIGNED_BYTE` `glReadPixels` logic through COPY_SOURCE transition, completion wait, RinGPU image readback, and BGRA-to-RGBA swizzle where required.
 - [x] Add a fake-RinGPU synchronization/readback test covering monotonic fence values, waits, COPY_SOURCE transition, and pixel swizzle.
 - [x] Enable readback on the RinOS WebGL surface color image by creating it with `COPY_SOURCE` usage and `CPU_READABLE` in addition to its existing present/color-target flags; the focused `rin_webgl_ringl_bridge_test` verifies clear, BGRA-to-RGBA readback, and present through the shared surface.
-- [ ] Define device-loss handling and GL-visible failure behavior.
+- [x] Convert the exact RinGPU `RINGL_RIN_GPU_ERROR_DEVICE_LOST` result from
+  every v1 command callback and sync/readback callback into sticky context
+  loss. The current context becomes unavailable to ordinary entry points,
+  `ringl_get_error()` reports `CONTEXT_LOST_WEBGL` once, and later calls do not
+  mutate RinGL state. Focused fake-backend tests cover both a command callback
+  and readback loss; browser event/recovery wiring remains separate work.
 - [ ] Add broader tests for ordering across draws, copies, barriers, flushes, finish, and readbacks.
 
 ## Phase 8 — OpenGL ES compatibility expansion

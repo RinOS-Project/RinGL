@@ -1,6 +1,13 @@
 /* SPDX-License-Identifier: MIT */
 #include "ringl_internal.h"
 
+static int ringl_backend_result(RinGLContext* context, int result)
+{
+    if (result == RINGL_RIN_GPU_ERROR_DEVICE_LOST)
+        ringl_context_mark_lost(context);
+    return result;
+}
+
 int ringl_backend_create_buffer(RinGLContext* context,
                                 uint64_t size_bytes,
                                 uint64_t* buffer_out)
@@ -12,9 +19,9 @@ int ringl_backend_create_buffer(RinGLContext* context,
     }
 
     *buffer_out = 0u;
-    return context->ringpu_ops.create_buffer(context->ringpu.session,
-                                             size_bytes,
-                                             buffer_out);
+    return ringl_backend_result(
+        context, context->ringpu_ops.create_buffer(context->ringpu.session,
+                                                   size_bytes, buffer_out));
 }
 
 int ringl_backend_upload_buffer(RinGLContext* context,
@@ -28,11 +35,10 @@ int ringl_backend_upload_buffer(RinGLContext* context,
         return -1;
     }
 
-    return context->ringpu_ops.upload_buffer(context->ringpu.session,
-                                             buffer,
-                                             offset,
-                                             data,
-                                             size_bytes);
+    return ringl_backend_result(
+        context, context->ringpu_ops.upload_buffer(context->ringpu.session,
+                                                   buffer, offset, data,
+                                                   size_bytes));
 }
 
 int ringl_backend_create_sampled_image_2d(
@@ -46,8 +52,9 @@ int ringl_backend_create_sampled_image_2d(
         return -1;
     }
     *image_out = 0u;
-    return context->ringpu_ops.create_sampled_image_2d(
-        context->ringpu.session, desc, image_out);
+    return ringl_backend_result(
+        context, context->ringpu_ops.create_sampled_image_2d(
+                     context->ringpu.session, desc, image_out));
 }
 
 int ringl_backend_create_image_2d(
@@ -61,8 +68,9 @@ int ringl_backend_create_image_2d(
         return -1;
     }
     *image_out = 0u;
-    return context->ringpu_ops.create_image_2d(context->ringpu.session,
-                                               desc, image_out);
+    return ringl_backend_result(
+        context, context->ringpu_ops.create_image_2d(context->ringpu.session,
+                                                     desc, image_out));
 }
 
 int ringl_backend_upload_image_2d(
@@ -76,8 +84,9 @@ int ringl_backend_upload_image_2d(
         context->ringpu_ops.upload_image_2d == NULL) {
         return -1;
     }
-    return context->ringpu_ops.upload_image_2d(
-        context->ringpu.session, image, upload, data, size_bytes);
+    return ringl_backend_result(
+        context, context->ringpu_ops.upload_image_2d(
+                     context->ringpu.session, image, upload, data, size_bytes));
 }
 
 int ringl_backend_create_sampler(RinGLContext* context,
@@ -89,8 +98,9 @@ int ringl_backend_create_sampler(RinGLContext* context,
         return -1;
     }
     *sampler_out = 0u;
-    return context->ringpu_ops.create_sampler(context->ringpu.session,
-                                              desc, sampler_out);
+    return ringl_backend_result(
+        context, context->ringpu_ops.create_sampler(context->ringpu.session,
+                                                    desc, sampler_out));
 }
 
 int ringl_backend_create_shader_module(RinGLContext* context,
@@ -105,10 +115,10 @@ int ringl_backend_create_shader_module(RinGLContext* context,
     }
 
     *shader_module_out = 0u;
-    return context->ringpu_ops.create_shader_module(context->ringpu.session,
-                                                    rsh1,
-                                                    size_bytes,
-                                                    shader_module_out);
+    return ringl_backend_result(
+        context, context->ringpu_ops.create_shader_module(context->ringpu.session,
+                                                          rsh1, size_bytes,
+                                                          shader_module_out));
 }
 
 int ringl_backend_create_graphics_pipeline(
@@ -127,9 +137,10 @@ int ringl_backend_create_graphics_pipeline(
     }
 
     *pipeline_out = 0u;
-    return context->ringpu_ops.create_graphics_pipeline(
-        context->ringpu.session, desc, attributes, attribute_count,
-        pipeline_out);
+    return ringl_backend_result(
+        context, context->ringpu_ops.create_graphics_pipeline(
+                     context->ringpu.session, desc, attributes, attribute_count,
+                     pipeline_out));
 }
 
 int ringl_backend_create_graphics_pipeline_native(
@@ -149,9 +160,10 @@ int ringl_backend_create_graphics_pipeline_native(
         return -1;
     }
     *pipeline_out = 0u;
-    return context->ringpu_ops.create_graphics_pipeline_native(
-        context->ringpu.session, desc, attributes, attribute_count,
-        varyings, varying_count, pipeline_out);
+    return ringl_backend_result(
+        context, context->ringpu_ops.create_graphics_pipeline_native(
+                     context->ringpu.session, desc, attributes, attribute_count,
+                     varyings, varying_count, pipeline_out));
 }
 
 int ringl_backend_create_command_list(RinGLContext* context,
@@ -164,9 +176,10 @@ int ringl_backend_create_command_list(RinGLContext* context,
         return -1;
     }
     *command_list_out = 0u;
-    return context->ringpu_ops.create_command_list(context->ringpu.session,
-                                                   capabilities,
-                                                   command_list_out);
+    return ringl_backend_result(
+        context, context->ringpu_ops.create_command_list(context->ringpu.session,
+                                                         capabilities,
+                                                         command_list_out));
 }
 
 int ringl_backend_reset_command_list(RinGLContext* context,
@@ -176,8 +189,9 @@ int ringl_backend_reset_command_list(RinGLContext* context,
         context->ringpu_ops.reset_command_list == NULL) {
         return -1;
     }
-    return context->ringpu_ops.reset_command_list(context->ringpu.session,
-                                                  command_list);
+    return ringl_backend_result(
+        context, context->ringpu_ops.reset_command_list(context->ringpu.session,
+                                                        command_list));
 }
 
 int ringl_backend_transition_image(RinGLContext* context,
@@ -191,9 +205,10 @@ int ringl_backend_transition_image(RinGLContext* context,
         context->ringpu_ops.transition_image == NULL) {
         return -1;
     }
-    return context->ringpu_ops.transition_image(context->ringpu.session,
-                                                command_list, image,
-                                                old_state, new_state);
+    return ringl_backend_result(
+        context, context->ringpu_ops.transition_image(context->ringpu.session,
+                                                      command_list, image,
+                                                      old_state, new_state));
 }
 
 int ringl_backend_begin_render_pass(RinGLContext* context,
@@ -205,8 +220,9 @@ int ringl_backend_begin_render_pass(RinGLContext* context,
         context->ringpu_ops.begin_render_pass == NULL) {
         return -1;
     }
-    return context->ringpu_ops.begin_render_pass(context->ringpu.session,
-                                                 command_list, render_pass);
+    return ringl_backend_result(
+        context, context->ringpu_ops.begin_render_pass(context->ringpu.session,
+                                                       command_list, render_pass));
 }
 
 int ringl_backend_begin_render_pass_depth(
@@ -218,8 +234,9 @@ int ringl_backend_begin_render_pass_depth(
         context->ringpu_ops.begin_render_pass_depth == NULL) {
         return -1;
     }
-    return context->ringpu_ops.begin_render_pass_depth(
-        context->ringpu.session, command_list, render_pass);
+    return ringl_backend_result(
+        context, context->ringpu_ops.begin_render_pass_depth(
+                     context->ringpu.session, command_list, render_pass));
 }
 
 int ringl_backend_set_raster_state(RinGLContext* context,
@@ -229,8 +246,9 @@ int ringl_backend_set_raster_state(RinGLContext* context,
     if (context == NULL || command_list == 0u || state == NULL ||
         !context->has_ringpu_ops || context->ringpu_ops.set_raster_state == NULL)
         return -1;
-    return context->ringpu_ops.set_raster_state(context->ringpu.session,
-                                                command_list, state);
+    return ringl_backend_result(
+        context, context->ringpu_ops.set_raster_state(context->ringpu.session,
+                                                      command_list, state));
 }
 
 int ringl_backend_create_graphics_bind_group(
@@ -244,9 +262,10 @@ int ringl_backend_create_graphics_bind_group(
         context->ringpu_ops.create_graphics_bind_group == NULL)
         return -1;
     *bind_group_out = 0u;
-    return context->ringpu_ops.create_graphics_bind_group(
-        context->ringpu.session, pipeline, bindings, binding_count,
-        bind_group_out);
+    return ringl_backend_result(
+        context, context->ringpu_ops.create_graphics_bind_group(
+                     context->ringpu.session, pipeline, bindings, binding_count,
+                     bind_group_out));
 }
 
 int ringl_backend_bind_graphics_resources(RinGLContext* context,
@@ -257,8 +276,9 @@ int ringl_backend_bind_graphics_resources(RinGLContext* context,
         !context->has_ringpu_ops ||
         context->ringpu_ops.bind_graphics_resources == NULL)
         return -1;
-    return context->ringpu_ops.bind_graphics_resources(
-        context->ringpu.session, command_list, bind_group);
+    return ringl_backend_result(
+        context, context->ringpu_ops.bind_graphics_resources(
+                     context->ringpu.session, command_list, bind_group));
 }
 
 int ringl_backend_draw_vertices(RinGLContext* context,
@@ -269,8 +289,9 @@ int ringl_backend_draw_vertices(RinGLContext* context,
         !context->has_ringpu_ops || context->ringpu_ops.draw_vertices == NULL) {
         return -1;
     }
-    return context->ringpu_ops.draw_vertices(context->ringpu.session,
-                                             command_list, draw);
+    return ringl_backend_result(
+        context, context->ringpu_ops.draw_vertices(context->ringpu.session,
+                                                   command_list, draw));
 }
 
 int ringl_backend_draw_indexed(RinGLContext* context,
@@ -281,8 +302,9 @@ int ringl_backend_draw_indexed(RinGLContext* context,
         !context->has_ringpu_ops || context->ringpu_ops.draw_indexed == NULL) {
         return -1;
     }
-    return context->ringpu_ops.draw_indexed(context->ringpu.session,
-                                            command_list, draw);
+    return ringl_backend_result(
+        context, context->ringpu_ops.draw_indexed(context->ringpu.session,
+                                                  command_list, draw));
 }
 
 int ringl_backend_end_render_pass(RinGLContext* context,
@@ -292,8 +314,9 @@ int ringl_backend_end_render_pass(RinGLContext* context,
         context->ringpu_ops.end_render_pass == NULL) {
         return -1;
     }
-    return context->ringpu_ops.end_render_pass(context->ringpu.session,
-                                               command_list);
+    return ringl_backend_result(
+        context, context->ringpu_ops.end_render_pass(context->ringpu.session,
+                                                     command_list));
 }
 
 int ringl_backend_present(RinGLContext* context,
@@ -305,8 +328,9 @@ int ringl_backend_present(RinGLContext* context,
         !context->has_ringpu_ops || context->ringpu_ops.present == NULL) {
         return -1;
     }
-    return context->ringpu_ops.present(context->ringpu.session, command_list,
-                                       image, display_id);
+    return ringl_backend_result(
+        context, context->ringpu_ops.present(context->ringpu.session,
+                                             command_list, image, display_id));
 }
 
 int ringl_backend_close_command_list(RinGLContext* context,
@@ -316,8 +340,9 @@ int ringl_backend_close_command_list(RinGLContext* context,
         context->ringpu_ops.close_command_list == NULL) {
         return -1;
     }
-    return context->ringpu_ops.close_command_list(context->ringpu.session,
-                                                  command_list);
+    return ringl_backend_result(
+        context, context->ringpu_ops.close_command_list(context->ringpu.session,
+                                                        command_list));
 }
 
 int ringl_backend_queue_submit(RinGLContext* context,
@@ -328,8 +353,9 @@ int ringl_backend_queue_submit(RinGLContext* context,
         !context->has_ringpu_ops || context->ringpu_ops.queue_submit == NULL) {
         return -1;
     }
-    return context->ringpu_ops.queue_submit(context->ringpu.session, queue,
-                                            command_list);
+    return ringl_backend_result(
+        context, context->ringpu_ops.queue_submit(context->ringpu.session, queue,
+                                                  command_list));
 }
 
 void ringl_backend_destroy_object(RinGLContext* context, uint64_t object)
@@ -339,5 +365,6 @@ void ringl_backend_destroy_object(RinGLContext* context, uint64_t object)
         return;
     }
 
-    (void)context->ringpu_ops.destroy_object(context->ringpu.session, object);
+    (void)ringl_backend_result(
+        context, context->ringpu_ops.destroy_object(context->ringpu.session, object));
 }

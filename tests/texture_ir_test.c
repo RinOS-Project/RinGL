@@ -49,12 +49,13 @@ int main(void)
         .api_version = RINGL_API_VERSION,
     };
     uint32_t shader;
-    uint8_t blob[512];
+    uint8_t blob[2048];
     uint32_t size;
     uint32_t expected_bits;
     Header header;
     Instruction instructions[15];
     Instruction two_sampler_instructions[25];
+    Instruction three_sampler_instructions[35];
     uint32_t component;
     const char* source =
         "uniform sampler2D colorTexture;\n"
@@ -73,6 +74,32 @@ int main(void)
         "  gl_FragColor = texture2D(secondTexture, vec2(0.25, 0.75)) + "
         "texture2D(firstTexture, vec2(0.5));\n"
         "}\n";
+    const char* three_sampler_source =
+        "uniform sampler2D firstTexture;\n"
+        "uniform sampler2D secondTexture;\n"
+        "uniform sampler2D thirdTexture;\n"
+        "void main() {\n"
+        "  gl_FragColor = texture2D(thirdTexture, vec2(0.25, 0.75)) + "
+        "texture2D(firstTexture, vec2(0.5)) + "
+        "texture2D(secondTexture, vec2(0.125, 0.875));\n"
+        "}\n";
+    const char* repeated_sampler_source =
+        "uniform sampler2D firstTexture;\n"
+        "uniform sampler2D secondTexture;\n"
+        "void main() {\n"
+        "  gl_FragColor = texture2D(firstTexture, vec2(0.25)) + "
+        "texture2D(firstTexture, vec2(0.75));\n"
+        "}\n";
+    const char* eight_sampler_source =
+        "uniform sampler2D s0; uniform sampler2D s1; "
+        "uniform sampler2D s2; uniform sampler2D s3; "
+        "uniform sampler2D s4; uniform sampler2D s5; "
+        "uniform sampler2D s6; uniform sampler2D s7; "
+        "void main() { gl_FragColor = texture2D(s7, vec2(0.7)) + "
+        "texture2D(s6, vec2(0.6)) + texture2D(s5, vec2(0.5)) + "
+        "texture2D(s4, vec2(0.4)) + texture2D(s3, vec2(0.3)) + "
+        "texture2D(s2, vec2(0.2)) + texture2D(s1, vec2(0.1)) + "
+        "texture2D(s0, vec2(0.0)); }";
     float scalar_splat = 0.75f;
 
     assert(ringl_context_create(&desc, &context) == 0);
@@ -159,6 +186,70 @@ int main(void)
         assert(store->opcode == RSH1_STORE_OUTPUT_F32);
         assert(store->source0 == 16u + component);
     }
+
+    /* This profile deliberately does not silently accept repeated sampler
+     * references in place of a missing declared resource. */
+    ringl_shader_source(shader, repeated_sampler_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) != 0);
+
+    ringl_shader_source(shader, three_sampler_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + sizeof(three_sampler_instructions));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    memcpy(three_sampler_instructions, blob + sizeof(header),
+           sizeof(three_sampler_instructions));
+    assert(header.instruction_count == 35u);
+    assert(header.register_count == 30u);
+    assert(header.resource_count == 6u);
+    for (component = 0u; component < 4u; ++component) {
+        const Instruction* third_sample =
+            &three_sampler_instructions[10u + component];
+        const Instruction* first_sample =
+            &three_sampler_instructions[14u + component];
+        const Instruction* second_sample =
+            &three_sampler_instructions[18u + component];
+        const Instruction* first_add =
+            &three_sampler_instructions[22u + component];
+        const Instruction* second_add =
+            &three_sampler_instructions[26u + component];
+        const Instruction* store =
+            &three_sampler_instructions[30u + component];
+
+        assert(third_sample->opcode == RSH1_SAMPLE_IMAGE_2D_F32);
+        assert(third_sample->resource == 4u && third_sample->immediate == 5u);
+        assert(first_sample->opcode == RSH1_SAMPLE_IMAGE_2D_F32);
+        assert(first_sample->resource == 0u && first_sample->immediate == 1u);
+        assert(second_sample->opcode == RSH1_SAMPLE_IMAGE_2D_F32);
+        assert(second_sample->resource == 2u && second_sample->immediate == 3u);
+        assert(first_add->opcode == RSH1_ADD_F32);
+        assert(first_add->source0 == 6u + component);
+        assert(first_add->source1 == 10u + component);
+        assert(second_add->opcode == RSH1_ADD_F32);
+        assert(second_add->source0 == 22u + component);
+        assert(second_add->source1 == 14u + component);
+        assert(store->opcode == RSH1_STORE_OUTPUT_F32);
+        assert(store->source0 == 26u + component);
+    }
+
+    /* The declared eight-sampler maximum remains within both the locally
+     * generated RSH1 bounds and RinGPU's public 256-register limit. */
+    ringl_shader_source(shader, eight_sampler_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 85u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.instruction_count == 85u);
+    assert(header.register_count == 80u);
+    assert(header.resource_count == 16u);
 
     ringl_context_destroy(context);
     return 0;

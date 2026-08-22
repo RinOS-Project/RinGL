@@ -269,16 +269,19 @@ stores that exact Float32 value in both RSH1 texture-coordinate registers, so
 the resource-aware RinGPU surface path samples `(value, value)` rather than
 silently using an arbitrary second coordinate.
 
-A separate bounded fragment profile supports two declared `sampler2D` uniforms
-when each is sampled exactly once at finite constant coordinates and the two
-samples are added for `gl_FragColor`. The lowerer assigns the declaration-ordered
-RSH1 resource pairs `[0, 1]` and `[2, 3]`; RinGL realizes both texture units,
-records transitions for distinct images before the draw, and publishes those
-tracked states only after submission succeeds. The focused RinGL-to-RinGPU-to-
-Aquamarine test verifies direct and indexed draws with red plus green textures
-producing an actual yellow pixel. This is not general multi-texture GLSL:
-repeated samples, arbitrary expressions, nonconstant coordinates, and
-varying-coordinate multi-sampler shaders remain unsupported.
+A bounded fragment profile supports one through eight declared `sampler2D`
+uniforms when each is sampled exactly once at finite constant coordinates and
+the samples form a left-to-right `+` chain for `gl_FragColor`. The lowerer
+assigns declaration-ordered RSH1 image/sampler pairs, regardless of call order,
+and uses at most 85 instructions and 80 registers (within RinGL's 96-register
+ceiling and RinGPU's public 256-register limit). RinGL realizes every selected
+texture unit, records transitions for distinct images before the draw, and
+publishes tracked states only after submission succeeds. The focused
+RinGL-to-RinGPU-to-Aquamarine test verifies direct and indexed draws with a
+reverse-order red + green + blue chain and with all eight samplers (sixteen
+typed resources) producing actual white pixels. This is not general
+multi-texture GLSL: repeated samples, arbitrary expressions, nonconstant
+coordinates, and varying-coordinate multi-sampler shaders remain unsupported.
 
 The initial varying bridge now also executes a bounded vertex-color profile:
 `attribute vec2 position; attribute vec4 color; varying vec4 vertexColor;`

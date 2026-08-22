@@ -16,9 +16,9 @@ The current first-triangle slice supports:
 - constants and simple assignments;
 - one `uniform sampler2D` and one `texture2D()` call with either constant
   `vec2` coordinates or the initial `varying vec2` texture-coordinate path;
-- a separate, constant-coordinate-only two-sampler profile: exactly two
-  declared `sampler2D` uniforms are each sampled once and their results are
-  added for `gl_FragColor`;
+- a separate, constant-coordinate-only multi-sampler profile: one through
+  eight declared `sampler2D` uniforms are each sampled once and their results
+  are added left-to-right for `gl_FragColor`;
 - a matched, perspective-interpolated `varying vec2` between the initial
   vertex and fragment profiles;
 - diagnostics for unsupported syntax instead of silently accepting it.
@@ -44,15 +44,17 @@ void main() {
 
 The normal texture path is intentionally narrow: it accepts exactly one sampler
 and one sample operation, and the varying path recognizes the canonical
-position/UV textured-triangle form. A distinct two-sampler profile accepts only
-two declarations, one finite constant-coordinate sample from each declaration,
-and an exact `texture2D(a, vec2(...)) + texture2D(b, vec2(...))` assignment.
-Its RSH1 resource pairs are declaration ordered (`[0, 1]`, then `[2, 3]`) so a
-sample call may appear in either operand order without changing bindings.
-Repeated sampling, arbitrary sampler counts, nonconstant coordinates in that
-two-sampler form, other arithmetic, vector locals, matrices, other uniform
-types, additional varying types, derivatives, loops, user functions, precision
-edge cases, and broader GLSL ES built-ins remain incremental work.
+position/UV textured-triangle form. A distinct multi-sampler profile accepts
+one through eight declarations, one finite constant-coordinate sample from each
+declaration, and an exact left-to-right `texture2D(a, vec2(...)) + ...`
+assignment. Its RSH1 resource pairs are declaration ordered (`[0, 1]`, then
+`[2, 3]`, and so on) so calls may appear in a different order without changing
+bindings. The profile has a formulaic maximum of 85 instructions and 80
+registers, below RinGL's 96-register ceiling and RinGPU's public 256-register
+limit. Repeated sampling, nonconstant coordinates in this profile, other
+arithmetic, vector locals, matrices, other uniform types, additional varying
+types, derivatives, loops, user functions, precision edge cases, and broader
+GLSL ES built-ins remain incremental work.
 
 ## Vertex input mapping
 

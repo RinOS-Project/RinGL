@@ -8,7 +8,11 @@
 #define RINGL_RSH1_VERSION 1u
 #define RINGL_RSH1_UNUSED UINT16_C(0xffff)
 #define RINGL_RSH1_MAX_INSTRUCTIONS 128u
-#define RINGL_RSH1_MAX_REGISTERS 64u
+/* Eight independently sampled texture uniforms in the bounded fragment
+ * profile need 80 scalar registers (coordinates, RGBA samples, raster
+ * inputs, and the accumulation chain). RinGPU accepts 256, so retain a
+ * compact RinGL-side limit while leaving headroom for that supported path. */
+#define RINGL_RSH1_MAX_REGISTERS 96u
 
 #define RINGL_RSH1_SAMPLE_COMPONENT_RED   0u
 #define RINGL_RSH1_SAMPLE_COMPONENT_GREEN 1u

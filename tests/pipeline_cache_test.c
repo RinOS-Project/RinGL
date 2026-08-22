@@ -125,6 +125,13 @@ int main(void)
     b = a;
     b.blend_enabled = 1u;
     assert(!ringl_pipeline_key_equal(&a, &b));
+    b = a;
+    b.varying_count = 1u;
+    b.varyings[0].vertex_output_location = 4u;
+    b.varyings[0].fragment_input_location = 0u;
+    b.varyings[0].type = 1u;
+    b.varyings[0].interpolation = 1u;
+    assert(!ringl_pipeline_key_equal(&a, &b));
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_pipeline_cache_get_or_create(context, &a, &first) == 0);

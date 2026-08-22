@@ -43,9 +43,6 @@ static int draw_state_supported(const RinGLContext* context)
     if (context->ringpu_ops.create_graphics_pipeline_native == NULL &&
         !legacy_pipeline_state_supported(context))
         return 0;
-    if (context->viewport_initialized &&
-        (context->viewport_x < 0 || context->viewport_y < 0))
-        return 0;
     if (context->ringpu_ops.set_raster_state == NULL) {
         if (context->scissor_enabled)
             return 0;

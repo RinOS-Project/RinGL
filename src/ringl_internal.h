@@ -8,6 +8,7 @@
 
 #define RINGL_CONTEXT_MAGIC 0x52474c43u /* RGLC */
 #define RINGL_NATIVE_VERTEX_FLOAT32 3u
+#define RINGL_SHADER_LOG_MAX 160u
 
 typedef struct RinGLBufferObject {
     uint64_t ringpu_handle;
@@ -20,7 +21,12 @@ typedef struct RinGLShaderObject {
     char* source;
     uint64_t source_length;
     uint32_t shader_type;
+    uint32_t compile_status;
+    uint32_t declaration_count;
+    uint32_t statement_count;
+    uint32_t attribute_count;
     uint32_t reserved0;
+    char info_log[RINGL_SHADER_LOG_MAX];
 } RinGLShaderObject;
 
 typedef struct RinGLVertexAttribState {

@@ -26,11 +26,33 @@ ringpu_upload_buffer()
 published as GL buffer storage
 ```
 
-The callback boundary remains useful because RinGL is a standalone repository and should not hard-wire an OS-Core internal session type into its portable context ABI. The RinOS adapter can directly call the public `ringpu_create_buffer()`, `ringpu_upload_buffer()`, and `ringpu_destroy()` functions.
+The callback boundary remains useful because RinGL is a standalone repository and should not hard-wire an OS-Core internal session type into its portable context ABI.
+
+## OS-Core adapter
+
+OS-Core now contains `src/webengine/rin_ringl_ringpu_adapter.{h,c}`. The adapter owns no RinGPU objects itself. It borrows a `RinGpuCore*` and maps the RinGL v1 operation table directly onto the public RinGPU API.
+
+The first-slice mappings are:
+
+- buffer creation/upload/destruction -> `ringpu_create_buffer()`, `ringpu_upload_buffer()`, `ringpu_destroy()`;
+- shader modules -> `ringpu_create_shader_module()`;
+- vertex graphics pipelines -> `ringpu_create_graphics_pipeline_vertex()`;
+- command lists -> `ringpu_create_command_list()` and `ringpu_command_list_reset()`;
+- image transitions -> `ringpu_command_transition_image()`;
+- render passes -> `ringpu_command_begin_render_pass()` / `ringpu_command_end_render_pass()`;
+- vertex drawing -> `ringpu_command_draw_vertices()`;
+- presentation -> `ringpu_command_present()`;
+- submission -> `ringpu_command_list_close()` and `ringpu_queue_submit()`.
+
+The WebEngine CMake integration is opt-in through `RIN_LADYBIRD_ENABLE_RINGL`; the standalone RinGL source root is supplied with `RIN_RINGL_SOURCE_ROOT`.
+
+OS-Core also contains `rin_webgl_ringl_bridge.{h,c}`. The bridge borrows the existing `RinWebGLRingPUSurfaceContext`, obtains its RinGPU core/graphics queue/color image through a private native view, creates a RinGL context using the adapter, and binds that image as RinGL's default framebuffer. The surface remains the owner of the RinGPU core, queue, image, and caller-provided pixel backing store.
+
+During the initial bridge lifetime RinGL is the exclusive command producer for the borrowed surface. The legacy `rin_webgl_ringpu_surface_clear()` / `present()` helpers must not be interleaved with RinGL commands until shared image-state synchronization is generalized.
 
 ## Shader module validation path
 
-RinGL lowers its current scalar GLSL ES subset to RinShader RSH1 before asking the embedding adapter to create a GPU shader module. The `create_shader_module` adapter should map directly to public `ringpu_create_shader_module()`.
+RinGL lowers its current scalar GLSL ES subset to RinShader RSH1 before asking the embedding adapter to create a GPU shader module. The `create_shader_module` adapter maps directly to public `ringpu_create_shader_module()`.
 
 RinGPU's public shader-module creation path snapshots the supplied RSH1 and calls `ringpu_shader_validate()` before invoking the backend's shader-module creation callback. RinGL therefore reuses the canonical RinShader validator instead of maintaining a second backend-facing validator with subtly different rules.
 
@@ -55,7 +77,7 @@ ringpu_create_shader_module()
 RinGPU backend shader module
 ```
 
-`ringl_realize_shader_module()` is transactional. A newly created RinGPU module replaces the previous module only after creation succeeds. Replacing shader source, recompiling, re-lowering, deleting the shader, or destroying the context invalidates and releases stale realized modules.
+`ringl_realize_shader_module()` is transactional. A newly created RinGPU module replaces the previous module only after creation succeeds. Replacing shader source, recompiling, re-lowering, deleting the shader, or destroying the context invalidates and releases stale realized modules and pipelines that reference them.
 
 ## Graphics pipeline path
 
@@ -67,14 +89,14 @@ Before cache eviction during a draw, RinGL resets its reusable command list. Thi
 
 ## Default framebuffer and command path
 
-The embedding runtime owns the presentable image. It binds or replaces that image with `ringl_set_default_framebuffer()`, supplying the RinGPU image handle, format, dimensions, and display id. RinGL treats a newly supplied image as being in `RIN_GPU_IMAGE_STATE_PRESENT` and tracks subsequent first-slice transitions itself.
+The embedding runtime owns the presentable image. It binds or replaces that image with `ringl_set_default_framebuffer()`, supplying the RinGPU image handle, format, dimensions, and display id. `ringl_set_default_framebuffer_state()` then lets an embedding tell RinGL whether a borrowed image currently starts as `UNDEFINED`, `COLOR_TARGET`, or `PRESENT`. This avoids inventing a PRESENT state for newly-created RinGPU images.
 
 The initial command path intentionally mirrors public RinGPU operations rather than hiding them behind a GL-shaped backend call:
 
 ```text
 ringl_clear()
   reset/create command list
-  PRESENT -> COLOR_TARGET when required
+  current state -> COLOR_TARGET when required
   begin render pass (CLEAR)
   end render pass
   close + queue submit
@@ -83,7 +105,7 @@ ringl_draw_arrays(GL_TRIANGLES)
   reset/create command list
   resolve/validate vertex fetch
   lookup/create graphics pipeline
-  PRESENT -> COLOR_TARGET when required
+  current state -> COLOR_TARGET when required
   begin render pass (LOAD)
   ringpu_command_draw_vertices equivalent
   end render pass
@@ -96,19 +118,13 @@ ringl_present()
   close + queue submit
 ```
 
-The RinOS adapter maps these callbacks to:
-
-- `ringpu_create_command_list()`;
-- `ringpu_command_list_reset()`;
-- `ringpu_command_transition_image()`;
-- `ringpu_command_begin_render_pass()`;
-- `ringpu_command_draw_vertices()`;
-- `ringpu_command_end_render_pass()`;
-- `ringpu_command_present()`;
-- `ringpu_command_list_close()`;
-- `ringpu_queue_submit()`.
-
 RinGL reuses one graphics command list per context. Each new submission resets it before recording, preserving GL ordering while bounding command-list allocation. The context destroys the command list before cached pipelines and shader modules so RinGPU recorded-command references are released in dependency order.
+
+## Current visible-triangle blocker
+
+The public RinGPU command route is now connected in OS-Core, but the current `RinWebGLRingPUSurfaceContext` backend is still a deliberately narrow software presentation backend. Its backend submission implementation handles transitions, render-pass clear/end, and presentation, but does not yet execute `RIN_GPU_BACKEND_COMMAND_DRAW_VERTICES` into the caller-owned pixel surface.
+
+Additionally, RinGL's bootstrap GLSL profile currently exposes scalar `float` vertex I/O only. A standards-shaped visible triangle needs vector position support (or an equivalent multi-slot GLSL lowering) before `gl_Position` can represent a normal clip-space position. The milestone should therefore be completed by extending shader I/O and then teaching the selected RinGPU backend to execute the resulting draw, rather than by special-casing triangle coordinates in the adapter.
 
 ## Host operation table
 

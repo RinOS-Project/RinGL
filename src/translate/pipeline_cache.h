@@ -8,6 +8,7 @@
 
 #define RINGL_NATIVE_PRIMITIVE_TRIANGLE_LIST 1u
 #define RINGL_PIPELINE_CACHE_CAPACITY 32u
+#define RINGL_PIPELINE_MAX_SCALAR_VARYINGS (RINGL_MAX_VARYINGS * 2u)
 
 typedef struct RinGLPipelineKey {
     uint64_t vertex_shader_module;
@@ -16,6 +17,7 @@ typedef struct RinGLPipelineKey {
     uint32_t primitive_topology;
     uint32_t vertex_stride;
     uint32_t attribute_count;
+    uint32_t varying_count;
     uint32_t blend_enabled;
     uint32_t blend_source_rgb;
     uint32_t blend_destination_rgb;
@@ -27,6 +29,7 @@ typedef struct RinGLPipelineKey {
     uint32_t cull_mode;
     uint32_t front_face;
     RinGLResolvedVertexAttribute attributes[RINGL_MAX_VERTEX_ATTRIBS];
+    RinGLRinGpuVaryingV1 varyings[RINGL_PIPELINE_MAX_SCALAR_VARYINGS];
 } RinGLPipelineKey;
 
 int ringl_build_pipeline_key(RinGLContext* context,

@@ -37,6 +37,7 @@ typedef struct RinGLTextureObject {
     uint32_t wrap_s;
     uint32_t wrap_t;
     uint32_t ringpu_image_state;
+    uint32_t requires_color_target;
 } RinGLTextureObject;
 
 typedef struct RinGLFramebufferObject {
@@ -47,10 +48,12 @@ typedef struct RinGLFramebufferObject {
 } RinGLFramebufferObject;
 
 typedef struct RinGLRenderbufferObject {
+    uint64_t ringpu_image;
     uint32_t internal_format;
     uint32_t width;
     uint32_t height;
     uint32_t defined;
+    uint32_t ringpu_image_state;
 } RinGLRenderbufferObject;
 
 typedef struct RinGLShaderObject {
@@ -202,6 +205,9 @@ int ringl_backend_upload_buffer(RinGLContext* context,
 int ringl_backend_create_sampled_image_2d(
     RinGLContext* context, const RinGLRinGpuSampledImage2DV1* desc,
     uint64_t* image_out);
+int ringl_backend_create_image_2d(
+    RinGLContext* context, const RinGLRinGpuImage2DV1* desc,
+    uint64_t* image_out);
 int ringl_backend_upload_image_2d(
     RinGLContext* context, uint64_t image,
     const RinGLRinGpuImageUpload2DV1* upload,
@@ -273,6 +279,21 @@ void ringl_texture_objects_destroy_all(RinGLContext* context);
 void ringl_framebuffer_detach_texture(RinGLContext* context, uint32_t texture);
 void ringl_framebuffer_detach_renderbuffer(RinGLContext* context,
                                            uint32_t renderbuffer);
+void ringl_framebuffer_objects_destroy_all(RinGLContext* context);
+int ringl_renderbuffer_realize_color_target(RinGLContext* context,
+                                            uint32_t renderbuffer,
+                                            uint64_t* image_out,
+                                            uint32_t** image_state_out,
+                                            uint32_t* width_out,
+                                            uint32_t* height_out);
+int ringl_texture_require_color_target(RinGLContext* context,
+                                       uint32_t texture);
+int ringl_texture_realize_color_target(RinGLContext* context,
+                                       uint32_t texture,
+                                       uint64_t* image_out,
+                                       uint32_t** image_state_out,
+                                       uint32_t* width_out,
+                                       uint32_t* height_out);
 int ringl_texture_realize_unit(RinGLContext* context, uint32_t unit,
                                uint64_t* image_out, uint64_t* sampler_out);
 void ringl_shader_objects_destroy_all(RinGLContext* context);

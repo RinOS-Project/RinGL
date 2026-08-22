@@ -50,6 +50,21 @@ int ringl_backend_create_sampled_image_2d(
         context->ringpu.session, desc, image_out);
 }
 
+int ringl_backend_create_image_2d(
+    RinGLContext* context, const RinGLRinGpuImage2DV1* desc,
+    uint64_t* image_out)
+{
+    if (context == NULL || desc == NULL || image_out == NULL ||
+        desc->width == 0u || desc->height == 0u || desc->format == 0u ||
+        desc->usage == 0u || !context->has_ringpu_ops ||
+        context->ringpu_ops.create_image_2d == NULL) {
+        return -1;
+    }
+    *image_out = 0u;
+    return context->ringpu_ops.create_image_2d(context->ringpu.session,
+                                               desc, image_out);
+}
+
 int ringl_backend_upload_image_2d(
     RinGLContext* context, uint64_t image,
     const RinGLRinGpuImageUpload2DV1* upload,

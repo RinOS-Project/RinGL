@@ -14,6 +14,65 @@ static float clamp_color(float value)
     return value;
 }
 
+typedef struct RinGLColorTarget {
+    uint64_t image;
+    uint32_t format;
+    uint32_t width;
+    uint32_t height;
+    uint32_t* state;
+} RinGLColorTarget;
+
+static int resolve_color_target(RinGLContext* context,
+                                RinGLColorTarget* target)
+{
+    RinGLFramebufferObject* framebuffer;
+    uint32_t index;
+
+    if (context == NULL || target == NULL)
+        return -1;
+    memset(target, 0, sizeof(*target));
+    if (context->framebuffer_binding == 0u) {
+        if (!context->has_default_framebuffer)
+            return -1;
+        target->image = context->default_framebuffer.color_target;
+        target->format = context->default_framebuffer.color_format;
+        target->width = context->default_framebuffer.width;
+        target->height = context->default_framebuffer.height;
+        target->state = &context->default_framebuffer_state;
+        return target->image != 0u && target->format != 0u &&
+               target->width != 0u && target->height != 0u ? 0 : -1;
+    }
+    if (ringl_object_lookup(context, context->framebuffer_binding,
+                            RINGL_OBJECT_FRAMEBUFFER) == NULL)
+        return -1;
+    index = ringl_object_slot_index(context->framebuffer_binding);
+    if (index >= RINGL_OBJECT_SLOT_COUNT)
+        return -1;
+    framebuffer = &context->framebuffers[index];
+    if (framebuffer->color_attachment_kind ==
+        RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D) {
+        if (ringl_texture_realize_color_target(
+                context, framebuffer->color_attachment_object,
+                &target->image, &target->state, &target->width,
+                &target->height) != 0) {
+            return -1;
+        }
+    } else if (framebuffer->color_attachment_kind ==
+               RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER) {
+        if (ringl_renderbuffer_realize_color_target(
+                context, framebuffer->color_attachment_object,
+                &target->image, &target->state, &target->width,
+                &target->height) != 0) {
+            return -1;
+        }
+    } else {
+        return -1;
+    }
+    target->format = RINGL_RIN_GPU_FORMAT_RGBA8_UNORM;
+    return target->image != 0u && target->state != NULL &&
+           target->width != 0u && target->height != 0u ? 0 : -1;
+}
+
 static int command_ops_ready(const RinGLContext* context)
 {
     return context != NULL && context->has_ringpu_ops &&
@@ -35,9 +94,11 @@ static int legacy_pipeline_state_supported(const RinGLContext* context)
         context->color_write_mask == RINGL_RIN_GPU_COLOR_WRITE_ALL;
 }
 
-static int draw_state_supported(const RinGLContext* context)
+static int draw_state_supported(const RinGLContext* context,
+                                const RinGLColorTarget* target)
 {
-    if (context == NULL || !context->has_default_framebuffer ||
+    if (context == NULL || target == NULL || target->image == 0u ||
+        target->width == 0u || target->height == 0u ||
         context->depth_test_enabled)
         return 0;
     if (context->ringpu_ops.create_graphics_pipeline_native == NULL &&
@@ -48,8 +109,8 @@ static int draw_state_supported(const RinGLContext* context)
             return 0;
         if (context->viewport_initialized &&
             (context->viewport_x != 0 || context->viewport_y != 0 ||
-             context->viewport_width != context->default_framebuffer.width ||
-             context->viewport_height != context->default_framebuffer.height))
+             context->viewport_width != target->width ||
+             context->viewport_height != target->height))
             return 0;
     }
     return 1;
@@ -111,26 +172,32 @@ static int submit_commands(RinGLContext* context, uint64_t command_list)
 }
 
 static int transition_to_color_target(RinGLContext* context,
-                                      uint64_t command_list)
+                                      uint64_t command_list,
+                                      RinGLColorTarget* target)
 {
-    if (context->default_framebuffer_state == RINGL_RIN_GPU_IMAGE_COLOR_TARGET)
+    if (context == NULL || target == NULL || target->state == NULL)
+        return -1;
+    if (*target->state == RINGL_RIN_GPU_IMAGE_COLOR_TARGET)
         return 0;
-    if (context->default_framebuffer_state == 0u)
+    if (*target->state == RINGL_RIN_GPU_IMAGE_UNDEFINED &&
+        context->framebuffer_binding == 0u)
         return -1;
     return ringl_backend_transition_image(
-        context, command_list, context->default_framebuffer.color_target,
-        context->default_framebuffer_state,
+        context, command_list, target->image, *target->state,
         RINGL_RIN_GPU_IMAGE_COLOR_TARGET);
 }
 
 static int begin_color_pass(RinGLContext* context,
                             uint64_t command_list,
+                            const RinGLColorTarget* target,
                             uint32_t load_op)
 {
     RinGLRinGpuRenderPassV1 render_pass;
 
+    if (target == NULL || target->image == 0u)
+        return -1;
     memset(&render_pass, 0, sizeof(render_pass));
-    render_pass.color_target = context->default_framebuffer.color_target;
+    render_pass.color_target = target->image;
     render_pass.load_op = load_op;
     render_pass.store_op = RINGL_RIN_GPU_RENDER_STORE;
     render_pass.clear_red = clamp_color(context->clear_red);
@@ -140,7 +207,8 @@ static int begin_color_pass(RinGLContext* context,
     return ringl_backend_begin_render_pass(context, command_list, &render_pass);
 }
 
-static int set_raster_state(RinGLContext* context, uint64_t command_list)
+static int set_raster_state(RinGLContext* context, uint64_t command_list,
+                            const RinGLColorTarget* target)
 {
     RinGLRinGpuRasterStateV1 state;
     int64_t x0;
@@ -148,7 +216,8 @@ static int set_raster_state(RinGLContext* context, uint64_t command_list)
     int64_t x1;
     int64_t y1;
 
-    if (context->ringpu_ops.set_raster_state == NULL)
+    if (context == NULL || target == NULL ||
+        context->ringpu_ops.set_raster_state == NULL)
         return 0;
 
     memset(&state, 0, sizeof(state));
@@ -172,14 +241,14 @@ static int set_raster_state(RinGLContext* context, uint64_t command_list)
             x1 = 0;
         if (y1 < 0)
             y1 = 0;
-        if (x0 > (int64_t)context->default_framebuffer.width)
-            x0 = context->default_framebuffer.width;
-        if (y0 > (int64_t)context->default_framebuffer.height)
-            y0 = context->default_framebuffer.height;
-        if (x1 > (int64_t)context->default_framebuffer.width)
-            x1 = context->default_framebuffer.width;
-        if (y1 > (int64_t)context->default_framebuffer.height)
-            y1 = context->default_framebuffer.height;
+        if (x0 > (int64_t)target->width)
+            x0 = target->width;
+        if (y0 > (int64_t)target->height)
+            y0 = target->height;
+        if (x1 > (int64_t)target->width)
+            x1 = target->width;
+        if (y1 > (int64_t)target->height)
+            y1 = target->height;
         if (x1 < x0)
             x1 = x0;
         if (y1 < y0)
@@ -210,6 +279,7 @@ static RinGLProgramObject* current_program(RinGLContext* context)
 static int prepare_graphics_resources(RinGLContext* context,
                                       uint64_t command_list,
                                       uint64_t pipeline,
+                                      uint64_t color_target,
                                       uint32_t* texture_index_out,
                                       uint32_t* transitioned_out)
 {
@@ -251,6 +321,8 @@ static int prepare_graphics_resources(RinGLContext* context,
 
     if (ringl_texture_realize_unit(context, (uint32_t)unit, &image, &sampler) != 0 ||
         image == 0u || sampler == 0u)
+        return -1;
+    if (image == color_target)
         return -1;
     if (texture->ringpu_image_state != RINGL_RIN_GPU_IMAGE_SHADER_READ) {
         if (ringl_backend_transition_image(context, command_list, image,
@@ -316,6 +388,7 @@ void ringl_clear_color(float red, float green, float blue, float alpha)
 void ringl_clear(uint32_t mask)
 {
     RinGLContext* context = ringl_get_current_context();
+    RinGLColorTarget target;
     uint64_t command_list;
 
     if (context == NULL || mask == 0u)
@@ -324,19 +397,21 @@ void ringl_clear(uint32_t mask)
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
-    if (!context->has_default_framebuffer || !command_ops_ready(context)) {
+    if (!command_ops_ready(context) ||
+        resolve_color_target(context, &target) != 0) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
     if (begin_commands(context, &command_list) != 0 ||
-        transition_to_color_target(context, command_list) != 0 ||
-        begin_color_pass(context, command_list, RINGL_RIN_GPU_RENDER_CLEAR) != 0 ||
+        transition_to_color_target(context, command_list, &target) != 0 ||
+        begin_color_pass(context, command_list, &target,
+                         RINGL_RIN_GPU_RENDER_CLEAR) != 0 ||
         ringl_backend_end_render_pass(context, command_list) != 0 ||
         submit_commands(context, command_list) != 0) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
-    context->default_framebuffer_state = RINGL_RIN_GPU_IMAGE_COLOR_TARGET;
+    *target.state = RINGL_RIN_GPU_IMAGE_COLOR_TARGET;
     ringl_context_clear_dirty(context, RINGL_DIRTY_FRAMEBUFFER);
 }
 
@@ -346,6 +421,7 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
     RinGLResolvedVertexLayout layout;
     RinGLBufferObject* vertex_buffer;
     RinGLRinGpuDrawVerticesV1 draw;
+    RinGLColorTarget target;
     uint64_t command_list;
     uint64_t pipeline;
     uint32_t buffer_index;
@@ -364,11 +440,12 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
     }
     if (count == 0 || draw_is_noop(context))
         return;
-    if (!context->has_default_framebuffer || !command_ops_ready(context) ||
+    if (!command_ops_ready(context) ||
+        resolve_color_target(context, &target) != 0 ||
         context->ringpu_ops.draw_vertices == NULL ||
         (context->ringpu_ops.create_graphics_pipeline == NULL &&
          context->ringpu_ops.create_graphics_pipeline_native == NULL) ||
-        !draw_state_supported(context)) {
+        !draw_state_supported(context, &target)) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
@@ -391,14 +468,15 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
 
     if (begin_commands(context, &command_list) != 0 ||
         ringl_get_or_create_graphics_pipeline(
-            context, context->default_framebuffer.color_format, &pipeline) != 0 ||
+            context, target.format, &pipeline) != 0 ||
         pipeline == 0u ||
-        prepare_graphics_resources(context, command_list, pipeline,
+        prepare_graphics_resources(context, command_list, pipeline, target.image,
                                    &texture_index,
                                    &texture_transitioned) != 0 ||
-        transition_to_color_target(context, command_list) != 0 ||
-        begin_color_pass(context, command_list, RINGL_RIN_GPU_RENDER_LOAD) != 0 ||
-        set_raster_state(context, command_list) != 0 ||
+        transition_to_color_target(context, command_list, &target) != 0 ||
+        begin_color_pass(context, command_list, &target,
+                         RINGL_RIN_GPU_RENDER_LOAD) != 0 ||
+        set_raster_state(context, command_list, &target) != 0 ||
         bind_graphics_resources(context, command_list) != 0) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
@@ -406,7 +484,7 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
 
     memset(&draw, 0, sizeof(draw));
     draw.pipeline = pipeline;
-    draw.color_target = context->default_framebuffer.color_target;
+    draw.color_target = target.image;
     draw.vertex_buffer = vertex_buffer->ringpu_handle;
     draw.vertex_count = (uint32_t)count;
     draw.first_vertex = (uint32_t)first;
@@ -418,7 +496,7 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
         return;
     }
     publish_texture_transition(context, texture_index, texture_transitioned);
-    context->default_framebuffer_state = RINGL_RIN_GPU_IMAGE_COLOR_TARGET;
+    *target.state = RINGL_RIN_GPU_IMAGE_COLOR_TARGET;
     ringl_context_clear_dirty(context, RINGL_DIRTY_PIPELINE |
                                        RINGL_DIRTY_BINDINGS |
                                        RINGL_DIRTY_FRAMEBUFFER |
@@ -433,6 +511,7 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
     RinGLBufferObject* vertex_buffer;
     RinGLBufferObject* index_buffer;
     RinGLRinGpuDrawIndexedV1 draw;
+    RinGLColorTarget target;
     uint64_t command_list;
     uint64_t pipeline;
     uint32_t max_index;
@@ -459,11 +538,12 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
     }
     if (count == 0 || draw_is_noop(context))
         return;
-    if (!context->has_default_framebuffer || !command_ops_ready(context) ||
+    if (!command_ops_ready(context) ||
+        resolve_color_target(context, &target) != 0 ||
         context->ringpu_ops.draw_indexed == NULL ||
         (context->ringpu_ops.create_graphics_pipeline == NULL &&
          context->ringpu_ops.create_graphics_pipeline_native == NULL) ||
-        !draw_state_supported(context)) {
+        !draw_state_supported(context, &target)) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
@@ -496,14 +576,15 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
 
     if (begin_commands(context, &command_list) != 0 ||
         ringl_get_or_create_graphics_pipeline(
-            context, context->default_framebuffer.color_format, &pipeline) != 0 ||
+            context, target.format, &pipeline) != 0 ||
         pipeline == 0u ||
-        prepare_graphics_resources(context, command_list, pipeline,
+        prepare_graphics_resources(context, command_list, pipeline, target.image,
                                    &texture_index,
                                    &texture_transitioned) != 0 ||
-        transition_to_color_target(context, command_list) != 0 ||
-        begin_color_pass(context, command_list, RINGL_RIN_GPU_RENDER_LOAD) != 0 ||
-        set_raster_state(context, command_list) != 0 ||
+        transition_to_color_target(context, command_list, &target) != 0 ||
+        begin_color_pass(context, command_list, &target,
+                         RINGL_RIN_GPU_RENDER_LOAD) != 0 ||
+        set_raster_state(context, command_list, &target) != 0 ||
         bind_graphics_resources(context, command_list) != 0) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
@@ -511,7 +592,7 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
 
     memset(&draw, 0, sizeof(draw));
     draw.pipeline = pipeline;
-    draw.color_target = context->default_framebuffer.color_target;
+    draw.color_target = target.image;
     draw.vertex_buffer = vertex_buffer->ringpu_handle;
     draw.index_buffer = index_buffer->ringpu_handle;
     draw.index_offset = offset;
@@ -532,7 +613,7 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
     }
 
     publish_texture_transition(context, texture_index, texture_transitioned);
-    context->default_framebuffer_state = RINGL_RIN_GPU_IMAGE_COLOR_TARGET;
+    *target.state = RINGL_RIN_GPU_IMAGE_COLOR_TARGET;
     ringl_context_clear_dirty(context, RINGL_DIRTY_PIPELINE |
                                        RINGL_DIRTY_BINDINGS |
                                        RINGL_DIRTY_FRAMEBUFFER |

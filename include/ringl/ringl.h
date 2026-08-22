@@ -90,7 +90,7 @@ extern "C" {
 #define RINGL_TEXTURE_2D 0x0de1u
 #define RINGL_TEXTURE0   0x84c0u
 #define RINGL_RGBA       0x1908u
-#define RINGL_RGBA4      0x8056u
+#define RINGL_RGBA8      0x8058u
 #define RINGL_TEXTURE_MAG_FILTER 0x2800u
 #define RINGL_TEXTURE_MIN_FILTER 0x2801u
 #define RINGL_TEXTURE_WRAP_S     0x2802u
@@ -112,6 +112,9 @@ extern "C" {
 #define RINGL_FRAMEBUFFER_BINDING   0x8ca6u
 #define RINGL_RENDERBUFFER_BINDING  0x8ca7u
 #define RINGL_COLOR_ATTACHMENT0     0x8ce0u
+#define RINGL_FRAMEBUFFER_COMPLETE              0x8cd5u
+#define RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT 0x8cd6u
+#define RINGL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT 0x8cd7u
 
 #define RINGL_FRAMEBUFFER_ATTACHMENT_NONE          0u
 #define RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D    1u
@@ -140,6 +143,9 @@ extern "C" {
 #define RINGL_RIN_GPU_INDEX_UINT32         2u
 #define RINGL_RIN_GPU_INDEX_UINT8          3u
 #define RINGL_RIN_GPU_FORMAT_RGBA8_UNORM   2u
+#define RINGL_RIN_GPU_IMAGE_USAGE_COPY_DESTINATION 0x1u
+#define RINGL_RIN_GPU_IMAGE_USAGE_SAMPLED          0x2u
+#define RINGL_RIN_GPU_IMAGE_USAGE_COLOR_TARGET     0x4u
 #define RINGL_RIN_GPU_SAMPLER_NEAREST      1u
 #define RINGL_RIN_GPU_SAMPLER_LINEAR       2u
 #define RINGL_RIN_GPU_ADDRESS_CLAMP        1u
@@ -289,6 +295,13 @@ typedef struct RinGLRinGpuSampledImage2DV1 {
     uint32_t reserved0;
 } RinGLRinGpuSampledImage2DV1;
 
+typedef struct RinGLRinGpuImage2DV1 {
+    uint32_t width;
+    uint32_t height;
+    uint32_t format;
+    uint32_t usage;
+} RinGLRinGpuImage2DV1;
+
 typedef struct RinGLRinGpuImageUpload2DV1 {
     uint32_t x;
     uint32_t y;
@@ -375,6 +388,9 @@ typedef int (*RinGLRinGpuQueueSubmitFn)(void* session,
 typedef int (*RinGLRinGpuCreateSampledImage2DFn)(
     void* session, const RinGLRinGpuSampledImage2DV1* desc,
     uint64_t* image_out);
+typedef int (*RinGLRinGpuCreateImage2DFn)(
+    void* session, const RinGLRinGpuImage2DV1* desc,
+    uint64_t* image_out);
 typedef int (*RinGLRinGpuUploadImage2DFn)(
     void* session, uint64_t image, const RinGLRinGpuImageUpload2DV1* upload,
     const void* data, uint64_t size_bytes);
@@ -406,6 +422,7 @@ typedef struct RinGLRinGpuOpsV1 {
     RinGLRinGpuSetRasterStateFn set_raster_state;
     RinGLRinGpuCreateGraphicsBindGroupFn create_graphics_bind_group;
     RinGLRinGpuBindGraphicsResourcesFn bind_graphics_resources;
+    RinGLRinGpuCreateImage2DFn create_image_2d;
 } RinGLRinGpuOpsV1;
 
 typedef struct RinGLRinGpuBindingV1 {
@@ -540,6 +557,7 @@ void ringl_framebuffer_texture_2d(uint32_t target, uint32_t attachment,
                                   int32_t level);
 int ringl_get_framebuffer_color_attachment(
     RinGLFramebufferAttachmentInfoV1* attachment);
+uint32_t ringl_check_framebuffer_status(uint32_t target);
 
 void ringl_gen_renderbuffers(int32_t count, uint32_t* renderbuffers);
 void ringl_delete_renderbuffers(int32_t count,

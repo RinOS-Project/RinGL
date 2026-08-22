@@ -30,6 +30,14 @@ framebuffer_objects_test = executable(
 
 test('framebuffer-objects', framebuffer_objects_test)
 
+framebuffer_gpu_test = executable(
+  'ringl-framebuffer-gpu-test',
+  'framebuffer_gpu_test.c',
+  dependencies: ringl_dep,
+)
+
+test('framebuffer-gpu', framebuffer_gpu_test)
+
 buffer_test = executable(
   'ringl-buffer-test',
   'buffer_test.c',

@@ -18,6 +18,7 @@ typedef enum TokenKind {
     TOK_SAMPLER2D,
     TOK_ATTRIBUTE,
     TOK_UNIFORM,
+    TOK_VARYING,
     TOK_LPAREN,
     TOK_RPAREN,
     TOK_LBRACE,
@@ -36,6 +37,7 @@ typedef enum SymbolKind {
     SYMBOL_VALUE = 0,
     SYMBOL_ATTRIBUTE = 1,
     SYMBOL_SAMPLER2D = 2,
+    SYMBOL_VARYING = 3,
 } SymbolKind;
 
 typedef struct Token {
@@ -121,6 +123,8 @@ static TokenKind keyword_kind(const char* begin, size_t length)
         return TOK_ATTRIBUTE;
     if (length == 7u && memcmp(begin, "uniform", 7u) == 0)
         return TOK_UNIFORM;
+    if (length == 7u && memcmp(begin, "varying", 7u) == 0)
+        return TOK_VARYING;
     return TOK_IDENT;
 }
 
@@ -292,7 +296,7 @@ static int texture2d_call(Parser* parser)
         fail(parser, "texture2D is only supported in fragment shaders");
         return 0;
     }
-    next_token(parser); /* consume texture2D */
+    next_token(parser);
     if (!expect(parser, TOK_LPAREN, "expected '(' after texture2D"))
         return 0;
     if (parser->token.kind != TOK_IDENT) {
@@ -309,15 +313,21 @@ static int texture2d_call(Parser* parser)
     if (!expect(parser, TOK_COMMA, "expected ',' after texture2D sampler"))
         return 0;
 
-    /* The current fragment profile has no varying/local vec2 declarations yet,
-     * so require a vec2 constructor here. This is deliberately strict rather
-     * than accepting an untyped expression that the RSH1 lowerer cannot prove. */
-    if (parser->token.kind != TOK_VEC2) {
+    if (parser->token.kind == TOK_VEC2) {
+        if (!constructor(parser, TOK_VEC2))
+            return 0;
+    } else if (parser->token.kind == TOK_IDENT) {
+        Symbol* coordinate = find_symbol(parser, &parser->token);
+        if (coordinate == NULL || coordinate->kind != SYMBOL_VARYING ||
+            coordinate->width != 2u) {
+            fail(parser, "texture2D coordinate must be vec2");
+            return 0;
+        }
+        next_token(parser);
+    } else {
         fail(parser, "texture2D coordinate must be vec2");
         return 0;
     }
-    if (!constructor(parser, TOK_VEC2))
-        return 0;
     return expect(parser, TOK_RPAREN, "expected ')' after texture2D arguments");
 }
 
@@ -406,6 +416,11 @@ static int assignment(Parser* parser)
         }
         if (symbol->kind == SYMBOL_SAMPLER2D) {
             fail(parser, "sampler uniforms are read-only");
+            return 0;
+        }
+        if (symbol->kind == SYMBOL_VARYING &&
+            parser->shader_type != RINGL_VERTEX_SHADER) {
+            fail(parser, "varyings are read-only in fragment shaders");
             return 0;
         }
     }
@@ -534,6 +549,39 @@ static int uniform_declaration(Parser* parser)
     return 1;
 }
 
+static int varying_declaration(Parser* parser)
+{
+    Token name;
+    uint32_t index;
+
+    next_token(parser);
+    if (parser->token.kind != TOK_VEC2) {
+        fail(parser, "only 'varying vec2' is supported");
+        return 0;
+    }
+    next_token(parser);
+    if (parser->token.kind != TOK_IDENT) {
+        fail(parser, "expected varying identifier");
+        return 0;
+    }
+    name = parser->token;
+    if (!add_symbol(parser, &name, SYMBOL_VARYING, 2u))
+        return 0;
+    if (parser->result->varying_count >= RINGL_GLSL_MAX_VARYINGS) {
+        fail(parser, "too many varyings");
+        return 0;
+    }
+    index = parser->result->varying_count++;
+    memcpy(parser->result->varying_names[index], name.begin, name.length);
+    parser->result->varying_names[index][name.length] = '\0';
+    parser->result->varying_widths[index] = 2u;
+    next_token(parser);
+    if (!expect(parser, TOK_SEMI, "expected ';' after varying"))
+        return 0;
+    parser->result->declaration_count++;
+    return 1;
+}
+
 int ringl_glsl_parse(uint32_t shader_type,
                      const char* source,
                      size_t source_length,
@@ -558,6 +606,9 @@ int ringl_glsl_parse(uint32_t shader_type,
                 break;
         } else if (parser.token.kind == TOK_UNIFORM) {
             if (!uniform_declaration(&parser))
+                break;
+        } else if (parser.token.kind == TOK_VARYING) {
+            if (!varying_declaration(&parser))
                 break;
         } else if (parser.token.kind == TOK_VOID) {
             if (!main_function(&parser))

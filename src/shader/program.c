@@ -133,6 +133,19 @@ void ringl_attach_shader(uint32_t program, uint32_t shader)
     ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
 }
 
+static int ringl_program_prepare_gpu_shader(RinGLContext* context,
+                                            uint32_t shader,
+                                            RinGLShaderObject* object)
+{
+    if (context->ringpu_ops.create_shader_module == NULL)
+        return 1;
+    if (object->rsh1_size == 0u && ringl_lower_shader_rsh1(shader) != 0)
+        return 0;
+    if (object->ringpu_module == 0u && ringl_realize_shader_module(shader) != 0)
+        return 0;
+    return object->ringpu_module != 0u;
+}
+
 void ringl_link_program(uint32_t program)
 {
     RinGLContext* context = ringl_get_current_context();
@@ -150,7 +163,8 @@ void ringl_link_program(uint32_t program)
 
     object->link_status = RINGL_FALSE;
     if (object->vertex_shader == 0u || object->fragment_shader == 0u) {
-        ringl_program_set_log(object, "vertex and fragment shaders are required");
+        ringl_program_set_log(object,
+                              "vertex and fragment shaders are required");
         return;
     }
     vertex = ringl_program_shader(context, object->vertex_shader);
@@ -160,8 +174,25 @@ void ringl_link_program(uint32_t program)
         return;
     }
     if (!vertex->compile_status || !fragment->compile_status) {
-        ringl_program_set_log(object, "all attached shaders must compile successfully");
+        ringl_program_set_log(
+            object, "all attached shaders must compile successfully");
         return;
+    }
+
+    if (context->has_ringpu_ops &&
+        context->ringpu_ops.create_shader_module != NULL) {
+        if (!ringl_program_prepare_gpu_shader(context, object->vertex_shader,
+                                              vertex)) {
+            ringl_program_set_log(object,
+                                  "vertex shader failed RinGPU validation");
+            return;
+        }
+        if (!ringl_program_prepare_gpu_shader(context, object->fragment_shader,
+                                              fragment)) {
+            ringl_program_set_log(object,
+                                  "fragment shader failed RinGPU validation");
+            return;
+        }
     }
 
     object->link_status = RINGL_TRUE;

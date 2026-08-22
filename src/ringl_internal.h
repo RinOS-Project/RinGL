@@ -16,6 +16,13 @@ typedef struct RinGLBufferObject {
     uint32_t reserved0;
 } RinGLBufferObject;
 
+typedef struct RinGLShaderObject {
+    char* source;
+    uint64_t source_length;
+    uint32_t shader_type;
+    uint32_t reserved0;
+} RinGLShaderObject;
+
 typedef struct RinGLVertexAttribState {
     uint32_t enabled;
     uint32_t size;
@@ -51,6 +58,7 @@ struct RinGLContext {
 
     RinGLObjectSlot objects[RINGL_OBJECT_SLOT_COUNT];
     RinGLBufferObject buffers[RINGL_OBJECT_SLOT_COUNT];
+    RinGLShaderObject shaders[RINGL_OBJECT_SLOT_COUNT];
     uint32_t array_buffer;
     uint32_t element_array_buffer;
     RinGLVertexAttribState vertex_attribs[RINGL_MAX_VERTEX_ATTRIBS];
@@ -70,6 +78,7 @@ int ringl_backend_upload_buffer(RinGLContext* context,
                                 uint64_t size_bytes);
 void ringl_backend_destroy_object(RinGLContext* context, uint64_t object);
 void ringl_buffer_objects_destroy_all(RinGLContext* context);
+void ringl_shader_objects_destroy_all(RinGLContext* context);
 void ringl_vertex_attrib_detach_buffer(RinGLContext* context, uint32_t buffer);
 int ringl_resolve_vertex_layout(const RinGLContext* context,
                                 RinGLResolvedVertexLayout* layout);

@@ -9,6 +9,7 @@ struct RinGLContext;
 typedef enum RinGLObjectType {
     RINGL_OBJECT_NONE = 0,
     RINGL_OBJECT_BUFFER = 1,
+    RINGL_OBJECT_SHADER = 2,
 } RinGLObjectType;
 
 typedef enum RinGLObjectState {

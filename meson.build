@@ -15,9 +15,10 @@ ringl_inc = include_directories('include', 'src')
 ringl_sources = files(
   'src/backend/ringpu_backend.c',
   'src/context/context.c',
+  'src/context/vertex_attrib.c',
   'src/objects/object_table.c',
   'src/objects/buffer.c',
-  'src/context/vertex_attrib.c',
+  'src/shader/shader.c',
   'src/translate/vertex_layout.c',
 )
 

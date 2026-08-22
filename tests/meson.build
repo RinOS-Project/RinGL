@@ -29,3 +29,11 @@ vertex_attrib_test = executable(
 )
 
 test('vertex-attrib', vertex_attrib_test)
+
+shader_test = executable(
+  'ringl-shader-test',
+  'shader_test.c',
+  dependencies: ringl_dep,
+)
+
+test('shader', shader_test)

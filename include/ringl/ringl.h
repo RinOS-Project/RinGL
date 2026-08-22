@@ -27,6 +27,9 @@ extern "C" {
 #define RINGL_STATIC_DRAW          0x88e4u
 #define RINGL_DYNAMIC_DRAW         0x88e8u
 
+#define RINGL_VERTEX_SHADER   0x8b31u
+#define RINGL_FRAGMENT_SHADER 0x8b30u
+
 #define RINGL_MAX_VERTEX_ATTRIBS 16u
 
 #define RINGL_DIRTY_PIPELINE    0x00000001u
@@ -105,10 +108,6 @@ void ringl_buffer_data(uint32_t target,
 uint64_t ringl_get_buffer_size(uint32_t target);
 uint32_t ringl_get_buffer_usage(uint32_t target);
 
-/* Initial bounded vertex-input profile. RinGPU currently exposes scalar
- * 32-bit vertex attributes, so the first translated path admits one FLOAT
- * scalar per enabled location. The state model is deliberately versioned so
- * broader GLES formats can be added without changing the context ABI. */
 void ringl_enable_vertex_attrib_array(uint32_t index);
 void ringl_disable_vertex_attrib_array(uint32_t index);
 void ringl_vertex_attrib_pointer(uint32_t index,
@@ -118,6 +117,16 @@ void ringl_vertex_attrib_pointer(uint32_t index,
                                  int32_t stride,
                                  uint64_t offset);
 int ringl_get_vertex_attrib(uint32_t index, RinGLVertexAttribInfoV1* info);
+
+/* Phase-3 shader object core. Source storage accepts one UTF-8 source string;
+ * length < 0 means NUL-terminated input. Compilation/linking is deliberately
+ * separate so the GLSL ES frontend can lower directly to RinShader IR. */
+uint32_t ringl_create_shader(uint32_t shader_type);
+void ringl_delete_shader(uint32_t shader);
+int ringl_is_shader(uint32_t shader);
+void ringl_shader_source(uint32_t shader, const char* source, int64_t length);
+uint32_t ringl_get_shader_type(uint32_t shader);
+uint64_t ringl_get_shader_source_length(uint32_t shader);
 
 #ifdef __cplusplus
 }

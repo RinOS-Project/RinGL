@@ -200,10 +200,12 @@ static int begin_color_pass(RinGLContext* context,
     render_pass.color_target = target->image;
     render_pass.load_op = load_op;
     render_pass.store_op = RINGL_RIN_GPU_RENDER_STORE;
-    render_pass.clear_red = clamp_color(context->clear_red);
-    render_pass.clear_green = clamp_color(context->clear_green);
-    render_pass.clear_blue = clamp_color(context->clear_blue);
-    render_pass.clear_alpha = clamp_color(context->clear_alpha);
+    if (load_op == RINGL_RIN_GPU_RENDER_CLEAR) {
+        render_pass.clear_red = clamp_color(context->clear_red);
+        render_pass.clear_green = clamp_color(context->clear_green);
+        render_pass.clear_blue = clamp_color(context->clear_blue);
+        render_pass.clear_alpha = clamp_color(context->clear_alpha);
+    }
     return ringl_backend_begin_render_pass(context, command_list, &render_pass);
 }
 

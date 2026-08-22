@@ -221,10 +221,7 @@ int main(void)
     uint32_t fragment;
     uint32_t program;
     const float vertices[3] = {-0.5f, 0.0f, 0.5f};
-    const char expected[] = "NTBECSRBDECSR TPCS";
-    char compact[sizeof(expected)];
-    uint32_t i;
-    uint32_t out = 0u;
+    char commands[65];
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -269,14 +266,10 @@ int main(void)
     assert(backend.clear[1] == 0.25f);
     assert(backend.clear[2] == 1.0f);
     assert(backend.clear[3] == 1.0f);
-
-    for (i = 0u; i < backend.command_count; ++i) {
-        if (backend.commands[i] != ' ')
-            compact[out++] = backend.commands[i];
-    }
-    compact[out] = '\0';
-    assert(strcmp(compact, "NTBECSRBDECSR TPCS") != 0); /* guard typo */
-    assert(strcmp(compact, "NTBECSRBDECSRTPCS") == 0);
+    assert(backend.command_count < sizeof(commands));
+    memcpy(commands, backend.commands, backend.command_count);
+    commands[backend.command_count] = '\0';
+    assert(strcmp(commands, "NTBECSRBDECSRTPCS") == 0);
 
     ringl_context_destroy(context);
     return 0;

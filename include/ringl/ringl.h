@@ -18,6 +18,8 @@ extern "C" {
 
 #define RINGL_FALSE 0u
 #define RINGL_TRUE  1u
+#define RINGL_ZERO  0u
+#define RINGL_ONE   1u
 #define RINGL_UNSIGNED_BYTE  0x1401u
 #define RINGL_UNSIGNED_SHORT 0x1403u
 #define RINGL_UNSIGNED_INT   0x1405u
@@ -26,6 +28,31 @@ extern "C" {
 #define RINGL_TRIANGLES        0x0004u
 #define RINGL_COLOR_BUFFER_BIT 0x00004000u
 
+#define RINGL_NEVER    0x0200u
+#define RINGL_LESS     0x0201u
+#define RINGL_EQUAL    0x0202u
+#define RINGL_LEQUAL   0x0203u
+#define RINGL_GREATER  0x0204u
+#define RINGL_NOTEQUAL 0x0205u
+#define RINGL_GEQUAL   0x0206u
+#define RINGL_ALWAYS   0x0207u
+
+#define RINGL_SRC_ALPHA               0x0302u
+#define RINGL_ONE_MINUS_SRC_ALPHA     0x0303u
+#define RINGL_DST_ALPHA               0x0304u
+#define RINGL_ONE_MINUS_DST_ALPHA     0x0305u
+#define RINGL_FUNC_ADD                0x8006u
+#define RINGL_MIN                     0x8007u
+#define RINGL_MAX                     0x8008u
+#define RINGL_BLEND_EQUATION_RGB      0x8009u
+#define RINGL_FUNC_SUBTRACT           0x800au
+#define RINGL_FUNC_REVERSE_SUBTRACT   0x800bu
+#define RINGL_BLEND_DST_RGB           0x80c8u
+#define RINGL_BLEND_SRC_RGB           0x80c9u
+#define RINGL_BLEND_DST_ALPHA         0x80cau
+#define RINGL_BLEND_SRC_ALPHA         0x80cbu
+#define RINGL_BLEND_EQUATION_ALPHA    0x883du
+
 #define RINGL_FRONT          0x0404u
 #define RINGL_BACK           0x0405u
 #define RINGL_FRONT_AND_BACK 0x0408u
@@ -33,7 +60,10 @@ extern "C" {
 #define RINGL_CCW            0x0901u
 #define RINGL_CULL_FACE      0x0b44u
 #define RINGL_DEPTH_TEST     0x0b71u
+#define RINGL_DEPTH_WRITEMASK 0x0b72u
+#define RINGL_DEPTH_FUNC     0x0b74u
 #define RINGL_BLEND          0x0be2u
+#define RINGL_COLOR_WRITEMASK 0x0c23u
 #define RINGL_SCISSOR_TEST   0x0c11u
 
 #define RINGL_VIEWPORT                      0x0ba2u
@@ -96,6 +126,7 @@ extern "C" {
 #define RINGL_RIN_GPU_RENDER_STORE         1u
 #define RINGL_RIN_GPU_INDEX_UINT16         1u
 #define RINGL_RIN_GPU_INDEX_UINT32         2u
+#define RINGL_RIN_GPU_INDEX_UINT8          3u
 #define RINGL_RIN_GPU_FORMAT_RGBA8_UNORM   2u
 #define RINGL_RIN_GPU_SAMPLER_NEAREST      1u
 #define RINGL_RIN_GPU_SAMPLER_LINEAR       2u
@@ -319,6 +350,16 @@ void ringl_viewport(int32_t x, int32_t y, int32_t width, int32_t height);
 void ringl_scissor(int32_t x, int32_t y, int32_t width, int32_t height);
 void ringl_cull_face(uint32_t mode);
 void ringl_front_face(uint32_t mode);
+void ringl_depth_func(uint32_t func);
+void ringl_depth_mask(uint32_t enabled);
+void ringl_blend_func(uint32_t source_factor, uint32_t destination_factor);
+void ringl_blend_func_separate(uint32_t source_rgb, uint32_t destination_rgb,
+                               uint32_t source_alpha,
+                               uint32_t destination_alpha);
+void ringl_blend_equation(uint32_t mode);
+void ringl_blend_equation_separate(uint32_t mode_rgb, uint32_t mode_alpha);
+void ringl_color_mask(uint32_t red, uint32_t green, uint32_t blue,
+                      uint32_t alpha);
 
 int ringl_set_default_framebuffer(const RinGLDefaultFramebufferV1* framebuffer);
 int ringl_set_default_framebuffer_state(uint32_t state);

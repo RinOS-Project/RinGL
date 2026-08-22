@@ -178,9 +178,11 @@ before the depth test. This is tested through the RinOS RinGL-to-RinGPU
 surface path, including stencil rejection, replacement, write masking, and
 depth-fail behavior.
 
-This remains a bounded profile. Default caller-owned D32 surfaces do not have
-stencil storage; texture depth/stencil attachments, separate front/back
-stencil state, multisampling, multiple color attachments, and broad GLES
+This remains a bounded profile. A default caller-owned D32 surface has no
+stencil storage unless its embedding explicitly supplies the matching S8
+plane; that D32S8 default target executes the same common-face stencil path.
+Texture depth/stencil attachments, separate front/back stencil state,
+multisampling, multiple color attachments, and broad GLES
 framebuffer semantics are not implemented.
 
 RinGL is not a GLES conformance claim. Broader shader expressions, device-loss

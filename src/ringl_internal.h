@@ -34,6 +34,7 @@ typedef struct RinGLTextureObject {
     uint32_t mag_filter;
     uint32_t wrap_s;
     uint32_t wrap_t;
+    uint32_t ringpu_image_state;
 } RinGLTextureObject;
 
 typedef struct RinGLShaderObject {
@@ -133,6 +134,16 @@ int ringl_backend_upload_buffer(RinGLContext* context,
                                 uint64_t offset,
                                 const void* data,
                                 uint64_t size_bytes);
+int ringl_backend_create_sampled_image_2d(
+    RinGLContext* context, const RinGLRinGpuSampledImage2DV1* desc,
+    uint64_t* image_out);
+int ringl_backend_upload_image_2d(
+    RinGLContext* context, uint64_t image,
+    const RinGLRinGpuImageUpload2DV1* upload,
+    const void* data, uint64_t size_bytes);
+int ringl_backend_create_sampler(RinGLContext* context,
+                                 const RinGLRinGpuSamplerV1* desc,
+                                 uint64_t* sampler_out);
 int ringl_backend_create_shader_module(RinGLContext* context,
                                        const void* rsh1,
                                        uint64_t size_bytes,
@@ -176,6 +187,8 @@ int ringl_backend_queue_submit(RinGLContext* context,
 void ringl_backend_destroy_object(RinGLContext* context, uint64_t object);
 void ringl_buffer_objects_destroy_all(RinGLContext* context);
 void ringl_texture_objects_destroy_all(RinGLContext* context);
+int ringl_texture_realize_unit(RinGLContext* context, uint32_t unit,
+                               uint64_t* image_out, uint64_t* sampler_out);
 void ringl_shader_objects_destroy_all(RinGLContext* context);
 void ringl_program_objects_destroy_all(RinGLContext* context);
 void ringl_pipeline_cache_destroy(RinGLContext* context);

@@ -35,6 +35,24 @@ int ringl_backend_upload_buffer(RinGLContext* context,
                                              size_bytes);
 }
 
+int ringl_backend_create_shader_module(RinGLContext* context,
+                                       const void* rsh1,
+                                       uint64_t size_bytes,
+                                       uint64_t* shader_module_out)
+{
+    if (context == NULL || rsh1 == NULL || size_bytes == 0u ||
+        shader_module_out == NULL || !context->has_ringpu_ops ||
+        context->ringpu_ops.create_shader_module == NULL) {
+        return -1;
+    }
+
+    *shader_module_out = 0u;
+    return context->ringpu_ops.create_shader_module(context->ringpu.session,
+                                                    rsh1,
+                                                    size_bytes,
+                                                    shader_module_out);
+}
+
 void ringl_backend_destroy_object(RinGLContext* context, uint64_t object)
 {
     if (context == NULL || object == 0u || !context->has_ringpu_ops ||

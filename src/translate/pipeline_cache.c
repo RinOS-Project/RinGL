@@ -241,3 +241,15 @@ void ringl_pipeline_cache_destroy(RinGLContext* context)
     free(cache);
     context->pipeline_cache = NULL;
 }
+
+void ringl_invalidate_graphics_artifacts(RinGLContext* context)
+{
+    if (context == NULL)
+        return;
+    if (context->graphics_command_list != 0u) {
+        ringl_backend_destroy_object(context, context->graphics_command_list);
+        context->graphics_command_list = 0u;
+    }
+    ringl_pipeline_cache_destroy(context);
+    ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
+}

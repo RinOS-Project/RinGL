@@ -7,12 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define RINGL_RSH1_OP_SAMPLE_IMAGE_2D_F32 55u
-#define RINGL_SAMPLE_RED   0u
-#define RINGL_SAMPLE_GREEN 1u
-#define RINGL_SAMPLE_BLUE  2u
-#define RINGL_SAMPLE_ALPHA 3u
-
 static const char* skip_space(const char* p, const char* end)
 {
     while (p < end && isspace((unsigned char)*p))
@@ -74,19 +68,6 @@ static int parse_float(const char** cursor, const char* end, float* value)
     return 1;
 }
 
-static int find_sampler(const char sampler_names[][64], uint32_t sampler_count,
-                        const char* name, uint32_t* index_out)
-{
-    uint32_t i;
-    for (i = 0u; i < sampler_count; ++i) {
-        if (strcmp(sampler_names[i], name) == 0) {
-            *index_out = i;
-            return 1;
-        }
-    }
-    return 0;
-}
-
 static void init_instruction(RinGLRsh1InstructionV1* ins, uint16_t opcode)
 {
     memset(ins, 0, sizeof(*ins));
@@ -113,18 +94,20 @@ int ringl_glsl_lower_texture2d_rsh1(
     char ctor[16];
     float u;
     float v;
-    uint32_t sampler_index;
     uint32_t u_bits;
     uint32_t v_bits;
     uint32_t component;
-    uint32_t image_slot;
-    uint32_t sampler_slot;
     size_t total;
 
-    if (source == NULL || result == NULL || sampler_count == 0u ||
-        sampler_count > 8u)
+    if (source == NULL || result == NULL)
         return -1;
     memset(result, 0, sizeof(*result));
+    if (sampler_count != 1u) {
+        (void)snprintf(result->diagnostic, sizeof(result->diagnostic),
+                       "initial texture2D lowering supports exactly one sampler2D uniform");
+        return 1;
+    }
+
     end = source + source_length;
     call = strstr(source, "texture2D");
     if (call == NULL || call >= end) {
@@ -141,7 +124,7 @@ int ringl_glsl_lower_texture2d_rsh1(
     cursor = call + 9u;
     if (!expect_char(&cursor, end, '(') ||
         !parse_ident(&cursor, end, sampler, sizeof(sampler)) ||
-        !find_sampler(sampler_names, sampler_count, sampler, &sampler_index) ||
+        strcmp(sampler, sampler_names[0]) != 0 ||
         !expect_char(&cursor, end, ',') ||
         !parse_ident(&cursor, end, ctor, sizeof(ctor)) ||
         strcmp(ctor, "vec2") != 0 ||
@@ -158,8 +141,6 @@ int ringl_glsl_lower_texture2d_rsh1(
 
     memcpy(&u_bits, &u, sizeof(u_bits));
     memcpy(&v_bits, &v, sizeof(v_bits));
-    image_slot = sampler_index * 2u;
-    sampler_slot = image_slot + 1u;
 
     init_instruction(&ins[0], RINGL_RSH1_OP_CONST_F32);
     ins[0].destination = 0u;
@@ -175,8 +156,8 @@ int ringl_glsl_lower_texture2d_rsh1(
         ins[2u + component].destination = (uint16_t)(2u + component);
         ins[2u + component].source0 = 0u;
         ins[2u + component].source1 = 1u;
-        ins[2u + component].resource = (uint16_t)image_slot;
-        ins[2u + component].immediate = sampler_slot;
+        ins[2u + component].resource = 0u;
+        ins[2u + component].immediate = 1u;
 
         init_instruction(&ins[6u + component], RINGL_RSH1_OP_STORE_OUTPUT_F32);
         ins[6u + component].source0 = (uint16_t)(2u + component);
@@ -192,7 +173,7 @@ int ringl_glsl_lower_texture2d_rsh1(
     header.instruction_count = 11u;
     header.register_count = 6u;
     header.output_count = 4u;
-    header.resource_count = sampler_count * 2u;
+    header.resource_count = 2u;
     total = sizeof(header) + sizeof(ins);
     header.total_size = (uint32_t)total;
 

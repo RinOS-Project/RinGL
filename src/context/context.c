@@ -98,6 +98,12 @@ int ringl_context_create(const RinGLContextDescV1* desc,
     context->stencil_fail_operation = RINGL_KEEP;
     context->stencil_depth_fail_operation = RINGL_KEEP;
     context->stencil_pass_operation = RINGL_KEEP;
+    context->back_stencil_func = RINGL_ALWAYS;
+    context->back_stencil_value_mask = 0xffu;
+    context->back_stencil_write_mask = 0xffu;
+    context->back_stencil_fail_operation = RINGL_KEEP;
+    context->back_stencil_depth_fail_operation = RINGL_KEEP;
+    context->back_stencil_pass_operation = RINGL_KEEP;
     context->blend_source_rgb = RINGL_ONE;
     context->blend_destination_rgb = RINGL_ZERO;
     context->blend_source_alpha = RINGL_ONE;

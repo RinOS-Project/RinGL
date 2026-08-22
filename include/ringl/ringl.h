@@ -74,8 +74,18 @@ extern "C" {
 #define RINGL_STENCIL_TEST   0x0b90u
 #define RINGL_STENCIL_FUNC       0x0b92u
 #define RINGL_STENCIL_VALUE_MASK 0x0b93u
+#define RINGL_STENCIL_FAIL       0x0b94u
+#define RINGL_STENCIL_PASS_DEPTH_FAIL 0x0b95u
+#define RINGL_STENCIL_PASS_DEPTH_PASS 0x0b96u
 #define RINGL_STENCIL_REF        0x0b97u
 #define RINGL_STENCIL_WRITEMASK  0x0b98u
+#define RINGL_STENCIL_BACK_FUNC       0x8800u
+#define RINGL_STENCIL_BACK_FAIL       0x8801u
+#define RINGL_STENCIL_BACK_PASS_DEPTH_FAIL 0x8802u
+#define RINGL_STENCIL_BACK_PASS_DEPTH_PASS 0x8803u
+#define RINGL_STENCIL_BACK_REF        0x8ca3u
+#define RINGL_STENCIL_BACK_VALUE_MASK 0x8ca4u
+#define RINGL_STENCIL_BACK_WRITEMASK  0x8ca5u
 #define RINGL_DEPTH_WRITEMASK 0x0b72u
 #define RINGL_DEPTH_FUNC     0x0b74u
 #define RINGL_BLEND          0x0be2u
@@ -255,9 +265,8 @@ typedef struct RinGLRinGpuGraphicsPipelineNativeV1 {
     uint32_t cull_mode;
     uint32_t front_face;
     uint32_t reserved0;
-    /* Additive common-face stencil state. A zero enable bit requires every
-     * remaining field to be zero; the D32_FLOAT_S8_UINT target is required
-     * when it is enabled. */
+    /* Front-face stencil state. A zero enable bit requires every remaining
+     * stencil field to be zero; D32_FLOAT_S8_UINT is required when enabled. */
     uint32_t stencil_test_enabled;
     uint32_t stencil_compare;
     uint32_t stencil_reference;
@@ -266,6 +275,16 @@ typedef struct RinGLRinGpuGraphicsPipelineNativeV1 {
     uint32_t stencil_fail_operation;
     uint32_t stencil_depth_fail_operation;
     uint32_t stencil_pass_operation;
+    /* When separate_stencil_enabled is zero the back fields are canonical
+     * zero and the front state applies to both faces. */
+    uint32_t separate_stencil_enabled;
+    uint32_t back_stencil_compare;
+    uint32_t back_stencil_reference;
+    uint32_t back_stencil_read_mask;
+    uint32_t back_stencil_write_mask;
+    uint32_t back_stencil_fail_operation;
+    uint32_t back_stencil_depth_fail_operation;
+    uint32_t back_stencil_pass_operation;
 } RinGLRinGpuGraphicsPipelineNativeV1;
 
 typedef struct RinGLRinGpuVaryingV1 {
@@ -572,9 +591,14 @@ void ringl_front_face(uint32_t mode);
 void ringl_depth_func(uint32_t func);
 void ringl_depth_mask(uint32_t enabled);
 void ringl_stencil_func(uint32_t func, int32_t reference, uint32_t mask);
+void ringl_stencil_func_separate(uint32_t face, uint32_t func,
+                                 int32_t reference, uint32_t mask);
 void ringl_stencil_mask(uint32_t mask);
+void ringl_stencil_mask_separate(uint32_t face, uint32_t mask);
 void ringl_stencil_op(uint32_t stencil_fail, uint32_t depth_fail,
                       uint32_t depth_pass);
+void ringl_stencil_op_separate(uint32_t face, uint32_t stencil_fail,
+                               uint32_t depth_fail, uint32_t depth_pass);
 void ringl_blend_func(uint32_t source_factor, uint32_t destination_factor);
 void ringl_blend_func_separate(uint32_t source_rgb, uint32_t destination_rgb,
                                uint32_t source_alpha,

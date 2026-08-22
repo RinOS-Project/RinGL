@@ -190,6 +190,13 @@ struct RinGLContext {
     uint32_t stencil_fail_operation;
     uint32_t stencil_depth_fail_operation;
     uint32_t stencil_pass_operation;
+    uint32_t back_stencil_func;
+    uint32_t back_stencil_reference;
+    uint32_t back_stencil_value_mask;
+    uint32_t back_stencil_write_mask;
+    uint32_t back_stencil_fail_operation;
+    uint32_t back_stencil_depth_fail_operation;
+    uint32_t back_stencil_pass_operation;
     uint32_t blend_source_rgb;
     uint32_t blend_destination_rgb;
     uint32_t blend_source_alpha;

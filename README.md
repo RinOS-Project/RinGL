@@ -172,18 +172,19 @@ eight depth-tested draw predicates through a RinGPU depth render pass.
 
 Custom RGBA8 renderbuffer FBOs may additionally attach a matching
 `DEPTH24_STENCIL8` renderbuffer through `DEPTH_STENCIL_ATTACHMENT`. RinGL
-realizes it as a RinGPU D32S8 target and executes common-face stencil test,
-reference/read/write masks, all eight stencil operations, and stencil clear
-before the depth test. This is tested through the RinOS RinGL-to-RinGPU
-surface path, including stencil rejection, replacement, write masking, and
-depth-fail behavior.
+realizes it as a RinGPU D32S8 target and executes independent front/back
+stencil tests, reference/read/write masks, all eight stencil operations, and
+stencil clear before the depth test. The common `ringl_stencil_*` calls update
+both faces, while the `*_separate` forms set one face or both explicitly. This
+is tested through the RinOS RinGL-to-RinGPU surface path, including stencil
+rejection, replacement, write masking, depth-fail behavior, reversed winding,
+and back-face culling.
 
 This remains a bounded profile. A default caller-owned D32 surface has no
 stencil storage unless its embedding explicitly supplies the matching S8
-plane; that D32S8 default target executes the same common-face stencil path.
-Texture depth/stencil attachments, separate front/back stencil state,
-multisampling, multiple color attachments, and broad GLES
-framebuffer semantics are not implemented.
+plane; that D32S8 default target executes the same front/back stencil path.
+Texture depth/stencil attachments, multisampling, multiple color attachments,
+and broad GLES framebuffer semantics are not implemented.
 
 RinGL is not a GLES conformance claim. Broader shader expressions, device-loss
 handling, and browser-facing context-loss policy also remain unfinished. No API

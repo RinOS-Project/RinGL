@@ -227,6 +227,42 @@ int ringl_build_pipeline_key(RinGLContext* context,
             result.stencil_pass_operation == 0u) {
             return -1;
         }
+        result.back_stencil_compare =
+            native_depth_compare(context->back_stencil_func);
+        result.back_stencil_reference = context->back_stencil_reference;
+        result.back_stencil_read_mask = context->back_stencil_value_mask;
+        result.back_stencil_write_mask = context->back_stencil_write_mask;
+        result.back_stencil_fail_operation =
+            native_stencil_operation(context->back_stencil_fail_operation);
+        result.back_stencil_depth_fail_operation = native_stencil_operation(
+            context->back_stencil_depth_fail_operation);
+        result.back_stencil_pass_operation =
+            native_stencil_operation(context->back_stencil_pass_operation);
+        if (result.back_stencil_compare == 0u ||
+            result.back_stencil_fail_operation == 0u ||
+            result.back_stencil_depth_fail_operation == 0u ||
+            result.back_stencil_pass_operation == 0u) {
+            return -1;
+        }
+        if (result.back_stencil_compare == result.stencil_compare &&
+            result.back_stencil_reference == result.stencil_reference &&
+            result.back_stencil_read_mask == result.stencil_read_mask &&
+            result.back_stencil_write_mask == result.stencil_write_mask &&
+            result.back_stencil_fail_operation == result.stencil_fail_operation &&
+            result.back_stencil_depth_fail_operation ==
+                result.stencil_depth_fail_operation &&
+            result.back_stencil_pass_operation ==
+                result.stencil_pass_operation) {
+            result.back_stencil_compare = 0u;
+            result.back_stencil_reference = 0u;
+            result.back_stencil_read_mask = 0u;
+            result.back_stencil_write_mask = 0u;
+            result.back_stencil_fail_operation = 0u;
+            result.back_stencil_depth_fail_operation = 0u;
+            result.back_stencil_pass_operation = 0u;
+        } else {
+            result.separate_stencil_enabled = RINGL_TRUE;
+        }
     }
     result.primitive_topology = RINGL_NATIVE_PRIMITIVE_TRIANGLE_LIST;
     result.vertex_stride = layout.stride;
@@ -349,6 +385,15 @@ static int create_pipeline(RinGLContext* context,
         desc.stencil_depth_fail_operation =
             key->stencil_depth_fail_operation;
         desc.stencil_pass_operation = key->stencil_pass_operation;
+        desc.separate_stencil_enabled = key->separate_stencil_enabled;
+        desc.back_stencil_compare = key->back_stencil_compare;
+        desc.back_stencil_reference = key->back_stencil_reference;
+        desc.back_stencil_read_mask = key->back_stencil_read_mask;
+        desc.back_stencil_write_mask = key->back_stencil_write_mask;
+        desc.back_stencil_fail_operation = key->back_stencil_fail_operation;
+        desc.back_stencil_depth_fail_operation =
+            key->back_stencil_depth_fail_operation;
+        desc.back_stencil_pass_operation = key->back_stencil_pass_operation;
         desc.color_write_mask = key->color_write_mask;
         desc.cull_mode = cull;
         desc.front_face = front;

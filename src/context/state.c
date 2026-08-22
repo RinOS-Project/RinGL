@@ -36,6 +36,40 @@ static int stencil_operation_valid(uint32_t operation)
            operation == RINGL_INCR_WRAP || operation == RINGL_DECR_WRAP;
 }
 
+static int stencil_face_valid(uint32_t face)
+{
+    return face == RINGL_FRONT || face == RINGL_BACK ||
+           face == RINGL_FRONT_AND_BACK;
+}
+
+static void stencil_face_fields(RinGLContext* context, uint32_t face,
+                                uint32_t** function_out,
+                                uint32_t** reference_out,
+                                uint32_t** value_mask_out,
+                                uint32_t** write_mask_out,
+                                uint32_t** fail_out,
+                                uint32_t** depth_fail_out,
+                                uint32_t** pass_out)
+{
+    if (face == RINGL_FRONT) {
+        *function_out = &context->stencil_func;
+        *reference_out = &context->stencil_reference;
+        *value_mask_out = &context->stencil_value_mask;
+        *write_mask_out = &context->stencil_write_mask;
+        *fail_out = &context->stencil_fail_operation;
+        *depth_fail_out = &context->stencil_depth_fail_operation;
+        *pass_out = &context->stencil_pass_operation;
+        return;
+    }
+    *function_out = &context->back_stencil_func;
+    *reference_out = &context->back_stencil_reference;
+    *value_mask_out = &context->back_stencil_value_mask;
+    *write_mask_out = &context->back_stencil_write_mask;
+    *fail_out = &context->back_stencil_fail_operation;
+    *depth_fail_out = &context->back_stencil_depth_fail_operation;
+    *pass_out = &context->back_stencil_pass_operation;
+}
+
 static int blend_factor_valid(uint32_t factor)
 {
     return factor == RINGL_ZERO || factor == RINGL_ONE ||
@@ -196,63 +230,148 @@ void ringl_depth_mask(uint32_t enabled)
 
 void ringl_stencil_func(uint32_t func, int32_t reference, uint32_t mask)
 {
+    ringl_stencil_func_separate(RINGL_FRONT_AND_BACK, func, reference, mask);
+}
+
+void ringl_stencil_func_separate(uint32_t face, uint32_t func,
+                                 int32_t reference, uint32_t mask)
+{
     RinGLContext* context = ringl_get_current_context();
     uint32_t clamped_reference;
+    uint32_t faces[2];
+    uint32_t count;
+    uint32_t changed = RINGL_FALSE;
 
     if (context == NULL)
         return;
-    if (!depth_func_valid(func)) {
+    if (!stencil_face_valid(face) || !depth_func_valid(func)) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
     clamped_reference = (uint32_t)reference & 0xffu;
     mask &= 0xffu;
-    if (context->stencil_func == func &&
-        context->stencil_reference == clamped_reference &&
-        context->stencil_value_mask == mask) {
-        return;
+    faces[0] = face == RINGL_BACK ? RINGL_BACK : RINGL_FRONT;
+    count = face == RINGL_FRONT_AND_BACK ? 2u : 1u;
+    if (count == 2u) faces[1] = RINGL_BACK;
+    for (uint32_t index = 0u; index < count; ++index) {
+        uint32_t* current_func;
+        uint32_t* current_reference;
+        uint32_t* current_mask;
+        uint32_t* ignored_write_mask;
+        uint32_t* ignored_fail;
+        uint32_t* ignored_depth_fail;
+        uint32_t* ignored_pass;
+
+        stencil_face_fields(context, faces[index], &current_func,
+                            &current_reference, &current_mask,
+                            &ignored_write_mask, &ignored_fail,
+                            &ignored_depth_fail, &ignored_pass);
+        if (*current_func != func || *current_reference != clamped_reference ||
+            *current_mask != mask) {
+            *current_func = func;
+            *current_reference = clamped_reference;
+            *current_mask = mask;
+            changed = RINGL_TRUE;
+        }
     }
-    context->stencil_func = func;
-    context->stencil_reference = clamped_reference;
-    context->stencil_value_mask = mask;
-    ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
+    if (changed)
+        ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
 }
 
 void ringl_stencil_mask(uint32_t mask)
 {
+    ringl_stencil_mask_separate(RINGL_FRONT_AND_BACK, mask);
+}
+
+void ringl_stencil_mask_separate(uint32_t face, uint32_t mask)
+{
     RinGLContext* context = ringl_get_current_context();
+    uint32_t faces[2];
+    uint32_t count;
+    uint32_t changed = RINGL_FALSE;
 
     if (context == NULL)
         return;
-    mask &= 0xffu;
-    if (context->stencil_write_mask == mask)
+    if (!stencil_face_valid(face)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
-    context->stencil_write_mask = mask;
-    ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
+    }
+    mask &= 0xffu;
+    faces[0] = face == RINGL_BACK ? RINGL_BACK : RINGL_FRONT;
+    count = face == RINGL_FRONT_AND_BACK ? 2u : 1u;
+    if (count == 2u) faces[1] = RINGL_BACK;
+    for (uint32_t index = 0u; index < count; ++index) {
+        uint32_t* ignored_func;
+        uint32_t* ignored_reference;
+        uint32_t* ignored_value_mask;
+        uint32_t* current_mask;
+        uint32_t* ignored_fail;
+        uint32_t* ignored_depth_fail;
+        uint32_t* ignored_pass;
+
+        stencil_face_fields(context, faces[index], &ignored_func,
+                            &ignored_reference, &ignored_value_mask,
+                            &current_mask, &ignored_fail,
+                            &ignored_depth_fail, &ignored_pass);
+        if (*current_mask != mask) {
+            *current_mask = mask;
+            changed = RINGL_TRUE;
+        }
+    }
+    if (changed)
+        ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
 }
 
 void ringl_stencil_op(uint32_t stencil_fail, uint32_t depth_fail,
                       uint32_t depth_pass)
 {
+    ringl_stencil_op_separate(RINGL_FRONT_AND_BACK, stencil_fail, depth_fail,
+                              depth_pass);
+}
+
+void ringl_stencil_op_separate(uint32_t face, uint32_t stencil_fail,
+                               uint32_t depth_fail, uint32_t depth_pass)
+{
     RinGLContext* context = ringl_get_current_context();
+    uint32_t faces[2];
+    uint32_t count;
+    uint32_t changed = RINGL_FALSE;
 
     if (context == NULL)
         return;
-    if (!stencil_operation_valid(stencil_fail) ||
+    if (!stencil_face_valid(face) ||
+        !stencil_operation_valid(stencil_fail) ||
         !stencil_operation_valid(depth_fail) ||
         !stencil_operation_valid(depth_pass)) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
-    if (context->stencil_fail_operation == stencil_fail &&
-        context->stencil_depth_fail_operation == depth_fail &&
-        context->stencil_pass_operation == depth_pass) {
-        return;
+    faces[0] = face == RINGL_BACK ? RINGL_BACK : RINGL_FRONT;
+    count = face == RINGL_FRONT_AND_BACK ? 2u : 1u;
+    if (count == 2u) faces[1] = RINGL_BACK;
+    for (uint32_t index = 0u; index < count; ++index) {
+        uint32_t* ignored_func;
+        uint32_t* ignored_reference;
+        uint32_t* ignored_value_mask;
+        uint32_t* ignored_write_mask;
+        uint32_t* current_fail;
+        uint32_t* current_depth_fail;
+        uint32_t* current_pass;
+
+        stencil_face_fields(context, faces[index], &ignored_func,
+                            &ignored_reference, &ignored_value_mask,
+                            &ignored_write_mask, &current_fail,
+                            &current_depth_fail, &current_pass);
+        if (*current_fail != stencil_fail ||
+            *current_depth_fail != depth_fail || *current_pass != depth_pass) {
+            *current_fail = stencil_fail;
+            *current_depth_fail = depth_fail;
+            *current_pass = depth_pass;
+            changed = RINGL_TRUE;
+        }
     }
-    context->stencil_fail_operation = stencil_fail;
-    context->stencil_depth_fail_operation = depth_fail;
-    context->stencil_pass_operation = depth_pass;
-    ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
+    if (changed)
+        ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
 }
 
 void ringl_blend_func_separate(uint32_t source_rgb, uint32_t destination_rgb,
@@ -391,8 +510,38 @@ void ringl_get_integerv(uint32_t pname, int32_t* values)
     case RINGL_STENCIL_VALUE_MASK:
         values[0] = (int32_t)context->stencil_value_mask;
         return;
+    case RINGL_STENCIL_FAIL:
+        values[0] = (int32_t)context->stencil_fail_operation;
+        return;
+    case RINGL_STENCIL_PASS_DEPTH_FAIL:
+        values[0] = (int32_t)context->stencil_depth_fail_operation;
+        return;
+    case RINGL_STENCIL_PASS_DEPTH_PASS:
+        values[0] = (int32_t)context->stencil_pass_operation;
+        return;
     case RINGL_STENCIL_WRITEMASK:
         values[0] = (int32_t)context->stencil_write_mask;
+        return;
+    case RINGL_STENCIL_BACK_FUNC:
+        values[0] = (int32_t)context->back_stencil_func;
+        return;
+    case RINGL_STENCIL_BACK_FAIL:
+        values[0] = (int32_t)context->back_stencil_fail_operation;
+        return;
+    case RINGL_STENCIL_BACK_PASS_DEPTH_FAIL:
+        values[0] = (int32_t)context->back_stencil_depth_fail_operation;
+        return;
+    case RINGL_STENCIL_BACK_PASS_DEPTH_PASS:
+        values[0] = (int32_t)context->back_stencil_pass_operation;
+        return;
+    case RINGL_STENCIL_BACK_REF:
+        values[0] = (int32_t)context->back_stencil_reference;
+        return;
+    case RINGL_STENCIL_BACK_VALUE_MASK:
+        values[0] = (int32_t)context->back_stencil_value_mask;
+        return;
+    case RINGL_STENCIL_BACK_WRITEMASK:
+        values[0] = (int32_t)context->back_stencil_write_mask;
         return;
     case RINGL_BLEND_SRC_RGB:
         values[0] = (int32_t)context->blend_source_rgb;

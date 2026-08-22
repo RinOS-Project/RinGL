@@ -436,6 +436,27 @@ static int blend_color_component(float value, float* result)
     return 1;
 }
 
+int ringl_get_blend_color(RinGLBlendColorV1* color)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLBlendColorV1 snapshot;
+
+    if (context == NULL || color == NULL ||
+        color->struct_size < sizeof(*color) ||
+        color->api_version != RINGL_API_VERSION)
+        return -1;
+
+    snapshot.struct_size = sizeof(snapshot);
+    snapshot.api_version = RINGL_API_VERSION;
+    snapshot.red = context->blend_constant_red;
+    snapshot.green = context->blend_constant_green;
+    snapshot.blue = context->blend_constant_blue;
+    snapshot.alpha = context->blend_constant_alpha;
+    snapshot.reserved0 = 0u;
+    *color = snapshot;
+    return 0;
+}
+
 void ringl_blend_color(float red, float green, float blue, float alpha)
 {
     RinGLContext* context = ringl_get_current_context();

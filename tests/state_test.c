@@ -25,6 +25,10 @@ int main(void)
         .struct_size = sizeof(clear_values),
         .api_version = RINGL_API_VERSION,
     };
+    RinGLBlendColorV1 blend_color = {
+        .struct_size = sizeof(blend_color),
+        .api_version = RINGL_API_VERSION,
+    };
     RinGLDefaultFramebufferV1 framebuffer = {
         .struct_size = sizeof(framebuffer),
         .api_version = RINGL_API_VERSION,
@@ -58,6 +62,22 @@ int main(void)
     clear_values.api_version = RINGL_API_VERSION + 1u;
     assert(ringl_get_clear_values(&clear_values) == -1);
     clear_values.api_version = RINGL_API_VERSION;
+
+    assert(ringl_get_blend_color(&blend_color) == 0);
+    assert(blend_color.red == 0.0f && blend_color.green == 0.0f &&
+           blend_color.blue == 0.0f && blend_color.alpha == 0.0f);
+    ringl_blend_color(-0.25f, 0.5f, 1.25f, 1.0f);
+    assert(ringl_get_blend_color(&blend_color) == 0);
+    assert(blend_color.red == 0.0f && blend_color.green == 0.5f &&
+           blend_color.blue == 1.0f && blend_color.alpha == 1.0f);
+    blend_color.struct_size = sizeof(blend_color) - 1u;
+    blend_color.red = -1.0f;
+    assert(ringl_get_blend_color(&blend_color) == -1);
+    assert(blend_color.red == -1.0f);
+    blend_color.struct_size = sizeof(blend_color);
+    blend_color.api_version = RINGL_API_VERSION + 1u;
+    assert(ringl_get_blend_color(&blend_color) == -1);
+    blend_color.api_version = RINGL_API_VERSION;
 
     ringl_get_integerv(RINGL_CULL_FACE_MODE, values);
     assert(values[0] == (int32_t)RINGL_BACK);

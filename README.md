@@ -277,6 +277,11 @@ records `INVALID_OPERATION`. The legacy `ringl_get_integerv()` remains for
 existing callers, but new browser-facing code uses the bounded entry point so
 viewport, scissor, and color-mask queries cannot overrun an output buffer.
 
+`RinGLBlendColorV1` separately snapshots the finite, clamped blend constant
+that RinGL resolves into RinGPU's V2 pipeline descriptor. Its versioned input
+is validated before the complete snapshot is copied out, so a browser can
+answer `BLEND_COLOR` without reusing clear-color state or exposing internals.
+
 Custom RGBA8 renderbuffer FBOs may additionally attach a matching
 `DEPTH24_STENCIL8` renderbuffer or level-zero
 `DEPTH24_STENCIL8`/`DEPTH_STENCIL`/`UNSIGNED_INT_24_8` texture through

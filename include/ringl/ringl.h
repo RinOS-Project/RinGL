@@ -72,6 +72,7 @@ extern "C" {
 #define RINGL_FUNC_ADD                0x8006u
 #define RINGL_MIN                     0x8007u
 #define RINGL_MAX                     0x8008u
+#define RINGL_BLEND_COLOR             0x8005u
 #define RINGL_BLEND_EQUATION_RGB      0x8009u
 #define RINGL_FUNC_SUBTRACT           0x800au
 #define RINGL_FUNC_REVERSE_SUBTRACT   0x800bu
@@ -821,6 +822,19 @@ typedef struct RinGLClearValuesV1 {
     uint32_t reserved0;
 } RinGLClearValuesV1;
 
+/* Snapshot of the blend constant that RinGL supplies to the RinGPU pipeline.
+ * This is a separate ABI from clear values because blendColor must remain
+ * observable even when a caller changes its clear state. */
+typedef struct RinGLBlendColorV1 {
+    uint32_t struct_size;
+    uint32_t api_version;
+    float red;
+    float green;
+    float blue;
+    float alpha;
+    uint32_t reserved0;
+} RinGLBlendColorV1;
+
 /* This is a read-only description of RinGL's currently bound custom
  * framebuffer. It is intentionally separate from GLES query entry points so
  * an embedding can inspect the bounded object-model slice without claiming
@@ -872,6 +886,9 @@ void ringl_blend_func(uint32_t source_factor, uint32_t destination_factor);
 void ringl_blend_func_separate(uint32_t source_rgb, uint32_t destination_rgb,
                                uint32_t source_alpha,
                                uint32_t destination_alpha);
+/* Returns the tracked blend constant. The output must describe the complete
+ * v1 structure; failures leave it unchanged. */
+int ringl_get_blend_color(RinGLBlendColorV1* color);
 void ringl_blend_color(float red, float green, float blue, float alpha);
 void ringl_blend_equation(uint32_t mode);
 void ringl_blend_equation_separate(uint32_t mode_rgb, uint32_t mode_alpha);

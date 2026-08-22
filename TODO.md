@@ -138,6 +138,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Add a native-contract mock test for textured resource/raster ordering.
 - [x] Add RSH1 regression coverage for the initial varying-backed texture path.
 - [x] Add mock synchronization/readback coverage for `finish` and default-framebuffer `readPixels`.
+- [x] Keep the standalone Meson build clean under its C11/`-Werror` policy, including public-header self-containment and texture-module realization coverage.
 - [ ] Add hardware/QEMU integration tests where RinGPU support exists.
 - [ ] Add shader compiler differential/negative tests.
 - [ ] Add API trace tests for representative GL sequences.

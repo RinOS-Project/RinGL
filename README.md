@@ -153,4 +153,8 @@ tests/               unit and integration tests
 
 ## Status
 
-Bootstrapping. No API or ABI stability guarantee yet.
+The bounded first-triangle and textured-triangle translation paths are
+implemented and covered by strict C11 mock-RinGPU tests. They are not a GLES
+conformance claim: framebuffer objects, depth/stencil attachments, broader
+shader expressions, device-loss handling, and browser-facing context-loss
+policy remain unfinished. No API or ABI stability guarantee is made yet.

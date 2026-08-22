@@ -2,6 +2,7 @@
 #ifndef RINGL_RINGL_H
 #define RINGL_RINGL_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus

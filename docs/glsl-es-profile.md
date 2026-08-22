@@ -14,6 +14,10 @@ The current first-triangle slice supports:
 - `vec2(...)` and `vec4(...)` constructors;
 - scalar or `vec4` writes to the stage output (`gl_Position` / `gl_FragColor`);
 - constants and simple assignments;
+- one `uniform sampler2D` and one `texture2D()` call with either constant
+  `vec2` coordinates or the initial `varying vec2` texture-coordinate path;
+- a matched, perspective-interpolated `varying vec2` between the initial
+  vertex and fragment profiles;
 - diagnostics for unsupported syntax instead of silently accepting it.
 
 RinShader RSH1 remains scalar. Vector values are flattened by RinGL into consecutive scalar F32 I/O slots. For example, one `attribute vec2 position` occupies input slots 0 and 1, while `gl_Position = vec4(position, 0.0, 1.0)` stores four scalar outputs. This keeps vector source semantics above the stable RSH1 instruction ABI.
@@ -35,7 +39,12 @@ void main() {
 }
 ```
 
-Vector arithmetic, vector locals, matrices, uniforms, varyings, texture sampling, derivatives, loops, user functions, precision edge cases, and broader GLSL ES built-ins remain incremental work.
+The texture path is intentionally narrow: it accepts exactly one sampler and
+one sample operation, and the varying path recognizes the canonical
+position/UV textured-triangle form. Vector arithmetic, vector locals,
+matrices, other uniform types, additional varying types, texture expressions,
+derivatives, loops, user functions, precision edge cases, and broader GLSL ES
+built-ins remain incremental work.
 
 ## Vertex input mapping
 

@@ -10,7 +10,7 @@
 int ringl_glsl_lower_texture2d_rsh1(
     const char* source,
     size_t source_length,
-    const char sampler_names[][64],
+    const char* sampler_name,
     uint32_t sampler_count,
     RinGLGlslLowerResult* result);
 

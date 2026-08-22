@@ -81,7 +81,7 @@ static void init_instruction(RinGLRsh1InstructionV1* ins, uint16_t opcode)
 int ringl_glsl_lower_texture2d_rsh1(
     const char* source,
     size_t source_length,
-    const char sampler_names[][64],
+    const char* sampler_name,
     uint32_t sampler_count,
     RinGLGlslLowerResult* result)
 {
@@ -99,7 +99,7 @@ int ringl_glsl_lower_texture2d_rsh1(
     uint32_t component;
     size_t total;
 
-    if (source == NULL || result == NULL)
+    if (source == NULL || sampler_name == NULL || result == NULL)
         return -1;
     memset(result, 0, sizeof(*result));
     if (sampler_count != 1u) {
@@ -124,7 +124,7 @@ int ringl_glsl_lower_texture2d_rsh1(
     cursor = call + 9u;
     if (!expect_char(&cursor, end, '(') ||
         !parse_ident(&cursor, end, sampler, sizeof(sampler)) ||
-        strcmp(sampler, sampler_names[0]) != 0 ||
+        strcmp(sampler, sampler_name) != 0 ||
         !expect_char(&cursor, end, ',') ||
         !parse_ident(&cursor, end, ctor, sizeof(ctor)) ||
         strcmp(ctor, "vec2") != 0 ||

@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include <assert.h>
 #include <stdint.h>
-#include <string.h>
 
 #include <ringl/ringl.h>
 
@@ -102,10 +101,10 @@ int main(void)
     ringl_compile_shader(fragment);
     assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
     ringl_link_program(program);
-    assert(ringl_get_program_link_status(program) == RINGL_FALSE);
-    assert(ringl_get_program_info_log(program, log, sizeof(log)) > 0u);
-    assert(strstr(log, "fragment shader") != NULL);
-    assert(backend.shader_creates == 2u);
+    assert(ringl_get_program_link_status(program) == RINGL_TRUE);
+    assert(ringl_get_program_info_log(program, log, sizeof(log)) == 0u);
+    assert(ringl_get_shader_module(fragment) != 0u);
+    assert(backend.shader_creates == 3u);
 
     ringl_shader_source(fragment,
         "void main() { gl_FragColor = 0.5; }", -1);
@@ -113,6 +112,7 @@ int main(void)
     backend.reject_create = 1u;
     ringl_link_program(program);
     assert(ringl_get_program_link_status(program) == RINGL_FALSE);
+    assert(backend.shader_creates == 4u);
 
     ringl_context_destroy(context);
     return 0;

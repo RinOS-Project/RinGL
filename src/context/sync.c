@@ -163,25 +163,17 @@ void ringl_read_pixels(int32_t x, int32_t y,
     }
     if (width == 0 || height == 0)
         return;
-    if (pixels == NULL || x < 0 || y < 0 ||
+    if (!context->has_default_framebuffer || !context->has_sync_ops ||
+        context->sync_ops.readback_image_2d == NULL || pixels == NULL ||
+        x < 0 || y < 0 ||
         (uint64_t)(uint32_t)x + (uint64_t)(uint32_t)width >
             context->default_framebuffer.width ||
         (uint64_t)(uint32_t)y + (uint64_t)(uint32_t)height >
-            context->default_framebuffer.height ||
-        !context->has_default_framebuffer || !context->has_sync_ops ||
-        context->sync_ops.readback_image_2d == NULL) {
+            context->default_framebuffer.height) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
-    if ((uint64_t)(uint32_t)width > UINT64_MAX / 4u) {
-        ringl_context_record_error(context, RINGL_INVALID_VALUE);
-        return;
-    }
     row_bytes = (uint64_t)(uint32_t)width * 4u;
-    if ((uint64_t)(uint32_t)height > UINT64_MAX / row_bytes) {
-        ringl_context_record_error(context, RINGL_INVALID_VALUE);
-        return;
-    }
     total_bytes = row_bytes * (uint64_t)(uint32_t)height;
 
     old_state = context->default_framebuffer_state;

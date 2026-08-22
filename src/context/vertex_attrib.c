@@ -70,7 +70,8 @@ void ringl_vertex_attrib_pointer(uint32_t index,
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
-    if (size != 1 || normalized != RINGL_FALSE || stride < 0 || stride > 2048) {
+    if ((size != 1 && size != 2) || normalized != RINGL_FALSE ||
+        stride < 0 || stride > 2048) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
@@ -83,7 +84,7 @@ void ringl_vertex_attrib_pointer(uint32_t index,
         return;
     }
 
-    attrib->size = 1u;
+    attrib->size = (uint32_t)size;
     attrib->type = type;
     attrib->normalized = RINGL_FALSE;
     attrib->stride = (uint32_t)stride;

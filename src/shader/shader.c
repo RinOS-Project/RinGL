@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "ringl_internal.h"
+#include "glsl_parser.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -21,6 +22,15 @@ static RinGLShaderObject* ringl_shader_object(RinGLContext* context,
     if (index >= RINGL_OBJECT_SLOT_COUNT)
         return NULL;
     return &context->shaders[index];
+}
+
+static void ringl_shader_reset_compile_state(RinGLShaderObject* object)
+{
+    object->compile_status = RINGL_FALSE;
+    object->declaration_count = 0u;
+    object->statement_count = 0u;
+    object->attribute_count = 0u;
+    object->info_log[0] = '\0';
 }
 
 uint32_t ringl_create_shader(uint32_t shader_type)
@@ -51,6 +61,7 @@ uint32_t ringl_create_shader(uint32_t shader_type)
         return 0u;
     }
     object->shader_type = shader_type;
+    ringl_shader_reset_compile_state(object);
     ringl_object_promote(slot);
     return shader;
 }
@@ -132,6 +143,83 @@ void ringl_shader_source(uint32_t shader, const char* source, int64_t length)
     free(object->source);
     object->source = copy;
     object->source_length = source_length64;
+    ringl_shader_reset_compile_state(object);
+}
+
+void ringl_compile_shader(uint32_t shader)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLShaderObject* object;
+    RinGLGlslParseResult result;
+    int parse_result;
+
+    if (context == NULL)
+        return;
+    object = ringl_shader_object(context, shader);
+    if (object == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    ringl_shader_reset_compile_state(object);
+    if (object->source == NULL) {
+        (void)strncpy(object->info_log, "no shader source", sizeof(object->info_log) - 1u);
+        object->info_log[sizeof(object->info_log) - 1u] = '\0';
+        return;
+    }
+
+    parse_result = ringl_glsl_parse(object->shader_type, object->source,
+                                    (size_t)object->source_length, &result);
+    if (parse_result != 0 || !result.ok) {
+        (void)strncpy(object->info_log, result.diagnostic,
+                      sizeof(object->info_log) - 1u);
+        object->info_log[sizeof(object->info_log) - 1u] = '\0';
+        return;
+    }
+
+    object->compile_status = RINGL_TRUE;
+    object->declaration_count = result.declaration_count;
+    object->statement_count = result.statement_count;
+    object->attribute_count = result.attribute_count;
+}
+
+uint32_t ringl_get_shader_compile_status(uint32_t shader)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLShaderObject* object;
+    if (context == NULL)
+        return RINGL_FALSE;
+    object = ringl_shader_object(context, shader);
+    if (object == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return RINGL_FALSE;
+    }
+    return object->compile_status;
+}
+
+uint64_t ringl_get_shader_info_log(uint32_t shader, char* buffer,
+                                   uint64_t buffer_size)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLShaderObject* object;
+    size_t length;
+    size_t copy_length;
+
+    if (context == NULL)
+        return 0u;
+    object = ringl_shader_object(context, shader);
+    if (object == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return 0u;
+    }
+    length = strlen(object->info_log);
+    if (buffer == NULL || buffer_size == 0u)
+        return (uint64_t)length;
+    copy_length = length;
+    if (copy_length >= buffer_size)
+        copy_length = (size_t)buffer_size - 1u;
+    memcpy(buffer, object->info_log, copy_length);
+    buffer[copy_length] = '\0';
+    return (uint64_t)length;
 }
 
 uint32_t ringl_get_shader_type(uint32_t shader)
@@ -172,7 +260,6 @@ void ringl_shader_objects_destroy_all(RinGLContext* context)
             context->objects[index].state == RINGL_OBJECT_FREE)
             continue;
         free(context->shaders[index].source);
-        context->shaders[index].source = NULL;
-        context->shaders[index].source_length = 0u;
+        memset(&context->shaders[index], 0, sizeof(context->shaders[index]));
     }
 }

@@ -98,3 +98,15 @@ int ringl_get_default_framebuffer(RinGLDefaultFramebufferV1* framebuffer)
     *framebuffer = context->default_framebuffer;
     return 0;
 }
+
+int ringl_get_default_framebuffer_state(uint32_t* state)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL || state == NULL)
+        return -1;
+    if (!context->has_default_framebuffer)
+        return 1;
+    *state = context->default_framebuffer_state;
+    return 0;
+}

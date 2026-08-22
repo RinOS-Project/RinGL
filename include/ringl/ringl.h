@@ -510,6 +510,10 @@ void ringl_color_mask(uint32_t red, uint32_t green, uint32_t blue,
 int ringl_set_default_framebuffer(const RinGLDefaultFramebufferV1* framebuffer);
 int ringl_set_default_framebuffer_state(uint32_t state);
 int ringl_get_default_framebuffer(RinGLDefaultFramebufferV1* framebuffer);
+/* Returns the tracked RinGPU state of the default color target without
+ * exposing RinGL internals to the embedding. Returns 1 when no default
+ * framebuffer is configured and leaves state unchanged on failure. */
+int ringl_get_default_framebuffer_state(uint32_t* state);
 void ringl_clear_color(float red, float green, float blue, float alpha);
 void ringl_clear(uint32_t mask);
 void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count);

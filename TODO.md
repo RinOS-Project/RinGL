@@ -65,6 +65,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Begin/end RinGPU render passes for the first clear and draw operations.
 - [x] Implement first-slice `glDrawArrays(GL_TRIANGLES, ...)` translation.
 - [x] Track the default color image between UNDEFINED, PRESENT, and COLOR_TARGET states and emit required transitions.
+- [x] Expose the post-submit default color-image state to trusted embeddings so a caller-owned presentation surface can remain synchronized across RinGL presentation and reuse.
 - [x] Add the OS-Core adapter that maps the RinGL operation table to public RinGPU buffer, shader, pipeline, command, submit, and present APIs.
 - [x] Extend the adapter to public native graphics pipeline, raster-state, typed resource-binding, and graphics-resource-bind commands.
 - [x] Add an OS-Core surface bridge that creates a RinGL context over the existing WebGL RinGPU core/queue/color image.

@@ -159,7 +159,10 @@ slice is also implemented: level-zero RGBA8 texture and renderbuffer
 attachments are completeness-checked, realized as RinGPU color targets, used
 by clear/draw render passes, and read back through `COPY_SOURCE`. The RinOS
 surface integration test verifies texture-FBO clear and triangle output plus
-renderbuffer-FBO clear as actual RGBA pixels.
+renderbuffer-FBO clear as actual RGBA pixels. A trusted embedding can query
+the default color image's post-submit state, allowing its caller-owned
+presentation surface to remain synchronized across RinGL `present()` and
+later content updates.
 
 This remains a bounded profile. Depth/stencil attachments, multisampling,
 multiple color attachments, and broad GLES framebuffer semantics are not

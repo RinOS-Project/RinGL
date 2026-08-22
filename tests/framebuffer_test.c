@@ -20,6 +20,7 @@ int main(void)
         .height = 600u,
     };
     RinGLDefaultFramebufferV1 copy;
+    uint32_t framebuffer_state = 0xfeedfaceu;
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -27,6 +28,8 @@ int main(void)
     memset(&copy, 0xff, sizeof(copy));
     assert(ringl_get_default_framebuffer(&copy) == 1);
     assert(copy.color_target == 0u);
+    assert(ringl_get_default_framebuffer_state(&framebuffer_state) == 1);
+    assert(framebuffer_state == 0xfeedfaceu);
     assert(ringl_set_default_framebuffer_state(
                RINGL_RIN_GPU_IMAGE_UNDEFINED) == -1);
     assert(ringl_get_error() == RINGL_INVALID_OPERATION);
@@ -34,10 +37,14 @@ int main(void)
     assert(ringl_set_default_framebuffer(&framebuffer) == 0);
     assert((ringl_context_dirty_bits(context) & RINGL_DIRTY_FRAMEBUFFER) != 0u);
     assert((ringl_context_dirty_bits(context) & RINGL_DIRTY_PIPELINE) != 0u);
+    assert(ringl_get_default_framebuffer_state(&framebuffer_state) == 0);
+    assert(framebuffer_state == RINGL_RIN_GPU_IMAGE_PRESENT);
     assert(ringl_set_default_framebuffer_state(
                RINGL_RIN_GPU_IMAGE_UNDEFINED) == 0);
     assert(ringl_set_default_framebuffer_state(
                RINGL_RIN_GPU_IMAGE_COLOR_TARGET) == 0);
+    assert(ringl_get_default_framebuffer_state(&framebuffer_state) == 0);
+    assert(framebuffer_state == RINGL_RIN_GPU_IMAGE_COLOR_TARGET);
     assert(ringl_set_default_framebuffer_state(
                RINGL_RIN_GPU_IMAGE_PRESENT) == 0);
     assert(ringl_set_default_framebuffer_state(99u) == -1);

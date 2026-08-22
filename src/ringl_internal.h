@@ -76,6 +76,12 @@ struct RinGLContext {
     void* pipeline_cache;
     RinGLDefaultFramebufferV1 default_framebuffer;
     uint32_t has_default_framebuffer;
+    uint32_t default_framebuffer_state;
+    uint64_t graphics_command_list;
+    float clear_red;
+    float clear_green;
+    float clear_blue;
+    float clear_alpha;
 
     RinGLObjectSlot objects[RINGL_OBJECT_SLOT_COUNT];
     RinGLBufferObject buffers[RINGL_OBJECT_SLOT_COUNT];
@@ -109,6 +115,33 @@ int ringl_backend_create_graphics_pipeline(
     const RinGLRinGpuVertexAttributeV1* attributes,
     uint32_t attribute_count,
     uint64_t* pipeline_out);
+int ringl_backend_create_command_list(RinGLContext* context,
+                                      uint32_t capabilities,
+                                      uint64_t* command_list_out);
+int ringl_backend_reset_command_list(RinGLContext* context,
+                                     uint64_t command_list);
+int ringl_backend_transition_image(RinGLContext* context,
+                                   uint64_t command_list,
+                                   uint64_t image,
+                                   uint32_t old_state,
+                                   uint32_t new_state);
+int ringl_backend_begin_render_pass(RinGLContext* context,
+                                    uint64_t command_list,
+                                    const RinGLRinGpuRenderPassV1* render_pass);
+int ringl_backend_draw_vertices(RinGLContext* context,
+                                uint64_t command_list,
+                                const RinGLRinGpuDrawVerticesV1* draw);
+int ringl_backend_end_render_pass(RinGLContext* context,
+                                  uint64_t command_list);
+int ringl_backend_present(RinGLContext* context,
+                          uint64_t command_list,
+                          uint64_t image,
+                          uint32_t display_id);
+int ringl_backend_close_command_list(RinGLContext* context,
+                                     uint64_t command_list);
+int ringl_backend_queue_submit(RinGLContext* context,
+                               uint64_t queue,
+                               uint64_t command_list);
 void ringl_backend_destroy_object(RinGLContext* context, uint64_t object);
 void ringl_buffer_objects_destroy_all(RinGLContext* context);
 void ringl_shader_objects_destroy_all(RinGLContext* context);

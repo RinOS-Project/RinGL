@@ -27,13 +27,16 @@ int main(void)
                         "attribute float position; void main() { gl_Position = position; }",
                         -1);
     ringl_shader_source(fragment,
-                        "uniform sampler2D colorTexture; void main() { gl_FragColor = 1.0; }",
+                        "uniform sampler2D colorTexture; "
+                        "void main() { gl_FragColor = texture2D(colorTexture, vec2(0.5, 0.5)); }",
                         -1);
     ringl_compile_shader(vertex);
     ringl_compile_shader(fragment);
     assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
     assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
 
+    /* A validation-only context may link the GL program and expose uniforms
+     * even though the current shared RSH1 ABI cannot lower texture2D yet. */
     ringl_attach_shader(program, vertex);
     ringl_attach_shader(program, fragment);
     ringl_link_program(program);

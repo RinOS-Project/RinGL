@@ -10,6 +10,8 @@
 #define RINGL_NATIVE_VERTEX_FLOAT32 3u
 #define RINGL_SHADER_LOG_MAX 160u
 #define RINGL_PROGRAM_LOG_MAX 160u
+#define RINGL_MAX_SAMPLER_UNIFORMS 8u
+#define RINGL_UNIFORM_NAME_MAX 64u
 
 typedef struct RinGLBufferObject {
     uint64_t ringpu_handle;
@@ -45,15 +47,22 @@ typedef struct RinGLShaderObject {
     uint32_t declaration_count;
     uint32_t statement_count;
     uint32_t attribute_count;
-    uint32_t reserved0;
+    uint32_t sampler_uniform_count;
+    char sampler_uniform_names[RINGL_MAX_SAMPLER_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char info_log[RINGL_SHADER_LOG_MAX];
 } RinGLShaderObject;
+
+typedef struct RinGLProgramSamplerUniform {
+    char name[RINGL_UNIFORM_NAME_MAX];
+    int32_t texture_unit;
+} RinGLProgramSamplerUniform;
 
 typedef struct RinGLProgramObject {
     uint32_t vertex_shader;
     uint32_t fragment_shader;
     uint32_t link_status;
-    uint32_t reserved0;
+    uint32_t sampler_uniform_count;
+    RinGLProgramSamplerUniform sampler_uniforms[RINGL_MAX_SAMPLER_UNIFORMS];
     char info_log[RINGL_PROGRAM_LOG_MAX];
 } RinGLProgramObject;
 

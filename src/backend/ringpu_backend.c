@@ -35,6 +35,49 @@ int ringl_backend_upload_buffer(RinGLContext* context,
                                              size_bytes);
 }
 
+int ringl_backend_create_sampled_image_2d(
+    RinGLContext* context, const RinGLRinGpuSampledImage2DV1* desc,
+    uint64_t* image_out)
+{
+    if (context == NULL || desc == NULL || image_out == NULL ||
+        desc->width == 0u || desc->height == 0u ||
+        !context->has_ringpu_ops ||
+        context->ringpu_ops.create_sampled_image_2d == NULL) {
+        return -1;
+    }
+    *image_out = 0u;
+    return context->ringpu_ops.create_sampled_image_2d(
+        context->ringpu.session, desc, image_out);
+}
+
+int ringl_backend_upload_image_2d(
+    RinGLContext* context, uint64_t image,
+    const RinGLRinGpuImageUpload2DV1* upload,
+    const void* data, uint64_t size_bytes)
+{
+    if (context == NULL || image == 0u || upload == NULL || data == NULL ||
+        upload->width == 0u || upload->height == 0u || size_bytes == 0u ||
+        !context->has_ringpu_ops ||
+        context->ringpu_ops.upload_image_2d == NULL) {
+        return -1;
+    }
+    return context->ringpu_ops.upload_image_2d(
+        context->ringpu.session, image, upload, data, size_bytes);
+}
+
+int ringl_backend_create_sampler(RinGLContext* context,
+                                 const RinGLRinGpuSamplerV1* desc,
+                                 uint64_t* sampler_out)
+{
+    if (context == NULL || desc == NULL || sampler_out == NULL ||
+        !context->has_ringpu_ops || context->ringpu_ops.create_sampler == NULL) {
+        return -1;
+    }
+    *sampler_out = 0u;
+    return context->ringpu_ops.create_sampler(context->ringpu.session,
+                                              desc, sampler_out);
+}
+
 int ringl_backend_create_shader_module(RinGLContext* context,
                                        const void* rsh1,
                                        uint64_t size_bytes,

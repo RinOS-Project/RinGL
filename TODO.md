@@ -32,6 +32,9 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Implement array-buffer and element-array-buffer state.
 - [x] Implement the initial vertex attribute state model.
 - [x] Translate supported GL vertex formats into RinGPU vertex layouts.
+  - [x] Map WebGL 1 `FLOAT`/`BYTE`/`UNSIGNED_BYTE`/`SHORT`/`UNSIGNED_SHORT`
+    attributes, including normalized 8/16-bit conversion and byte strides, to
+    executable scalar RinGPU input formats.
 - [x] Reject unsupported or out-of-range vertex fetches before submission.
 - [x] Add buffer lifetime and bounds tests.
 

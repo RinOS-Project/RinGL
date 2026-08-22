@@ -73,6 +73,40 @@ int main(void)
     ringl_vertex_attrib_pointer(2u, 1, 0x1405u, RINGL_FALSE, 8, 0u);
     assert(ringl_get_error() == RINGL_INVALID_ENUM);
 
+    /* WebGL 1 vertex input types are forwarded as scalar RinGPU inputs.
+     * Byte strides are intentionally not forced to Float32 alignment. */
+    ringl_disable_vertex_attrib_array(0u);
+    ringl_disable_vertex_attrib_array(1u);
+    context->buffers[slot_index].size_bytes = 12u;
+    ringl_vertex_attrib_pointer(0u, 2, RINGL_BYTE, RINGL_TRUE, 3, 0u);
+    ringl_enable_vertex_attrib_array(0u);
+    assert(ringl_get_vertex_attrib(0u, &info) == 0);
+    assert(info.type == RINGL_BYTE && info.normalized == RINGL_TRUE &&
+           info.stride == 3u);
+    assert(ringl_resolve_vertex_layout(context, &layout) == 0);
+    assert(layout.stride == 3u && layout.attribute_count == 2u);
+    assert(layout.attributes[0].format == RINGL_NATIVE_VERTEX_SNORM8 &&
+           layout.attributes[0].offset == 0u &&
+           layout.attributes[1].format == RINGL_NATIVE_VERTEX_SNORM8 &&
+           layout.attributes[1].offset == 1u);
+    assert(ringl_validate_vertex_fetch(context, 0u, 4u, &layout) == 0);
+
+    ringl_vertex_attrib_pointer(0u, 1, RINGL_UNSIGNED_BYTE, RINGL_FALSE,
+                                3, 0u);
+    assert(ringl_resolve_vertex_layout(context, &layout) == 0);
+    assert(layout.attributes[0].format == RINGL_NATIVE_VERTEX_UINT8);
+    ringl_vertex_attrib_pointer(0u, 1, RINGL_SHORT, RINGL_TRUE, 6, 2u);
+    assert(ringl_resolve_vertex_layout(context, &layout) == 0);
+    assert(layout.stride == 6u &&
+           layout.attributes[0].format == RINGL_NATIVE_VERTEX_SNORM16 &&
+           layout.attributes[0].offset == 2u);
+    ringl_vertex_attrib_pointer(0u, 1, RINGL_UNSIGNED_SHORT, RINGL_FALSE,
+                                6, 2u);
+    assert(ringl_resolve_vertex_layout(context, &layout) == 0);
+    assert(layout.attributes[0].format == RINGL_NATIVE_VERTEX_UINT16);
+    ringl_vertex_attrib_pointer(0u, 1, RINGL_SHORT, RINGL_FALSE, 2, 1u);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+
     context->buffers[slot_index].size_bytes = 60u;
     ringl_disable_vertex_attrib_array(0u);
     ringl_disable_vertex_attrib_array(1u);

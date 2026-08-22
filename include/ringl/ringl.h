@@ -21,7 +21,9 @@ extern "C" {
 #define RINGL_TRUE  1u
 #define RINGL_ZERO  0u
 #define RINGL_ONE   1u
+#define RINGL_BYTE           0x1400u
 #define RINGL_UNSIGNED_BYTE  0x1401u
+#define RINGL_SHORT          0x1402u
 #define RINGL_UNSIGNED_SHORT 0x1403u
 #define RINGL_UNSIGNED_INT   0x1405u
 #define RINGL_FLOAT          0x1406u

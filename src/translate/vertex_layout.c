@@ -4,6 +4,57 @@
 #include <stddef.h>
 #include <string.h>
 
+static uint32_t ringl_native_vertex_format(uint32_t type, uint32_t normalized,
+                                           uint32_t* component_bytes)
+{
+    if (component_bytes == NULL)
+        return 0u;
+    if (type == RINGL_FLOAT) {
+        *component_bytes = 4u;
+        return RINGL_NATIVE_VERTEX_FLOAT32;
+    }
+    if (type == RINGL_BYTE) {
+        *component_bytes = 1u;
+        return normalized == RINGL_TRUE ? RINGL_NATIVE_VERTEX_SNORM8
+                                        : RINGL_NATIVE_VERTEX_SINT8;
+    }
+    if (type == RINGL_UNSIGNED_BYTE) {
+        *component_bytes = 1u;
+        return normalized == RINGL_TRUE ? RINGL_NATIVE_VERTEX_UNORM8
+                                        : RINGL_NATIVE_VERTEX_UINT8;
+    }
+    if (type == RINGL_SHORT) {
+        *component_bytes = 2u;
+        return normalized == RINGL_TRUE ? RINGL_NATIVE_VERTEX_SNORM16
+                                        : RINGL_NATIVE_VERTEX_SINT16;
+    }
+    if (type == RINGL_UNSIGNED_SHORT) {
+        *component_bytes = 2u;
+        return normalized == RINGL_TRUE ? RINGL_NATIVE_VERTEX_UNORM16
+                                        : RINGL_NATIVE_VERTEX_UINT16;
+    }
+    return 0u;
+}
+
+static uint32_t ringl_native_vertex_format_bytes(uint32_t format)
+{
+    if (format == RINGL_NATIVE_VERTEX_UINT8 ||
+        format == RINGL_NATIVE_VERTEX_SINT8 ||
+        format == RINGL_NATIVE_VERTEX_UNORM8 ||
+        format == RINGL_NATIVE_VERTEX_SNORM8)
+        return 1u;
+    if (format == RINGL_NATIVE_VERTEX_UINT16 ||
+        format == RINGL_NATIVE_VERTEX_SINT16 ||
+        format == RINGL_NATIVE_VERTEX_UNORM16 ||
+        format == RINGL_NATIVE_VERTEX_SNORM16)
+        return 2u;
+    if (format == RINGL_NATIVE_VERTEX_UINT32 ||
+        format == RINGL_NATIVE_VERTEX_SINT32 ||
+        format == RINGL_NATIVE_VERTEX_FLOAT32)
+        return 4u;
+    return 0u;
+}
+
 int ringl_resolve_vertex_layout(const RinGLContext* context,
                                 RinGLResolvedVertexLayout* layout)
 {
@@ -19,6 +70,8 @@ int ringl_resolve_vertex_layout(const RinGLContext* context,
     for (index = 0; index < RINGL_MAX_VERTEX_ATTRIBS; ++index) {
         const RinGLVertexAttribState* attrib = &context->vertex_attribs[index];
         uint32_t effective_stride;
+        uint32_t component_bytes;
+        uint32_t format;
         uint32_t component;
 
         if (!attrib->enabled)
@@ -26,20 +79,26 @@ int ringl_resolve_vertex_layout(const RinGLContext* context,
         if (attrib->buffer == 0u ||
             (attrib->size != 1u && attrib->size != 2u && attrib->size != 3u &&
              attrib->size != 4u) ||
-            attrib->type != RINGL_FLOAT || attrib->normalized != RINGL_FALSE)
+            (attrib->normalized != RINGL_FALSE &&
+             attrib->normalized != RINGL_TRUE))
+            return -1;
+        format = ringl_native_vertex_format(attrib->type, attrib->normalized,
+                                            &component_bytes);
+        if (format == 0u)
             return -1;
         if (ringl_object_lookup_const(context, attrib->buffer,
                                       RINGL_OBJECT_BUFFER) == NULL)
             return -1;
         if (attrib->offset > UINT32_MAX)
             return -1;
-        if ((uint64_t)attrib->offset + (uint64_t)attrib->size * 4u > UINT32_MAX)
+        if ((uint64_t)attrib->offset +
+                (uint64_t)attrib->size * component_bytes > UINT32_MAX)
             return -1;
 
-        effective_stride = attrib->stride == 0u ? attrib->size * 4u
-                                                 : attrib->stride;
-        if (effective_stride > 2048u || (effective_stride & 3u) != 0u ||
-            effective_stride < attrib->size * 4u)
+        effective_stride = attrib->stride == 0u
+            ? attrib->size * component_bytes : attrib->stride;
+        if (effective_stride > 2048u ||
+            effective_stride < attrib->size * component_bytes)
             return -1;
 
         if (common_buffer == 0u) {
@@ -56,8 +115,9 @@ int ringl_resolve_vertex_layout(const RinGLContext* context,
             RinGLResolvedVertexAttribute* resolved =
                 &layout->attributes[layout->attribute_count++];
             resolved->location = scalar_location++;
-            resolved->format = RINGL_NATIVE_VERTEX_FLOAT32;
-            resolved->offset = (uint32_t)attrib->offset + component * 4u;
+            resolved->format = format;
+            resolved->offset = (uint32_t)attrib->offset +
+                component * component_bytes;
         }
     }
 
@@ -96,16 +156,21 @@ int ringl_validate_vertex_fetch(const RinGLContext* context,
 
     for (index = 0; index < layout->attribute_count; ++index) {
         const RinGLResolvedVertexAttribute* attrib = &layout->attributes[index];
+        uint32_t component_bytes;
         uint64_t stride_bytes;
         uint64_t end;
 
+        component_bytes = ringl_native_vertex_format_bytes(attrib->format);
+        if (component_bytes == 0u)
+            return -1;
         if (last_vertex != 0u &&
             (uint64_t)layout->stride >
-                (UINT64_MAX - (uint64_t)attrib->offset - 4u) / last_vertex) {
+                (UINT64_MAX - (uint64_t)attrib->offset - component_bytes) /
+                    last_vertex) {
             return -1;
         }
         stride_bytes = last_vertex * (uint64_t)layout->stride;
-        end = (uint64_t)attrib->offset + stride_bytes + 4u;
+        end = (uint64_t)attrib->offset + stride_bytes + component_bytes;
         if (end > buffer->size_bytes)
             return -1;
     }

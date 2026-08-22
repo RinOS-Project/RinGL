@@ -11,6 +11,17 @@ static RinGLVertexAttribState* ringl_vertex_attrib(RinGLContext* context,
     return &context->vertex_attribs[index];
 }
 
+static uint32_t ringl_vertex_component_bytes(uint32_t type)
+{
+    if (type == RINGL_BYTE || type == RINGL_UNSIGNED_BYTE)
+        return 1u;
+    if (type == RINGL_SHORT || type == RINGL_UNSIGNED_SHORT)
+        return 2u;
+    if (type == RINGL_FLOAT)
+        return 4u;
+    return 0u;
+}
+
 void ringl_enable_vertex_attrib_array(uint32_t index)
 {
     RinGLContext* context = ringl_get_current_context();
@@ -66,12 +77,12 @@ void ringl_vertex_attrib_pointer(uint32_t index,
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
-    if (type != RINGL_FLOAT) {
+    if (ringl_vertex_component_bytes(type) == 0u) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
     if ((size != 1 && size != 2 && size != 3 && size != 4) ||
-        normalized != RINGL_FALSE ||
+        (normalized != RINGL_FALSE && normalized != RINGL_TRUE) ||
         stride < 0 || stride > 2048) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
@@ -80,14 +91,14 @@ void ringl_vertex_attrib_pointer(uint32_t index,
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
-    if ((offset & UINT64_C(3)) != 0u || (stride != 0 && (stride & 3) != 0)) {
+    if ((offset % ringl_vertex_component_bytes(type)) != 0u) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
 
     attrib->size = (uint32_t)size;
     attrib->type = type;
-    attrib->normalized = RINGL_FALSE;
+    attrib->normalized = normalized;
     attrib->stride = (uint32_t)stride;
     attrib->buffer = context->array_buffer;
     attrib->offset = offset;

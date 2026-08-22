@@ -249,6 +249,14 @@ RGBA pixels. This does not make arbitrary varying declarations or expressions
 available: multiple independent varyings and general expressions remain outside
 the bounded profile.
 
+`vertexAttribPointer` now accepts the WebGL 1 scalar source types `FLOAT`,
+`BYTE`, `UNSIGNED_BYTE`, `SHORT`, and `UNSIGNED_SHORT`, including normalized
+integer conversion. RinGL expands every component into a typed scalar RinGPU
+input and preserves byte strides rather than silently requiring Float32
+alignment. The current bounded renderer still requires enabled arrays to share
+one buffer and one effective stride; independent buffer bindings, WebGL 2
+integer attributes, and general vertex pulling remain outside this slice.
+
 The corresponding bounded RGB profile accepts `attribute vec3 color` and
 `varying vec3 vertexColor`, with `gl_FragColor = vec4(vertexColor, 1.0)`.
 It uses three interpolated color slots, then explicitly writes `1.0` to the

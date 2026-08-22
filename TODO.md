@@ -145,6 +145,12 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     texture storage only after the full default-BGRA/FBO-RGBA snapshot succeeds.
     Unsupported destination formats and unrepresented FBO copy semantics remain
     rejected.
+  - [x] Add a bounded `copyTexImage2D` definition path from the same complete
+    RGBA color targets. The new RGBA storage is snapshotted before the bound
+    texture's old shadow/image is discarded, so invalid source rectangles,
+    incomplete FBOs, and readback failure leave that texture definition intact.
+    Zero-sized, non-RGBA, depth/stencil, and multisample definitions remain
+    unsupported.
 - [x] Implement current immediate-submit `glFlush` semantics.
 - [x] Implement `glFinish` using an optional versioned sync extension, RinGPU fences, fenced queue submission, and `ringpu_wait_fence()`.
 - [x] Implement bounded current-color-framebuffer `RGBA/UNSIGNED_BYTE` `glReadPixels` logic through COPY_SOURCE transition, completion wait, RinGPU image readback, and BGRA-to-RGBA swizzle where required.
@@ -176,7 +182,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Add mock-RinGPU tests that inspect generated commands without requiring hardware for the first triangle path.
 - [x] Add a native-contract mock test for textured resource/raster ordering.
 - [x] Add RSH1 regression coverage for the initial varying-backed texture path.
-- [x] Add mock synchronization/readback coverage for `finish` and default-framebuffer `readPixels`.
+- [x] Add mock synchronization/readback coverage for `finish`, complete-color-target `readPixels`, and bounded framebuffer-to-texture copy definitions.
 - [x] Add a real RinGPU surface integration test that reads texture-FBO clear/draw output and renderbuffer-FBO clear output back as RGBA pixels.
 - [x] Keep the standalone Meson build clean under its C11/`-Werror` policy, including public-header self-containment and texture-module realization coverage.
 - [ ] Add hardware/QEMU integration tests where RinGPU support exists.

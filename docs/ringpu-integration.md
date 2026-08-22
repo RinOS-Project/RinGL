@@ -54,16 +54,18 @@ During the initial bridge lifetime RinGL is the exclusive command producer for t
 
 The surface color image declares `COPY_SOURCE` and `CPU_READABLE` as well as
 its existing `COPY_DESTINATION`, `COLOR_TARGET`, and `PRESENT` uses. Its
-backend supplies bounded readback, so RinGL's default-framebuffer
+backend supplies bounded readback, so RinGL's complete RGBA color-target
 `RGBA/UNSIGNED_BYTE` `readPixels` path can transition to `COPY_SOURCE`, wait,
-read back, and swizzle BGRA storage to RGBA. The same fenced snapshot powers
-the bounded `copyTexSubImage2D` path from either the default color buffer or a
-complete RGBA8 texture/renderbuffer FBO into a defined level-zero RGBA texture;
-FBO completeness and source/destination rectangles are checked before
-allocation, and the shadow is changed only after readback succeeds. The focused
-OS-Core `rin_webgl_ringl_bridge_test` covers clear, readback, and present through
-this borrowed surface. Depth/stencil, multisample, and other FBO copy semantics
-remain outside this slice.
+read back, and swizzle default-framebuffer BGRA storage to RGBA. The same fenced
+snapshot powers `copyTexSubImage2D` and `copyTexImage2D` from either the default
+color buffer or a complete RGBA8 texture/renderbuffer FBO into level-zero RGBA
+texture storage; FBO completeness and source/destination rectangles are checked
+before temporary allocation, and the destination shadow is changed only after
+readback succeeds. `copyTexImage2D` retains a prior texture definition/image
+until the replacement snapshot completes. The focused OS-Core
+`rin_webgl_ringl_bridge_test` covers clear, readback, and present through this
+borrowed surface. Depth/stencil, multisample, and other FBO copy semantics remain
+outside this slice.
 
 ## Shader module validation path
 

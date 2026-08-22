@@ -244,6 +244,13 @@ readback succeeds. Non-RGBA destination textures and out-of-range rectangles
 are rejected; custom FBO depth/stencil readback, multisample, and other
 unrepresented copy semantics remain outside the current profile.
 
+`copyTexImage2D` uses the same fenced snapshot to replace a bound texture with
+a new level-zero `RGBA` definition. Its full source rectangle, FBO completeness,
+and destination limits are validated before readback; the previous texture
+definition and realized RinGPU image remain intact unless snapshot completion
+succeeds. This profile does not yet define zero-sized, non-RGBA, depth/stencil,
+or multisample copy definitions.
+
 The one-sampler constant texture profile accepts both `vec2(u, v)` and the
 GLSL scalar-splat form `vec2(value)`. The latter requires a finite literal and
 stores that exact Float32 value in both RSH1 texture-coordinate registers, so

@@ -16,6 +16,8 @@ typedef struct FakeBackend {
     uint32_t waits;
     uint32_t transitions;
     uint32_t readbacks;
+    uint32_t failed_readbacks;
+    uint32_t fail_next_readback;
     uint32_t render_passes;
     uint32_t queue_submits;
     uint32_t destroys;
@@ -184,6 +186,11 @@ static int fake_readback(void* session, uint64_t image,
     assert(readback->width == 2u && readback->height == 1u);
     assert(readback->destination_row_pitch_bytes == 8u);
     assert(destination_size == sizeof(expected_bgra));
+    if (backend->fail_next_readback != 0u) {
+        backend->fail_next_readback = 0u;
+        backend->failed_readbacks++;
+        return -1;
+    }
     memcpy(destination, image == 700u ? expected_bgra : expected_rgba,
            sizeof(expected_bgra));
     backend->readbacks++;
@@ -239,6 +246,7 @@ int main(void)
     };
     RinGLContext* context = NULL;
     uint32_t texture = 0u;
+    uint32_t copied_texture = 0u;
     uint32_t source_framebuffer = 0u;
     uint32_t renderbuffer = 0u;
     uint32_t depth_renderbuffer = 0u;
@@ -301,6 +309,25 @@ int main(void)
     assert(backend.readbacks == 3u);
     assert(memcmp(context->textures[ringl_object_slot_index(texture)].shadow_bytes,
                   expected_rgba, sizeof(expected_rgba)) == 0);
+    ringl_gen_textures(1, &copied_texture);
+    ringl_bind_texture(RINGL_TEXTURE_2D, copied_texture);
+    ringl_copy_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 7, 2, 2, 1, 0);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    assert(context->textures[ringl_object_slot_index(copied_texture)].defined ==
+           RINGL_FALSE);
+    ringl_copy_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 1, 2, 2, 1, 0);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(backend.transitions == 3u);
+    assert(backend.submits == 5u && backend.waits == 5u);
+    assert(backend.readbacks == 4u);
+    assert(memcmp(context->textures[ringl_object_slot_index(copied_texture)].shadow_bytes,
+                  expected_rgba, sizeof(expected_rgba)) == 0);
+    backend.fail_next_readback = 1u;
+    ringl_copy_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 1, 2, 2, 1, 0);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    assert(backend.failed_readbacks == 1u && backend.readbacks == 4u);
+    assert(memcmp(context->textures[ringl_object_slot_index(copied_texture)].shadow_bytes,
+                  expected_rgba, sizeof(expected_rgba)) == 0);
     ringl_gen_renderbuffers(1, &depth_renderbuffer);
     ringl_bind_renderbuffer(RINGL_RENDERBUFFER, depth_renderbuffer);
     ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_DEPTH_COMPONENT32F,
@@ -311,7 +338,9 @@ int main(void)
            RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT);
     ringl_copy_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 1, 2, 2, 1);
     assert(ringl_get_error() == RINGL_INVALID_OPERATION);
-    assert(backend.transitions == 3u && backend.readbacks == 3u);
+    assert(backend.transitions == 3u && backend.readbacks == 4u);
+    assert(memcmp(context->textures[ringl_object_slot_index(copied_texture)].shadow_bytes,
+                  expected_rgba, sizeof(expected_rgba)) == 0);
 
     assert(ringl_context_set_sync_ops(context, NULL) == 0);
     assert(backend.destroys == 1u); /* fence */

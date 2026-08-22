@@ -704,6 +704,11 @@ void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
                                  int32_t xoffset, int32_t yoffset,
                                  int32_t x, int32_t y,
                                  int32_t width, int32_t height);
+/* Bounded definition path: snapshot the current complete RGBA color target
+ * into a new level-zero RGBA texture definition. */
+void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
+                             uint32_t internal_format, int32_t x, int32_t y,
+                             int32_t width, int32_t height, int32_t border);
 
 void ringl_gen_framebuffers(int32_t count, uint32_t* framebuffers);
 void ringl_delete_framebuffers(int32_t count, const uint32_t* framebuffers);

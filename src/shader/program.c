@@ -274,3 +274,19 @@ uint32_t ringl_get_current_program(void)
     RinGLContext* context = ringl_get_current_context();
     return context == NULL ? 0u : context->current_program;
 }
+
+void ringl_program_objects_destroy_all(RinGLContext* context)
+{
+    uint32_t index;
+
+    if (context == NULL)
+        return;
+    for (index = 0u; index < RINGL_OBJECT_SLOT_COUNT; ++index) {
+        if (context->objects[index].type != RINGL_OBJECT_PROGRAM ||
+            context->objects[index].state == RINGL_OBJECT_FREE) {
+            continue;
+        }
+        memset(&context->programs[index], 0, sizeof(context->programs[index]));
+    }
+    context->current_program = 0u;
+}

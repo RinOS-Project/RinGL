@@ -12,6 +12,9 @@ int main(void)
     uint32_t vertex;
     uint32_t fragment;
     uint32_t program;
+    uint32_t multi_vertex;
+    uint32_t multi_fragment;
+    uint32_t multi_program;
     int32_t location;
     char log[160];
 
@@ -56,6 +59,30 @@ int main(void)
     assert(ringl_get_error() == RINGL_NO_ERROR);
     ringl_uniform_1i(99, 0);
     assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+
+    multi_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+    multi_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+    multi_program = ringl_create_program();
+    assert(multi_vertex != 0u && multi_fragment != 0u && multi_program != 0u);
+    ringl_shader_source(
+        multi_vertex,
+        "attribute vec2 position; attribute vec2 colorRG; attribute vec2 colorBA; "
+        "varying vec2 vertexRG; varying vec2 vertexBA; "
+        "void main() { gl_Position = vec4(position, 0.0, 1.0); "
+        "vertexRG = colorRG; vertexBA = colorBA; }", -1);
+    ringl_shader_source(
+        multi_fragment,
+        "varying vec2 vertexRG; varying vec2 vertexBA; "
+        "void main() { gl_FragColor = vec4(vertexRG, vertexBA); }", -1);
+    ringl_compile_shader(multi_vertex);
+    ringl_compile_shader(multi_fragment);
+    assert(ringl_get_shader_compile_status(multi_vertex) == RINGL_TRUE);
+    assert(ringl_get_shader_compile_status(multi_fragment) == RINGL_TRUE);
+    ringl_attach_shader(multi_program, multi_vertex);
+    ringl_attach_shader(multi_program, multi_fragment);
+    ringl_link_program(multi_program);
+    assert(ringl_get_program_link_status(multi_program) == RINGL_TRUE);
+    ringl_delete_program(multi_program);
 
     ringl_delete_program(program);
     assert(ringl_get_current_program() == 0u);

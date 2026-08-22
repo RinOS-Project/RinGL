@@ -224,6 +224,12 @@ fourth fixed vertex output and loads that slot in the fragment RSH1. This keeps
 the native RinGPU interface fully mapped and type-checked instead of treating
 the unused alpha slot as an implicit value.
 
+Two independently declared `vec2` varyings are also supported in one bounded
+profile: `colorRG` and `colorBA` are assigned to `vertexRG` and `vertexBA`,
+then `gl_FragColor = vec4(vertexRG, vertexBA)` reads all four interpolated
+components. Link reflection assigns the declarations distinct vertex-output
+and fragment-input locations, which the RinGPU pipeline maps one-to-one.
+
 This remains a bounded profile. A default caller-owned D32 surface has no
 stencil storage unless its embedding explicitly supplies the matching S8
 plane; that D32S8 default target executes the same front/back stencil path.

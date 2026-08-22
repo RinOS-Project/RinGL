@@ -57,6 +57,19 @@ int main(void)
     assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
 
     ringl_shader_source(vertex,
+        "attribute vec2 position; attribute vec2 colorRG; attribute vec2 colorBA; "
+        "varying vec2 vertexRG; varying vec2 vertexBA;\n"
+        "void main() { gl_Position = vec4(position, 0.0, 1.0); "
+        "vertexRG = colorRG; vertexBA = colorBA; }\n", -1);
+    ringl_compile_shader(vertex);
+    assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
+    ringl_shader_source(fragment,
+        "varying vec2 vertexRG; varying vec2 vertexBA;\n"
+        "void main() { gl_FragColor = vec4(vertexRG, vertexBA); }\n", -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+
+    ringl_shader_source(vertex,
         "attribute vec2 position; attribute vec3 color; varying vec3 vertexColor;\n"
         "void main() { gl_Position = vec4(position, 0.0, 1.0); vertexColor = color; }\n",
         -1);

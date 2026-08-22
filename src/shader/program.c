@@ -46,6 +46,47 @@ static void ringl_program_set_log(RinGLProgramObject* program,
     program->info_log[length] = '\0';
 }
 
+static int ringl_program_add_sampler_uniform(RinGLProgramObject* program,
+                                             const char* name)
+{
+    uint32_t i;
+
+    for (i = 0u; i < program->sampler_uniform_count; ++i) {
+        if (strcmp(program->sampler_uniforms[i].name, name) == 0)
+            return 1;
+    }
+    if (program->sampler_uniform_count >= RINGL_MAX_SAMPLER_UNIFORMS)
+        return 0;
+    i = program->sampler_uniform_count++;
+    (void)strncpy(program->sampler_uniforms[i].name, name,
+                  sizeof(program->sampler_uniforms[i].name) - 1u);
+    program->sampler_uniforms[i].name[
+        sizeof(program->sampler_uniforms[i].name) - 1u] = '\0';
+    program->sampler_uniforms[i].texture_unit = 0;
+    return 1;
+}
+
+static int ringl_program_collect_sampler_uniforms(RinGLProgramObject* program,
+                                                  const RinGLShaderObject* vertex,
+                                                  const RinGLShaderObject* fragment)
+{
+    uint32_t i;
+
+    program->sampler_uniform_count = 0u;
+    memset(program->sampler_uniforms, 0, sizeof(program->sampler_uniforms));
+    for (i = 0u; i < vertex->sampler_uniform_count; ++i) {
+        if (!ringl_program_add_sampler_uniform(
+                program, vertex->sampler_uniform_names[i]))
+            return 0;
+    }
+    for (i = 0u; i < fragment->sampler_uniform_count; ++i) {
+        if (!ringl_program_add_sampler_uniform(
+                program, fragment->sampler_uniform_names[i]))
+            return 0;
+    }
+    return 1;
+}
+
 uint32_t ringl_create_program(void)
 {
     RinGLContext* context = ringl_get_current_context();
@@ -129,6 +170,8 @@ void ringl_attach_shader(uint32_t program, uint32_t shader)
         return;
     }
     target->link_status = RINGL_FALSE;
+    target->sampler_uniform_count = 0u;
+    memset(target->sampler_uniforms, 0, sizeof(target->sampler_uniforms));
     ringl_program_set_log(target, "");
     ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
 }
@@ -162,6 +205,8 @@ void ringl_link_program(uint32_t program)
     }
 
     object->link_status = RINGL_FALSE;
+    object->sampler_uniform_count = 0u;
+    memset(object->sampler_uniforms, 0, sizeof(object->sampler_uniforms));
     if (object->vertex_shader == 0u || object->fragment_shader == 0u) {
         ringl_program_set_log(object,
                               "vertex and fragment shaders are required");
@@ -176,6 +221,10 @@ void ringl_link_program(uint32_t program)
     if (!vertex->compile_status || !fragment->compile_status) {
         ringl_program_set_log(
             object, "all attached shaders must compile successfully");
+        return;
+    }
+    if (!ringl_program_collect_sampler_uniforms(object, vertex, fragment)) {
+        ringl_program_set_log(object, "too many active sampler uniforms");
         return;
     }
 
@@ -197,7 +246,8 @@ void ringl_link_program(uint32_t program)
 
     object->link_status = RINGL_TRUE;
     ringl_program_set_log(object, "");
-    ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
+    ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE |
+                                      RINGL_DIRTY_BINDINGS);
 }
 
 uint32_t ringl_get_program_link_status(uint32_t program)
@@ -265,7 +315,8 @@ void ringl_use_program(uint32_t program)
     }
     if (context->current_program != program) {
         context->current_program = program;
-        ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
+        ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE |
+                                          RINGL_DIRTY_BINDINGS);
     }
 }
 
@@ -273,6 +324,56 @@ uint32_t ringl_get_current_program(void)
 {
     RinGLContext* context = ringl_get_current_context();
     return context == NULL ? 0u : context->current_program;
+}
+
+int32_t ringl_get_uniform_location(uint32_t program, const char* name)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLProgramObject* object;
+    uint32_t i;
+
+    if (context == NULL)
+        return -1;
+    object = ringl_program_object(context, program);
+    if (object == NULL || name == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+    if (!object->link_status) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    for (i = 0u; i < object->sampler_uniform_count; ++i) {
+        if (strcmp(object->sampler_uniforms[i].name, name) == 0)
+            return (int32_t)i;
+    }
+    return -1;
+}
+
+void ringl_uniform_1i(int32_t location, int32_t value)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLProgramObject* object;
+
+    if (context == NULL || location == -1)
+        return;
+    if (context->current_program == 0u) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    object = ringl_program_object(context, context->current_program);
+    if (object == NULL || !object->link_status) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    if (location < 0 || (uint32_t)location >= object->sampler_uniform_count) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    if (object->sampler_uniforms[location].texture_unit != value) {
+        object->sampler_uniforms[location].texture_unit = value;
+        ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
+    }
 }
 
 void ringl_program_objects_destroy_all(RinGLContext* context)

@@ -21,12 +21,17 @@ typedef struct RinGLBufferObject {
 
 typedef struct RinGLTextureObject {
     uint64_t ringpu_image;
+    uint64_t ringpu_sampler;
     uint8_t* shadow_bytes;
     uint64_t shadow_size;
     uint32_t width;
     uint32_t height;
     uint32_t format;
     uint32_t defined;
+    uint32_t min_filter;
+    uint32_t mag_filter;
+    uint32_t wrap_s;
+    uint32_t wrap_t;
 } RinGLTextureObject;
 
 typedef struct RinGLShaderObject {

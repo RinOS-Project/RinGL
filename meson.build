@@ -21,6 +21,7 @@ ringl_sources = files(
   'src/shader/glsl_lower.c',
   'src/shader/glsl_parser.c',
   'src/shader/program.c',
+  'src/shader/reflection.c',
   'src/shader/shader.c',
   'src/shader/shader_ir.c',
   'src/translate/vertex_layout.c',

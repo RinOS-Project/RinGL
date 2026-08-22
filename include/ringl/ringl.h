@@ -327,6 +327,8 @@ uint64_t ringl_get_program_info_log(uint32_t program,
                                     uint64_t buffer_size);
 void ringl_use_program(uint32_t program);
 uint32_t ringl_get_current_program(void);
+int32_t ringl_get_uniform_location(uint32_t program, const char* name);
+void ringl_uniform_1i(int32_t location, int32_t value);
 
 #ifdef __cplusplus
 }

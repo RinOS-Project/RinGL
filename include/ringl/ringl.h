@@ -133,6 +133,33 @@ extern "C" {
 #define RINGL_RIN_GPU_ADDRESS_CLAMP        1u
 #define RINGL_RIN_GPU_ADDRESS_REPEAT       2u
 #define RINGL_RIN_GPU_ADDRESS_MIRRORED     3u
+#define RINGL_RIN_GPU_RESOURCE_READ        1u
+#define RINGL_RIN_GPU_RESOURCE_SAMPLED_IMAGE 2u
+#define RINGL_RIN_GPU_RESOURCE_SAMPLER       3u
+#define RINGL_RIN_GPU_COMPARE_LESS          1u
+#define RINGL_RIN_GPU_COMPARE_LEQUAL        2u
+#define RINGL_RIN_GPU_COMPARE_ALWAYS        3u
+#define RINGL_RIN_GPU_BLEND_ZERO             1u
+#define RINGL_RIN_GPU_BLEND_ONE              2u
+#define RINGL_RIN_GPU_BLEND_SRC_ALPHA        3u
+#define RINGL_RIN_GPU_BLEND_ONE_MINUS_SRC_ALPHA 4u
+#define RINGL_RIN_GPU_BLEND_DST_ALPHA        5u
+#define RINGL_RIN_GPU_BLEND_ONE_MINUS_DST_ALPHA 6u
+#define RINGL_RIN_GPU_BLEND_ADD              1u
+#define RINGL_RIN_GPU_BLEND_SUBTRACT         2u
+#define RINGL_RIN_GPU_BLEND_REVERSE_SUBTRACT 3u
+#define RINGL_RIN_GPU_BLEND_MINIMUM          4u
+#define RINGL_RIN_GPU_BLEND_MAXIMUM          5u
+#define RINGL_RIN_GPU_CULL_NONE              1u
+#define RINGL_RIN_GPU_CULL_FRONT             2u
+#define RINGL_RIN_GPU_CULL_BACK              3u
+#define RINGL_RIN_GPU_FRONT_FACE_CCW          1u
+#define RINGL_RIN_GPU_FRONT_FACE_CW           2u
+#define RINGL_RIN_GPU_COLOR_WRITE_RED         0x1u
+#define RINGL_RIN_GPU_COLOR_WRITE_GREEN       0x2u
+#define RINGL_RIN_GPU_COLOR_WRITE_BLUE        0x4u
+#define RINGL_RIN_GPU_COLOR_WRITE_ALPHA       0x8u
+#define RINGL_RIN_GPU_COLOR_WRITE_ALL         0x0fu
 
 typedef struct RinGLContext RinGLContext;
 
@@ -151,6 +178,61 @@ typedef struct RinGLRinGpuGraphicsPipelineV1 {
     uint32_t vertex_stride;
     uint32_t attribute_count;
 } RinGLRinGpuGraphicsPipelineV1;
+
+typedef struct RinGLRinGpuGraphicsPipelineNativeV1 {
+    uint64_t vertex_shader;
+    uint64_t fragment_shader;
+    uint32_t color_format;
+    uint32_t primitive_topology;
+    uint32_t vertex_stride;
+    uint32_t position_output_location;
+    uint32_t depth_format;
+    uint32_t depth_compare;
+    uint32_t depth_write_enabled;
+    uint32_t blend_enabled;
+    uint32_t source_color_factor;
+    uint32_t destination_color_factor;
+    uint32_t color_operation;
+    uint32_t source_alpha_factor;
+    uint32_t destination_alpha_factor;
+    uint32_t alpha_operation;
+    uint32_t color_write_mask;
+    uint32_t cull_mode;
+    uint32_t front_face;
+    uint32_t reserved0;
+} RinGLRinGpuGraphicsPipelineNativeV1;
+
+typedef struct RinGLRinGpuVaryingV1 {
+    uint32_t vertex_output_location;
+    uint32_t fragment_input_location;
+    uint32_t type;
+    uint32_t interpolation;
+} RinGLRinGpuVaryingV1;
+
+typedef struct RinGLRinGpuRasterStateV1 {
+    float viewport_x;
+    float viewport_y;
+    float viewport_width;
+    float viewport_height;
+    float min_depth;
+    float max_depth;
+    int32_t scissor_x;
+    int32_t scissor_y;
+    uint32_t scissor_width;
+    uint32_t scissor_height;
+    uint32_t scissor_enabled;
+    uint32_t reserved0;
+} RinGLRinGpuRasterStateV1;
+
+typedef struct RinGLRinGpuGraphicsBindingV1 {
+    uint32_t binding;
+    uint32_t kind;
+    uint32_t access;
+    uint32_t reserved0;
+    uint64_t resource;
+    uint32_t mip_level;
+    uint32_t array_layer;
+} RinGLRinGpuGraphicsBindingV1;
 
 typedef struct RinGLRinGpuRenderPassV1 {
     uint64_t color_target;
@@ -231,6 +313,14 @@ typedef int (*RinGLRinGpuCreateGraphicsPipelineFn)(
     const RinGLRinGpuVertexAttributeV1* attributes,
     uint32_t attribute_count,
     uint64_t* pipeline_out);
+typedef int (*RinGLRinGpuCreateGraphicsPipelineNativeFn)(
+    void* session,
+    const RinGLRinGpuGraphicsPipelineNativeV1* desc,
+    const RinGLRinGpuVertexAttributeV1* attributes,
+    uint32_t attribute_count,
+    const RinGLRinGpuVaryingV1* varyings,
+    uint32_t varying_count,
+    uint64_t* pipeline_out);
 typedef int (*RinGLRinGpuCreateCommandListFn)(void* session,
                                               uint32_t capabilities,
                                               uint64_t* command_list_out);
@@ -244,6 +334,15 @@ typedef int (*RinGLRinGpuTransitionImageFn)(void* session,
 typedef int (*RinGLRinGpuBeginRenderPassFn)(
     void* session, uint64_t command_list,
     const RinGLRinGpuRenderPassV1* render_pass);
+typedef int (*RinGLRinGpuSetRasterStateFn)(
+    void* session, uint64_t command_list,
+    const RinGLRinGpuRasterStateV1* state);
+typedef int (*RinGLRinGpuCreateGraphicsBindGroupFn)(
+    void* session, uint64_t pipeline,
+    const RinGLRinGpuGraphicsBindingV1* bindings,
+    uint32_t binding_count, uint64_t* bind_group_out);
+typedef int (*RinGLRinGpuBindGraphicsResourcesFn)(
+    void* session, uint64_t command_list, uint64_t bind_group);
 typedef int (*RinGLRinGpuDrawVerticesFn)(
     void* session, uint64_t command_list,
     const RinGLRinGpuDrawVerticesV1* draw);
@@ -291,6 +390,10 @@ typedef struct RinGLRinGpuOpsV1 {
     RinGLRinGpuCreateSampledImage2DFn create_sampled_image_2d;
     RinGLRinGpuUploadImage2DFn upload_image_2d;
     RinGLRinGpuCreateSamplerFn create_sampler;
+    RinGLRinGpuCreateGraphicsPipelineNativeFn create_graphics_pipeline_native;
+    RinGLRinGpuSetRasterStateFn set_raster_state;
+    RinGLRinGpuCreateGraphicsBindGroupFn create_graphics_bind_group;
+    RinGLRinGpuBindGraphicsResourcesFn bind_graphics_resources;
 } RinGLRinGpuOpsV1;
 
 typedef struct RinGLRinGpuBindingV1 {

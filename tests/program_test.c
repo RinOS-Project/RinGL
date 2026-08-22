@@ -12,6 +12,7 @@ int main(void)
     uint32_t vertex;
     uint32_t fragment;
     uint32_t program;
+    int32_t location;
     char log[160];
 
     assert(ringl_context_create(&desc, &context) == 0);
@@ -26,7 +27,7 @@ int main(void)
                         "attribute float position; void main() { gl_Position = position; }",
                         -1);
     ringl_shader_source(fragment,
-                        "void main() { gl_FragColor = 1.0; }",
+                        "uniform sampler2D colorTexture; void main() { gl_FragColor = 1.0; }",
                         -1);
     ringl_compile_shader(vertex);
     ringl_compile_shader(fragment);
@@ -39,8 +40,19 @@ int main(void)
     assert(ringl_get_program_link_status(program) == RINGL_TRUE);
     assert(ringl_get_program_info_log(program, log, sizeof(log)) == 0u);
 
+    location = ringl_get_uniform_location(program, "colorTexture");
+    assert(location == 0);
+    assert(ringl_get_uniform_location(program, "missing") == -1);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+
     ringl_use_program(program);
     assert(ringl_get_current_program() == program);
+    ringl_uniform_1i(location, 3);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_uniform_1i(-1, 7);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_uniform_1i(99, 0);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
 
     ringl_delete_program(program);
     assert(ringl_get_current_program() == 0u);

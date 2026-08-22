@@ -1,7 +1,22 @@
 /* SPDX-License-Identifier: MIT */
 #include "pipeline_cache.h"
 
+#include <stdlib.h>
 #include <string.h>
+
+typedef struct RinGLPipelineCacheEntry {
+    RinGLPipelineKey key;
+    uint64_t hash;
+    uint64_t pipeline;
+    uint32_t valid;
+    uint32_t reserved0;
+} RinGLPipelineCacheEntry;
+
+typedef struct RinGLPipelineCache {
+    RinGLPipelineCacheEntry entries[RINGL_PIPELINE_CACHE_CAPACITY];
+    uint32_t next_evict;
+    uint32_t count;
+} RinGLPipelineCache;
 
 static RinGLProgramObject* current_program(RinGLContext* context)
 {
@@ -30,6 +45,22 @@ static RinGLShaderObject* shader_object(RinGLContext* context,
     if (index >= RINGL_OBJECT_SLOT_COUNT)
         return NULL;
     return &context->shaders[index];
+}
+
+static RinGLPipelineCache* cache_for(RinGLContext* context, int create)
+{
+    RinGLPipelineCache* cache;
+
+    if (context == NULL)
+        return NULL;
+    cache = (RinGLPipelineCache*)context->pipeline_cache;
+    if (cache != NULL || !create)
+        return cache;
+    cache = (RinGLPipelineCache*)calloc(1, sizeof(*cache));
+    if (cache == NULL)
+        return NULL;
+    context->pipeline_cache = cache;
+    return cache;
 }
 
 int ringl_build_pipeline_key(RinGLContext* context,
@@ -92,4 +123,121 @@ int ringl_pipeline_key_equal(const RinGLPipelineKey* left,
     if (left == NULL || right == NULL)
         return 0;
     return memcmp(left, right, sizeof(*left)) == 0;
+}
+
+static int create_pipeline(RinGLContext* context,
+                           const RinGLPipelineKey* key,
+                           uint64_t* pipeline_out)
+{
+    RinGLRinGpuGraphicsPipelineV1 desc;
+    RinGLRinGpuVertexAttributeV1 attributes[RINGL_MAX_VERTEX_ATTRIBS];
+    uint32_t index;
+
+    if (context == NULL || key == NULL || pipeline_out == NULL ||
+        key->attribute_count > RINGL_MAX_VERTEX_ATTRIBS) {
+        return -1;
+    }
+
+    memset(&desc, 0, sizeof(desc));
+    memset(attributes, 0, sizeof(attributes));
+    desc.vertex_shader = key->vertex_shader_module;
+    desc.fragment_shader = key->fragment_shader_module;
+    desc.color_format = key->color_format;
+    desc.primitive_topology = key->primitive_topology;
+    desc.vertex_stride = key->vertex_stride;
+    desc.attribute_count = key->attribute_count;
+    for (index = 0u; index < key->attribute_count; ++index) {
+        attributes[index].location = key->attributes[index].location;
+        attributes[index].format = key->attributes[index].format;
+        attributes[index].offset = key->attributes[index].offset;
+    }
+
+    return ringl_backend_create_graphics_pipeline(
+        context, &desc, attributes, key->attribute_count, pipeline_out);
+}
+
+int ringl_pipeline_cache_get_or_create(RinGLContext* context,
+                                       const RinGLPipelineKey* key,
+                                       uint64_t* pipeline_out)
+{
+    RinGLPipelineCache* cache;
+    uint64_t hash;
+    uint64_t pipeline = 0u;
+    uint32_t index;
+    uint32_t target;
+
+    if (context == NULL || key == NULL || pipeline_out == NULL)
+        return -1;
+    *pipeline_out = 0u;
+    hash = ringl_pipeline_key_hash(key);
+    if (hash == 0u)
+        return -1;
+
+    cache = cache_for(context, 1);
+    if (cache == NULL)
+        return -1;
+
+    for (index = 0u; index < RINGL_PIPELINE_CACHE_CAPACITY; ++index) {
+        RinGLPipelineCacheEntry* entry = &cache->entries[index];
+        if (entry->valid && entry->hash == hash &&
+            ringl_pipeline_key_equal(&entry->key, key)) {
+            *pipeline_out = entry->pipeline;
+            return 0;
+        }
+    }
+
+    if (create_pipeline(context, key, &pipeline) != 0 || pipeline == 0u)
+        return -1;
+
+    if (cache->count < RINGL_PIPELINE_CACHE_CAPACITY) {
+        target = cache->count++;
+    } else {
+        target = cache->next_evict;
+        cache->next_evict = (cache->next_evict + 1u) %
+                            RINGL_PIPELINE_CACHE_CAPACITY;
+        if (cache->entries[target].valid &&
+            cache->entries[target].pipeline != 0u) {
+            ringl_backend_destroy_object(context,
+                                         cache->entries[target].pipeline);
+        }
+    }
+
+    cache->entries[target].key = *key;
+    cache->entries[target].hash = hash;
+    cache->entries[target].pipeline = pipeline;
+    cache->entries[target].valid = 1u;
+    *pipeline_out = pipeline;
+    return 0;
+}
+
+int ringl_get_or_create_graphics_pipeline(RinGLContext* context,
+                                          uint32_t color_format,
+                                          uint64_t* pipeline_out)
+{
+    RinGLPipelineKey key;
+
+    if (ringl_build_pipeline_key(context, color_format, &key) != 0)
+        return -1;
+    return ringl_pipeline_cache_get_or_create(context, &key, pipeline_out);
+}
+
+void ringl_pipeline_cache_destroy(RinGLContext* context)
+{
+    RinGLPipelineCache* cache;
+    uint32_t index;
+
+    if (context == NULL)
+        return;
+    cache = cache_for(context, 0);
+    if (cache == NULL)
+        return;
+    for (index = 0u; index < RINGL_PIPELINE_CACHE_CAPACITY; ++index) {
+        if (cache->entries[index].valid &&
+            cache->entries[index].pipeline != 0u) {
+            ringl_backend_destroy_object(context,
+                                         cache->entries[index].pipeline);
+        }
+    }
+    free(cache);
+    context->pipeline_cache = NULL;
 }

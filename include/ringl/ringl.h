@@ -66,11 +66,18 @@ extern "C" {
 #define RINGL_RIN_GPU_IMAGE_UNDEFINED      0u
 #define RINGL_RIN_GPU_IMAGE_COLOR_TARGET   3u
 #define RINGL_RIN_GPU_IMAGE_PRESENT        4u
+#define RINGL_RIN_GPU_IMAGE_SHADER_READ    6u
 #define RINGL_RIN_GPU_RENDER_LOAD          1u
 #define RINGL_RIN_GPU_RENDER_CLEAR         2u
 #define RINGL_RIN_GPU_RENDER_STORE         1u
 #define RINGL_RIN_GPU_INDEX_UINT16         1u
 #define RINGL_RIN_GPU_INDEX_UINT32         2u
+#define RINGL_RIN_GPU_FORMAT_RGBA8_UNORM   2u
+#define RINGL_RIN_GPU_SAMPLER_NEAREST      1u
+#define RINGL_RIN_GPU_SAMPLER_LINEAR       2u
+#define RINGL_RIN_GPU_ADDRESS_CLAMP        1u
+#define RINGL_RIN_GPU_ADDRESS_REPEAT       2u
+#define RINGL_RIN_GPU_ADDRESS_MIRRORED     3u
 
 typedef struct RinGLContext RinGLContext;
 
@@ -126,6 +133,30 @@ typedef struct RinGLRinGpuDrawIndexedV1 {
     uint32_t first_instance;
 } RinGLRinGpuDrawIndexedV1;
 
+typedef struct RinGLRinGpuSampledImage2DV1 {
+    uint32_t width;
+    uint32_t height;
+    uint32_t format;
+    uint32_t reserved0;
+} RinGLRinGpuSampledImage2DV1;
+
+typedef struct RinGLRinGpuImageUpload2DV1 {
+    uint32_t x;
+    uint32_t y;
+    uint32_t width;
+    uint32_t height;
+    uint64_t source_row_pitch_bytes;
+} RinGLRinGpuImageUpload2DV1;
+
+typedef struct RinGLRinGpuSamplerV1 {
+    uint32_t min_filter;
+    uint32_t mag_filter;
+    uint32_t mip_filter;
+    uint32_t address_u;
+    uint32_t address_v;
+    uint32_t reserved0;
+} RinGLRinGpuSamplerV1;
+
 typedef int (*RinGLRinGpuCreateBufferFn)(void* session,
                                          uint64_t size_bytes,
                                          uint64_t* buffer_out);
@@ -175,6 +206,14 @@ typedef int (*RinGLRinGpuCloseCommandListFn)(void* session,
 typedef int (*RinGLRinGpuQueueSubmitFn)(void* session,
                                         uint64_t queue,
                                         uint64_t command_list);
+typedef int (*RinGLRinGpuCreateSampledImage2DFn)(
+    void* session, const RinGLRinGpuSampledImage2DV1* desc,
+    uint64_t* image_out);
+typedef int (*RinGLRinGpuUploadImage2DFn)(
+    void* session, uint64_t image, const RinGLRinGpuImageUpload2DV1* upload,
+    const void* data, uint64_t size_bytes);
+typedef int (*RinGLRinGpuCreateSamplerFn)(
+    void* session, const RinGLRinGpuSamplerV1* desc, uint64_t* sampler_out);
 
 typedef struct RinGLRinGpuOpsV1 {
     uint32_t struct_size;
@@ -194,6 +233,9 @@ typedef struct RinGLRinGpuOpsV1 {
     RinGLRinGpuCloseCommandListFn close_command_list;
     RinGLRinGpuQueueSubmitFn queue_submit;
     RinGLRinGpuDrawIndexedFn draw_indexed;
+    RinGLRinGpuCreateSampledImage2DFn create_sampled_image_2d;
+    RinGLRinGpuUploadImage2DFn upload_image_2d;
+    RinGLRinGpuCreateSamplerFn create_sampler;
 } RinGLRinGpuOpsV1;
 
 typedef struct RinGLRinGpuBindingV1 {

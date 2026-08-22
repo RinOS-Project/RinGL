@@ -141,6 +141,21 @@ static int fake_draw_vertices(void* session, uint64_t command_list,
     return 0;
 }
 
+static int fake_draw_indexed(void* session, uint64_t command_list,
+                             const RinGLRinGpuDrawIndexedV1* draw)
+{
+    FakeBackend* backend = session;
+    assert(command_list != 0u && draw != NULL);
+    assert(draw->pipeline != 0u && draw->vertex_buffer != 0u);
+    assert(draw->index_buffer != 0u && draw->color_target == 700u);
+    assert(draw->index_format == RINGL_RIN_GPU_INDEX_UINT16);
+    assert(draw->index_offset == 0u && draw->first_index == 0u);
+    assert(draw->index_count == 3u && draw->vertex_count == 3u);
+    assert(draw->instance_count == 1u);
+    record(backend, 'I');
+    return 0;
+}
+
 static int fake_end_render_pass(void* session, uint64_t command_list)
 {
     FakeBackend* backend = session;
@@ -196,6 +211,7 @@ int main(void)
         .present = fake_present,
         .close_command_list = fake_close_command_list,
         .queue_submit = fake_queue_submit,
+        .draw_indexed = fake_draw_indexed,
     };
     RinGLRinGpuBindingV1 binding = {
         .struct_size = sizeof(binding),
@@ -220,7 +236,8 @@ int main(void)
         .display_id = 3u,
     };
     RinGLContext* context = NULL;
-    uint32_t buffer;
+    uint32_t vertex_buffer;
+    uint32_t index_buffer;
     uint32_t vertex;
     uint32_t fragment;
     uint32_t program;
@@ -229,18 +246,25 @@ int main(void)
          0.75f, -0.75f,
          0.00f,  0.75f,
     };
+    const uint16_t indices[3] = {0u, 1u, 2u};
+    const uint16_t bad_indices[3] = {0u, 1u, 3u};
     char commands[65];
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
     assert(ringl_set_default_framebuffer(&framebuffer) == 0);
 
-    ringl_gen_buffers(1, &buffer);
-    ringl_bind_buffer(RINGL_ARRAY_BUFFER, buffer);
+    ringl_gen_buffers(1, &vertex_buffer);
+    ringl_bind_buffer(RINGL_ARRAY_BUFFER, vertex_buffer);
     ringl_buffer_data(RINGL_ARRAY_BUFFER, sizeof(vertices), vertices,
                       RINGL_STATIC_DRAW);
     ringl_vertex_attrib_pointer(0u, 2, RINGL_FLOAT, RINGL_FALSE, 0, 0u);
     ringl_enable_vertex_attrib_array(0u);
+
+    ringl_gen_buffers(1, &index_buffer);
+    ringl_bind_buffer(RINGL_ELEMENT_ARRAY_BUFFER, index_buffer);
+    ringl_buffer_data(RINGL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices,
+                      RINGL_STATIC_DRAW);
     assert(ringl_get_error() == RINGL_NO_ERROR);
 
     vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
@@ -267,12 +291,20 @@ int main(void)
     assert(ringl_get_error() == RINGL_NO_ERROR);
     ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);
     assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_draw_elements(RINGL_TRIANGLES, 3, RINGL_UNSIGNED_SHORT, 0u);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+
+    ringl_buffer_data(RINGL_ELEMENT_ARRAY_BUFFER, sizeof(bad_indices),
+                      bad_indices, RINGL_STATIC_DRAW);
+    ringl_draw_elements(RINGL_TRIANGLES, 3, RINGL_UNSIGNED_SHORT, 0u);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+
     assert(ringl_present() == 0);
     assert(ringl_get_error() == RINGL_NO_ERROR);
 
     assert(backend.shader_creates == 2u);
     assert(backend.pipeline_creates == 1u);
-    assert(backend.submissions == 3u);
+    assert(backend.submissions == 4u);
     assert(backend.clear[0] == 0.0f);
     assert(backend.clear[1] == 0.25f);
     assert(backend.clear[2] == 1.0f);
@@ -280,7 +312,7 @@ int main(void)
     assert(backend.command_count < sizeof(commands));
     memcpy(commands, backend.commands, backend.command_count);
     commands[backend.command_count] = '\0';
-    assert(strcmp(commands, "NTBECSRBDECSRTPCS") == 0);
+    assert(strcmp(commands, "NTBECSRBDECSRBIECSRTPCS") == 0);
 
     ringl_context_destroy(context);
     return 0;

@@ -58,6 +58,10 @@ static int fake_destroy_object(void* session, uint64_t object)
 int main(void)
 {
     FakeBackend backend = {0};
+
+    assert(RINGL_BUFFER_SIZE == 0x8764u);
+    assert(RINGL_BUFFER_USAGE == 0x8765u);
+
     RinGLRinGpuOpsV1 ops = {
         .struct_size = sizeof(ops),
         .api_version = RINGL_API_VERSION,

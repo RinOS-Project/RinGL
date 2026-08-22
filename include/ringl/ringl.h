@@ -126,6 +126,8 @@ extern "C" {
 
 #define RINGL_ARRAY_BUFFER          0x8892u
 #define RINGL_ELEMENT_ARRAY_BUFFER  0x8893u
+#define RINGL_BUFFER_SIZE            0x8764u
+#define RINGL_BUFFER_USAGE           0x8765u
 #define RINGL_STREAM_DRAW           0x88e0u
 #define RINGL_STATIC_DRAW           0x88e4u
 #define RINGL_DYNAMIC_DRAW          0x88e8u

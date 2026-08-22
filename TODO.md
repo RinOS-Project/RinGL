@@ -50,7 +50,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Report linked sampler uniforms through program reflection.
 - [x] Parse and validate the initial fragment-shader `texture2D(sampler2D, vec2(...))` form.
 - [x] Fail texture sampling RSH1 lowering explicitly rather than inventing a private IR encoding.
-- [ ] Lower `texture2D()` after RinShader exposes an unambiguous 2D-coordinate/RGBA sample operation.
+- [ ] Lower `texture2D()` after RinShader exposes an unambiguous 2D-coordinate/RGBA result contract.
 - [ ] Add general vertex-to-fragment varying support after RinShader/RinGPU exposes a position-builtin + user-varying interface contract.
 
 ## Phase 4 — First hardware-rendered triangle
@@ -69,10 +69,9 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 
 ## Phase 5 — Indexed drawing and textures
 
-- [x] Implement `glDrawElements` for `UNSIGNED_SHORT`/`UNSIGNED_INT` with robust index-buffer and referenced-vertex range validation.
+- [x] Implement `glDrawElements` for `UNSIGNED_BYTE`/`UNSIGNED_SHORT`/`UNSIGNED_INT` with robust index-buffer and referenced-vertex range validation.
 - [x] Retain bounded buffer shadow contents so indexed draws can reject unsafe vertex fetches before RinGPU submission.
-- [x] Map indexed draws through the append-only RinGPU adapter boundary.
-- [x] Add GLES 2.0 `UNSIGNED_BYTE` index support using the additive native RinGPU `UINT8` index format.
+- [x] Map indexed draws through the append-only RinGPU adapter boundary, including native RinGPU `UINT8` indices.
 - [x] Implement texture object lifecycle and eight texture-unit bindings.
 - [x] Implement initial level-0 `RGBA`/`UNSIGNED_BYTE` 2D texture storage with bounded dimensions.
 - [x] Implement robust CPU-side `texImage2D` zero initialization and bounded `texSubImage2D` updates.
@@ -91,11 +90,13 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [ ] Implement framebuffer completeness validation for supported combinations.
 - [x] Implement viewport and scissor GL state, validation, defaults, and queries.
 - [x] Implement face-culling/front-face GL state, validation, defaults, and queries.
+- [x] Implement depth-test function/write-mask GL state, defaults, validation, dirty tracking, and queries.
+- [x] Implement initial blend factor/equation and color-write-mask GL state, defaults, validation, dirty tracking, and queries.
+- [x] Fail submitted draws closed when currently unsupported raster/depth/blend state would otherwise be silently ignored.
 - [ ] Apply viewport/scissor/culling to submitted rendering after RinGPU exposes a rasterization-state contract.
-- [ ] Implement depth test/write state and map the supported subset to RinGPU depth pipelines.
-- [ ] Implement blending and color write masks and map the supported subset to RinGPU blend pipelines.
+- [ ] Apply depth/blend state to vertex-buffer draws after RinGPU exposes a vertex-input-compatible combined pipeline contract.
 - [ ] Implement stencil support once the required RinGPU contract is available.
-- [ ] Include all immutable draw-relevant state in pipeline caching.
+- [ ] Include newly supported immutable draw-relevant state in pipeline caching as its native contract becomes available.
 
 ## Phase 7 — Data movement, synchronization, and observability
 

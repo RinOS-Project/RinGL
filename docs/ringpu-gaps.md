@@ -4,12 +4,31 @@ This file records only gaps in the shared RinGPU/RinShader contract that block
 RinGL from implementing GLES semantics cleanly. RinGL must not work around these
 by adding GL-specific behavior to RinGPU or by inventing private RSH1 encodings.
 
-## Current status
+## 1. Negative viewport origin
 
-No previously identified RinGPU/RinShader contract blocker remains on the
-current OS-Core `main` branch.
+OpenGL ES permits `glViewport(x, y, width, height)` with negative `x` and `y`.
+The viewport transform still uses that origin; clipping the resulting rectangle
+is not equivalent because the NDC-to-window mapping itself changes.
 
-The following contracts are now public and versioned:
+The current public RinGPU `RinGpuViewportV1` validator requires
+`viewport.x >= 0` and `viewport.y >= 0`. RinGL can safely map positive origins,
+and a zero width/height can be implemented as a no-raster draw, but RinGL cannot
+faithfully translate a negative viewport origin without inventing an extra
+shader transform.
+
+RinGPU should allow finite negative viewport `x`/`y` values and let the backend
+clip rasterization to the active render target. Width and height may remain
+strictly positive in the native contract because RinGL can preserve the GLES
+zero-area case as an explicit draw no-op.
+
+Until that contract changes, RinGL accepts and queries negative GL viewport
+origins but fails affected submissions closed rather than silently changing the
+viewport transform.
+
+## Resolved native dependencies
+
+The current OS-Core `main` branch now provides the other contracts previously
+identified as blockers:
 
 - `SAMPLE_IMAGE_2D_I32/F32` with explicit U/V coordinates and an R/G/B/A
   component selector in the instruction flags field;
@@ -24,9 +43,7 @@ The following contracts are now public and versioned:
 - CPU-readable images and bounded image readback through
   `ringpu_readback_image()`.
 
-RinGL should now consume those contracts directly. Any remaining missing GLES
-behavior should be treated as RinGL implementation work unless a new concrete
-native-boundary gap is discovered.
+RinGL should consume those contracts directly rather than duplicating them.
 
 ## Notes
 
@@ -34,6 +51,6 @@ The public readback contract currently covers images, which is sufficient for
 GLES 2.0 `glReadPixels`. RinGL does not require a general buffer-download API for
 its current GLES 2.0 milestone.
 
-If a new RinGPU dependency is discovered while implementing RinGL, add it here
-with the exact GLES operation that cannot be represented and the exact missing
-native contract. Do not add speculative feature requests.
+If another native dependency is discovered while implementing RinGL, add it
+here with the exact GLES operation that cannot be represented and the exact
+missing native contract. Do not add speculative feature requests.

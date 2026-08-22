@@ -37,6 +37,7 @@ static void texture_init_defaults(RinGLTextureObject* texture)
     texture->mag_filter = RINGL_LINEAR;
     texture->wrap_s = RINGL_REPEAT;
     texture->wrap_t = RINGL_REPEAT;
+    texture->ringpu_image_state = RINGL_RIN_GPU_IMAGE_UNDEFINED;
 }
 
 static RinGLTextureObject* bound_texture_2d(RinGLContext* context)
@@ -54,6 +55,153 @@ static RinGLTextureObject* bound_texture_2d(RinGLContext* context)
     if (slot_index >= RINGL_OBJECT_SLOT_COUNT)
         return NULL;
     return &context->textures[slot_index];
+}
+
+static int texture_level0_complete(const RinGLTextureObject* texture)
+{
+    if (texture == NULL || !texture->defined || texture->width == 0u ||
+        texture->height == 0u || texture->shadow_bytes == NULL ||
+        texture->shadow_size == 0u) {
+        return 0;
+    }
+
+    if (texture->min_filter == RINGL_NEAREST ||
+        texture->min_filter == RINGL_LINEAR) {
+        return 1;
+    }
+
+    /* The current profile only stores mip level zero. A mipmapped min filter
+     * is therefore complete only for a 1x1 base level. */
+    return texture->width == 1u && texture->height == 1u;
+}
+
+static uint32_t sampler_filter(uint32_t value)
+{
+    if (value == RINGL_NEAREST || value == RINGL_NEAREST_MIPMAP_NEAREST ||
+        value == RINGL_NEAREST_MIPMAP_LINEAR) {
+        return RINGL_RIN_GPU_SAMPLER_NEAREST;
+    }
+    return RINGL_RIN_GPU_SAMPLER_LINEAR;
+}
+
+static uint32_t sampler_mip_filter(uint32_t value)
+{
+    if (value == RINGL_NEAREST_MIPMAP_LINEAR ||
+        value == RINGL_LINEAR_MIPMAP_LINEAR) {
+        return RINGL_RIN_GPU_SAMPLER_LINEAR;
+    }
+    return RINGL_RIN_GPU_SAMPLER_NEAREST;
+}
+
+static uint32_t sampler_address(uint32_t value)
+{
+    if (value == RINGL_CLAMP_TO_EDGE)
+        return RINGL_RIN_GPU_ADDRESS_CLAMP;
+    if (value == RINGL_MIRRORED_REPEAT)
+        return RINGL_RIN_GPU_ADDRESS_MIRRORED;
+    return RINGL_RIN_GPU_ADDRESS_REPEAT;
+}
+
+static void texture_discard_image(RinGLContext* context,
+                                  RinGLTextureObject* texture)
+{
+    if (texture == NULL)
+        return;
+    ringl_backend_destroy_object(context, texture->ringpu_image);
+    texture->ringpu_image = 0u;
+    texture->ringpu_image_state = RINGL_RIN_GPU_IMAGE_UNDEFINED;
+}
+
+static int texture_realize_image(RinGLContext* context,
+                                 RinGLTextureObject* texture)
+{
+    RinGLRinGpuSampledImage2DV1 desc;
+    RinGLRinGpuImageUpload2DV1 upload;
+    uint64_t image = 0u;
+
+    if (texture->ringpu_image != 0u)
+        return 0;
+    if (!texture_level0_complete(texture))
+        return -1;
+
+    memset(&desc, 0, sizeof(desc));
+    desc.width = texture->width;
+    desc.height = texture->height;
+    desc.format = RINGL_RIN_GPU_FORMAT_RGBA8_UNORM;
+    if (ringl_backend_create_sampled_image_2d(context, &desc, &image) != 0 ||
+        image == 0u) {
+        return -1;
+    }
+
+    memset(&upload, 0, sizeof(upload));
+    upload.width = texture->width;
+    upload.height = texture->height;
+    upload.source_row_pitch_bytes = (uint64_t)texture->width * 4u;
+    if (ringl_backend_upload_image_2d(context, image, &upload,
+                                      texture->shadow_bytes,
+                                      texture->shadow_size) != 0) {
+        ringl_backend_destroy_object(context, image);
+        return -1;
+    }
+
+    texture->ringpu_image = image;
+    texture->ringpu_image_state = RINGL_RIN_GPU_IMAGE_UNDEFINED;
+    return 0;
+}
+
+static int texture_realize_sampler(RinGLContext* context,
+                                   RinGLTextureObject* texture)
+{
+    RinGLRinGpuSamplerV1 desc;
+    uint64_t sampler = 0u;
+
+    if (texture->ringpu_sampler != 0u)
+        return 0;
+
+    memset(&desc, 0, sizeof(desc));
+    desc.min_filter = sampler_filter(texture->min_filter);
+    desc.mag_filter = sampler_filter(texture->mag_filter);
+    desc.mip_filter = sampler_mip_filter(texture->min_filter);
+    desc.address_u = sampler_address(texture->wrap_s);
+    desc.address_v = sampler_address(texture->wrap_t);
+    if (ringl_backend_create_sampler(context, &desc, &sampler) != 0 ||
+        sampler == 0u) {
+        return -1;
+    }
+    texture->ringpu_sampler = sampler;
+    return 0;
+}
+
+int ringl_texture_realize_unit(RinGLContext* context, uint32_t unit,
+                               uint64_t* image_out, uint64_t* sampler_out)
+{
+    uint32_t name;
+    uint32_t slot_index;
+    RinGLTextureObject* texture;
+
+    if (context == NULL || image_out == NULL || sampler_out == NULL ||
+        unit >= RINGL_MAX_TEXTURE_UNITS) {
+        return -1;
+    }
+    *image_out = 0u;
+    *sampler_out = 0u;
+    name = context->bound_texture_2d[unit];
+    if (name == 0u ||
+        ringl_object_lookup(context, name, RINGL_OBJECT_TEXTURE) == NULL) {
+        return -1;
+    }
+    slot_index = ringl_object_slot_index(name);
+    if (slot_index >= RINGL_OBJECT_SLOT_COUNT)
+        return -1;
+    texture = &context->textures[slot_index];
+    if (!texture_level0_complete(texture) ||
+        texture_realize_image(context, texture) != 0 ||
+        texture_realize_sampler(context, texture) != 0) {
+        return -1;
+    }
+    *image_out = texture->ringpu_image;
+    *sampler_out = texture->ringpu_sampler;
+    return 0;
 }
 
 void ringl_gen_textures(int32_t count, uint32_t* textures)
@@ -127,8 +275,7 @@ void ringl_delete_textures(int32_t count, const uint32_t* textures)
         if (slot_index < RINGL_OBJECT_SLOT_COUNT) {
             ringl_backend_destroy_object(context,
                                          context->textures[slot_index].ringpu_sampler);
-            ringl_backend_destroy_object(context,
-                                         context->textures[slot_index].ringpu_image);
+            texture_discard_image(context, &context->textures[slot_index]);
             free(context->textures[slot_index].shadow_bytes);
             memset(&context->textures[slot_index], 0,
                    sizeof(context->textures[slot_index]));
@@ -360,8 +507,7 @@ void ringl_tex_image_2d(uint32_t target, int32_t level,
             memset(replacement, 0, (size_t)size);
     }
 
-    ringl_backend_destroy_object(context, texture->ringpu_image);
-    texture->ringpu_image = 0u;
+    texture_discard_image(context, texture);
     free(texture->shadow_bytes);
     texture->shadow_bytes = replacement;
     texture->shadow_size = size;
@@ -422,8 +568,10 @@ void ringl_tex_sub_image_2d(uint32_t target, int32_t level,
                (size_t)(uint32_t)width * 4u);
     }
 
-    ringl_backend_destroy_object(context, texture->ringpu_image);
-    texture->ringpu_image = 0u;
+    /* Drop the realized image and rebuild the complete level lazily. This
+     * avoids depending on immediate-image-upload availability while an image
+     * may still be retained by a recorded command list. */
+    texture_discard_image(context, texture);
     ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
 }
 
@@ -438,9 +586,8 @@ void ringl_texture_objects_destroy_all(RinGLContext* context)
             context->objects[index].state == RINGL_OBJECT_FREE)
             continue;
         ringl_backend_destroy_object(context, context->textures[index].ringpu_sampler);
-        ringl_backend_destroy_object(context, context->textures[index].ringpu_image);
+        texture_discard_image(context, &context->textures[index]);
         context->textures[index].ringpu_sampler = 0u;
-        context->textures[index].ringpu_image = 0u;
         free(context->textures[index].shadow_bytes);
         context->textures[index].shadow_bytes = NULL;
         context->textures[index].shadow_size = 0u;

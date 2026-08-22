@@ -246,6 +246,13 @@ stencil clear values through a versioned structure. An embedding can therefore
 perform WebGL's post-presentation default clear and restore the application
 state instead of silently changing the next author-visible `glClear`.
 
+`ringl_clear_default_framebuffer_for_embedding()` is the stricter form used by
+a browser presentation bridge. It clears only the default drawing buffer to
+transparent black/depth one/stencil zero, ignores author framebuffer, scissor,
+and write-mask state, and restores every author-visible RinGL state bit. Its
+result is returned out-of-band, so the bridge can recover a failed maintenance
+clear without consuming or injecting the application's next `glGetError()`.
+
 Level-zero `RGBA`/`RGB`/`ALPHA`/`LUMINANCE`/`LUMINANCE_ALPHA` with
 `UNSIGNED_BYTE` are normalized into canonical RGBA8 shadow storage. RinGL
 tracks WebGL 1 `UNPACK_ALIGNMENT`; all valid 1/2/4/8-byte row alignments are

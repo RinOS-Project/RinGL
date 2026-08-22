@@ -20,6 +20,7 @@ int main(void)
 {
     RinGLContext* context = make_context();
     int32_t values[4] = {0};
+    uint32_t embedding_clear_error = RINGL_NO_ERROR;
     RinGLClearValuesV1 clear_values = {
         .struct_size = sizeof(clear_values),
         .api_version = RINGL_API_VERSION,
@@ -120,6 +121,15 @@ int main(void)
     assert(ringl_get_error() == RINGL_INVALID_ENUM);
     assert(!ringl_is_enabled(0xdeadbeefu));
     assert(ringl_get_error() == RINGL_INVALID_ENUM);
+
+    /* The embedding-only default clear reports its own failure without
+     * stealing an author-visible pending error. */
+    ringl_enable(0xdeadbeefu);
+    assert(ringl_clear_default_framebuffer_for_embedding(
+               &embedding_clear_error) == -1);
+    assert(embedding_clear_error == RINGL_INVALID_OPERATION);
+    assert(ringl_get_error() == RINGL_INVALID_ENUM);
+    assert(ringl_clear_default_framebuffer_for_embedding(NULL) == -1);
 
     ringl_viewport(2, 3, -1, 10);
     assert(ringl_get_error() == RINGL_INVALID_VALUE);

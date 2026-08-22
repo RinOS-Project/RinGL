@@ -135,6 +135,10 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Implement initial blend factor/equation and color-write-mask GL state, defaults, validation, dirty tracking, and queries.
 - [x] Map supported blend, cull, front-face, and color-write state into native RinGPU graphics pipelines and include it in pipeline caching.
 - [x] Expose a versioned snapshot of mutable clear values so an embedding can perform the WebGL default-buffer clear without overwriting application clear state.
+- [x] Add a state-neutral default-framebuffer clear for trusted presentation
+  embeddings: it forces WebGL's color/depth/stencil defaults without observing
+  bound-FBO, scissor, or write-mask state, and reports its own failure without
+  consuming the application's pending `glGetError()` value.
 - [x] Map viewport/scissor state through dynamic RinGPU raster-state commands, including finite negative viewport origins and clipped scissor rectangles.
 - [x] Preserve no-op semantics for zero-area viewport, all-channel color mask off, and `CULL_FACE` with `FRONT_AND_BACK` in the current color-only profile.
 - [x] Map D32 clear and every GLES depth comparison (`NEVER`, `LESS`, `EQUAL`, `LEQUAL`, `GREATER`, `NOTEQUAL`, `GEQUAL`, `ALWAYS`) for an embedding-supplied default framebuffer through native RinGPU depth render passes.

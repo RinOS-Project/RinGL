@@ -14,6 +14,14 @@ state_test = executable(
 
 test('state', state_test)
 
+embedding_clear_test = executable(
+  'ringl-embedding-clear-test',
+  'embedding_clear_test.c',
+  dependencies: ringl_dep,
+)
+
+test('embedding-clear', embedding_clear_test)
+
 framebuffer_test = executable(
   'ringl-framebuffer-test',
   'framebuffer_test.c',

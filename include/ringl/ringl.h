@@ -777,6 +777,14 @@ void ringl_clear_color(float red, float green, float blue, float alpha);
 void ringl_clear_depth(float depth);
 void ringl_clear_stencil(int32_t stencil);
 void ringl_clear(uint32_t mask);
+/* Clears the default drawing buffer to WebGL's post-presentation values:
+ * transparent black, depth one, and stencil zero. This trusted embedding
+ * helper always targets the default framebuffer and ignores application
+ * scissor/write-mask state. It preserves all author-visible GL state,
+ * including a pending error returned by ringl_get_error(). Returns zero on
+ * success; otherwise returns -1 and writes the attempted operation's GL
+ * error to error_out. error_out is required. */
+int ringl_clear_default_framebuffer_for_embedding(uint32_t* error_out);
 void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count);
 void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
                          uint64_t offset);

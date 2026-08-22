@@ -711,9 +711,8 @@ void ringl_clear_stencil(int32_t stencil)
     context->clear_stencil = (uint32_t)stencil & 0xffu;
 }
 
-void ringl_clear(uint32_t mask)
+static uint32_t ringl_submit_clear(RinGLContext* context, uint32_t mask)
 {
-    RinGLContext* context = ringl_get_current_context();
     RinGLColorTarget target;
     RinGLDepthTarget depth_target;
     uint64_t command_list;
@@ -723,22 +722,21 @@ void ringl_clear(uint32_t mask)
     uint32_t depth_load_op;
     uint32_t stencil_load_op;
 
-    if (context == NULL || mask == 0u)
-        return;
+    if (context == NULL)
+        return RINGL_INVALID_OPERATION;
+    if (mask == 0u)
+        return RINGL_NO_ERROR;
     if ((mask & ~(RINGL_COLOR_BUFFER_BIT | RINGL_DEPTH_BUFFER_BIT |
                   RINGL_STENCIL_BUFFER_BIT)) != 0u) {
-        ringl_context_record_error(context, RINGL_INVALID_VALUE);
-        return;
+        return RINGL_INVALID_VALUE;
     }
     if (!command_ops_ready(context) ||
         ringl_resolve_color_target(context, &target) != 0) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
+        return RINGL_INVALID_OPERATION;
     }
     depth_status = ringl_resolve_depth_target(context, &depth_target);
     if (depth_status < 0) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
+        return RINGL_INVALID_OPERATION;
     }
     color_load_op = (mask & RINGL_COLOR_BUFFER_BIT) != 0u
         ? RINGL_RIN_GPU_RENDER_CLEAR
@@ -758,11 +756,10 @@ void ringl_clear(uint32_t mask)
                      stencil_load_op == RINGL_RIN_GPU_RENDER_CLEAR;
     if ((use_depth_pass &&
          context->ringpu_ops.begin_render_pass_depth == NULL)) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
+        return RINGL_INVALID_OPERATION;
     }
     if (color_load_op != RINGL_RIN_GPU_RENDER_CLEAR && !use_depth_pass)
-        return;
+        return RINGL_NO_ERROR;
     if (begin_commands(context, &command_list) != 0 ||
         transition_to_color_target(context, command_list, &target) != 0 ||
         (use_depth_pass &&
@@ -775,13 +772,94 @@ void ringl_clear(uint32_t mask)
                                 color_load_op)) != 0 ||
         ringl_backend_end_render_pass(context, command_list) != 0 ||
         submit_commands(context, command_list) != 0) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
+        return RINGL_INVALID_OPERATION;
     }
     *target.state = RINGL_RIN_GPU_IMAGE_COLOR_TARGET;
     if (use_depth_pass)
         *depth_target.state = RINGL_RIN_GPU_IMAGE_DEPTH_TARGET;
     ringl_context_clear_dirty(context, RINGL_DIRTY_FRAMEBUFFER);
+    return RINGL_NO_ERROR;
+}
+
+void ringl_clear(uint32_t mask)
+{
+    RinGLContext* context = ringl_get_current_context();
+    uint32_t error;
+
+    if (context == NULL)
+        return;
+    error = ringl_submit_clear(context, mask);
+    if (error != RINGL_NO_ERROR)
+        ringl_context_record_error(context, error);
+}
+
+int ringl_clear_default_framebuffer_for_embedding(uint32_t* error_out)
+{
+    RinGLContext* context = ringl_get_current_context();
+    uint32_t saved_framebuffer_binding;
+    uint32_t saved_dirty_bits;
+    uint32_t saved_scissor_enabled;
+    uint32_t saved_color_write_mask;
+    uint32_t saved_depth_write_mask;
+    uint32_t saved_stencil_write_mask;
+    float saved_clear_red;
+    float saved_clear_green;
+    float saved_clear_blue;
+    float saved_clear_alpha;
+    float saved_clear_depth;
+    uint32_t saved_clear_stencil;
+    uint32_t error;
+
+    if (error_out == NULL)
+        return -1;
+    *error_out = RINGL_INVALID_OPERATION;
+    if (context == NULL)
+        return -1;
+
+    saved_framebuffer_binding = context->framebuffer_binding;
+    saved_dirty_bits = context->dirty_bits;
+    saved_scissor_enabled = context->scissor_enabled;
+    saved_color_write_mask = context->color_write_mask;
+    saved_depth_write_mask = context->depth_write_mask;
+    saved_stencil_write_mask = context->stencil_write_mask;
+    saved_clear_red = context->clear_red;
+    saved_clear_green = context->clear_green;
+    saved_clear_blue = context->clear_blue;
+    saved_clear_alpha = context->clear_alpha;
+    saved_clear_depth = context->clear_depth;
+    saved_clear_stencil = context->clear_stencil;
+
+    context->framebuffer_binding = 0u;
+    context->scissor_enabled = 0u;
+    context->color_write_mask = RINGL_RIN_GPU_COLOR_WRITE_ALL;
+    context->depth_write_mask = RINGL_TRUE;
+    context->stencil_write_mask = 0xffu;
+    context->clear_red = 0.0f;
+    context->clear_green = 0.0f;
+    context->clear_blue = 0.0f;
+    context->clear_alpha = 0.0f;
+    context->clear_depth = 1.0f;
+    context->clear_stencil = 0u;
+
+    error = ringl_submit_clear(
+        context, RINGL_COLOR_BUFFER_BIT | RINGL_DEPTH_BUFFER_BIT |
+                     RINGL_STENCIL_BUFFER_BIT);
+
+    context->framebuffer_binding = saved_framebuffer_binding;
+    context->dirty_bits = saved_dirty_bits;
+    context->scissor_enabled = saved_scissor_enabled;
+    context->color_write_mask = saved_color_write_mask;
+    context->depth_write_mask = saved_depth_write_mask;
+    context->stencil_write_mask = saved_stencil_write_mask;
+    context->clear_red = saved_clear_red;
+    context->clear_green = saved_clear_green;
+    context->clear_blue = saved_clear_blue;
+    context->clear_alpha = saved_clear_alpha;
+    context->clear_depth = saved_clear_depth;
+    context->clear_stencil = saved_clear_stencil;
+
+    *error_out = error;
+    return error == RINGL_NO_ERROR ? 0 : -1;
 }
 
 static int ringl_resolve_vertex_buffer_bindings(

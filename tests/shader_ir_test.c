@@ -182,20 +182,20 @@ int main(void)
     header = lower_and_read_header(vertex, vector_source, blob, sizeof(blob));
     assert(header.stage == 1u);
     assert(header.input_count == 2u);
-    assert(header.output_count == 4u);
-    assert(header.instruction_count >= 7u);
+    assert(header.output_count == 8u);
+    assert(header.instruction_count >= 13u);
     assert(ringl_get_shader_module(vertex) == 0u);
     assert(backend.destroys == 2u);
 
     header = lower_and_read_header(fragment, fragment_source, blob, sizeof(blob));
     assert(header.stage == 2u);
-    assert(header.input_count == 0u);
+    assert(header.input_count == 4u);
     assert(header.output_count == 4u);
     assert(header.instruction_count >= 5u);
 
     header = lower_and_read_header(fragment, texture_source, blob, sizeof(blob));
     assert(header.stage == 2u);
-    assert(header.input_count == 0u);
+    assert(header.input_count == 4u);
     assert(header.output_count == 4u);
     assert(header.resource_count == 2u);
     assert(header.instruction_count == 11u);
@@ -204,14 +204,14 @@ int main(void)
                                    blob, sizeof(blob));
     assert(header.stage == 1u);
     assert(header.input_count == 4u);
-    assert(header.output_count == 6u);
+    assert(header.output_count == 8u);
     assert(header.resource_count == 0u);
-    assert(header.instruction_count == 13u);
+    assert(header.instruction_count == 15u);
 
     header = lower_and_read_header(fragment, varying_fragment_source,
                                    blob, sizeof(blob));
     assert(header.stage == 2u);
-    assert(header.input_count == 2u);
+    assert(header.input_count == 4u);
     assert(header.output_count == 4u);
     assert(header.resource_count == 2u);
     assert(header.instruction_count == 11u);

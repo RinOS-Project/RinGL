@@ -649,8 +649,50 @@ static int parse_all(Lower* lower)
         fail(lower, "missing main");
         return 0;
     }
-    return emit(lower, RINGL_RSH1_OP_RETURN, RINGL_RSH1_UNUSED,
-                RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED, 0u);
+    return 1;
+}
+
+/*
+ * The RinGPU software rasterizer consumes a fixed vertex ABI: clip position
+ * occupies outputs 0..3 and four interpolants occupy outputs 4..7.  GLSL ES
+ * shaders without varyings still need to provide the latter slots so that a
+ * constant fragment shader can execute through the same pipeline.  Preserve
+ * scalar lowering as-is; it is used by the standalone IR API rather than the
+ * graphics pipeline.
+ */
+static int append_raster_defaults(Lower* lower)
+{
+    uint16_t zero;
+    uint16_t one;
+    float one_value = 1.0f;
+    uint32_t one_bits;
+
+    if (lower->shader_type != RINGL_VERTEX_SHADER ||
+        lower->output_count != 4u) {
+        return 1;
+    }
+    zero = new_reg(lower);
+    one = new_reg(lower);
+    if (zero == RINGL_RSH1_UNUSED || one == RINGL_RSH1_UNUSED) {
+        return 0;
+    }
+    memcpy(&one_bits, &one_value, sizeof(one_bits));
+    if (!emit(lower, RINGL_RSH1_OP_CONST_F32, zero, RINGL_RSH1_UNUSED,
+              RINGL_RSH1_UNUSED, 0u) ||
+        !emit(lower, RINGL_RSH1_OP_CONST_F32, one, RINGL_RSH1_UNUSED,
+              RINGL_RSH1_UNUSED, one_bits) ||
+        !emit(lower, RINGL_RSH1_OP_STORE_OUTPUT_F32, RINGL_RSH1_UNUSED,
+              zero, RINGL_RSH1_UNUSED, 4u) ||
+        !emit(lower, RINGL_RSH1_OP_STORE_OUTPUT_F32, RINGL_RSH1_UNUSED,
+              zero, RINGL_RSH1_UNUSED, 5u) ||
+        !emit(lower, RINGL_RSH1_OP_STORE_OUTPUT_F32, RINGL_RSH1_UNUSED,
+              zero, RINGL_RSH1_UNUSED, 6u) ||
+        !emit(lower, RINGL_RSH1_OP_STORE_OUTPUT_F32, RINGL_RSH1_UNUSED,
+              one, RINGL_RSH1_UNUSED, 7u)) {
+        return 0;
+    }
+    lower->output_count = 8u;
+    return 1;
 }
 
 int ringl_glsl_lower_rsh1(uint32_t shader_type, const char* source,
@@ -671,6 +713,17 @@ int ringl_glsl_lower_rsh1(uint32_t shader_type, const char* source,
     lower.result = result;
     if (!parse_all(&lower))
         return 1;
+    if (!append_raster_defaults(&lower))
+        return 1;
+    if (shader_type == RINGL_FRAGMENT_SHADER && lower.output_count == 4u &&
+        lower.next_input == 0u) {
+        /* The fixed raster ABI supplies four interpolant components. */
+        lower.next_input = 4u;
+    }
+    if (!emit(&lower, RINGL_RSH1_OP_RETURN, RINGL_RSH1_UNUSED,
+              RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED, 0u)) {
+        return 1;
+    }
     if (lower.next_reg == 0u)
         lower.next_reg = 1u;
 

@@ -172,6 +172,8 @@ int ringl_glsl_lower_texture2d_rsh1(
     header.stage = RINGL_RSH1_STAGE_FRAGMENT;
     header.instruction_count = 11u;
     header.register_count = 6u;
+    /* Match the fixed four-component interpolant ABI of the rasterizer. */
+    header.input_count = 4u;
     header.output_count = 4u;
     header.resource_count = 2u;
     total = sizeof(header) + sizeof(ins);
@@ -182,7 +184,7 @@ int ringl_glsl_lower_texture2d_rsh1(
     result->ok = 1u;
     result->instruction_count = header.instruction_count;
     result->register_count = header.register_count;
-    result->input_count = 0u;
+    result->input_count = header.input_count;
     result->output_count = header.output_count;
     result->byte_size = header.total_size;
     return 0;

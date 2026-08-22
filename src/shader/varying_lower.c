@@ -68,7 +68,7 @@ static int read_decl_name(const char* source, const char* prefix,
 static int lower_vertex(const char* source, RinGLGlslLowerResult* result)
 {
     RinGLRsh1HeaderV1 header;
-    RinGLRsh1InstructionV1 ins[13];
+    RinGLRsh1InstructionV1 ins[15];
     char position[64];
     char texcoord[64];
     char varying[64];
@@ -115,17 +115,21 @@ static int lower_vertex(const char* source, RinGLGlslLowerResult* result)
     ins[10].source0 = 2u; ins[10].immediate = 4u;
     init_instruction(&ins[11], RINGL_RSH1_OP_STORE_OUTPUT_F32);
     ins[11].source0 = 3u; ins[11].immediate = 5u;
-    init_instruction(&ins[12], RINGL_RSH1_OP_RETURN);
+    init_instruction(&ins[12], RINGL_RSH1_OP_STORE_OUTPUT_F32);
+    ins[12].source0 = 4u; ins[12].immediate = 6u;
+    init_instruction(&ins[13], RINGL_RSH1_OP_STORE_OUTPUT_F32);
+    ins[13].source0 = 5u; ins[13].immediate = 7u;
+    init_instruction(&ins[14], RINGL_RSH1_OP_RETURN);
 
     memset(&header, 0, sizeof(header));
     header.magic = RINGL_RSH1_MAGIC;
     header.version = RINGL_RSH1_VERSION;
     header.header_size = sizeof(header);
     header.stage = RINGL_RSH1_STAGE_VERTEX;
-    header.instruction_count = 13u;
+    header.instruction_count = 15u;
     header.register_count = 6u;
     header.input_count = 4u;
-    header.output_count = 6u;
+    header.output_count = 8u;
     total = sizeof(header) + sizeof(ins);
     header.total_size = (uint32_t)total;
     memcpy(result->bytes, &header, sizeof(header));
@@ -184,7 +188,8 @@ static int lower_fragment(const char* source, RinGLGlslLowerResult* result)
     header.stage = RINGL_RSH1_STAGE_FRAGMENT;
     header.instruction_count = 11u;
     header.register_count = 6u;
-    header.input_count = 2u;
+    /* UV uses inputs 0..1; inputs 2..3 are the fixed ABI padding. */
+    header.input_count = 4u;
     header.output_count = 4u;
     header.resource_count = 2u;
     total = sizeof(header) + sizeof(ins);

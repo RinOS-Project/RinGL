@@ -76,7 +76,7 @@ int main(void)
     assert(header.stage == 2u);
     assert(header.instruction_count == 11u);
     assert(header.register_count == 6u);
-    assert(header.input_count == 0u);
+    assert(header.input_count == 4u);
     assert(header.output_count == 4u);
     assert(header.resource_count == 2u);
 

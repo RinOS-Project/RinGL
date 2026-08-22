@@ -39,6 +39,24 @@ int main(void)
     assert(values[0] == (int32_t)RINGL_BACK);
     ringl_get_integerv(RINGL_FRONT_FACE, values);
     assert(values[0] == (int32_t)RINGL_CCW);
+    ringl_get_integerv(RINGL_DEPTH_FUNC, values);
+    assert(values[0] == (int32_t)RINGL_LESS);
+    ringl_get_integerv(RINGL_DEPTH_WRITEMASK, values);
+    assert(values[0] == (int32_t)RINGL_TRUE);
+    ringl_get_integerv(RINGL_BLEND_SRC_RGB, values);
+    assert(values[0] == (int32_t)RINGL_ONE);
+    ringl_get_integerv(RINGL_BLEND_DST_RGB, values);
+    assert(values[0] == (int32_t)RINGL_ZERO);
+    ringl_get_integerv(RINGL_BLEND_SRC_ALPHA, values);
+    assert(values[0] == (int32_t)RINGL_ONE);
+    ringl_get_integerv(RINGL_BLEND_DST_ALPHA, values);
+    assert(values[0] == (int32_t)RINGL_ZERO);
+    ringl_get_integerv(RINGL_BLEND_EQUATION_RGB, values);
+    assert(values[0] == (int32_t)RINGL_FUNC_ADD);
+    ringl_get_integerv(RINGL_BLEND_EQUATION_ALPHA, values);
+    assert(values[0] == (int32_t)RINGL_FUNC_ADD);
+    ringl_get_integerv(RINGL_COLOR_WRITEMASK, values);
+    assert(values[0] == 1 && values[1] == 1 && values[2] == 1 && values[3] == 1);
     ringl_get_integerv(RINGL_MAX_TEXTURE_SIZE_QUERY, values);
     assert(values[0] == (int32_t)RINGL_MAX_TEXTURE_SIZE);
     ringl_get_integerv(RINGL_MAX_TEXTURE_IMAGE_UNITS, values);
@@ -93,6 +111,55 @@ int main(void)
     ringl_front_face(RINGL_CW);
     ringl_get_integerv(RINGL_FRONT_FACE, values);
     assert(values[0] == (int32_t)RINGL_CW);
+
+    ringl_depth_func(0xdeadbeefu);
+    assert(ringl_get_error() == RINGL_INVALID_ENUM);
+    ringl_depth_func(RINGL_GEQUAL);
+    ringl_depth_mask(0u);
+    ringl_get_integerv(RINGL_DEPTH_FUNC, values);
+    assert(values[0] == (int32_t)RINGL_GEQUAL);
+    ringl_get_integerv(RINGL_DEPTH_WRITEMASK, values);
+    assert(values[0] == (int32_t)RINGL_FALSE);
+
+    ringl_blend_func(0xdeadbeefu, RINGL_ZERO);
+    assert(ringl_get_error() == RINGL_INVALID_ENUM);
+    ringl_blend_func(RINGL_SRC_ALPHA, RINGL_ONE_MINUS_SRC_ALPHA);
+    ringl_get_integerv(RINGL_BLEND_SRC_RGB, values);
+    assert(values[0] == (int32_t)RINGL_SRC_ALPHA);
+    ringl_get_integerv(RINGL_BLEND_DST_RGB, values);
+    assert(values[0] == (int32_t)RINGL_ONE_MINUS_SRC_ALPHA);
+    ringl_get_integerv(RINGL_BLEND_SRC_ALPHA, values);
+    assert(values[0] == (int32_t)RINGL_SRC_ALPHA);
+    ringl_get_integerv(RINGL_BLEND_DST_ALPHA, values);
+    assert(values[0] == (int32_t)RINGL_ONE_MINUS_SRC_ALPHA);
+
+    ringl_blend_func_separate(RINGL_ONE, RINGL_ZERO,
+                              RINGL_DST_ALPHA, RINGL_ONE_MINUS_DST_ALPHA);
+    ringl_get_integerv(RINGL_BLEND_SRC_RGB, values);
+    assert(values[0] == (int32_t)RINGL_ONE);
+    ringl_get_integerv(RINGL_BLEND_DST_RGB, values);
+    assert(values[0] == (int32_t)RINGL_ZERO);
+    ringl_get_integerv(RINGL_BLEND_SRC_ALPHA, values);
+    assert(values[0] == (int32_t)RINGL_DST_ALPHA);
+    ringl_get_integerv(RINGL_BLEND_DST_ALPHA, values);
+    assert(values[0] == (int32_t)RINGL_ONE_MINUS_DST_ALPHA);
+
+    ringl_blend_equation(0xdeadbeefu);
+    assert(ringl_get_error() == RINGL_INVALID_ENUM);
+    ringl_blend_equation(RINGL_FUNC_SUBTRACT);
+    ringl_get_integerv(RINGL_BLEND_EQUATION_RGB, values);
+    assert(values[0] == (int32_t)RINGL_FUNC_SUBTRACT);
+    ringl_get_integerv(RINGL_BLEND_EQUATION_ALPHA, values);
+    assert(values[0] == (int32_t)RINGL_FUNC_SUBTRACT);
+    ringl_blend_equation_separate(RINGL_FUNC_ADD, RINGL_MAX);
+    ringl_get_integerv(RINGL_BLEND_EQUATION_RGB, values);
+    assert(values[0] == (int32_t)RINGL_FUNC_ADD);
+    ringl_get_integerv(RINGL_BLEND_EQUATION_ALPHA, values);
+    assert(values[0] == (int32_t)RINGL_MAX);
+
+    ringl_color_mask(1u, 0u, 7u, 0u);
+    ringl_get_integerv(RINGL_COLOR_WRITEMASK, values);
+    assert(values[0] == 1 && values[1] == 0 && values[2] == 1 && values[3] == 0);
 
     ringl_get_integerv(0xdeadbeefu, values);
     assert(ringl_get_error() == RINGL_INVALID_ENUM);

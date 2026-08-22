@@ -28,6 +28,7 @@ static void ringl_shader_discard_artifacts(RinGLContext* context,
                                            RinGLShaderObject* object)
 {
     if (object->ringpu_module != 0u) {
+        ringl_invalidate_graphics_artifacts(context);
         ringl_backend_destroy_object(context, object->ringpu_module);
         object->ringpu_module = 0u;
     }
@@ -177,8 +178,7 @@ void ringl_compile_shader(uint32_t shader)
     }
     ringl_shader_reset_compile_state(context, object);
     if (object->source == NULL) {
-        (void)strncpy(object->info_log, "no shader source",
-                      sizeof(object->info_log) - 1u);
+        (void)strncpy(object->info_log, "no shader source", sizeof(object->info_log) - 1u);
         object->info_log[sizeof(object->info_log) - 1u] = '\0';
         return;
     }
@@ -276,7 +276,10 @@ void ringl_shader_objects_destroy_all(RinGLContext* context)
             context->objects[index].state == RINGL_OBJECT_FREE)
             continue;
         free(context->shaders[index].source);
-        ringl_shader_discard_artifacts(context, &context->shaders[index]);
+        free(context->shaders[index].rsh1);
+        if (context->shaders[index].ringpu_module != 0u)
+            ringl_backend_destroy_object(context,
+                                         context->shaders[index].ringpu_module);
         memset(&context->shaders[index], 0, sizeof(context->shaders[index]));
     }
 }

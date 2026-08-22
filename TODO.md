@@ -69,8 +69,9 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Implement texture object lifecycle and eight texture-unit bindings.
 - [x] Implement initial level-0 `RGBA`/`UNSIGNED_BYTE` 2D texture storage with bounded dimensions.
 - [x] Implement robust CPU-side `texImage2D` zero initialization and bounded `texSubImage2D` updates.
+- [x] Implement GLES-style texture filtering/wrap sampler state and invalidate realized samplers when it changes.
 - [ ] Realize defined texture storage as RinGPU sampled images and upload/copy shadow contents.
-- [ ] Implement sampler state and map it to RinGPU sampler objects.
+- [ ] Map texture sampler state to lazily realized RinGPU sampler objects.
 - [ ] Implement sampled-image/program bindings.
 - [ ] Add a textured-triangle integration test.
 

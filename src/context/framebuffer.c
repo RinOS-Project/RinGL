@@ -54,6 +54,14 @@ int ringl_set_default_framebuffer(const RinGLDefaultFramebufferV1* framebuffer)
     context->default_framebuffer = *framebuffer;
     context->has_default_framebuffer = 1u;
     context->default_framebuffer_state = RINGL_RIN_GPU_IMAGE_PRESENT;
+    if (!context->viewport_initialized) {
+        context->viewport_x = 0;
+        context->viewport_y = 0;
+        context->viewport_width = framebuffer->width;
+        context->viewport_height = framebuffer->height;
+        context->viewport_initialized = RINGL_TRUE;
+        dirty |= RINGL_DIRTY_VIEWPORT;
+    }
     ringl_context_mark_dirty(context, dirty);
     return 0;
 }

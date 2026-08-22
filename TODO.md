@@ -62,7 +62,10 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 
 ## Phase 5 — Indexed drawing and textures
 
-- [ ] Implement `glDrawElements` with robust index/vertex range validation.
+- [x] Implement `glDrawElements` for `UNSIGNED_SHORT`/`UNSIGNED_INT` with robust index-buffer and referenced-vertex range validation.
+- [x] Retain bounded buffer shadow contents so indexed draws can reject unsafe vertex fetches before RinGPU submission.
+- [x] Map indexed draws through the append-only RinGPU adapter boundary.
+- [ ] Add `UNSIGNED_BYTE` index support required by the GLES 2.0 profile.
 - [ ] Implement texture object lifecycle and texture-unit state.
 - [ ] Implement the first 2D color texture formats.
 - [ ] Implement texture upload/sub-upload.

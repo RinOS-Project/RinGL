@@ -141,6 +141,18 @@ int ringl_backend_draw_vertices(RinGLContext* context,
                                              command_list, draw);
 }
 
+int ringl_backend_draw_indexed(RinGLContext* context,
+                               uint64_t command_list,
+                               const RinGLRinGpuDrawIndexedV1* draw)
+{
+    if (context == NULL || command_list == 0u || draw == NULL ||
+        !context->has_ringpu_ops || context->ringpu_ops.draw_indexed == NULL) {
+        return -1;
+    }
+    return context->ringpu_ops.draw_indexed(context->ringpu.session,
+                                            command_list, draw);
+}
+
 int ringl_backend_end_render_pass(RinGLContext* context,
                                   uint64_t command_list)
 {

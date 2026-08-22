@@ -106,6 +106,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [ ] Implement stencil support after framebuffer/renderbuffer depth-stencil storage is in place.
   - [x] Add a bounded common-face `DEPTH24_STENCIL8` renderbuffer slice: lazy RinGPU D32S8 storage, clear, comparison/reference/read/write masks, and `KEEP`/`ZERO`/`REPLACE`/increment/decrement/invert operations execute before depth through the RinOS surface backend. An embedding-supplied default D32/S8 plane also realizes a direct D32S8 target. State/FBO unit tests and the RinGL-to-RinGPU integration test cover rejection, pass, write mask, and depth-fail behavior.
   - [x] Add bounded separate front/back stencil function, reference/read/write-mask, and operation state. RinGPU carries canonical common or independent face state into its native pipeline; the RinOS surface executor selects it from winding, honors front-face/cull state, and the integration test verifies distinct front/back writes plus back-face culling.
+  - [x] Make `glClear(STENCIL_BUFFER_BIT)` use the front stencil write mask through a D32S8 RinGPU render pass. The core rejects noncanonical D32 or LOAD masks, while the surface executor preserves masked-off S8 bits; core-contract and integration tests cover both the descriptor and resulting pixels.
   - [ ] Add the remaining GLES/WebGL stencil attachment semantics.
 
 ## Phase 7 — Data movement, synchronization, and observability

@@ -178,7 +178,9 @@ stencil clear before the depth test. The common `ringl_stencil_*` calls update
 both faces, while the `*_separate` forms set one face or both explicitly. This
 is tested through the RinOS RinGL-to-RinGPU surface path, including stencil
 rejection, replacement, write masking, depth-fail behavior, reversed winding,
-and back-face culling.
+and back-face culling. `ringl_clear(RINGL_STENCIL_BUFFER_BIT)` also forwards
+the front stencil write mask through the native render pass, so it preserves
+masked-off stencil bits rather than overwriting the complete S8 plane.
 
 This remains a bounded profile. A default caller-owned D32 surface has no
 stencil storage unless its embedding explicitly supplies the matching S8

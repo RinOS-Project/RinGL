@@ -302,8 +302,11 @@ static int begin_depth_pass(RinGLContext* context, uint64_t command_list,
     if (depth_target->format == RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) {
         render_pass.stencil_load_op = stencil_load_op;
         render_pass.stencil_store_op = RINGL_RIN_GPU_RENDER_STORE;
-        if (stencil_load_op == RINGL_RIN_GPU_RENDER_CLEAR)
+        if (stencil_load_op == RINGL_RIN_GPU_RENDER_CLEAR) {
             render_pass.clear_stencil = context->clear_stencil;
+            /* ES 2.0 §4.2.2 requires Clear to use the front write mask. */
+            render_pass.stencil_write_mask = context->stencil_write_mask;
+        }
     } else if (stencil_load_op != 0u) {
         return -1;
     }

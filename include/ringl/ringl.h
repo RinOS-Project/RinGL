@@ -342,10 +342,12 @@ typedef struct RinGLRinGpuRenderPassDepthV1 {
     float clear_alpha;
     float clear_depth;
     /* D32_FLOAT targets require these to remain zero. D32_FLOAT_S8_UINT
-     * accepts LOAD/CLEAR and STORE for stencil. */
+     * accepts LOAD/CLEAR and STORE for stencil. A stencil clear uses the
+     * front-face write mask, as required by OpenGL ES 2.0. */
     uint32_t stencil_load_op;
     uint32_t stencil_store_op;
     uint32_t clear_stencil;
+    uint32_t stencil_write_mask;
 } RinGLRinGpuRenderPassDepthV1;
 
 typedef struct RinGLRinGpuDrawVerticesV1 {

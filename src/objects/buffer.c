@@ -2,6 +2,8 @@
 #include "ringl_internal.h"
 
 #include <stddef.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 static int ringl_buffer_target_valid(uint32_t target)
@@ -115,6 +117,7 @@ void ringl_delete_buffers(int32_t count, const uint32_t* buffers)
         if (slot_index < RINGL_OBJECT_SLOT_COUNT) {
             ringl_backend_destroy_object(context,
                                          context->buffers[slot_index].ringpu_handle);
+            free(context->buffers[slot_index].shadow_bytes);
             memset(&context->buffers[slot_index], 0,
                    sizeof(context->buffers[slot_index]));
         }
@@ -189,6 +192,7 @@ void ringl_buffer_data(uint32_t target,
     RinGLContext* context = ringl_get_current_context();
     RinGLBufferObject* object;
     uint64_t new_handle = 0u;
+    uint8_t* new_shadow = NULL;
 
     if (context == NULL)
         return;
@@ -204,6 +208,10 @@ void ringl_buffer_data(uint32_t target,
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
+    if ((uint64_t)size_bytes > (uint64_t)SIZE_MAX) {
+        ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+        return;
+    }
 
     object = ringl_bound_buffer_object(context, target);
     if (object == NULL) {
@@ -212,25 +220,40 @@ void ringl_buffer_data(uint32_t target,
     }
 
     if (size_bytes > 0) {
+        new_shadow = malloc((size_t)size_bytes);
+        if (new_shadow == NULL) {
+            ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+            return;
+        }
+        if (data != NULL)
+            memcpy(new_shadow, data, (size_t)size_bytes);
+        else
+            memset(new_shadow, 0, (size_t)size_bytes);
+
         if (ringl_backend_create_buffer(context, (uint64_t)size_bytes,
                                         &new_handle) != 0 ||
             new_handle == 0u) {
+            free(new_shadow);
             ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
             return;
         }
 
-        if (data != NULL &&
-            ringl_backend_upload_buffer(context, new_handle, 0u, data,
+        /* Keep GPU storage and the robust CPU shadow identical. Zero-filled
+         * storage for a NULL source is intentional in RinGL's bounded profile. */
+        if (ringl_backend_upload_buffer(context, new_handle, 0u, new_shadow,
                                         (uint64_t)size_bytes) != 0) {
             ringl_backend_destroy_object(context, new_handle);
+            free(new_shadow);
             ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
             return;
         }
     }
 
     ringl_backend_destroy_object(context, object->ringpu_handle);
+    free(object->shadow_bytes);
     object->ringpu_handle = new_handle;
     object->size_bytes = (uint64_t)size_bytes;
+    object->shadow_bytes = new_shadow;
     object->usage = usage;
     ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
 }
@@ -289,5 +312,7 @@ void ringl_buffer_objects_destroy_all(RinGLContext* context)
         }
         ringl_backend_destroy_object(context, context->buffers[index].ringpu_handle);
         context->buffers[index].ringpu_handle = 0u;
+        free(context->buffers[index].shadow_bytes);
+        context->buffers[index].shadow_bytes = NULL;
     }
 }

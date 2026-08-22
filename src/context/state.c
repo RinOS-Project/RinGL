@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: MIT */
 #include "ringl_internal.h"
 
+#include <stddef.h>
+
 static uint32_t* capability_field(RinGLContext* context, uint32_t capability)
 {
     if (context == NULL)

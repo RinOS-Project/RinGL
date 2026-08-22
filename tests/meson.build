@@ -53,3 +53,11 @@ program_test = executable(
 )
 
 test('program', program_test)
+
+shader_ir_test = executable(
+  'ringl-shader-ir-test',
+  'shader_ir_test.c',
+  dependencies: ringl_dep,
+)
+
+test('shader-ir', shader_ir_test)

@@ -3,6 +3,7 @@
 #include "rsh1_abi.h"
 
 #include <ctype.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -62,7 +63,7 @@ static int parse_float(const char** cursor, const char* end, float* value)
         return 0;
     temp[n] = '\0';
     *value = strtof(temp, &parsed_end);
-    if (parsed_end == temp || *parsed_end != '\0')
+    if (parsed_end == temp || *parsed_end != '\0' || !isfinite(*value))
         return 0;
     *cursor = p;
     return 1;
@@ -94,6 +95,7 @@ int ringl_glsl_lower_texture2d_rsh1(
     char ctor[16];
     float u;
     float v;
+    int scalar_splat;
     uint32_t u_bits;
     uint32_t v_bits;
     uint32_t component;
@@ -128,16 +130,22 @@ int ringl_glsl_lower_texture2d_rsh1(
         !expect_char(&cursor, end, ',') ||
         !parse_ident(&cursor, end, ctor, sizeof(ctor)) ||
         strcmp(ctor, "vec2") != 0 ||
-        !expect_char(&cursor, end, '(') ||
-        !parse_float(&cursor, end, &u) ||
-        !expect_char(&cursor, end, ',') ||
-        !parse_float(&cursor, end, &v) ||
-        !expect_char(&cursor, end, ')') ||
-        !expect_char(&cursor, end, ')')) {
+        !expect_char(&cursor, end, '(') || !parse_float(&cursor, end, &u)) {
         (void)snprintf(result->diagnostic, sizeof(result->diagnostic),
                        "initial texture2D lowering requires sampler2D and constant vec2 coordinates");
         return 1;
     }
+    scalar_splat = !expect_char(&cursor, end, ',');
+    if ((scalar_splat && !expect_char(&cursor, end, ')')) ||
+        (!scalar_splat && (!parse_float(&cursor, end, &v) ||
+                           !expect_char(&cursor, end, ')'))) ||
+        !expect_char(&cursor, end, ')')) {
+        (void)snprintf(result->diagnostic, sizeof(result->diagnostic),
+                       "initial texture2D lowering requires sampler2D and constant vec2 or scalar-splat coordinates");
+        return 1;
+    }
+    if (scalar_splat)
+        v = u;
 
     memcpy(&u_bits, &u, sizeof(u_bits));
     memcpy(&v_bits, &v, sizeof(v_bits));

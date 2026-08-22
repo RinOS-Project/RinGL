@@ -207,6 +207,12 @@ one. The strict C11 RinGL tests cover format normalization and upload layout,
 and the surface integration test renders a normalized RGB texture through the
 real RinGPU resource binding.
 
+The one-sampler constant texture profile accepts both `vec2(u, v)` and the
+GLSL scalar-splat form `vec2(value)`. The latter requires a finite literal and
+stores that exact Float32 value in both RSH1 texture-coordinate registers, so
+the resource-aware RinGPU surface path samples `(value, value)` rather than
+silently using an arbitrary second coordinate.
+
 The initial varying bridge now also executes a bounded vertex-color profile:
 `attribute vec2 position; attribute vec4 color; varying vec4 vertexColor;`
 with `gl_Position = vec4(position, 0.0, 1.0)`, `vertexColor = color`, and

@@ -56,6 +56,13 @@ int main(void)
     ringl_compile_shader(fragment);
     assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
 
+    ringl_shader_source(fragment,
+        "uniform sampler2D colorTexture;\n"
+        "void main() { gl_FragColor = texture2D(colorTexture, vec2(0.25)); }\n",
+        -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+
     ringl_shader_source(vertex,
         "attribute vec2 position; attribute vec2 colorRG; attribute vec2 colorBA; "
         "varying vec2 vertexRG; varying vec2 vertexBA;\n"

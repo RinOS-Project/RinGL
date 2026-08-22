@@ -50,6 +50,7 @@ int main(void)
     uint32_t shader;
     uint8_t blob[512];
     uint32_t size;
+    uint32_t expected_bits;
     Header header;
     Instruction instructions[15];
     uint32_t component;
@@ -58,6 +59,12 @@ int main(void)
         "void main() {\n"
         "  gl_FragColor = texture2D(colorTexture, vec2(0.25, 0.75));\n"
         "}\n";
+    const char* scalar_splat_source =
+        "uniform sampler2D colorTexture;\n"
+        "void main() {\n"
+        "  gl_FragColor = texture2D(colorTexture, vec2(0.75));\n"
+        "}\n";
+    float scalar_splat = 0.75f;
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -99,6 +106,18 @@ int main(void)
         assert(store->source0 == 2u + component);
         assert(store->immediate == component);
     }
+
+    ringl_shader_source(shader, scalar_splat_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + sizeof(instructions));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(instructions, blob + sizeof(header), sizeof(instructions));
+    memcpy(&expected_bits, &scalar_splat, sizeof(expected_bits));
+    assert(instructions[4].immediate == expected_bits);
+    assert(instructions[5].immediate == expected_bits);
 
     ringl_context_destroy(context);
     return 0;

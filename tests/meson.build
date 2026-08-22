@@ -133,3 +133,11 @@ first_triangle_test = executable(
 )
 
 test('first-triangle', first_triangle_test)
+
+textured_draw_test = executable(
+  'ringl-textured-draw-test',
+  'textured_draw_test.c',
+  dependencies: ringl_dep,
+)
+
+test('textured-draw', textured_draw_test)

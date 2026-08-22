@@ -21,6 +21,8 @@ typedef struct RinGLBufferObject {
 
 typedef struct RinGLTextureObject {
     uint64_t ringpu_image;
+    uint8_t* shadow_bytes;
+    uint64_t shadow_size;
     uint32_t width;
     uint32_t height;
     uint32_t format;

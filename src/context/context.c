@@ -71,6 +71,8 @@ int ringl_context_create(const RinGLContextDescV1* desc,
     context->magic = RINGL_CONTEXT_MAGIC;
     context->pending_error = RINGL_NO_ERROR;
     context->dirty_bits = RINGL_DIRTY_ALL;
+    context->cull_face_mode = RINGL_BACK;
+    context->front_face = RINGL_CCW;
 
     if (desc != NULL) {
         context->flags = desc->flags;

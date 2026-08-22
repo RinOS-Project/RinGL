@@ -236,6 +236,13 @@ program and location without depending on the current program binding. It
 checks the complete input before writing its caller-owned integer, so invalid
 programs or locations cannot expose a partially updated result.
 
+`ringl_get_renderbuffer_info()` exposes the current renderbuffer's dimensions,
+internal format, component bit counts, and zero sample count through a
+versioned caller-owned snapshot. An allocated renderbuffer reports zero-sized
+RGBA4 default state; the supported RGBA8, D32, and D24S8 storage profiles
+report their actual channel/depth/stencil precision without realizing a RinGPU
+image merely to answer a query.
+
 Linked vertex shaders retain their active attribute declaration order and
 widths. `ringl_bind_attrib_location()` records a requested generic
 vertex-array index for the next successful link, and

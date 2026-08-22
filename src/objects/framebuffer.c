@@ -535,6 +535,51 @@ uint32_t ringl_get_bound_renderbuffer(uint32_t target)
     return context->renderbuffer_binding;
 }
 
+int ringl_get_renderbuffer_info(uint32_t target, RinGLRenderbufferInfoV1* info)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLRenderbufferObject* renderbuffer;
+    RinGLRenderbufferInfoV1 result;
+
+    if (context == NULL || info == NULL)
+        return -1;
+    if (info->struct_size < sizeof(*info) || info->api_version != RINGL_API_VERSION)
+        return -1;
+    if (!renderbuffer_target_valid(target)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
+    renderbuffer = bound_renderbuffer(context);
+    if (renderbuffer == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+
+    memset(&result, 0, sizeof(result));
+    result.struct_size = sizeof(result);
+    result.api_version = RINGL_API_VERSION;
+    /* GLES exposes an unallocated renderbuffer as zero-sized RGBA4 state. */
+    result.internal_format = RINGL_RGBA4;
+    if (renderbuffer->defined) {
+        result.width = renderbuffer->width;
+        result.height = renderbuffer->height;
+        result.internal_format = renderbuffer->internal_format;
+        if (renderbuffer->internal_format == RINGL_RGBA8) {
+            result.red_size = 8u;
+            result.green_size = 8u;
+            result.blue_size = 8u;
+            result.alpha_size = 8u;
+        } else if (renderbuffer->internal_format == RINGL_DEPTH_COMPONENT32F) {
+            result.depth_size = 32u;
+        } else if (renderbuffer->internal_format == RINGL_DEPTH24_STENCIL8) {
+            result.depth_size = 24u;
+            result.stencil_size = 8u;
+        }
+    }
+    *info = result;
+    return 0;
+}
+
 void ringl_renderbuffer_storage(uint32_t target, uint32_t internal_format,
                                 int32_t width, int32_t height)
 {

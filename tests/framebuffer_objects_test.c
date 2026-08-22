@@ -28,6 +28,10 @@ int main(void)
     uint32_t renderbuffer = 0u;
     uint32_t packed_depth_stencil = 0x7fffffa5u;
     RinGLFramebufferAttachmentInfoV1 attachment;
+    RinGLRenderbufferInfoV1 renderbuffer_info = {
+        .struct_size = sizeof(renderbuffer_info),
+        .api_version = RINGL_API_VERSION,
+    };
     int32_t value = -1;
 
     assert(ringl_context_create(&desc, &context) == 0);
@@ -142,8 +146,19 @@ int main(void)
     assert(ringl_get_bound_renderbuffer(RINGL_RENDERBUFFER) == renderbuffer);
     ringl_get_integerv(RINGL_RENDERBUFFER_BINDING, &value);
     assert((uint32_t)value == renderbuffer);
+    assert(ringl_get_renderbuffer_info(RINGL_RENDERBUFFER, &renderbuffer_info) == 0);
+    assert(renderbuffer_info.width == 0u && renderbuffer_info.height == 0u &&
+           renderbuffer_info.internal_format == RINGL_RGBA4 &&
+           renderbuffer_info.red_size == 0u && renderbuffer_info.samples == 0u);
     ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_RGBA8, 32, 16);
     assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_get_renderbuffer_info(RINGL_RENDERBUFFER, &renderbuffer_info) == 0);
+    assert(renderbuffer_info.width == 32u && renderbuffer_info.height == 16u &&
+           renderbuffer_info.internal_format == RINGL_RGBA8 &&
+           renderbuffer_info.red_size == 8u && renderbuffer_info.green_size == 8u &&
+           renderbuffer_info.blue_size == 8u && renderbuffer_info.alpha_size == 8u &&
+           renderbuffer_info.depth_size == 0u && renderbuffer_info.stencil_size == 0u &&
+           renderbuffer_info.samples == 0u);
 
     ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT0,
                                    RINGL_RENDERBUFFER, renderbuffer);

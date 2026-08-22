@@ -137,6 +137,7 @@ extern "C" {
 #define RINGL_ALPHA      0x1906u
 #define RINGL_RGB        0x1907u
 #define RINGL_RGBA       0x1908u
+#define RINGL_RGBA4      0x8056u
 #define RINGL_DEPTH_COMPONENT 0x1902u
 #define RINGL_LUMINANCE  0x1909u
 #define RINGL_LUMINANCE_ALPHA 0x190au
@@ -164,6 +165,15 @@ extern "C" {
 #define RINGL_RENDERBUFFER          0x8d41u
 #define RINGL_FRAMEBUFFER_BINDING   0x8ca6u
 #define RINGL_RENDERBUFFER_BINDING  0x8ca7u
+#define RINGL_RENDERBUFFER_WIDTH            0x8d42u
+#define RINGL_RENDERBUFFER_HEIGHT           0x8d43u
+#define RINGL_RENDERBUFFER_INTERNAL_FORMAT  0x8d44u
+#define RINGL_RENDERBUFFER_RED_SIZE         0x8d50u
+#define RINGL_RENDERBUFFER_GREEN_SIZE       0x8d51u
+#define RINGL_RENDERBUFFER_BLUE_SIZE        0x8d52u
+#define RINGL_RENDERBUFFER_ALPHA_SIZE       0x8d53u
+#define RINGL_RENDERBUFFER_DEPTH_SIZE       0x8d54u
+#define RINGL_RENDERBUFFER_STENCIL_SIZE     0x8d55u
 #define RINGL_COLOR_ATTACHMENT0     0x8ce0u
 #define RINGL_DEPTH_ATTACHMENT      0x8d00u
 #define RINGL_DEPTH_STENCIL_ATTACHMENT 0x821au
@@ -764,6 +774,21 @@ typedef struct RinGLProgramInfoV1 {
     uint32_t reserved0;
 } RinGLProgramInfoV1;
 
+typedef struct RinGLRenderbufferInfoV1 {
+    uint32_t struct_size;
+    uint32_t api_version;
+    uint32_t width;
+    uint32_t height;
+    uint32_t internal_format;
+    uint32_t red_size;
+    uint32_t green_size;
+    uint32_t blue_size;
+    uint32_t alpha_size;
+    uint32_t depth_size;
+    uint32_t stencil_size;
+    uint32_t samples;
+} RinGLRenderbufferInfoV1;
+
 typedef struct RinGLDefaultFramebufferV1 {
     uint32_t struct_size;
     uint32_t api_version;
@@ -959,6 +984,7 @@ void ringl_delete_renderbuffers(int32_t count,
 void ringl_bind_renderbuffer(uint32_t target, uint32_t renderbuffer);
 int ringl_is_renderbuffer(uint32_t renderbuffer);
 uint32_t ringl_get_bound_renderbuffer(uint32_t target);
+int ringl_get_renderbuffer_info(uint32_t target, RinGLRenderbufferInfoV1* info);
 void ringl_renderbuffer_storage(uint32_t target, uint32_t internal_format,
                                 int32_t width, int32_t height);
 void ringl_framebuffer_renderbuffer(uint32_t target, uint32_t attachment,

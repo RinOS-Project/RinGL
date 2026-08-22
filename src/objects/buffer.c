@@ -258,6 +258,85 @@ void ringl_buffer_data(uint32_t target,
     ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
 }
 
+void ringl_buffer_sub_data(uint32_t target,
+                           int64_t offset_bytes,
+                           int64_t size_bytes,
+                           const void* data)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLBufferObject* object;
+    uint8_t* replacement_shadow;
+    uint64_t replacement_handle = 0u;
+
+    if (context == NULL)
+        return;
+    if (!ringl_buffer_target_valid(target)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return;
+    }
+    if (offset_bytes < 0 || size_bytes < 0) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if (size_bytes > 0 && data == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+
+    object = ringl_bound_buffer_object(context, target);
+    if (object == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    if ((uint64_t)offset_bytes > object->size_bytes ||
+        (uint64_t)size_bytes > object->size_bytes - (uint64_t)offset_bytes) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if (size_bytes == 0)
+        return;
+
+    /* RinGPU uploads may fail after a backend-specific operation. Build a
+     * complete replacement instead of mutating the current backing object,
+     * keeping the old logical buffer and its CPU shadow intact on failure. */
+    if (object->ringpu_handle == 0u || object->shadow_bytes == NULL ||
+        object->size_bytes > (uint64_t)SIZE_MAX) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    replacement_shadow = malloc((size_t)object->size_bytes);
+    if (replacement_shadow == NULL) {
+        ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+        return;
+    }
+    memcpy(replacement_shadow, object->shadow_bytes,
+           (size_t)object->size_bytes);
+    memcpy(replacement_shadow + (size_t)offset_bytes, data,
+           (size_t)size_bytes);
+
+    if (ringl_backend_create_buffer(context, object->size_bytes,
+                                    &replacement_handle) != 0 ||
+        replacement_handle == 0u) {
+        free(replacement_shadow);
+        ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+        return;
+    }
+    if (ringl_backend_upload_buffer(context, replacement_handle, 0u,
+                                    replacement_shadow,
+                                    object->size_bytes) != 0) {
+        ringl_backend_destroy_object(context, replacement_handle);
+        free(replacement_shadow);
+        ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+        return;
+    }
+
+    ringl_backend_destroy_object(context, object->ringpu_handle);
+    free(object->shadow_bytes);
+    object->ringpu_handle = replacement_handle;
+    object->shadow_bytes = replacement_shadow;
+    ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
+}
+
 uint64_t ringl_get_buffer_size(uint32_t target)
 {
     RinGLContext* context = ringl_get_current_context();

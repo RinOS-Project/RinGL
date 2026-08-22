@@ -665,6 +665,13 @@ void ringl_buffer_data(uint32_t target,
                        int64_t size_bytes,
                        const void* data,
                        uint32_t usage);
+/* Replaces a range of an initialized buffer. The update is staged in a
+ * replacement RinGPU buffer, so an allocation/upload failure preserves the
+ * previous logical buffer contents and binding-visible storage. */
+void ringl_buffer_sub_data(uint32_t target,
+                           int64_t offset_bytes,
+                           int64_t size_bytes,
+                           const void* data);
 uint64_t ringl_get_buffer_size(uint32_t target);
 uint32_t ringl_get_buffer_usage(uint32_t target);
 

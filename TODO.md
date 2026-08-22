@@ -26,6 +26,9 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 
 - [x] Implement buffer object creation/deletion/binding.
 - [x] Implement `glBufferData` and bounded buffer uploads through RinGPU.
+  - [x] Implement transactional `glBufferSubData`-style range replacement:
+    validate the complete range before submission and swap a staged RinGPU
+    backing buffer only after its full upload succeeds.
 - [x] Implement array-buffer and element-array-buffer state.
 - [x] Implement the initial vertex attribute state model.
 - [x] Translate supported GL vertex formats into RinGPU vertex layouts.

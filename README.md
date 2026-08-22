@@ -179,6 +179,12 @@ across RinGL `present()` and later content updates. When that embedding
 supplies a D32 target, RinGL executes default-framebuffer depth clear and all
 eight depth-tested draw predicates through a RinGPU depth render pass.
 
+`ringl_buffer_sub_data()` provides the bounded `glBufferSubData` storage
+update used by browser buffer uploads. It stages a complete replacement
+RinGPU buffer before swapping the object, so a failed allocation or upload
+leaves the previously visible buffer contents and CPU validation shadow
+unchanged.
+
 Custom RGBA8 renderbuffer FBOs may additionally attach a matching
 `DEPTH24_STENCIL8` renderbuffer or level-zero
 `DEPTH24_STENCIL8`/`DEPTH_STENCIL`/`UNSIGNED_INT_24_8` texture through

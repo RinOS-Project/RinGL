@@ -147,6 +147,7 @@ void ringl_buffer_objects_destroy_all(RinGLContext* context);
 void ringl_shader_objects_destroy_all(RinGLContext* context);
 void ringl_program_objects_destroy_all(RinGLContext* context);
 void ringl_pipeline_cache_destroy(RinGLContext* context);
+void ringl_invalidate_graphics_artifacts(RinGLContext* context);
 void ringl_vertex_attrib_detach_buffer(RinGLContext* context, uint32_t buffer);
 int ringl_resolve_vertex_layout(const RinGLContext* context,
                                 RinGLResolvedVertexLayout* layout);

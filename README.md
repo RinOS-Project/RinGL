@@ -133,6 +133,17 @@ create context
 
 After that vertical slice is stable, indexed drawing, textures, framebuffer objects, blending/depth/stencil, synchronization, readback, and broader GLES compatibility can be added incrementally.
 
+## Current bounded texture-coordinate extension
+
+The shared perspective-UV texture profile now executes one through eight
+left-to-right `texture2D()` calls with a coordinate of `uv`,
+`uv + vec2(finite, finite)`, or `uv - vec2(finite, finite)`. Every offset is
+lowered directly to public RSH1 `CONST_F32` and `ADD_F32`/`SUB_F32` operations
+before its real RinGPU sample; it is not folded into a host-side shortcut.
+This remains a deliberately narrow GLSL ES subset: local coordinates, arbitrary
+vector expressions, multiple UV varyings, and more than eight calls are still
+unsupported.
+
 See [TODO.md](TODO.md) for the implementation roadmap.
 
 ## Repository layout

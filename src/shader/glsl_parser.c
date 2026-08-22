@@ -2,7 +2,9 @@
 #include "glsl_parser.h"
 
 #include <ctype.h>
+#include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <ringl/ringl.h>
@@ -166,6 +168,8 @@ static void next_token(Parser* parser)
     if (isdigit((unsigned char)c) || c == '.') {
         size_t start = parser->offset - 1u;
         int dot_seen = c == '.';
+        int exponent_seen = 0;
+
         while (parser->offset < parser->length) {
             c = parser->source[parser->offset];
             if (isdigit((unsigned char)c)) {
@@ -175,6 +179,27 @@ static void next_token(Parser* parser)
             if (c == '.' && !dot_seen) {
                 dot_seen = 1;
                 parser->offset++;
+                continue;
+            }
+            if ((c == 'e' || c == 'E') && !exponent_seen) {
+                size_t exponent = parser->offset + 1u;
+
+                exponent_seen = 1;
+                if (exponent < parser->length &&
+                    (parser->source[exponent] == '+' ||
+                     parser->source[exponent] == '-')) {
+                    ++exponent;
+                }
+                if (exponent >= parser->length ||
+                    !isdigit((unsigned char)parser->source[exponent])) {
+                    token.kind = TOK_INVALID;
+                    token.begin = parser->source + start;
+                    token.length = exponent - start;
+                    parser->offset = exponent;
+                    parser->token = token;
+                    return;
+                }
+                parser->offset = exponent + 1u;
                 continue;
             }
             break;
@@ -291,6 +316,62 @@ static int constructor(Parser* parser, TokenKind kind)
     return expect(parser, TOK_RPAREN, "expected ')' after vector constructor");
 }
 
+static int finite_number(Parser* parser)
+{
+    char text[64];
+    char* parsed_end;
+    float value;
+
+    if (parser->token.kind == TOK_PLUS || parser->token.kind == TOK_MINUS) {
+        text[0] = parser->token.kind == TOK_MINUS ? '-' : '+';
+        next_token(parser);
+        if (parser->token.kind != TOK_NUMBER ||
+            parser->token.length + 1u >= sizeof(text)) {
+            fail(parser, "expected finite numeric literal");
+            return 0;
+        }
+        memcpy(text + 1u, parser->token.begin, parser->token.length);
+        text[parser->token.length + 1u] = '\0';
+    } else {
+        if (parser->token.kind != TOK_NUMBER ||
+            parser->token.length >= sizeof(text)) {
+            fail(parser, "expected finite numeric literal");
+            return 0;
+        }
+        memcpy(text, parser->token.begin, parser->token.length);
+        text[parser->token.length] = '\0';
+    }
+    value = strtof(text, &parsed_end);
+    if (parsed_end == text || *parsed_end != '\0' || !isfinite(value)) {
+        fail(parser, "expected finite numeric literal");
+        return 0;
+    }
+    next_token(parser);
+    return 1;
+}
+
+static int varying_vec2_offset(Parser* parser)
+{
+    if (parser->token.kind != TOK_PLUS && parser->token.kind != TOK_MINUS)
+        return 1;
+    next_token(parser);
+    if (!expect(parser, TOK_VEC2,
+                "texture2D varying offset must use vec2")) {
+        return 0;
+    }
+    if (!expect(parser, TOK_LPAREN,
+                "expected '(' after texture2D varying offset vec2") ||
+        !finite_number(parser) ||
+        !expect(parser, TOK_COMMA,
+                "expected ',' in texture2D varying offset vec2") ||
+        !finite_number(parser) ||
+        !expect(parser, TOK_RPAREN,
+                "expected ')' after texture2D varying offset vec2")) {
+        return 0;
+    }
+    return 1;
+}
+
 static int texture2d_call(Parser* parser)
 {
     Token sampler_name;
@@ -328,6 +409,8 @@ static int texture2d_call(Parser* parser)
             return 0;
         }
         next_token(parser);
+        if (!varying_vec2_offset(parser))
+            return 0;
     } else {
         fail(parser, "texture2D coordinate must be vec2");
         return 0;

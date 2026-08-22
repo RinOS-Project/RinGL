@@ -9,7 +9,9 @@
 #define RSH1_LOAD_INPUT_F32 45u
 #define RSH1_SAMPLE_IMAGE_2D_F32 55u
 #define RSH1_STORE_OUTPUT_F32 46u
+#define RSH1_CONST_F32 16u
 #define RSH1_ADD_F32 20u
+#define RSH1_SUB_F32 21u
 
 typedef struct __attribute__((packed)) Header {
     uint32_t magic;
@@ -110,6 +112,11 @@ int main(void)
         "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
         "varying vec2 uv; void main() { gl_FragColor = "
         "texture2D(firstTexture, uv) + texture2D(secondTexture, uv); }";
+    const char* varying_affine_offsets_source =
+        "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
+        "varying vec2 uv; void main() { gl_FragColor = "
+        "texture2D(firstTexture, uv + vec2(5e-1, -5e-1)) + "
+        "texture2D(secondTexture, uv - vec2(2.5e-1, 7.5e-1)); }";
     const char* varying_repeated_partial_source =
         "uniform sampler2D unusedTexture; uniform sampler2D activeTexture; "
         "varying vec2 uv; void main() { gl_FragColor = "
@@ -335,6 +342,76 @@ int main(void)
         assert(second_sample->resource == 2u && second_sample->immediate == 3u);
         assert(add->source0 == 2u + component);
         assert(add->source1 == 6u + component);
+    }
+
+    /* Each sample may apply one finite vec2 offset to the interpolated
+     * coordinate. The temporary coordinate registers are deliberately
+     * reused only after the preceding sample, so this also verifies the
+     * bounded ADD/SUB execution path accepted by RinGPU's RSH1 validator. */
+    ringl_shader_source(shader, varying_affine_offsets_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 29u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.instruction_count == 29u);
+    assert(header.register_count == 20u);
+    assert(header.resource_count == 4u);
+    {
+        float first_u = 0.5f;
+        float first_v = -0.5f;
+        float second_u = 0.25f;
+        float second_v = 0.75f;
+        uint32_t first_u_bits;
+        uint32_t first_v_bits;
+        uint32_t second_u_bits;
+        uint32_t second_v_bits;
+
+        memcpy(&first_u_bits, &first_u, sizeof(first_u_bits));
+        memcpy(&first_v_bits, &first_v, sizeof(first_v_bits));
+        memcpy(&second_u_bits, &second_u, sizeof(second_u_bits));
+        memcpy(&second_v_bits, &second_v, sizeof(second_v_bits));
+        assert(((const Instruction*)(blob + sizeof(header)) + 4u)->immediate ==
+               first_u_bits);
+        assert(((const Instruction*)(blob + sizeof(header)) + 5u)->immediate ==
+               first_v_bits);
+        assert(((const Instruction*)(blob + sizeof(header)) + 12u)->immediate ==
+               second_u_bits);
+        assert(((const Instruction*)(blob + sizeof(header)) + 13u)->immediate ==
+               second_v_bits);
+    }
+    for (component = 0u; component < 4u; ++component) {
+        const Instruction* first_constant =
+            (const Instruction*)(blob + sizeof(header)) + 4u + component / 2u;
+        const Instruction* first_coordinate =
+            (const Instruction*)(blob + sizeof(header)) + 6u + component / 2u;
+        const Instruction* first_sample =
+            (const Instruction*)(blob + sizeof(header)) + 8u + component;
+        const Instruction* second_constant =
+            (const Instruction*)(blob + sizeof(header)) + 12u + component / 2u;
+        const Instruction* second_coordinate =
+            (const Instruction*)(blob + sizeof(header)) + 14u + component / 2u;
+        const Instruction* second_sample =
+            (const Instruction*)(blob + sizeof(header)) + 16u + component;
+
+        assert(first_constant->opcode == RSH1_CONST_F32);
+        assert(first_constant->destination == 16u + component / 2u);
+        assert(first_coordinate->opcode == RSH1_ADD_F32);
+        assert(first_coordinate->destination == 18u + component / 2u);
+        assert(first_coordinate->source0 == component / 2u);
+        assert(first_coordinate->source1 == 16u + component / 2u);
+        assert(first_sample->source0 == 18u && first_sample->source1 == 19u);
+        assert(first_sample->resource == 0u && first_sample->immediate == 1u);
+        assert(second_constant->opcode == RSH1_CONST_F32);
+        assert(second_constant->destination == 16u + component / 2u);
+        assert(second_coordinate->opcode == RSH1_SUB_F32);
+        assert(second_coordinate->destination == 18u + component / 2u);
+        assert(second_coordinate->source0 == component / 2u);
+        assert(second_coordinate->source1 == 16u + component / 2u);
+        assert(second_sample->source0 == 18u && second_sample->source1 == 19u);
+        assert(second_sample->resource == 2u && second_sample->immediate == 3u);
     }
 
     /* Repeated calls over a non-first declaration compact to one RSH1

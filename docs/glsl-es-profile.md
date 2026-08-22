@@ -15,7 +15,9 @@ The current first-triangle slice supports:
 - scalar or `vec4` writes to the stage output (`gl_Position` / `gl_FragColor`);
 - constants and simple assignments;
 - a canonical `varying vec2` texture-coordinate path with one through eight
-  `texture2D()` calls over one through eight `uniform sampler2D` declarations;
+  `texture2D()` calls over one through eight `uniform sampler2D` declarations,
+  where each coordinate is either the shared varying or that varying plus/minus
+  one finite literal `vec2` offset;
 - a constant-coordinate-only texture profile: one declared `sampler2D` may be
   sampled one through eight times, while a multi-declaration program uses each
   of one through eight declared samplers exactly once; results are added
@@ -55,11 +57,14 @@ profile has a formulaic maximum of 85 instructions and 80 registers, below
 RinGL's 96-register ceiling and RinGPU's public 256-register limit.
 The varying-coordinate multi-sampler extension accepts one through eight calls
 over one through eight sampler declarations, one shared `varying vec2`, and an
-exact left-to-right addition. Calls may repeat an active sampler and inactive
-declarations are compacted in declaration order into dense image/sampler pairs;
-the saved map creates bindings for only those declarations. Its formulaic
-maximum is 69 instructions and 64 registers. Coordinates derived from locals or
-different varyings, other expressions, and larger chains are not yet accepted.
+exact left-to-right addition. Each call may use `uv`, `uv + vec2(u, v)`, or
+`uv - vec2(u, v)` where both decimal/exponent-form literals are finite. Calls
+may repeat an active sampler and inactive declarations are compacted in
+declaration order into dense image/sampler pairs; the saved map creates
+bindings for only those declarations. The direct-coordinate maximum is 69
+instructions and 64 registers; with an offset on every call it is 101
+instructions and 68 registers. Coordinates derived from locals or different
+varyings, other expressions, and larger chains are not yet accepted.
 Nonconstant coordinates in this profile, other arithmetic, vector locals,
 matrices, other uniform types, additional varying types, derivatives, loops,
 user functions, precision edge cases, and broader GLSL ES built-ins remain

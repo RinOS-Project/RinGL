@@ -196,6 +196,12 @@ RinGPU buffer before swapping the object, so a failed allocation or upload
 leaves the previously visible buffer contents and CPU validation shadow
 unchanged.
 
+Shader source inspection is similarly bounded: `ringl_get_shader_source_length()`
+returns the complete stored length and `ringl_copy_shader_source()` copies only a
+NUL-terminated prefix fitting in caller capacity. Invalid handles report
+`INVALID_VALUE` without modifying caller storage, which permits a browser
+embedding to implement `getShaderSource()` without borrowing RinGL memory.
+
 Program shader references now follow the deletion lifetime required by browser
 code: deleting an attached shader marks its public name deleted while retaining
 the compiled object for later linking; `ringl_detach_shader()` or program

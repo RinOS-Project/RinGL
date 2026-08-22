@@ -336,6 +336,32 @@ uint64_t ringl_get_shader_source_length(uint32_t shader)
     return object->source_length;
 }
 
+uint64_t ringl_copy_shader_source(uint32_t shader, char* buffer,
+                                  uint64_t buffer_size)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLShaderObject* object;
+    uint64_t copy_length;
+
+    if (context == NULL)
+        return 0u;
+    object = ringl_shader_object_for_api(context, shader);
+    if (object == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return 0u;
+    }
+    if (buffer == NULL || buffer_size == 0u)
+        return object->source_length;
+
+    copy_length = object->source_length;
+    if (copy_length >= buffer_size)
+        copy_length = buffer_size - 1u;
+    if (copy_length != 0u)
+        memcpy(buffer, object->source, (size_t)copy_length);
+    buffer[copy_length] = '\0';
+    return object->source_length;
+}
+
 void ringl_shader_objects_destroy_all(RinGLContext* context)
 {
     uint32_t index;

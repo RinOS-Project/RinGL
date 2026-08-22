@@ -889,6 +889,11 @@ void ringl_compile_shader(uint32_t shader);
 uint32_t ringl_get_shader_compile_status(uint32_t shader);
 uint32_t ringl_get_shader_type(uint32_t shader);
 uint64_t ringl_get_shader_source_length(uint32_t shader);
+/* Copies a NUL-terminated prefix of the current shader source when capacity
+ * permits. Returns the complete source length (without the NUL terminator).
+ * Invalid shader handles leave caller storage untouched and record GL error. */
+uint64_t ringl_copy_shader_source(uint32_t shader, char* buffer,
+                                  uint64_t buffer_size);
 uint64_t ringl_get_shader_info_log(uint32_t shader,
                                    char* buffer,
                                    uint64_t buffer_size);

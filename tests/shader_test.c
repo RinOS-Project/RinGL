@@ -2,6 +2,7 @@
 #include <ringl/ringl.h>
 
 #include <assert.h>
+#include <string.h>
 
 int main(void)
 {
@@ -32,6 +33,23 @@ int main(void)
 
     ringl_shader_source(vertex, "abcXYZ", 3);
     assert(ringl_get_shader_source_length(vertex) == 3u);
+    {
+        char complete[8] = { 0 };
+        char truncated[3] = { 0 };
+        char untouched[4] = { 'x', 'y', 'z', '\0' };
+
+        assert(ringl_copy_shader_source(vertex, complete, sizeof(complete)) ==
+               3u);
+        assert(strcmp(complete, "abc") == 0);
+        assert(ringl_copy_shader_source(vertex, truncated,
+                                        sizeof(truncated)) == 3u);
+        assert(strcmp(truncated, "ab") == 0);
+        assert(ringl_copy_shader_source(vertex, NULL, 0u) == 3u);
+        assert(ringl_copy_shader_source(0u, untouched, sizeof(untouched)) ==
+               0u);
+        assert(strcmp(untouched, "xyz") == 0);
+        assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    }
 
     ringl_shader_source(vertex, NULL, -1);
     assert(ringl_get_error() == RINGL_INVALID_VALUE);

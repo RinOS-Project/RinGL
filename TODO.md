@@ -48,6 +48,11 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 
 - [x] Define the supported initial GLSL ES language/version profile.
 - [x] Implement shader object lifecycle and source storage.
+  - [x] Expose bounded shader-source inspection: the complete source length is
+    queryable and a caller-owned buffer receives only a NUL-terminated prefix
+    that fits. Invalid handles report `INVALID_VALUE` without modifying caller
+    storage; the focused shader test covers complete, truncated, query-only,
+    and invalid-handle cases.
   - [x] Retain an attached shader after `deleteShader`, reject reuse of its
     deleted public name, and release it only after `detachShader` or program
     destruction.

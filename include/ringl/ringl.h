@@ -35,6 +35,19 @@ extern "C" {
 #define RINGL_TEXTURE_2D 0x0de1u
 #define RINGL_TEXTURE0   0x84c0u
 #define RINGL_RGBA       0x1908u
+#define RINGL_TEXTURE_MAG_FILTER 0x2800u
+#define RINGL_TEXTURE_MIN_FILTER 0x2801u
+#define RINGL_TEXTURE_WRAP_S     0x2802u
+#define RINGL_TEXTURE_WRAP_T     0x2803u
+#define RINGL_NEAREST                0x2600u
+#define RINGL_LINEAR                 0x2601u
+#define RINGL_NEAREST_MIPMAP_NEAREST 0x2700u
+#define RINGL_LINEAR_MIPMAP_NEAREST  0x2701u
+#define RINGL_NEAREST_MIPMAP_LINEAR  0x2702u
+#define RINGL_LINEAR_MIPMAP_LINEAR   0x2703u
+#define RINGL_REPEAT          0x2901u
+#define RINGL_CLAMP_TO_EDGE   0x812fu
+#define RINGL_MIRRORED_REPEAT 0x8370u
 #define RINGL_MAX_TEXTURE_UNITS 8u
 #define RINGL_MAX_TEXTURE_SIZE  4096u
 
@@ -262,6 +275,8 @@ int ringl_is_texture(uint32_t texture);
 void ringl_active_texture(uint32_t texture_unit);
 uint32_t ringl_get_active_texture(void);
 uint32_t ringl_get_bound_texture(uint32_t target);
+void ringl_tex_parameteri(uint32_t target, uint32_t pname, int32_t param);
+int32_t ringl_get_tex_parameteri(uint32_t target, uint32_t pname);
 void ringl_tex_image_2d(uint32_t target, int32_t level,
                         uint32_t internal_format, int32_t width, int32_t height,
                         int32_t border, uint32_t format, uint32_t type,

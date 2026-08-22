@@ -39,6 +39,9 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 
 - [x] Define the supported initial GLSL ES language/version profile.
 - [x] Implement shader object lifecycle and source storage.
+  - [x] Retain an attached shader after `deleteShader`, reject reuse of its
+    deleted public name, and release it only after `detachShader` or program
+    destruction.
 - [x] Implement a bounded GLSL ES lexer/parser with initial semantic validation.
 - [x] Lower the current scalar GLSL ES subset directly to RinShader RSH1.
 - [x] Reuse RinShader validation through public `ringpu_create_shader_module()` before backend shader creation.

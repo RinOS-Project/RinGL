@@ -24,6 +24,36 @@ static RinGLShaderObject* ringl_shader_object(RinGLContext* context,
     return &context->shaders[index];
 }
 
+static RinGLShaderObject* ringl_shader_object_for_api(RinGLContext* context,
+                                                       uint32_t shader)
+{
+    RinGLShaderObject* object = ringl_shader_object(context, shader);
+
+    if (object != NULL && object->delete_pending) {
+        return NULL;
+    }
+    return object;
+}
+
+static int ringl_shader_is_attached(RinGLContext* context, uint32_t shader)
+{
+    uint32_t index;
+
+    if (context == NULL || shader == 0u)
+        return 0;
+    for (index = 0u; index < RINGL_OBJECT_SLOT_COUNT; ++index) {
+        if (context->objects[index].type != RINGL_OBJECT_PROGRAM ||
+            context->objects[index].state == RINGL_OBJECT_FREE)
+            continue;
+        if (context->programs[index].vertex_shader == shader ||
+            context->programs[index].fragment_shader == shader ||
+            context->programs[index].linked_vertex_shader == shader ||
+            context->programs[index].linked_fragment_shader == shader)
+            return 1;
+    }
+    return 0;
+}
+
 static void ringl_shader_discard_artifacts(RinGLContext* context,
                                            RinGLShaderObject* object)
 {
@@ -35,6 +65,19 @@ static void ringl_shader_discard_artifacts(RinGLContext* context,
     free(object->rsh1);
     object->rsh1 = NULL;
     object->rsh1_size = 0u;
+}
+
+static void ringl_shader_destroy(RinGLContext* context, uint32_t shader)
+{
+    RinGLShaderObject* object;
+
+    object = ringl_shader_object(context, shader);
+    if (object == NULL)
+        return;
+    free(object->source);
+    ringl_shader_discard_artifacts(context, object);
+    memset(object, 0, sizeof(*object));
+    ringl_object_release(context, shader, RINGL_OBJECT_SHADER);
 }
 
 static void ringl_shader_reset_compile_state(RinGLContext* context,
@@ -94,10 +137,8 @@ void ringl_delete_shader(uint32_t shader)
     object = ringl_shader_object(context, shader);
     if (object == NULL)
         return;
-    free(object->source);
-    ringl_shader_discard_artifacts(context, object);
-    memset(object, 0, sizeof(*object));
-    ringl_object_release(context, shader, RINGL_OBJECT_SHADER);
+    object->delete_pending = RINGL_TRUE;
+    ringl_shader_release_if_delete_pending(context, shader);
 }
 
 int ringl_is_shader(uint32_t shader)
@@ -107,7 +148,25 @@ int ringl_is_shader(uint32_t shader)
     if (context == NULL || shader == 0u)
         return 0;
     slot = ringl_object_lookup_const(context, shader, RINGL_OBJECT_SHADER);
-    return slot != NULL && slot->state == RINGL_OBJECT_LIVE;
+    return slot != NULL && slot->state == RINGL_OBJECT_LIVE &&
+           !context->shaders[ringl_object_slot_index(shader)].delete_pending;
+}
+
+int ringl_shader_is_delete_pending(RinGLContext* context, uint32_t shader)
+{
+    RinGLShaderObject* object = ringl_shader_object(context, shader);
+    return object != NULL && object->delete_pending;
+}
+
+void ringl_shader_release_if_delete_pending(RinGLContext* context,
+                                            uint32_t shader)
+{
+    RinGLShaderObject* object = ringl_shader_object(context, shader);
+
+    if (object == NULL || !object->delete_pending ||
+        ringl_shader_is_attached(context, shader))
+        return;
+    ringl_shader_destroy(context, shader);
 }
 
 void ringl_shader_source(uint32_t shader, const char* source, int64_t length)
@@ -120,7 +179,7 @@ void ringl_shader_source(uint32_t shader, const char* source, int64_t length)
 
     if (context == NULL)
         return;
-    object = ringl_shader_object(context, shader);
+    object = ringl_shader_object_for_api(context, shader);
     if (object == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
@@ -174,7 +233,7 @@ void ringl_compile_shader(uint32_t shader)
 
     if (context == NULL)
         return;
-    object = ringl_shader_object(context, shader);
+    object = ringl_shader_object_for_api(context, shader);
     if (object == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
@@ -209,7 +268,7 @@ uint32_t ringl_get_shader_compile_status(uint32_t shader)
     RinGLShaderObject* object;
     if (context == NULL)
         return RINGL_FALSE;
-    object = ringl_shader_object(context, shader);
+    object = ringl_shader_object_for_api(context, shader);
     if (object == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return RINGL_FALSE;
@@ -227,7 +286,7 @@ uint64_t ringl_get_shader_info_log(uint32_t shader, char* buffer,
 
     if (context == NULL)
         return 0u;
-    object = ringl_shader_object(context, shader);
+    object = ringl_shader_object_for_api(context, shader);
     if (object == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return 0u;
@@ -249,7 +308,7 @@ uint32_t ringl_get_shader_type(uint32_t shader)
     RinGLShaderObject* object;
     if (context == NULL)
         return 0u;
-    object = ringl_shader_object(context, shader);
+    object = ringl_shader_object_for_api(context, shader);
     if (object == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return 0u;
@@ -263,7 +322,7 @@ uint64_t ringl_get_shader_source_length(uint32_t shader)
     RinGLShaderObject* object;
     if (context == NULL)
         return 0u;
-    object = ringl_shader_object(context, shader);
+    object = ringl_shader_object_for_api(context, shader);
     if (object == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return 0u;

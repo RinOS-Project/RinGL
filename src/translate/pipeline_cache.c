@@ -185,8 +185,8 @@ int ringl_build_pipeline_key(RinGLContext* context,
     program = current_program(context);
     if (program == NULL || !program->link_status)
         return -1;
-    vertex = shader_object(context, program->vertex_shader);
-    fragment = shader_object(context, program->fragment_shader);
+    vertex = shader_object(context, program->linked_vertex_shader);
+    fragment = shader_object(context, program->linked_fragment_shader);
     if (vertex == NULL || fragment == NULL ||
         vertex->ringpu_module == 0u || fragment->ringpu_module == 0u)
         return -1;

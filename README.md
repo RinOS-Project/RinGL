@@ -185,6 +185,13 @@ RinGPU buffer before swapping the object, so a failed allocation or upload
 leaves the previously visible buffer contents and CPU validation shadow
 unchanged.
 
+Program shader references now follow the deletion lifetime required by browser
+code: deleting an attached shader marks its public name deleted while retaining
+the compiled object for later linking; `ringl_detach_shader()` or program
+destruction releases the final pending reference. A linked executable keeps
+using its linked shader pair when later attach/detach calls change the pending
+link inputs.
+
 Custom RGBA8 renderbuffer FBOs may additionally attach a matching
 `DEPTH24_STENCIL8` renderbuffer or level-zero
 `DEPTH24_STENCIL8`/`DEPTH_STENCIL`/`UNSIGNED_INT_24_8` texture through

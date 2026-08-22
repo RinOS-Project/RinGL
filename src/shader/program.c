@@ -156,15 +156,27 @@ void ringl_delete_program(uint32_t program)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLProgramObject* object;
+    uint32_t vertex_shader;
+    uint32_t fragment_shader;
+    uint32_t linked_vertex_shader;
+    uint32_t linked_fragment_shader;
     if (context == NULL || program == 0u)
         return;
     object = ringl_program_object(context, program);
     if (object == NULL)
         return;
+    vertex_shader = object->vertex_shader;
+    fragment_shader = object->fragment_shader;
+    linked_vertex_shader = object->linked_vertex_shader;
+    linked_fragment_shader = object->linked_fragment_shader;
     if (context->current_program == program)
         context->current_program = 0u;
     memset(object, 0, sizeof(*object));
     ringl_object_release(context, program, RINGL_OBJECT_PROGRAM);
+    ringl_shader_release_if_delete_pending(context, vertex_shader);
+    ringl_shader_release_if_delete_pending(context, fragment_shader);
+    ringl_shader_release_if_delete_pending(context, linked_vertex_shader);
+    ringl_shader_release_if_delete_pending(context, linked_fragment_shader);
     ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
 }
 
@@ -187,7 +199,8 @@ void ringl_attach_shader(uint32_t program, uint32_t shader)
         return;
     target = ringl_program_object(context, program);
     source = ringl_program_shader(context, shader);
-    if (target == NULL || source == NULL) {
+    if (target == NULL || source == NULL ||
+        ringl_shader_is_delete_pending(context, shader)) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
@@ -207,13 +220,31 @@ void ringl_attach_shader(uint32_t program, uint32_t shader)
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
-    target->link_status = RINGL_FALSE;
-    target->sampler_uniform_count = 0u;
-    target->varying_count = 0u;
-    memset(target->sampler_uniforms, 0, sizeof(target->sampler_uniforms));
-    memset(target->varyings, 0, sizeof(target->varyings));
-    ringl_program_set_log(target, "");
-    ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
+}
+
+void ringl_detach_shader(uint32_t program, uint32_t shader)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLProgramObject* target;
+    RinGLShaderObject* source;
+
+    if (context == NULL)
+        return;
+    target = ringl_program_object(context, program);
+    source = ringl_program_shader(context, shader);
+    if (target == NULL || source == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if (target->vertex_shader == shader)
+        target->vertex_shader = 0u;
+    else if (target->fragment_shader == shader)
+        target->fragment_shader = 0u;
+    else {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    ringl_shader_release_if_delete_pending(context, shader);
 }
 
 static int ringl_program_prepare_gpu_shader(RinGLContext* context,
@@ -235,6 +266,8 @@ void ringl_link_program(uint32_t program)
     RinGLProgramObject* object;
     RinGLShaderObject* vertex;
     RinGLShaderObject* fragment;
+    uint32_t old_linked_vertex;
+    uint32_t old_linked_fragment;
     if (context == NULL)
         return;
     object = ringl_program_object(context, program);
@@ -279,8 +312,14 @@ void ringl_link_program(uint32_t program)
             return;
         }
     }
+    old_linked_vertex = object->linked_vertex_shader;
+    old_linked_fragment = object->linked_fragment_shader;
+    object->linked_vertex_shader = object->vertex_shader;
+    object->linked_fragment_shader = object->fragment_shader;
     object->link_status = RINGL_TRUE;
     ringl_program_set_log(object, "");
+    ringl_shader_release_if_delete_pending(context, old_linked_vertex);
+    ringl_shader_release_if_delete_pending(context, old_linked_fragment);
     ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE | RINGL_DIRTY_BINDINGS);
 }
 

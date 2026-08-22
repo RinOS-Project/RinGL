@@ -71,6 +71,7 @@ typedef struct RinGLShaderObject {
     uint32_t attribute_count;
     uint32_t sampler_uniform_count;
     uint32_t varying_count;
+    uint32_t delete_pending;
     char sampler_uniform_names[RINGL_MAX_SAMPLER_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char varying_names[RINGL_MAX_VARYINGS][RINGL_UNIFORM_NAME_MAX];
     uint32_t varying_widths[RINGL_MAX_VARYINGS];
@@ -92,6 +93,8 @@ typedef struct RinGLProgramVarying {
 typedef struct RinGLProgramObject {
     uint32_t vertex_shader;
     uint32_t fragment_shader;
+    uint32_t linked_vertex_shader;
+    uint32_t linked_fragment_shader;
     uint32_t link_status;
     uint32_t sampler_uniform_count;
     uint32_t varying_count;
@@ -350,6 +353,9 @@ int ringl_texture_realize_depth_target(RinGLContext* context,
 int ringl_texture_realize_unit(RinGLContext* context, uint32_t unit,
                                uint64_t* image_out, uint64_t* sampler_out);
 void ringl_shader_objects_destroy_all(RinGLContext* context);
+int ringl_shader_is_delete_pending(RinGLContext* context, uint32_t shader);
+void ringl_shader_release_if_delete_pending(RinGLContext* context,
+                                            uint32_t shader);
 void ringl_program_objects_destroy_all(RinGLContext* context);
 void ringl_pipeline_cache_destroy(RinGLContext* context);
 void ringl_invalidate_graphics_artifacts(RinGLContext* context);

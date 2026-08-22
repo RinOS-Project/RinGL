@@ -15,6 +15,9 @@ int main(void)
     uint32_t multi_vertex;
     uint32_t multi_fragment;
     uint32_t multi_program;
+    uint32_t retained_vertex;
+    uint32_t retained_fragment;
+    uint32_t retained_program;
     int32_t location;
     char log[160];
 
@@ -99,6 +102,44 @@ int main(void)
     assert(ringl_get_program_info_log(program, log, sizeof(log)) > 0u);
     ringl_use_program(program);
     assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+
+    retained_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+    retained_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+    retained_program = ringl_create_program();
+    assert(retained_vertex != 0u && retained_fragment != 0u &&
+           retained_program != 0u);
+    ringl_shader_source(retained_vertex,
+                        "attribute float position; void main() { gl_Position = position; }",
+                        -1);
+    ringl_shader_source(retained_fragment,
+                        "void main() { gl_FragColor = 1.0; }", -1);
+    ringl_compile_shader(retained_vertex);
+    ringl_compile_shader(retained_fragment);
+    ringl_attach_shader(retained_program, retained_vertex);
+    ringl_attach_shader(retained_program, retained_fragment);
+    ringl_link_program(retained_program);
+    assert(ringl_get_program_link_status(retained_program) == RINGL_TRUE);
+
+    /* WebGL commonly deletes a shader immediately after attaching it. The
+     * program must retain it through a later link, then release it at detach. */
+    ringl_delete_shader(retained_vertex);
+    assert(!ringl_is_shader(retained_vertex));
+    ringl_compile_shader(retained_vertex);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    ringl_link_program(retained_program);
+    assert(ringl_get_program_link_status(retained_program) == RINGL_TRUE);
+    ringl_attach_shader(retained_program, retained_vertex);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    ringl_detach_shader(retained_program, retained_vertex);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_get_program_link_status(retained_program) == RINGL_TRUE);
+    ringl_use_program(retained_program);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_detach_shader(retained_program, retained_vertex);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+
+    ringl_delete_shader(retained_fragment);
+    ringl_delete_program(retained_program);
 
     ringl_context_destroy(context);
     return 0;

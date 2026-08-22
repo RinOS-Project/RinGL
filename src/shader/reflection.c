@@ -77,17 +77,17 @@ int ringl_get_program_reflection(uint32_t program,
         return -1;
     }
 
-    vertex = shader_object(context, object->vertex_shader);
-    fragment = shader_object(context, object->fragment_shader);
+    vertex = shader_object(context, object->linked_vertex_shader);
+    fragment = shader_object(context, object->linked_fragment_shader);
     if (vertex == NULL || fragment == NULL)
         return -1;
 
     if (vertex->rsh1_size == 0u &&
-        ringl_lower_shader_rsh1(object->vertex_shader) != 0) {
+        ringl_lower_shader_rsh1(object->linked_vertex_shader) != 0) {
         return -1;
     }
     if (fragment->rsh1_size == 0u &&
-        ringl_lower_shader_rsh1(object->fragment_shader) != 0) {
+        ringl_lower_shader_rsh1(object->linked_fragment_shader) != 0) {
         return -1;
     }
 

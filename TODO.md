@@ -40,11 +40,14 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Reuse RinShader validation through public `ringpu_create_shader_module()` before backend shader creation.
 - [x] Implement the initial vertex/fragment shader linking checks.
 - [x] Implement program object lifecycle and `glUseProgram`.
-- [x] Add first-slice program reflection for shader I/O, shader-module handles, and the current zero-uniform profile.
+- [x] Add first-slice program reflection for shader I/O and shader-module handles.
 - [x] Add positive and negative shader frontend tests.
 - [x] Add RSH1 lowering tests for header, stage, input/output counts, and IR invalidation.
 - [x] Add RinGPU shader-module realization and lifetime tests.
-- [x] Add linked-program reflection tests.
+- [x] Add linked-program reflection tests for the non-resource shader subset.
+- [x] Parse bounded `uniform sampler2D` declarations and retain names through shader compilation.
+- [x] Link sampler uniforms into program locations and implement `getUniformLocation`/`uniform1i`-style state.
+- [ ] Lower sampler/resource operations into RinShader resource metadata and update reflection for resource programs.
 
 ## Phase 4 — First hardware-rendered triangle
 
@@ -70,9 +73,11 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Implement initial level-0 `RGBA`/`UNSIGNED_BYTE` 2D texture storage with bounded dimensions.
 - [x] Implement robust CPU-side `texImage2D` zero initialization and bounded `texSubImage2D` updates.
 - [x] Implement GLES-style texture filtering/wrap sampler state and invalidate realized samplers when it changes.
+- [x] Implement sampler uniform locations and program-selected texture-unit state.
+- [ ] Add GLSL ES `texture2D()` parsing/type checks and RinShader lowering.
 - [ ] Realize defined texture storage as RinGPU sampled images and upload/copy shadow contents.
 - [ ] Map texture sampler state to lazily realized RinGPU sampler objects.
-- [ ] Implement sampled-image/program bindings.
+- [ ] Bind realized sampled images/samplers to RinGPU graphics resource slots before draws.
 - [ ] Add a textured-triangle integration test.
 
 ## Phase 6 — Framebuffers and fixed-function state

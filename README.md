@@ -207,6 +207,16 @@ one. The strict C11 RinGL tests cover format normalization and upload layout,
 and the surface integration test renders a normalized RGB texture through the
 real RinGPU resource binding.
 
+The initial varying bridge now also executes a bounded vertex-color profile:
+`attribute vec2 position; attribute vec4 color; varying vec4 vertexColor;`
+with `gl_Position = vec4(position, 0.0, 1.0)`, `vertexColor = color`, and
+`gl_FragColor = vertexColor`. RinGL expands the two attributes to six scalar
+Float32 RinGPU inputs and the color to four perspective-interpolated scalar
+varyings; RSH1 lowering and a RinGL-to-RinGPU surface test verify the resulting
+RGBA pixels. This does not make arbitrary varying declarations or expressions
+available: `vec3`, multiple independent varyings, and general expressions
+remain outside the bounded profile.
+
 This remains a bounded profile. A default caller-owned D32 surface has no
 stencil storage unless its embedding explicitly supplies the matching S8
 plane; that D32S8 default target executes the same front/back stencil path.

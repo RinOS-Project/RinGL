@@ -497,8 +497,11 @@ static int attribute_declaration(Parser* parser)
         width = 1u;
     else if (parser->token.kind == TOK_VEC2)
         width = 2u;
+    else if (parser->token.kind == TOK_VEC4)
+        width = 4u;
     else {
-        fail(parser, "only 'attribute float' and 'attribute vec2' are supported");
+        fail(parser,
+             "only 'attribute float', 'attribute vec2', and 'attribute vec4' are supported");
         return 0;
     }
     next_token(parser);
@@ -553,10 +556,15 @@ static int varying_declaration(Parser* parser)
 {
     Token name;
     uint32_t index;
+    uint32_t width;
 
     next_token(parser);
-    if (parser->token.kind != TOK_VEC2) {
-        fail(parser, "only 'varying vec2' is supported");
+    if (parser->token.kind == TOK_VEC2) {
+        width = 2u;
+    } else if (parser->token.kind == TOK_VEC4) {
+        width = 4u;
+    } else {
+        fail(parser, "only 'varying vec2' or 'varying vec4' is supported");
         return 0;
     }
     next_token(parser);
@@ -565,7 +573,7 @@ static int varying_declaration(Parser* parser)
         return 0;
     }
     name = parser->token;
-    if (!add_symbol(parser, &name, SYMBOL_VARYING, 2u))
+    if (!add_symbol(parser, &name, SYMBOL_VARYING, width))
         return 0;
     if (parser->result->varying_count >= RINGL_GLSL_MAX_VARYINGS) {
         fail(parser, "too many varyings");
@@ -574,7 +582,7 @@ static int varying_declaration(Parser* parser)
     index = parser->result->varying_count++;
     memcpy(parser->result->varying_names[index], name.begin, name.length);
     parser->result->varying_names[index][name.length] = '\0';
-    parser->result->varying_widths[index] = 2u;
+    parser->result->varying_widths[index] = width;
     next_token(parser);
     if (!expect(parser, TOK_SEMI, "expected ';' after varying"))
         return 0;

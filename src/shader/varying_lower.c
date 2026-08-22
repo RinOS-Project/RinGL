@@ -209,6 +209,134 @@ static int lower_fragment(const char* source, RinGLGlslLowerResult* result)
     return 0;
 }
 
+static int lower_vertex_color(const char* source,
+                              RinGLGlslLowerResult* result)
+{
+    RinGLRsh1HeaderV1 header;
+    RinGLRsh1InstructionV1 ins[17];
+    char position[64];
+    char color[64];
+    char varying[64];
+    char expected[512];
+    uint32_t zero_bits = 0u;
+    float one = 1.0f;
+    uint32_t one_bits;
+    uint32_t input;
+    size_t total;
+
+    if (!read_decl_name(source, "attributevec2", 0u, position,
+                        sizeof(position)) ||
+        !read_decl_name(source, "attributevec4", 0u, color, sizeof(color)) ||
+        !read_decl_name(source, "varyingvec4", 0u, varying,
+                        sizeof(varying))) {
+        return 1;
+    }
+    (void)snprintf(expected, sizeof(expected),
+                   "attributevec2%s;attributevec4%s;varyingvec4%s;"
+                   "voidmain(){gl_Position=vec4(%s,0.0,1.0);%s=%s;}",
+                   position, color, varying, position, varying, color);
+    if (strcmp(source, expected) != 0)
+        return 1;
+
+    for (input = 0u; input < 6u; ++input) {
+        init_instruction(&ins[input], RINGL_RSH1_OP_LOAD_INPUT_F32);
+        ins[input].destination = (uint16_t)input;
+        ins[input].immediate = input;
+    }
+    memcpy(&one_bits, &one, sizeof(one_bits));
+    init_instruction(&ins[6], RINGL_RSH1_OP_CONST_F32);
+    ins[6].destination = 6u;
+    ins[6].immediate = zero_bits;
+    init_instruction(&ins[7], RINGL_RSH1_OP_CONST_F32);
+    ins[7].destination = 7u;
+    ins[7].immediate = one_bits;
+    for (input = 0u; input < 8u; ++input) {
+        init_instruction(&ins[8u + input], RINGL_RSH1_OP_STORE_OUTPUT_F32);
+        if (input < 2u)
+            ins[8u + input].source0 = (uint16_t)input;
+        else if (input == 2u)
+            ins[8u + input].source0 = 6u;
+        else if (input == 3u)
+            ins[8u + input].source0 = 7u;
+        else
+            ins[8u + input].source0 = (uint16_t)(input - 2u);
+        ins[8u + input].immediate = input;
+    }
+    init_instruction(&ins[16], RINGL_RSH1_OP_RETURN);
+
+    memset(&header, 0, sizeof(header));
+    header.magic = RINGL_RSH1_MAGIC;
+    header.version = RINGL_RSH1_VERSION;
+    header.header_size = sizeof(header);
+    header.stage = RINGL_RSH1_STAGE_VERTEX;
+    header.instruction_count = 17u;
+    header.register_count = 8u;
+    header.input_count = 6u;
+    header.output_count = 8u;
+    total = sizeof(header) + sizeof(ins);
+    header.total_size = (uint32_t)total;
+    memcpy(result->bytes, &header, sizeof(header));
+    memcpy(result->bytes + sizeof(header), ins, sizeof(ins));
+    result->ok = 1u;
+    result->instruction_count = header.instruction_count;
+    result->register_count = header.register_count;
+    result->input_count = header.input_count;
+    result->output_count = header.output_count;
+    result->byte_size = header.total_size;
+    return 0;
+}
+
+static int lower_fragment_color(const char* source,
+                                RinGLGlslLowerResult* result)
+{
+    RinGLRsh1HeaderV1 header;
+    RinGLRsh1InstructionV1 ins[9];
+    char varying[64];
+    char expected[256];
+    uint32_t component;
+    size_t total;
+
+    if (!read_decl_name(source, "varyingvec4", 0u, varying,
+                        sizeof(varying))) {
+        return 1;
+    }
+    (void)snprintf(expected, sizeof(expected),
+                   "varyingvec4%s;voidmain(){gl_FragColor=%s;}", varying,
+                   varying);
+    if (strcmp(source, expected) != 0)
+        return 1;
+    for (component = 0u; component < 4u; ++component) {
+        init_instruction(&ins[component], RINGL_RSH1_OP_LOAD_INPUT_F32);
+        ins[component].destination = (uint16_t)component;
+        ins[component].immediate = component;
+        init_instruction(&ins[4u + component], RINGL_RSH1_OP_STORE_OUTPUT_F32);
+        ins[4u + component].source0 = (uint16_t)component;
+        ins[4u + component].immediate = component;
+    }
+    init_instruction(&ins[8], RINGL_RSH1_OP_RETURN);
+
+    memset(&header, 0, sizeof(header));
+    header.magic = RINGL_RSH1_MAGIC;
+    header.version = RINGL_RSH1_VERSION;
+    header.header_size = sizeof(header);
+    header.stage = RINGL_RSH1_STAGE_FRAGMENT;
+    header.instruction_count = 9u;
+    header.register_count = 4u;
+    header.input_count = 4u;
+    header.output_count = 4u;
+    total = sizeof(header) + sizeof(ins);
+    header.total_size = (uint32_t)total;
+    memcpy(result->bytes, &header, sizeof(header));
+    memcpy(result->bytes + sizeof(header), ins, sizeof(ins));
+    result->ok = 1u;
+    result->instruction_count = header.instruction_count;
+    result->register_count = header.register_count;
+    result->input_count = header.input_count;
+    result->output_count = header.output_count;
+    result->byte_size = header.total_size;
+    return 0;
+}
+
 int ringl_glsl_lower_varying_rsh1(uint32_t shader_type,
                                   const char* source,
                                   size_t source_length,
@@ -226,7 +354,13 @@ int ringl_glsl_lower_varying_rsh1(uint32_t shader_type,
                        "varying lowering could not normalize shader source");
         return 1;
     }
-    if (shader_type == RINGL_VERTEX_SHADER)
+    if (strstr(compact, "varyingvec4") != NULL &&
+        shader_type == RINGL_VERTEX_SHADER)
+        rc = lower_vertex_color(compact, result);
+    else if (strstr(compact, "varyingvec4") != NULL &&
+             shader_type == RINGL_FRAGMENT_SHADER)
+        rc = lower_fragment_color(compact, result);
+    else if (shader_type == RINGL_VERTEX_SHADER)
         rc = lower_vertex(compact, result);
     else if (shader_type == RINGL_FRAGMENT_SHADER)
         rc = lower_fragment(compact, result);

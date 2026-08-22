@@ -73,6 +73,25 @@ int main(void)
     ringl_vertex_attrib_pointer(2u, 1, 0x1405u, RINGL_FALSE, 8, 0u);
     assert(ringl_get_error() == RINGL_INVALID_ENUM);
 
+    context->buffers[slot_index].size_bytes = 72u;
+    ringl_disable_vertex_attrib_array(0u);
+    ringl_disable_vertex_attrib_array(1u);
+    ringl_vertex_attrib_pointer(0u, 2, RINGL_FLOAT, RINGL_FALSE, 24, 0u);
+    ringl_vertex_attrib_pointer(1u, 4, RINGL_FLOAT, RINGL_FALSE, 24, 8u);
+    ringl_enable_vertex_attrib_array(0u);
+    ringl_enable_vertex_attrib_array(1u);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_resolve_vertex_layout(context, &layout) == 0);
+    assert(layout.stride == 24u);
+    assert(layout.attribute_count == 6u);
+    assert(layout.attributes[0].location == 0u);
+    assert(layout.attributes[1].location == 1u);
+    assert(layout.attributes[2].location == 2u);
+    assert(layout.attributes[5].location == 5u);
+    assert(layout.attributes[2].offset == 8u);
+    assert(layout.attributes[5].offset == 20u);
+    assert(ringl_validate_vertex_fetch(context, 0u, 3u, &layout) == 0);
+
     ringl_delete_buffers(1, &buffer);
     assert(ringl_resolve_vertex_layout(context, &layout) != 0);
 

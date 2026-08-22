@@ -153,6 +153,12 @@ int main(void)
     const char* varying_fragment_source =
         "uniform sampler2D colorTexture; varying vec2 uv; "
         "void main() { gl_FragColor = texture2D(colorTexture, uv); }";
+    const char* color_varying_vertex_source =
+        "attribute vec2 position; attribute vec4 color; varying vec4 vertexColor; "
+        "void main() { gl_Position = vec4(position, 0.0, 1.0); vertexColor = color; }";
+    const char* color_varying_fragment_source =
+        "varying vec4 vertexColor; "
+        "void main() { gl_FragColor = vertexColor; }";
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -215,6 +221,22 @@ int main(void)
     assert(header.output_count == 4u);
     assert(header.resource_count == 2u);
     assert(header.instruction_count == 13u);
+
+    header = lower_and_read_header(vertex, color_varying_vertex_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 6u);
+    assert(header.output_count == 8u);
+    assert(header.resource_count == 0u);
+    assert(header.instruction_count == 17u);
+
+    header = lower_and_read_header(fragment, color_varying_fragment_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 4u);
+    assert(header.output_count == 4u);
+    assert(header.resource_count == 0u);
+    assert(header.instruction_count == 9u);
 
     ringl_shader_source(vertex, "void main() { gl_Position = 0.0; }", -1);
     assert(ringl_get_shader_compile_status(vertex) == RINGL_FALSE);

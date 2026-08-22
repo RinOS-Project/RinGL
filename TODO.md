@@ -55,6 +55,8 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Lower `texture2D(sampler2D, varyingVec2)` for the initial textured-triangle profile.
 - [ ] Expand texture expressions beyond the initial constant/varying-coordinate one-sampler slice.
 - [ ] Expand varying support beyond the initial `vec2` perspective-interpolated profile.
+  - [x] Implement the bounded `attribute vec2 position` + `attribute vec4 color` -> `varying vec4 vertexColor` -> `gl_FragColor = vertexColor` profile: parser/linker reflection, six scalar Float32 vertex inputs, four scalar perspective varyings, RSH1 lowering, and the RinGPU surface output path are covered by strict tests.
+  - [ ] `vec3`, multiple independently declared varyings, and general varying expressions remain unsupported.
 
 ## Phase 4 — First hardware-rendered triangle
 

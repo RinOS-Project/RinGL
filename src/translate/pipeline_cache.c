@@ -282,7 +282,7 @@ int ringl_build_pipeline_key(RinGLContext* context,
     for (index = 0u; index < program->varying_count; ++index) {
         uint32_t component;
         const RinGLProgramVarying* varying = &program->varyings[index];
-        if (varying->width != 2u ||
+        if ((varying->width != 2u && varying->width != 4u) ||
             result.varying_count + varying->width >
                 RINGL_PIPELINE_MAX_SCALAR_VARYINGS)
             return -1;

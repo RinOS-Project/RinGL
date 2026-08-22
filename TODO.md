@@ -174,6 +174,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   consuming the application's pending `glGetError()` value.
 - [x] Map viewport/scissor state through dynamic RinGPU raster-state commands, including finite negative viewport origins and clipped scissor rectangles.
 - [x] Add `depthRange` state with a versioned `RinGLDepthRangeV1` snapshot. Finite endpoints clamp independently to `[0,1]`, reversed ranges remain valid, NaN/Inf leave state unchanged, and draw translation carries the exact pair in native RinGPU raster state.
+- [x] Expose linked active attribute and sampler-uniform reflection through failure-atomic `RinGLActiveInfoV1` records. The current bounded profile reports float scalar/vector attributes and `sampler2D` uniforms; unlinked programs and invalid indices leave caller storage unchanged.
 - [x] Preserve no-op semantics for zero-area viewport, all-channel color mask off, and `CULL_FACE` with `FRONT_AND_BACK` in the current color-only profile.
 - [x] Map D32 clear and every GLES depth comparison (`NEVER`, `LESS`, `EQUAL`, `LEQUAL`, `GREATER`, `NOTEQUAL`, `GEQUAL`, `ALWAYS`) for an embedding-supplied default framebuffer through native RinGPU depth render passes.
 - [x] Map D32 custom depth-renderbuffer FBO attachments with matching RGBA8 color attachments to lazy RinGPU images, depth render-pass clear/load, and all eight depth-tested draw predicates; strict C11 and the RinOS surface integration test cover completeness, dimension mismatch rejection, clear, and draw behavior.

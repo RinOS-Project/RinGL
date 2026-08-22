@@ -33,6 +33,12 @@ extern "C" {
 #define RINGL_UNSIGNED_SHORT 0x1403u
 #define RINGL_UNSIGNED_INT   0x1405u
 #define RINGL_FLOAT          0x1406u
+#define RINGL_FLOAT_VEC2     0x8b50u
+#define RINGL_FLOAT_VEC3     0x8b51u
+#define RINGL_FLOAT_VEC4     0x8b52u
+#define RINGL_SAMPLER_2D     0x8b5eu
+
+#define RINGL_ACTIVE_INFO_NAME_MAX 64u
 
 #define RINGL_TRIANGLES        0x0004u
 #define RINGL_STENCIL_BUFFER_BIT 0x00000400u
@@ -779,6 +785,18 @@ typedef struct RinGLProgramInfoV1 {
     uint32_t reserved0;
 } RinGLProgramInfoV1;
 
+/* A caller-owned active attribute/uniform record. The name is always
+ * NUL-terminated after its exact byte length. */
+typedef struct RinGLActiveInfoV1 {
+    uint32_t struct_size;
+    uint32_t api_version;
+    uint32_t type;
+    uint32_t size;
+    uint32_t name_length;
+    char name[RINGL_ACTIVE_INFO_NAME_MAX];
+    uint32_t reserved0;
+} RinGLActiveInfoV1;
+
 typedef struct RinGLRenderbufferInfoV1 {
     uint32_t struct_size;
     uint32_t api_version;
@@ -1090,6 +1108,12 @@ void ringl_link_program(uint32_t program);
 uint32_t ringl_get_program_link_status(uint32_t program);
 void ringl_validate_program(uint32_t program);
 int ringl_get_program_info(uint32_t program, RinGLProgramInfoV1* info);
+/* Return one active linked attribute or sampler uniform into a versioned,
+ * caller-owned record. Failures leave the record unchanged. */
+int ringl_get_active_attrib(uint32_t program, uint32_t index,
+                            RinGLActiveInfoV1* info);
+int ringl_get_active_uniform(uint32_t program, uint32_t index,
+                             RinGLActiveInfoV1* info);
 uint64_t ringl_get_program_info_log(uint32_t program,
                                     char* buffer,
                                     uint64_t buffer_size);

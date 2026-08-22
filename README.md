@@ -289,6 +289,13 @@ finite endpoint independently to `[0,1]`, and preserves reversed ranges.
 snapshot. Draw translation passes the exact pair through RinGPU raster state,
 rather than treating every range as the default `[0,1]`.
 
+Linked program reflection is also exposed without borrowing RinGL storage.
+`ringl_get_active_attrib()` and `ringl_get_active_uniform()` copy one bounded
+entry into `RinGLActiveInfoV1` only after validating its versioned output
+header. The current profile reports scalar/`vec2`/`vec3`/`vec4` float
+attributes and `sampler2D` uniforms; unlinked programs or out-of-range indices
+record the appropriate error and leave caller storage unchanged.
+
 Custom RGBA8 renderbuffer FBOs may additionally attach a matching
 `DEPTH24_STENCIL8` renderbuffer or level-zero
 `DEPTH24_STENCIL8`/`DEPTH_STENCIL`/`UNSIGNED_INT_24_8` texture through

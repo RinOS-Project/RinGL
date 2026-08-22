@@ -23,7 +23,7 @@
 #define RINGL_PROGRAM_LOG_MAX 160u
 #define RINGL_MAX_SAMPLER_UNIFORMS 8u
 #define RINGL_MAX_VARYINGS 8u
-#define RINGL_UNIFORM_NAME_MAX 64u
+#define RINGL_UNIFORM_NAME_MAX RINGL_ACTIVE_INFO_NAME_MAX
 /* RSH1 and the public RinGPU adapter both admit 32 scalar vertex inputs. The
  * public GL limit remains 16 generic vertex-array indices. */
 #define RINGL_MAX_VERTEX_INPUT_COMPONENTS 32u

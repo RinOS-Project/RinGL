@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include <assert.h>
+#include <string.h>
 #include <ringl/ringl.h>
 
 int main(void)
@@ -21,6 +22,10 @@ int main(void)
     int32_t location;
     int32_t uniform_value = -1;
     char log[160];
+    RinGLActiveInfoV1 active_info = {
+        .struct_size = sizeof(active_info),
+        .api_version = RINGL_API_VERSION,
+    };
     RinGLProgramInfoV1 info = {
         .struct_size = sizeof(info),
         .api_version = RINGL_API_VERSION,
@@ -76,6 +81,22 @@ int main(void)
     assert(ringl_get_attrib_location(program, "position") == 3);
     assert(ringl_get_attrib_location(program, "missing") == -1);
     assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_get_active_attrib(program, 0u, &active_info) == 0);
+    assert(active_info.type == RINGL_FLOAT && active_info.size == 1u &&
+           active_info.name_length == 8u &&
+           strcmp(active_info.name, "position") == 0);
+    assert(ringl_get_active_uniform(program, 0u, &active_info) == 0);
+    assert(active_info.type == RINGL_SAMPLER_2D && active_info.size == 1u &&
+           active_info.name_length == 12u &&
+           strcmp(active_info.name, "colorTexture") == 0);
+    active_info.type = 0xffffffffu;
+    assert(ringl_get_active_attrib(program, 1u, &active_info) == -1);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    assert(active_info.type == 0xffffffffu);
+    active_info.struct_size = 0u;
+    assert(ringl_get_active_uniform(program, 0u, &active_info) == -1);
+    assert(active_info.type == 0xffffffffu);
+    active_info.struct_size = sizeof(active_info);
 
     /* A request after link does not mutate the currently linked executable. */
     ringl_bind_attrib_location(program, 1u, "position");

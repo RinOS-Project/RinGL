@@ -473,6 +473,103 @@ int ringl_get_program_info(uint32_t program, RinGLProgramInfoV1* info)
     return 0;
 }
 
+static int ringl_active_info_header_valid(const RinGLActiveInfoV1* info)
+{
+    return info != NULL && info->struct_size >= sizeof(*info) &&
+           info->api_version == RINGL_API_VERSION;
+}
+
+static uint32_t ringl_attribute_gl_type(uint32_t width)
+{
+    switch (width) {
+    case 1u:
+        return RINGL_FLOAT;
+    case 2u:
+        return RINGL_FLOAT_VEC2;
+    case 3u:
+        return RINGL_FLOAT_VEC3;
+    case 4u:
+        return RINGL_FLOAT_VEC4;
+    default:
+        return 0u;
+    }
+}
+
+static void ringl_active_info_set(RinGLActiveInfoV1* result,
+                                  uint32_t type, const char* name)
+{
+    size_t name_length = strlen(name);
+
+    memset(result, 0, sizeof(*result));
+    result->struct_size = sizeof(*result);
+    result->api_version = RINGL_API_VERSION;
+    result->type = type;
+    result->size = 1u;
+    result->name_length = (uint32_t)name_length;
+    memcpy(result->name, name, name_length + 1u);
+}
+
+int ringl_get_active_attrib(uint32_t program, uint32_t index,
+                            RinGLActiveInfoV1* info)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLProgramObject* object;
+    RinGLActiveInfoV1 result;
+    uint32_t type;
+
+    if (context == NULL || !ringl_active_info_header_valid(info))
+        return -1;
+    object = ringl_program_object(context, program);
+    if (object == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+    if (!object->link_status) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    if (index >= object->attribute_count) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+    type = ringl_attribute_gl_type(object->attributes[index].width);
+    if (type == 0u) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    ringl_active_info_set(&result, type, object->attributes[index].name);
+    *info = result;
+    return 0;
+}
+
+int ringl_get_active_uniform(uint32_t program, uint32_t index,
+                             RinGLActiveInfoV1* info)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLProgramObject* object;
+    RinGLActiveInfoV1 result;
+
+    if (context == NULL || !ringl_active_info_header_valid(info))
+        return -1;
+    object = ringl_program_object(context, program);
+    if (object == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+    if (!object->link_status) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    if (index >= object->sampler_uniform_count) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+    ringl_active_info_set(&result, RINGL_SAMPLER_2D,
+                          object->sampler_uniforms[index].name);
+    *info = result;
+    return 0;
+}
+
 uint64_t ringl_get_program_info_log(uint32_t program, char* buffer,
                                     uint64_t buffer_size)
 {

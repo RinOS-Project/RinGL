@@ -54,8 +54,10 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Lazily create/cache RinGPU graphics pipelines with bounded eviction and lifetime cleanup.
 - [x] Begin/end RinGPU render passes for the first clear and draw operations.
 - [x] Implement first-slice `glDrawArrays(GL_TRIANGLES, ...)` translation.
-- [x] Track the default color image between PRESENT and COLOR_TARGET states and emit required transitions.
-- [ ] Connect the RinOS adapter to the public RinGPU command functions and present a triangle on a real RinGPU target.
+- [x] Track the default color image between UNDEFINED, PRESENT, and COLOR_TARGET states and emit required transitions.
+- [x] Add the OS-Core adapter that maps the RinGL operation table to public RinGPU buffer, shader, pipeline, command, submit, and present APIs.
+- [x] Add an OS-Core surface bridge that creates a RinGL context over the existing WebGL RinGPU core/queue/color image.
+- [ ] Make the selected OS-Core RinGPU backend execute `DRAW_VERTICES` for the bridged target and present the first visible triangle.
 - [x] Add a deterministic mock-RinGPU triangle integration test covering upload, shaders, pipeline, clear, draw, submit, and present ordering.
 
 ## Phase 5 — Indexed drawing and textures

@@ -61,3 +61,11 @@ shader_ir_test = executable(
 )
 
 test('shader-ir', shader_ir_test)
+
+program_gpu_test = executable(
+  'ringl-program-gpu-test',
+  'program_gpu_test.c',
+  dependencies: ringl_dep,
+)
+
+test('program-gpu', program_gpu_test)

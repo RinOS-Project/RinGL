@@ -20,7 +20,9 @@ typedef struct RinGLBufferObject {
 
 typedef struct RinGLShaderObject {
     char* source;
+    uint8_t* rsh1;
     uint64_t source_length;
+    uint32_t rsh1_size;
     uint32_t shader_type;
     uint32_t compile_status;
     uint32_t declaration_count;
@@ -96,6 +98,7 @@ int ringl_backend_upload_buffer(RinGLContext* context,
 void ringl_backend_destroy_object(RinGLContext* context, uint64_t object);
 void ringl_buffer_objects_destroy_all(RinGLContext* context);
 void ringl_shader_objects_destroy_all(RinGLContext* context);
+void ringl_program_objects_destroy_all(RinGLContext* context);
 void ringl_vertex_attrib_detach_buffer(RinGLContext* context, uint32_t buffer);
 int ringl_resolve_vertex_layout(const RinGLContext* context,
                                 RinGLResolvedVertexLayout* layout);

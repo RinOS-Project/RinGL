@@ -3,6 +3,7 @@
 #define RINGL_INTERNAL_H
 
 #include <ringl/ringl.h>
+#include <ringl/ringl_sync.h>
 
 #include "objects/object_table.h"
 
@@ -110,14 +111,19 @@ struct RinGLContext {
     uint32_t flags;
     RinGLRinGpuBindingV1 ringpu;
     RinGLRinGpuOpsV1 ringpu_ops;
+    RinGLRinGpuSyncOpsV1 sync_ops;
     int has_ringpu;
     int has_ringpu_ops;
+    int has_sync_ops;
+    int reserved_sync0;
     void* pipeline_cache;
     RinGLDefaultFramebufferV1 default_framebuffer;
     uint32_t has_default_framebuffer;
     uint32_t default_framebuffer_state;
     uint64_t graphics_command_list;
     uint64_t graphics_bind_group;
+    uint64_t finish_fence;
+    uint64_t finish_value;
     float clear_red;
     float clear_green;
     float clear_blue;

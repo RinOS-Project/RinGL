@@ -24,7 +24,9 @@ int main(void)
     uint32_t framebuffer = 0u;
     uint32_t texture = 0u;
     uint32_t depth_texture = 0u;
+    uint32_t depth_stencil_texture = 0u;
     uint32_t renderbuffer = 0u;
+    uint32_t packed_depth_stencil = 0x7fffffa5u;
     RinGLFramebufferAttachmentInfoV1 attachment;
     int32_t value = -1;
 
@@ -91,6 +93,33 @@ int main(void)
     assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
            RINGL_FRAMEBUFFER_COMPLETE);
     ringl_delete_textures(1, &depth_texture);
+
+    ringl_gen_textures(1, &depth_stencil_texture);
+    ringl_bind_texture(RINGL_TEXTURE_2D, depth_stencil_texture);
+    ringl_framebuffer_texture_2d(
+        RINGL_FRAMEBUFFER, RINGL_DEPTH_STENCIL_ATTACHMENT, RINGL_TEXTURE_2D,
+        depth_stencil_texture, 0);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
+           RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT);
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_DEPTH24_STENCIL8, 1, 1,
+                       0, RINGL_DEPTH_STENCIL, RINGL_UNSIGNED_INT_24_8,
+                       &packed_depth_stencil);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
+           RINGL_FRAMEBUFFER_COMPLETE);
+    packed_depth_stencil = 0x3fffff5au;
+    ringl_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 1, 1,
+                           RINGL_DEPTH_STENCIL, RINGL_UNSIGNED_INT_24_8,
+                           &packed_depth_stencil);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_framebuffer_texture_2d(
+        RINGL_FRAMEBUFFER, RINGL_DEPTH_STENCIL_ATTACHMENT, RINGL_TEXTURE_2D,
+        0u, 0);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
+           RINGL_FRAMEBUFFER_COMPLETE);
+    ringl_delete_textures(1, &depth_stencil_texture);
 
     ringl_framebuffer_texture_2d(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT0,
                                  RINGL_TEXTURE_2D, texture, 1);

@@ -182,6 +182,13 @@ and back-face culling. `ringl_clear(RINGL_STENCIL_BUFFER_BIT)` also forwards
 the front stencil write mask through the native render pass, so it preserves
 masked-off stencil bits rather than overwriting the complete S8 plane.
 
+`ringl_clear()` also carries a bounded lower-left clear region and an RGBA
+write mask to RinGPU. An enabled WebGL scissor clips color, depth, and stencil
+clears together; masked color channels and disabled depth writes preserve their
+previous storage, and requested depth/stencil clears without a matching
+attachment are no-ops. The RinOS surface backend applies these rules to both
+the caller-owned BGRA target and offscreen RGBA FBO targets.
+
 This remains a bounded profile. A default caller-owned D32 surface has no
 stencil storage unless its embedding explicitly supplies the matching S8
 plane; that D32S8 default target executes the same front/back stencil path.

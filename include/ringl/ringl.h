@@ -319,6 +319,18 @@ typedef struct RinGLRinGpuGraphicsBindingV1 {
     uint32_t array_layer;
 } RinGLRinGpuGraphicsBindingV1;
 
+/* Clear regions use the WebGL lower-left pixel origin. A disabled region has
+ * canonical zero coordinates and clears the complete attachment; an enabled
+ * empty region is a valid no-op. */
+typedef struct RinGLRinGpuClearRegionV1 {
+    int32_t x;
+    int32_t y;
+    uint32_t width;
+    uint32_t height;
+    uint32_t enabled;
+    uint32_t reserved0;
+} RinGLRinGpuClearRegionV1;
+
 typedef struct RinGLRinGpuRenderPassV1 {
     uint64_t color_target;
     uint32_t load_op;
@@ -327,6 +339,10 @@ typedef struct RinGLRinGpuRenderPassV1 {
     float clear_green;
     float clear_blue;
     float clear_alpha;
+    /* R/G/B/A bits, used only with CLEAR. */
+    uint32_t color_write_mask;
+    uint32_t reserved0;
+    RinGLRinGpuClearRegionV1 clear_region;
 } RinGLRinGpuRenderPassV1;
 
 typedef struct RinGLRinGpuRenderPassDepthV1 {
@@ -348,6 +364,10 @@ typedef struct RinGLRinGpuRenderPassDepthV1 {
     uint32_t stencil_store_op;
     uint32_t clear_stencil;
     uint32_t stencil_write_mask;
+    /* R/G/B/A bits, used only with a color CLEAR. */
+    uint32_t color_write_mask;
+    uint32_t reserved0;
+    RinGLRinGpuClearRegionV1 clear_region;
 } RinGLRinGpuRenderPassDepthV1;
 
 typedef struct RinGLRinGpuDrawVerticesV1 {

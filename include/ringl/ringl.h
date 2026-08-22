@@ -115,6 +115,17 @@ typedef struct RinGLVertexAttribInfoV1 {
     uint64_t offset;
 } RinGLVertexAttribInfoV1;
 
+typedef struct RinGLDefaultFramebufferV1 {
+    uint32_t struct_size;
+    uint32_t api_version;
+    uint64_t color_target;
+    uint32_t color_format;
+    uint32_t width;
+    uint32_t height;
+    uint32_t flags;
+    uint32_t reserved0;
+} RinGLDefaultFramebufferV1;
+
 int ringl_context_create(const RinGLContextDescV1* desc,
                          RinGLContext** context_out);
 void ringl_context_destroy(RinGLContext* context);
@@ -122,6 +133,9 @@ int ringl_make_current(RinGLContext* context);
 RinGLContext* ringl_get_current_context(void);
 uint32_t ringl_get_error(void);
 uint32_t ringl_context_dirty_bits(const RinGLContext* context);
+
+int ringl_set_default_framebuffer(const RinGLDefaultFramebufferV1* framebuffer);
+int ringl_get_default_framebuffer(RinGLDefaultFramebufferV1* framebuffer);
 
 void ringl_gen_buffers(int32_t count, uint32_t* buffers);
 void ringl_delete_buffers(int32_t count, const uint32_t* buffers);

@@ -49,9 +49,10 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Link sampler uniforms into program locations and implement `getUniformLocation`/`uniform1i`-style state.
 - [x] Report linked sampler uniforms through program reflection.
 - [x] Parse and validate the initial fragment-shader `texture2D(sampler2D, vec2(...))` form.
-- [x] Fail texture sampling RSH1 lowering explicitly rather than inventing a private IR encoding.
-- [ ] Lower `texture2D()` after RinShader exposes an unambiguous 2D-coordinate/RGBA result contract.
-- [ ] Add general vertex-to-fragment varying support after RinShader/RinGPU exposes a position-builtin + user-varying interface contract.
+- [x] Lower the initial one-sampler/one-call constant-coordinate `texture2D()` form to public RSH1 `SAMPLE_IMAGE_2D_F32` component operations.
+- [x] Add texture RSH1 tests for resource slots, component selectors, and RGBA output stores.
+- [ ] Expand texture expressions beyond the initial constant-coordinate one-sampler slice.
+- [ ] Add general vertex-to-fragment varying parsing/lowering and link metadata using the public RinGPU varying contract.
 
 ## Phase 4 — First hardware-rendered triangle
 
@@ -63,8 +64,9 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Implement first-slice `glDrawArrays(GL_TRIANGLES, ...)` translation.
 - [x] Track the default color image between UNDEFINED, PRESENT, and COLOR_TARGET states and emit required transitions.
 - [x] Add the OS-Core adapter that maps the RinGL operation table to public RinGPU buffer, shader, pipeline, command, submit, and present APIs.
+- [x] Extend the adapter to public native graphics pipeline, raster-state, typed resource-binding, and graphics-resource-bind commands.
 - [x] Add an OS-Core surface bridge that creates a RinGL context over the existing WebGL RinGPU core/queue/color image.
-- [ ] Make the selected OS-Core RinGPU backend execute `DRAW_VERTICES` for the bridged target and present the first visible triangle.
+- [x] Confirm the selected OS-Core software RinGPU backend executes generic `DRAW_VERTICES`; presentation/display integration remains a RinGPU/display concern rather than RinGL logic.
 - [x] Add a deterministic mock-RinGPU triangle integration test covering upload, shaders, pipeline, clear, draw, submit, and present ordering.
 
 ## Phase 5 — Indexed drawing and textures
@@ -80,8 +82,9 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Lazily realize complete level-0 texture storage as CPU-visible RinGPU sampled RGBA8 images and upload the canonical shadow contents.
 - [x] Lazily map texture filtering/wrap state to RinGPU sampler objects.
 - [x] Add fake-RinGPU tests for image/sampler realization, cache hits, invalidation, and level-zero completeness.
-- [ ] Bind realized sampled images/samplers to RinGPU graphics resource slots before draws (waiting on texture sampling IR lowering and varying linkage).
-- [ ] Add a textured-triangle integration test.
+- [x] Transition sampled images to `SHADER_READ`, create typed image/sampler bind groups, and bind them inside the render pass before draws.
+- [x] Add a native-contract textured-draw mock test covering texture realization, resource transition, bind group creation, raster state, and draw ordering.
+- [ ] Add varying-backed texture coordinates and an end-to-end textured-triangle test with interpolated UVs.
 
 ## Phase 6 — Framebuffers and fixed-function state
 
@@ -92,21 +95,21 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Implement face-culling/front-face GL state, validation, defaults, and queries.
 - [x] Implement depth-test function/write-mask GL state, defaults, validation, dirty tracking, and queries.
 - [x] Implement initial blend factor/equation and color-write-mask GL state, defaults, validation, dirty tracking, and queries.
-- [x] Fail submitted draws closed when currently unsupported raster/depth/blend state would otherwise be silently ignored.
-- [ ] Apply viewport/scissor/culling to submitted rendering after RinGPU exposes a rasterization-state contract.
-- [ ] Apply depth/blend state to vertex-buffer draws after RinGPU exposes a vertex-input-compatible combined pipeline contract.
-- [ ] Implement stencil support once the required RinGPU contract is available.
-- [ ] Include newly supported immutable draw-relevant state in pipeline caching as its native contract becomes available.
+- [x] Map supported blend, cull, front-face, and color-write state into native RinGPU graphics pipelines and include it in pipeline caching.
+- [x] Map non-negative viewport and clipped scissor state through dynamic RinGPU raster-state commands.
+- [x] Preserve no-op semantics for zero-area viewport, all-channel color mask off, and `CULL_FACE` with `FRONT_AND_BACK` in the current color-only profile.
+- [ ] Support negative viewport origins once the RinGPU raster-state contract accepts the GLES transform domain.
+- [ ] Map depth testing after depth renderbuffer/FBO attachment support is implemented in RinGL.
+- [ ] Implement stencil support after framebuffer/renderbuffer depth-stencil storage is in place.
 
 ## Phase 7 — Data movement, synchronization, and observability
 
 - [ ] Implement clear/copy paths that must end or split render passes.
 - [ ] Implement `glFlush` semantics.
-- [ ] Implement `glFinish` semantics using RinGPU fences.
-- [ ] Implement bounded framebuffer readback.
-- [ ] Implement buffer readback where required by the target profile.
+- [ ] Implement `glFinish` semantics using RinGPU fences and `ringpu_wait_fence()`.
+- [ ] Implement bounded framebuffer `glReadPixels` through CPU-readable RinGPU images/readback.
 - [ ] Define device-loss handling and GL-visible failure behavior.
-- [ ] Add tests for ordering across draws, copies, barriers, flushes, and readbacks.
+- [ ] Add tests for ordering across draws, copies, barriers, flushes, finish, and readbacks.
 
 ## Phase 8 — OpenGL ES compatibility expansion
 
@@ -129,6 +132,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 
 - [ ] Add unit tests for every state transition and validation rule.
 - [x] Add mock-RinGPU tests that inspect generated commands without requiring hardware for the first triangle path.
+- [x] Add a native-contract mock test for textured resource/raster ordering.
 - [ ] Add hardware/QEMU integration tests where RinGPU support exists.
 - [ ] Add shader compiler differential/negative tests.
 - [ ] Add API trace tests for representative GL sequences.
@@ -137,7 +141,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 
 ## RinGPU/RinShader dependencies
 
-See `docs/ringpu-gaps.md`. RinGL should stop cleanly at these native-boundary gaps rather than introducing GL-specific behavior or private shader encodings into RinGPU.
+See `docs/ringpu-gaps.md`. RinGL should stop cleanly at concrete native-boundary gaps rather than introducing GL-specific behavior or private shader encodings into RinGPU.
 
 ## Optional software backend
 

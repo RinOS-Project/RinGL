@@ -17,6 +17,7 @@ ringl_sources = files(
   'src/context/context.c',
   'src/context/framebuffer.c',
   'src/context/state.c',
+  'src/context/sync.c',
   'src/context/vertex_attrib.c',
   'src/objects/object_table.c',
   'src/objects/buffer.c',

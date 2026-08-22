@@ -13,12 +13,15 @@ typedef enum TokenKind {
     TOK_NUMBER,
     TOK_VOID,
     TOK_FLOAT,
+    TOK_VEC2,
+    TOK_VEC4,
     TOK_ATTRIBUTE,
     TOK_LPAREN,
     TOK_RPAREN,
     TOK_LBRACE,
     TOK_RBRACE,
     TOK_SEMI,
+    TOK_COMMA,
     TOK_ASSIGN,
     TOK_PLUS,
     TOK_MINUS,
@@ -99,6 +102,10 @@ static TokenKind keyword_kind(const char* begin, size_t length)
         return TOK_VOID;
     if (length == 5u && memcmp(begin, "float", 5u) == 0)
         return TOK_FLOAT;
+    if (length == 4u && memcmp(begin, "vec2", 4u) == 0)
+        return TOK_VEC2;
+    if (length == 4u && memcmp(begin, "vec4", 4u) == 0)
+        return TOK_VEC4;
     if (length == 9u && memcmp(begin, "attribute", 9u) == 0)
         return TOK_ATTRIBUTE;
     return TOK_IDENT;
@@ -166,6 +173,7 @@ static void next_token(Parser* parser)
     case '{': token.kind = TOK_LBRACE; break;
     case '}': token.kind = TOK_RBRACE; break;
     case ';': token.kind = TOK_SEMI; break;
+    case ',': token.kind = TOK_COMMA; break;
     case '=': token.kind = TOK_ASSIGN; break;
     case '+': token.kind = TOK_PLUS; break;
     case '-': token.kind = TOK_MINUS; break;
@@ -229,10 +237,38 @@ static int add_symbol(Parser* parser, const Token* token, uint32_t attribute)
 
 static int expression(Parser* parser);
 
+static int constructor(Parser* parser, TokenKind kind)
+{
+    uint32_t argument_count = 0u;
+    uint32_t max_arguments = kind == TOK_VEC2 ? 2u : 4u;
+
+    next_token(parser);
+    if (!expect(parser, TOK_LPAREN, "expected '(' after vector constructor"))
+        return 0;
+    if (parser->token.kind == TOK_RPAREN) {
+        fail(parser, "vector constructor requires arguments");
+        return 0;
+    }
+    for (;;) {
+        if (!expression(parser))
+            return 0;
+        argument_count++;
+        if (argument_count > max_arguments) {
+            fail(parser, "too many vector constructor arguments");
+            return 0;
+        }
+        if (!accept(parser, TOK_COMMA))
+            break;
+    }
+    return expect(parser, TOK_RPAREN, "expected ')' after vector constructor");
+}
+
 static int primary(Parser* parser)
 {
     if (accept(parser, TOK_NUMBER))
         return 1;
+    if (parser->token.kind == TOK_VEC2 || parser->token.kind == TOK_VEC4)
+        return constructor(parser, parser->token.kind);
     if (parser->token.kind == TOK_IDENT) {
         Token ident = parser->token;
         if (!token_is_ident(&ident, "gl_Position") &&
@@ -373,8 +409,11 @@ static int attribute_declaration(Parser* parser)
         return 0;
     }
     next_token(parser); /* consume attribute */
-    if (!expect(parser, TOK_FLOAT, "only 'attribute float' is supported"))
+    if (parser->token.kind != TOK_FLOAT && parser->token.kind != TOK_VEC2) {
+        fail(parser, "only 'attribute float' and 'attribute vec2' are supported");
         return 0;
+    }
+    next_token(parser);
     if (parser->token.kind != TOK_IDENT) {
         fail(parser, "expected attribute identifier");
         return 0;

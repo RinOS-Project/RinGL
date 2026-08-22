@@ -199,9 +199,14 @@ vertex-array index for the next successful link, and
 During a draw RinGL resolves only those active, linked indices into dense RSH1
 scalar inputs before it builds the RinGPU pipeline. An unrelated enabled array
 therefore cannot alter the shader interface or be fetched accidentally. The
-bounded renderer currently requires every active attribute array to be enabled
-and to share its buffer/stride with the other active arrays; disabled generic
-attribute constants and independent vertex buffers remain unimplemented.
+enabled active arrays share one buffer and effective stride in the bounded
+renderer. A disabled active array instead uses its tracked current value (the
+WebGL default is `(0, 0, 0, 1)`, updated by `ringl_vertex_attrib1f` through
+`ringl_vertex_attrib4f`) as exact Float32 scalar descriptors. The embedding
+must explicitly advertise `RINGL_RIN_GPU_VERTEX_INPUT_CONSTANT_FLOAT32` before
+such a draw is accepted; otherwise RinGL reports `INVALID_OPERATION` rather
+than treating Float32 bits as a buffer offset. Independent vertex buffers
+remain unimplemented.
 
 Custom RGBA8 renderbuffer FBOs may additionally attach a matching
 `DEPTH24_STENCIL8` renderbuffer or level-zero
@@ -279,9 +284,10 @@ integer conversion. RinGL expands every component into a typed scalar RinGPU
 input and preserves byte strides rather than silently requiring Float32
 alignment. The active program's linked generic locations select which arrays
 become those inputs. The current bounded renderer still requires active arrays
-to share one buffer and one effective stride; disabled generic values,
-independent buffer bindings, WebGL 2 integer attributes, and general vertex
-pulling remain outside this slice.
+to share one buffer and one effective stride. Disabled active generic values
+are emitted as explicit Float32 constants, subject to the embedding capability
+described above; independent buffer bindings, WebGL 2 integer attributes, and
+general vertex pulling remain outside this slice.
 
 The corresponding bounded RGB profile accepts `attribute vec3 color` and
 `varying vec3 vertexColor`, with `gl_FragColor = vec4(vertexColor, 1.0)`.

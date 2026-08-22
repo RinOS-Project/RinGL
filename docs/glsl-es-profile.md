@@ -61,11 +61,14 @@ components into dense RSH1 locations. This keeps the generic GL namespace out
 of the RinGPU ABI while ensuring that an unrelated enabled array is not
 silently fetched.
 
-The bounded renderer requires each active attribute array to be enabled and
-all active arrays to share one buffer and effective stride. WebGL generic
-attribute constants for disabled arrays and multi-buffer vertex pulling remain
-unsupported; this is a documented compatibility limit, not an implicit zero
-or stale-data fallback.
+Enabled active arrays in the bounded renderer share one buffer and effective
+stride. A disabled active array is not fetched: its current generic value
+(initially `(0, 0, 0, 1)`, then updated by `vertexAttrib[1-4]f`) is lowered to
+explicit constant Float32 scalar descriptors. An embedding must advertise
+`RINGL_RIN_GPU_VERTEX_INPUT_CONSTANT_FLOAT32`; without it the draw is rejected
+with `INVALID_OPERATION`, so Float32 bits can never be mistaken for a byte
+offset or silently replaced with stale input. Independent buffer bindings and
+general vertex pulling remain unsupported.
 
 ## Compiler boundary
 

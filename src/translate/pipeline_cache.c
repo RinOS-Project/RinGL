@@ -358,6 +358,7 @@ static int create_pipeline(RinGLContext* context,
         attributes[index].location = key->attributes[index].location;
         attributes[index].format = key->attributes[index].format;
         attributes[index].offset = key->attributes[index].offset;
+        attributes[index].flags = key->attributes[index].flags;
     }
 
     if (context->ringpu_ops.create_graphics_pipeline_native != NULL) {

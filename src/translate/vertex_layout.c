@@ -67,9 +67,30 @@ static int ringl_append_vertex_attrib(
     uint32_t component;
 
     if (context == NULL || attrib == NULL || component_count == 0u ||
-        component_count > attrib->size || common_buffer == NULL ||
-        common_stride == NULL || scalar_location == NULL || layout == NULL ||
-        !attrib->enabled || attrib->buffer == 0u ||
+        common_buffer == NULL || common_stride == NULL ||
+        scalar_location == NULL || layout == NULL ||
+        layout->attribute_count + component_count >
+            RINGL_MAX_VERTEX_INPUT_COMPONENTS) {
+        return -1;
+    }
+    if (!attrib->enabled) {
+        /* Disabled generic arrays source their current floating-point values.
+         * RSH1 is scalar, so materialize the requested vector components as
+         * independent constant inputs in the RinGPU layout. */
+        for (component = 0u; component < component_count; ++component) {
+            RinGLResolvedVertexAttribute* resolved =
+                &layout->attributes[layout->attribute_count++];
+            resolved->location = (*scalar_location)++;
+            resolved->format = RINGL_NATIVE_VERTEX_FLOAT32;
+            memcpy(&resolved->offset, &attrib->current_value[component],
+                   sizeof(resolved->offset));
+            resolved->flags =
+                RINGL_RIN_GPU_VERTEX_ATTRIBUTE_CONSTANT_FLOAT32;
+        }
+        layout->has_constant_attributes = RINGL_TRUE;
+        return 0;
+    }
+    if (component_count > attrib->size || attrib->buffer == 0u ||
         (attrib->size != 1u && attrib->size != 2u && attrib->size != 3u &&
          attrib->size != 4u) ||
         (attrib->normalized != RINGL_FALSE &&
@@ -101,10 +122,6 @@ static int ringl_append_vertex_attrib(
         return -1;
     }
 
-    if (layout->attribute_count + component_count >
-        RINGL_MAX_VERTEX_INPUT_COMPONENTS) {
-        return -1;
-    }
     for (component = 0u; component < component_count; ++component) {
         RinGLResolvedVertexAttribute* resolved =
             &layout->attributes[layout->attribute_count++];
@@ -112,6 +129,7 @@ static int ringl_append_vertex_attrib(
         resolved->format = format;
         resolved->offset = (uint32_t)attrib->offset +
             component * component_bytes;
+        resolved->flags = 0u;
     }
     return 0;
 }
@@ -198,7 +216,11 @@ int ringl_validate_vertex_fetch(const RinGLContext* context,
         return -1;
     if (vertex_count == 0u || layout->attribute_count == 0u)
         return 0;
-    if (layout->buffer == 0u || layout->stride == 0u)
+    if (layout->buffer == 0u) {
+        return layout->has_constant_attributes != 0u && layout->stride == 0u
+            ? 0 : -1;
+    }
+    if (layout->stride == 0u)
         return -1;
 
     last_vertex = (uint64_t)first_vertex + (uint64_t)vertex_count - 1u;
@@ -218,6 +240,14 @@ int ringl_validate_vertex_fetch(const RinGLContext* context,
         uint64_t stride_bytes;
         uint64_t end;
 
+        if (attrib->flags ==
+            RINGL_RIN_GPU_VERTEX_ATTRIBUTE_CONSTANT_FLOAT32) {
+            if (attrib->format != RINGL_NATIVE_VERTEX_FLOAT32)
+                return -1;
+            continue;
+        }
+        if (attrib->flags != 0u)
+            return -1;
         component_bytes = ringl_native_vertex_format_bytes(attrib->format);
         if (component_bytes == 0u)
             return -1;

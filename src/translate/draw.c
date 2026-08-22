@@ -663,7 +663,7 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLResolvedVertexLayout layout;
-    RinGLBufferObject* vertex_buffer;
+    RinGLBufferObject* vertex_buffer = NULL;
     RinGLRinGpuDrawVerticesV1 draw;
     RinGLColorTarget target;
     RinGLDepthTarget depth_target;
@@ -702,19 +702,23 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
     }
     if (ringl_validate_vertex_fetch(context, (uint32_t)first,
                                     (uint32_t)count, &layout) != 0 ||
-        layout.buffer == 0u) {
+        (layout.has_constant_attributes != 0u &&
+         (context->ringpu.vertex_input_capabilities &
+          RINGL_RIN_GPU_VERTEX_INPUT_CONSTANT_FLOAT32) == 0u)) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
-    buffer_index = ringl_object_slot_index(layout.buffer);
-    if (buffer_index >= RINGL_OBJECT_SLOT_COUNT) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
-    }
-    vertex_buffer = &context->buffers[buffer_index];
-    if (vertex_buffer->ringpu_handle == 0u) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
+    if (layout.buffer != 0u) {
+        buffer_index = ringl_object_slot_index(layout.buffer);
+        if (buffer_index >= RINGL_OBJECT_SLOT_COUNT) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return;
+        }
+        vertex_buffer = &context->buffers[buffer_index];
+        if (vertex_buffer->ringpu_handle == 0u) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return;
+        }
     }
 
     if (begin_commands(context, &command_list) != 0 ||
@@ -750,7 +754,7 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
     memset(&draw, 0, sizeof(draw));
     draw.pipeline = pipeline;
     draw.color_target = target.image;
-    draw.vertex_buffer = vertex_buffer->ringpu_handle;
+    draw.vertex_buffer = vertex_buffer != NULL ? vertex_buffer->ringpu_handle : 0u;
     draw.vertex_count = (uint32_t)count;
     draw.first_vertex = (uint32_t)first;
     draw.instance_count = 1u;
@@ -775,7 +779,7 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLResolvedVertexLayout layout;
-    RinGLBufferObject* vertex_buffer;
+    RinGLBufferObject* vertex_buffer = NULL;
     RinGLBufferObject* index_buffer;
     RinGLRinGpuDrawIndexedV1 draw;
     RinGLColorTarget target;
@@ -829,21 +833,30 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
     }
     vertex_count = max_index + 1u;
     if (ringl_validate_vertex_fetch(context, 0u, vertex_count, &layout) != 0 ||
-        layout.buffer == 0u || context->element_array_buffer == 0u) {
+        (layout.has_constant_attributes != 0u &&
+         (context->ringpu.vertex_input_capabilities &
+          RINGL_RIN_GPU_VERTEX_INPUT_CONSTANT_FLOAT32) == 0u) ||
+        context->element_array_buffer == 0u) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
 
-    vertex_buffer_index = ringl_object_slot_index(layout.buffer);
     index_buffer_index = ringl_object_slot_index(context->element_array_buffer);
-    if (vertex_buffer_index >= RINGL_OBJECT_SLOT_COUNT ||
-        index_buffer_index >= RINGL_OBJECT_SLOT_COUNT) {
+    if (index_buffer_index >= RINGL_OBJECT_SLOT_COUNT) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
-    vertex_buffer = &context->buffers[vertex_buffer_index];
+    if (layout.buffer != 0u) {
+        vertex_buffer_index = ringl_object_slot_index(layout.buffer);
+        if (vertex_buffer_index >= RINGL_OBJECT_SLOT_COUNT) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return;
+        }
+        vertex_buffer = &context->buffers[vertex_buffer_index];
+    }
     index_buffer = &context->buffers[index_buffer_index];
-    if (vertex_buffer->ringpu_handle == 0u || index_buffer->ringpu_handle == 0u) {
+    if ((vertex_buffer != NULL && vertex_buffer->ringpu_handle == 0u) ||
+        index_buffer->ringpu_handle == 0u) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
@@ -881,7 +894,7 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
     memset(&draw, 0, sizeof(draw));
     draw.pipeline = pipeline;
     draw.color_target = target.image;
-    draw.vertex_buffer = vertex_buffer->ringpu_handle;
+    draw.vertex_buffer = vertex_buffer != NULL ? vertex_buffer->ringpu_handle : 0u;
     draw.index_buffer = index_buffer->ringpu_handle;
     draw.index_offset = offset;
     if (type == RINGL_UNSIGNED_BYTE)

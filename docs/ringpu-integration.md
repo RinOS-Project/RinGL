@@ -108,6 +108,18 @@ bounded cache reuses identical pipelines and evicts old entries in FIFO order.
 
 The adapter's `create_graphics_pipeline` callback maps directly to `ringpu_create_graphics_pipeline_vertex()`. The RinOS adapter fills a `RinGpuGraphicsPipelineVertexDescV1`, converts each `RinGLRinGpuVertexAttributeV1` to `RinGpuVertexAttributeV1`, and forwards the linked RinGPU shader-module handles unchanged.
 
+The binding must advertise `RINGL_RIN_GPU_VERTEX_INPUT_CONSTANT_FLOAT32` before
+RinGL emits a disabled active generic attribute. RinGL then marks the scalar
+descriptor as constant and stores the exact IEEE-754 binary32 bits in its
+offset field; the RinOS adapter maps that contract to
+`RIN_GPU_VERTEX_ATTRIBUTE_CONSTANT_FLOAT32`. RinGPU permits zero vertex stride
+only when every attribute is constant, and that draw has no vertex buffer or
+vertex offset. Mixed streamed and constant inputs retain the bounded shared
+stream buffer/stride rule. This explicit capability prevents an older callback
+from interpreting a Float32 bit pattern as a buffer offset; unsupported
+constant input fails the GL draw rather than being emulated. Multiple enabled
+vertex-buffer bindings remain outside the current RinGL profile.
+
 Before cache eviction during a draw, RinGL resets its reusable command list. This releases references retained by the previous recorded submission before an old pipeline is destroyed.
 
 ## Default framebuffer and command path

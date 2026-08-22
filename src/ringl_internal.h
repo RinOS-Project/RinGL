@@ -143,18 +143,21 @@ typedef struct RinGLVertexAttribState {
     uint32_t stride;
     uint32_t buffer;
     uint64_t offset;
+    float current_value[4];
 } RinGLVertexAttribState;
 
 typedef struct RinGLResolvedVertexAttribute {
     uint32_t location;
     uint32_t format;
     uint32_t offset;
+    uint32_t flags;
 } RinGLResolvedVertexAttribute;
 
 typedef struct RinGLResolvedVertexLayout {
     uint32_t buffer;
     uint32_t stride;
     uint32_t attribute_count;
+    uint32_t has_constant_attributes;
     RinGLResolvedVertexAttribute
         attributes[RINGL_MAX_VERTEX_INPUT_COMPONENTS];
 } RinGLResolvedVertexLayout;

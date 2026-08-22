@@ -4,6 +4,7 @@
 #include "ringl_internal.h"
 
 #include <assert.h>
+#include <string.h>
 
 int main(void)
 {
@@ -19,6 +20,9 @@ int main(void)
     RinGLResolvedVertexLayout layout;
     uint32_t buffer = 0u;
     uint32_t slot_index;
+    uint32_t vertex;
+    uint32_t fragment;
+    uint32_t program;
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -137,8 +141,49 @@ int main(void)
     assert(layout.attributes[5].offset == 20u);
     assert(ringl_validate_vertex_fetch(context, 0u, 3u, &layout) == 0);
 
+    /* A linked program must consume disabled arrays as WebGL generic values,
+     * not as missing buffer pointers. The default vector is (0, 0, 0, 1),
+     * and the scalar RSH1/RinGPU interface carries its exact float bits. */
+    vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+    fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+    program = ringl_create_program();
+    ringl_shader_source(vertex,
+                        "attribute vec4 position; void main() { gl_Position = position; }",
+                        -1);
+    ringl_shader_source(fragment,
+                        "void main() { gl_FragColor = vec4(1.0); }", -1);
+    ringl_compile_shader(vertex);
+    ringl_compile_shader(fragment);
+    ringl_attach_shader(program, vertex);
+    ringl_attach_shader(program, fragment);
+    ringl_link_program(program);
+    assert(ringl_get_program_link_status(program) == RINGL_TRUE);
+    ringl_use_program(program);
+    ringl_disable_vertex_attrib_array(0u);
+    ringl_vertex_attrib3f(0u, -1.5f, 2.25f, 3.5f);
+    assert(ringl_resolve_vertex_layout(context, &layout) == 0);
+    assert(layout.buffer == 0u && layout.stride == 0u);
+    assert(layout.attribute_count == 4u &&
+           layout.has_constant_attributes == RINGL_TRUE);
+    for (uint32_t component = 0u; component < 4u; ++component) {
+        float value = 0.0f;
+        assert(layout.attributes[component].format ==
+               RINGL_NATIVE_VERTEX_FLOAT32);
+        assert(layout.attributes[component].flags ==
+               RINGL_RIN_GPU_VERTEX_ATTRIBUTE_CONSTANT_FLOAT32);
+        memcpy(&value, &layout.attributes[component].offset, sizeof(value));
+        if (component == 0u) assert(value == -1.5f);
+        if (component == 1u) assert(value == 2.25f);
+        if (component == 2u) assert(value == 3.5f);
+        if (component == 3u) assert(value == 1.0f);
+    }
+    assert(ringl_validate_vertex_fetch(context, 0u, 3u, &layout) == 0);
+
     ringl_delete_buffers(1, &buffer);
-    assert(ringl_resolve_vertex_layout(context, &layout) != 0);
+    /* Deleting an unrelated buffer cannot invalidate a disabled generic
+     * attribute: its current value is independent of vertex storage. */
+    assert(ringl_resolve_vertex_layout(context, &layout) == 0);
+    assert(layout.buffer == 0u && layout.has_constant_attributes == RINGL_TRUE);
 
     ringl_context_destroy(context);
     return 0;

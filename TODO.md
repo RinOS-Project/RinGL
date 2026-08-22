@@ -37,6 +37,10 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     executable scalar RinGPU input formats.
   - [x] Resolve a linked program's active generic attribute locations to its
     dense scalar RinGPU inputs, so unrelated enabled arrays are not fetched.
+  - [x] Translate disabled active generic attribute current values into explicit
+    Float32 RinGPU inputs, including WebGL's `(0, 0, 0, 1)` default and the
+    `vertexAttrib[1-4]f` update rules, only when the embedding advertises the
+    constant-input capability.
 - [x] Reject unsupported or out-of-range vertex fetches before submission.
 - [x] Add buffer lifetime and bounds tests.
 
@@ -172,9 +176,12 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [ ] Inventory required OpenGL ES 2.0 entry points, enums, limits, and queries.
 - [ ] Track implementation status per API instead of claiming version support early.
 - [ ] Close GLES 2.0 semantic gaps found by conformance-style tests.
-- [ ] Implement WebGL generic attribute constants for disabled arrays and
-  independent vertex-buffer bindings; the current bounded draw path rejects
-  missing active arrays instead of manufacturing fallback input values.
+- [x] Implement WebGL generic attribute constants for disabled active arrays:
+  active values use the default `(0, 0, 0, 1)` or `vertexAttrib[1-4]f` state as
+  explicit Float32 RinGPU descriptors, while an embedding without the declared
+  constant-input capability rejects the draw.
+- [ ] Implement independent vertex-buffer bindings; enabled active arrays still
+  require one shared buffer and effective stride in the bounded renderer.
 - [ ] Decide the boundary for OpenGL ES 3.x features.
 - [ ] Add VAOs, instancing, additional texture formats, MRT, and other GLES 3.x features only after the underlying RinGPU contracts are ready.
 

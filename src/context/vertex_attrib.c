@@ -22,6 +22,27 @@ static uint32_t ringl_vertex_component_bytes(uint32_t type)
     return 0u;
 }
 
+static void ringl_vertex_attrib_set_current(RinGLContext* context,
+                                            uint32_t index, float x, float y,
+                                            float z, float w)
+{
+    RinGLVertexAttribState* attrib;
+
+    if (context == NULL)
+        return;
+    attrib = ringl_vertex_attrib(context, index);
+    if (attrib == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    attrib->current_value[0] = x;
+    attrib->current_value[1] = y;
+    attrib->current_value[2] = z;
+    attrib->current_value[3] = w;
+    ringl_context_mark_dirty(context,
+                             RINGL_DIRTY_PIPELINE | RINGL_DIRTY_BINDINGS);
+}
+
 void ringl_enable_vertex_attrib_array(uint32_t index)
 {
     RinGLContext* context = ringl_get_current_context();
@@ -104,6 +125,31 @@ void ringl_vertex_attrib_pointer(uint32_t index,
     attrib->offset = offset;
     ringl_context_mark_dirty(context,
                              RINGL_DIRTY_PIPELINE | RINGL_DIRTY_BINDINGS);
+}
+
+void ringl_vertex_attrib1f(uint32_t index, float x)
+{
+    ringl_vertex_attrib_set_current(ringl_get_current_context(), index, x,
+                                    0.0f, 0.0f, 1.0f);
+}
+
+void ringl_vertex_attrib2f(uint32_t index, float x, float y)
+{
+    ringl_vertex_attrib_set_current(ringl_get_current_context(), index, x, y,
+                                    0.0f, 1.0f);
+}
+
+void ringl_vertex_attrib3f(uint32_t index, float x, float y, float z)
+{
+    ringl_vertex_attrib_set_current(ringl_get_current_context(), index, x, y,
+                                    z, 1.0f);
+}
+
+void ringl_vertex_attrib4f(uint32_t index, float x, float y, float z,
+                           float w)
+{
+    ringl_vertex_attrib_set_current(ringl_get_current_context(), index, x, y,
+                                    z, w);
 }
 
 int ringl_get_vertex_attrib(uint32_t index, RinGLVertexAttribInfoV1* info)

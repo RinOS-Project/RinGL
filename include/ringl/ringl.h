@@ -242,6 +242,12 @@ extern "C" {
 #define RINGL_RIN_GPU_COLOR_WRITE_BLUE        0x4u
 #define RINGL_RIN_GPU_COLOR_WRITE_ALPHA       0x8u
 #define RINGL_RIN_GPU_COLOR_WRITE_ALL         0x0fu
+/* A constant vertex input is encoded as IEEE-754 binary32 bits in the
+ * attribute offset field. It is deliberately opt-in at binding time so a
+ * backend compiled before this contract cannot mistake the bits for an
+ * address into a vertex buffer. */
+#define RINGL_RIN_GPU_VERTEX_ATTRIBUTE_CONSTANT_FLOAT32 0x00000001u
+#define RINGL_RIN_GPU_VERTEX_INPUT_CONSTANT_FLOAT32     0x00000001u
 
 typedef struct RinGLContext RinGLContext;
 
@@ -250,6 +256,7 @@ typedef struct RinGLRinGpuVertexAttributeV1 {
     uint32_t format;
     uint32_t offset;
     uint32_t reserved0;
+    uint32_t flags;
 } RinGLRinGpuVertexAttributeV1;
 
 typedef struct RinGLRinGpuGraphicsPipelineV1 {
@@ -561,6 +568,8 @@ typedef struct RinGLRinGpuBindingV1 {
     const RinGLRinGpuOpsV1* ops;
     uint64_t graphics_queue;
     uint32_t queue_capabilities;
+    /* RINGL_RIN_GPU_VERTEX_INPUT_* capabilities implemented by this binding. */
+    uint32_t vertex_input_capabilities;
     uint32_t reserved0;
 } RinGLRinGpuBindingV1;
 
@@ -749,6 +758,14 @@ void ringl_vertex_attrib_pointer(uint32_t index,
                                  uint32_t normalized,
                                  int32_t stride,
                                  uint64_t offset);
+/* Set the current generic attribute value used when the corresponding array
+ * is disabled. Like WebGL/OpenGL ES, 1f/2f/3f fill omitted components with
+ * 0, 0, and 1 respectively. */
+void ringl_vertex_attrib1f(uint32_t index, float x);
+void ringl_vertex_attrib2f(uint32_t index, float x, float y);
+void ringl_vertex_attrib3f(uint32_t index, float x, float y, float z);
+void ringl_vertex_attrib4f(uint32_t index, float x, float y, float z,
+                           float w);
 int ringl_get_vertex_attrib(uint32_t index, RinGLVertexAttribInfoV1* info);
 
 uint32_t ringl_create_shader(uint32_t shader_type);

@@ -266,6 +266,8 @@ void ringl_delete_textures(int32_t count, const uint32_t* textures)
             ringl_object_lookup(context, name, RINGL_OBJECT_TEXTURE) == NULL)
             continue;
 
+        ringl_framebuffer_detach_texture(context, name);
+
         for (unit = 0u; unit < RINGL_MAX_TEXTURE_UNITS; ++unit) {
             if (context->bound_texture_2d[unit] == name)
                 context->bound_texture_2d[unit] = 0u;

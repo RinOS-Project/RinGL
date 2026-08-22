@@ -154,7 +154,13 @@ tests/               unit and integration tests
 ## Status
 
 The bounded first-triangle and textured-triangle translation paths are
-implemented and covered by strict C11 mock-RinGPU tests. They are not a GLES
-conformance claim: framebuffer objects, depth/stencil attachments, broader
-shader expressions, device-loss handling, and browser-facing context-loss
-policy remain unfinished. No API or ABI stability guarantee is made yet.
+implemented and covered by strict C11 mock-RinGPU tests. Framebuffer and
+renderbuffer objects now have a bounded state-model slice: lifecycle/binding,
+level-zero color attachment tracking, RGBA4 renderbuffer storage metadata, and
+automatic attachment detachment when an attached texture or renderbuffer is
+deleted. They are not yet GPU render targets: framebuffer completeness,
+depth/stencil attachments, and custom-FBO rendering remain unfinished.
+
+RinGL is not a GLES conformance claim. Broader shader expressions, device-loss
+handling, and browser-facing context-loss policy also remain unfinished. No API
+or ABI stability guarantee is made yet.

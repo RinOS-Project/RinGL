@@ -90,6 +90,7 @@ extern "C" {
 #define RINGL_TEXTURE_2D 0x0de1u
 #define RINGL_TEXTURE0   0x84c0u
 #define RINGL_RGBA       0x1908u
+#define RINGL_RGBA4      0x8056u
 #define RINGL_TEXTURE_MAG_FILTER 0x2800u
 #define RINGL_TEXTURE_MIN_FILTER 0x2801u
 #define RINGL_TEXTURE_WRAP_S     0x2802u
@@ -105,6 +106,16 @@ extern "C" {
 #define RINGL_MIRRORED_REPEAT 0x8370u
 #define RINGL_MAX_TEXTURE_UNITS 8u
 #define RINGL_MAX_TEXTURE_SIZE  4096u
+
+#define RINGL_FRAMEBUFFER          0x8d40u
+#define RINGL_RENDERBUFFER          0x8d41u
+#define RINGL_FRAMEBUFFER_BINDING   0x8ca6u
+#define RINGL_RENDERBUFFER_BINDING  0x8ca7u
+#define RINGL_COLOR_ATTACHMENT0     0x8ce0u
+
+#define RINGL_FRAMEBUFFER_ATTACHMENT_NONE          0u
+#define RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D    1u
+#define RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER  2u
 
 #define RINGL_VERTEX_SHADER   0x8b31u
 #define RINGL_FRAGMENT_SHADER 0x8b30u
@@ -439,6 +450,19 @@ typedef struct RinGLDefaultFramebufferV1 {
     uint32_t reserved0;
 } RinGLDefaultFramebufferV1;
 
+/* This is a read-only description of RinGL's currently bound custom
+ * framebuffer. It is intentionally separate from GLES query entry points so
+ * an embedding can inspect the bounded object-model slice without claiming
+ * framebuffer-completeness or rendering support. */
+typedef struct RinGLFramebufferAttachmentInfoV1 {
+    uint32_t struct_size;
+    uint32_t api_version;
+    uint32_t kind;
+    uint32_t object;
+    int32_t level;
+    uint32_t reserved0;
+} RinGLFramebufferAttachmentInfoV1;
+
 int ringl_context_create(const RinGLContextDescV1* desc,
                          RinGLContext** context_out);
 void ringl_context_destroy(RinGLContext* context);
@@ -505,6 +529,29 @@ void ringl_tex_sub_image_2d(uint32_t target, int32_t level,
                             int32_t width, int32_t height,
                             uint32_t format, uint32_t type,
                             const void* pixels);
+
+void ringl_gen_framebuffers(int32_t count, uint32_t* framebuffers);
+void ringl_delete_framebuffers(int32_t count, const uint32_t* framebuffers);
+void ringl_bind_framebuffer(uint32_t target, uint32_t framebuffer);
+int ringl_is_framebuffer(uint32_t framebuffer);
+uint32_t ringl_get_bound_framebuffer(uint32_t target);
+void ringl_framebuffer_texture_2d(uint32_t target, uint32_t attachment,
+                                  uint32_t textarget, uint32_t texture,
+                                  int32_t level);
+int ringl_get_framebuffer_color_attachment(
+    RinGLFramebufferAttachmentInfoV1* attachment);
+
+void ringl_gen_renderbuffers(int32_t count, uint32_t* renderbuffers);
+void ringl_delete_renderbuffers(int32_t count,
+                                const uint32_t* renderbuffers);
+void ringl_bind_renderbuffer(uint32_t target, uint32_t renderbuffer);
+int ringl_is_renderbuffer(uint32_t renderbuffer);
+uint32_t ringl_get_bound_renderbuffer(uint32_t target);
+void ringl_renderbuffer_storage(uint32_t target, uint32_t internal_format,
+                                int32_t width, int32_t height);
+void ringl_framebuffer_renderbuffer(uint32_t target, uint32_t attachment,
+                                    uint32_t renderbuffer_target,
+                                    uint32_t renderbuffer);
 
 void ringl_enable_vertex_attrib_array(uint32_t index);
 void ringl_disable_vertex_attrib_array(uint32_t index);

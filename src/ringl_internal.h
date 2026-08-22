@@ -39,6 +39,20 @@ typedef struct RinGLTextureObject {
     uint32_t ringpu_image_state;
 } RinGLTextureObject;
 
+typedef struct RinGLFramebufferObject {
+    uint32_t color_attachment_kind;
+    uint32_t color_attachment_object;
+    int32_t color_attachment_level;
+    uint32_t reserved0;
+} RinGLFramebufferObject;
+
+typedef struct RinGLRenderbufferObject {
+    uint32_t internal_format;
+    uint32_t width;
+    uint32_t height;
+    uint32_t defined;
+} RinGLRenderbufferObject;
+
 typedef struct RinGLShaderObject {
     char* source;
     uint8_t* rsh1;
@@ -157,12 +171,16 @@ struct RinGLContext {
     RinGLObjectSlot objects[RINGL_OBJECT_SLOT_COUNT];
     RinGLBufferObject buffers[RINGL_OBJECT_SLOT_COUNT];
     RinGLTextureObject textures[RINGL_OBJECT_SLOT_COUNT];
+    RinGLFramebufferObject framebuffers[RINGL_OBJECT_SLOT_COUNT];
+    RinGLRenderbufferObject renderbuffers[RINGL_OBJECT_SLOT_COUNT];
     RinGLShaderObject shaders[RINGL_OBJECT_SLOT_COUNT];
     RinGLProgramObject programs[RINGL_OBJECT_SLOT_COUNT];
     uint32_t array_buffer;
     uint32_t element_array_buffer;
     uint32_t active_texture_unit;
     uint32_t bound_texture_2d[RINGL_MAX_TEXTURE_UNITS];
+    uint32_t framebuffer_binding;
+    uint32_t renderbuffer_binding;
     uint32_t current_program;
     RinGLVertexAttribState vertex_attribs[RINGL_MAX_VERTEX_ATTRIBS];
 };
@@ -252,6 +270,9 @@ int ringl_backend_queue_submit(RinGLContext* context,
 void ringl_backend_destroy_object(RinGLContext* context, uint64_t object);
 void ringl_buffer_objects_destroy_all(RinGLContext* context);
 void ringl_texture_objects_destroy_all(RinGLContext* context);
+void ringl_framebuffer_detach_texture(RinGLContext* context, uint32_t texture);
+void ringl_framebuffer_detach_renderbuffer(RinGLContext* context,
+                                           uint32_t renderbuffer);
 int ringl_texture_realize_unit(RinGLContext* context, uint32_t unit,
                                uint64_t* image_out, uint64_t* sampler_out);
 void ringl_shader_objects_destroy_all(RinGLContext* context);

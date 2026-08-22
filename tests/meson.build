@@ -22,6 +22,14 @@ framebuffer_test = executable(
 
 test('framebuffer', framebuffer_test)
 
+framebuffer_objects_test = executable(
+  'ringl-framebuffer-objects-test',
+  'framebuffer_objects_test.c',
+  dependencies: ringl_dep,
+)
+
+test('framebuffer-objects', framebuffer_objects_test)
+
 buffer_test = executable(
   'ringl-buffer-test',
   'buffer_test.c',

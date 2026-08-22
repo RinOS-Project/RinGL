@@ -12,6 +12,8 @@ typedef enum RinGLObjectType {
     RINGL_OBJECT_SHADER = 2,
     RINGL_OBJECT_PROGRAM = 3,
     RINGL_OBJECT_TEXTURE = 4,
+    RINGL_OBJECT_FRAMEBUFFER = 5,
+    RINGL_OBJECT_RENDERBUFFER = 6,
 } RinGLObjectType;
 
 typedef enum RinGLObjectState {

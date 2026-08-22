@@ -280,6 +280,12 @@ void ringl_get_integerv(uint32_t pname, int32_t* values)
     case RINGL_TEXTURE_BINDING_2D:
         values[0] = (int32_t)context->bound_texture_2d[context->active_texture_unit];
         return;
+    case RINGL_FRAMEBUFFER_BINDING:
+        values[0] = (int32_t)context->framebuffer_binding;
+        return;
+    case RINGL_RENDERBUFFER_BINDING:
+        values[0] = (int32_t)context->renderbuffer_binding;
+        return;
     case RINGL_CURRENT_PROGRAM:
         values[0] = (int32_t)context->current_program;
         return;

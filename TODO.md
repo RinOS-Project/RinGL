@@ -90,7 +90,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 
 ## Phase 6 — Framebuffers and fixed-function state
 
-- [ ] Implement framebuffer/renderbuffer object models.
+- [x] Implement framebuffer/renderbuffer object models (bounded lifecycle, binding, level-zero color attachment tracking, RGBA4 renderbuffer storage metadata, and automatic detach on texture/renderbuffer deletion; completeness validation and RinGPU rendering remain separate tasks).
 - [ ] Map FBO attachments to RinGPU render-pass attachments.
 - [ ] Implement framebuffer completeness validation for supported combinations.
 - [x] Implement viewport and scissor GL state, validation, defaults, and queries.

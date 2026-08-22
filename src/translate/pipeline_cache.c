@@ -154,6 +154,24 @@ int ringl_build_pipeline_key(RinGLContext* context,
     result.front_face = context->front_face;
     for (index = 0u; index < layout.attribute_count; ++index)
         result.attributes[index] = layout.attributes[index];
+    for (index = 0u; index < program->varying_count; ++index) {
+        uint32_t component;
+        const RinGLProgramVarying* varying = &program->varyings[index];
+        if (varying->width != 2u ||
+            result.varying_count + varying->width >
+                RINGL_PIPELINE_MAX_SCALAR_VARYINGS)
+            return -1;
+        for (component = 0u; component < varying->width; ++component) {
+            RinGLRinGpuVaryingV1* native =
+                &result.varyings[result.varying_count++];
+            native->vertex_output_location =
+                varying->vertex_output_location + component;
+            native->fragment_input_location =
+                varying->fragment_input_location + component;
+            native->type = 1u;
+            native->interpolation = 1u;
+        }
+    }
 
     *key = result;
     return 0;
@@ -187,14 +205,11 @@ static int create_pipeline(RinGLContext* context,
                            uint64_t* pipeline_out)
 {
     RinGLRinGpuVertexAttributeV1 attributes[RINGL_MAX_VERTEX_ATTRIBS];
-    RinGLProgramObject* program;
     uint32_t index;
 
     if (context == NULL || key == NULL || pipeline_out == NULL ||
-        key->attribute_count > RINGL_MAX_VERTEX_ATTRIBS)
-        return -1;
-    program = current_program(context);
-    if (program == NULL || !program->link_status)
+        key->attribute_count > RINGL_MAX_VERTEX_ATTRIBS ||
+        key->varying_count > RINGL_PIPELINE_MAX_SCALAR_VARYINGS)
         return -1;
 
     memset(attributes, 0, sizeof(attributes));
@@ -206,15 +221,12 @@ static int create_pipeline(RinGLContext* context,
 
     if (context->ringpu_ops.create_graphics_pipeline_native != NULL) {
         RinGLRinGpuGraphicsPipelineNativeV1 desc;
-        RinGLRinGpuVaryingV1 varyings[RINGL_MAX_VARYINGS * 2u];
-        uint32_t varying_count = 0u;
         uint32_t cull = native_cull_mode(key);
         uint32_t front = native_front_face(key->front_face);
 
         if (cull == 0u || front == 0u || key->color_write_mask == 0u)
             return -1;
         memset(&desc, 0, sizeof(desc));
-        memset(varyings, 0, sizeof(varyings));
         desc.vertex_shader = key->vertex_shader_module;
         desc.fragment_shader = key->fragment_shader_module;
         desc.color_format = key->color_format;
@@ -243,29 +255,13 @@ static int create_pipeline(RinGLContext* context,
                 desc.alpha_operation == 0u)
                 return -1;
         }
-        for (index = 0u; index < program->varying_count; ++index) {
-            uint32_t component;
-            const RinGLProgramVarying* varying = &program->varyings[index];
-            if (varying->width != 2u || varying_count + varying->width >
-                RINGL_MAX_VARYINGS * 2u)
-                return -1;
-            for (component = 0u; component < varying->width; ++component) {
-                RinGLRinGpuVaryingV1* native = &varyings[varying_count++];
-                native->vertex_output_location =
-                    varying->vertex_output_location + component;
-                native->fragment_input_location =
-                    varying->fragment_input_location + component;
-                native->type = 1u; /* RIN_GPU_VARYING_FLOAT32 */
-                native->interpolation = 1u; /* perspective */
-            }
-        }
         return ringl_backend_create_graphics_pipeline_native(
             context, &desc, attributes, key->attribute_count,
-            varying_count == 0u ? NULL : varyings, varying_count,
-            pipeline_out);
+            key->varying_count == 0u ? NULL : key->varyings,
+            key->varying_count, pipeline_out);
     }
 
-    if (program->varying_count != 0u || key->blend_enabled ||
+    if (key->varying_count != 0u || key->blend_enabled ||
         key->cull_mode != 0u || key->front_face != RINGL_CCW ||
         key->color_write_mask != RINGL_RIN_GPU_COLOR_WRITE_ALL)
         return -1;

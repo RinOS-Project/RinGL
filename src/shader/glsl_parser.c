@@ -15,7 +15,9 @@ typedef enum TokenKind {
     TOK_FLOAT,
     TOK_VEC2,
     TOK_VEC4,
+    TOK_SAMPLER2D,
     TOK_ATTRIBUTE,
+    TOK_UNIFORM,
     TOK_LPAREN,
     TOK_RPAREN,
     TOK_LBRACE,
@@ -106,8 +108,12 @@ static TokenKind keyword_kind(const char* begin, size_t length)
         return TOK_VEC2;
     if (length == 4u && memcmp(begin, "vec4", 4u) == 0)
         return TOK_VEC4;
+    if (length == 9u && memcmp(begin, "sampler2D", 9u) == 0)
+        return TOK_SAMPLER2D;
     if (length == 9u && memcmp(begin, "attribute", 9u) == 0)
         return TOK_ATTRIBUTE;
+    if (length == 7u && memcmp(begin, "uniform", 7u) == 0)
+        return TOK_UNIFORM;
     return TOK_IDENT;
 }
 
@@ -355,7 +361,7 @@ static int assignment(Parser* parser)
 static int local_declaration(Parser* parser)
 {
     Token name;
-    next_token(parser); /* consume float */
+    next_token(parser);
     if (parser->token.kind != TOK_IDENT) {
         fail(parser, "expected identifier after float");
         return 0;
@@ -374,7 +380,7 @@ static int local_declaration(Parser* parser)
 
 static int main_function(Parser* parser)
 {
-    next_token(parser); /* consume void */
+    next_token(parser);
     if (!token_is_ident(&parser->token, "main")) {
         fail(parser, "only void main() is supported");
         return 0;
@@ -408,7 +414,7 @@ static int attribute_declaration(Parser* parser)
         fail(parser, "attribute declarations require a vertex shader");
         return 0;
     }
-    next_token(parser); /* consume attribute */
+    next_token(parser);
     if (parser->token.kind != TOK_FLOAT && parser->token.kind != TOK_VEC2) {
         fail(parser, "only 'attribute float' and 'attribute vec2' are supported");
         return 0;
@@ -425,6 +431,38 @@ static int attribute_declaration(Parser* parser)
     if (!expect(parser, TOK_SEMI, "expected ';' after attribute"))
         return 0;
     parser->result->attribute_count++;
+    parser->result->declaration_count++;
+    return 1;
+}
+
+static int uniform_declaration(Parser* parser)
+{
+    Token name;
+    uint32_t index;
+
+    next_token(parser);
+    if (parser->token.kind != TOK_SAMPLER2D) {
+        fail(parser, "only 'uniform sampler2D' is supported");
+        return 0;
+    }
+    next_token(parser);
+    if (parser->token.kind != TOK_IDENT) {
+        fail(parser, "expected uniform identifier");
+        return 0;
+    }
+    name = parser->token;
+    if (!add_symbol(parser, &name, 0u))
+        return 0;
+    if (parser->result->sampler_uniform_count >= RINGL_GLSL_MAX_SAMPLER_UNIFORMS) {
+        fail(parser, "too many sampler uniforms");
+        return 0;
+    }
+    index = parser->result->sampler_uniform_count++;
+    memcpy(parser->result->sampler_uniform_names[index], name.begin, name.length);
+    parser->result->sampler_uniform_names[index][name.length] = '\0';
+    next_token(parser);
+    if (!expect(parser, TOK_SEMI, "expected ';' after uniform"))
+        return 0;
     parser->result->declaration_count++;
     return 1;
 }
@@ -450,6 +488,9 @@ int ringl_glsl_parse(uint32_t shader_type,
     while (parser.token.kind != TOK_EOF && result->diagnostic[0] == '\0') {
         if (parser.token.kind == TOK_ATTRIBUTE) {
             if (!attribute_declaration(&parser))
+                break;
+        } else if (parser.token.kind == TOK_UNIFORM) {
+            if (!uniform_declaration(&parser))
                 break;
         } else if (parser.token.kind == TOK_VOID) {
             if (!main_function(&parser))

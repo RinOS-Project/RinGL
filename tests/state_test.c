@@ -33,6 +33,7 @@ int main(void)
     assert(!ringl_is_enabled(RINGL_SCISSOR_TEST));
     assert(!ringl_is_enabled(RINGL_CULL_FACE));
     assert(!ringl_is_enabled(RINGL_DEPTH_TEST));
+    assert(!ringl_is_enabled(RINGL_STENCIL_TEST));
     assert(!ringl_is_enabled(RINGL_BLEND));
 
     ringl_get_integerv(RINGL_CULL_FACE_MODE, values);
@@ -43,6 +44,14 @@ int main(void)
     assert(values[0] == (int32_t)RINGL_LESS);
     ringl_get_integerv(RINGL_DEPTH_WRITEMASK, values);
     assert(values[0] == (int32_t)RINGL_TRUE);
+    ringl_get_integerv(RINGL_STENCIL_FUNC, values);
+    assert(values[0] == (int32_t)RINGL_ALWAYS);
+    ringl_get_integerv(RINGL_STENCIL_REF, values);
+    assert(values[0] == 0);
+    ringl_get_integerv(RINGL_STENCIL_VALUE_MASK, values);
+    assert(values[0] == 0xff);
+    ringl_get_integerv(RINGL_STENCIL_WRITEMASK, values);
+    assert(values[0] == 0xff);
     ringl_get_integerv(RINGL_BLEND_SRC_RGB, values);
     assert(values[0] == (int32_t)RINGL_ONE);
     ringl_get_integerv(RINGL_BLEND_DST_RGB, values);
@@ -75,10 +84,12 @@ int main(void)
     ringl_enable(RINGL_SCISSOR_TEST);
     ringl_enable(RINGL_CULL_FACE);
     ringl_enable(RINGL_DEPTH_TEST);
+    ringl_enable(RINGL_STENCIL_TEST);
     ringl_enable(RINGL_BLEND);
     assert(ringl_is_enabled(RINGL_SCISSOR_TEST));
     assert(ringl_is_enabled(RINGL_CULL_FACE));
     assert(ringl_is_enabled(RINGL_DEPTH_TEST));
+    assert(ringl_is_enabled(RINGL_STENCIL_TEST));
     assert(ringl_is_enabled(RINGL_BLEND));
     ringl_disable(RINGL_BLEND);
     assert(!ringl_is_enabled(RINGL_BLEND));
@@ -120,6 +131,22 @@ int main(void)
     assert(values[0] == (int32_t)RINGL_GEQUAL);
     ringl_get_integerv(RINGL_DEPTH_WRITEMASK, values);
     assert(values[0] == (int32_t)RINGL_FALSE);
+
+    ringl_stencil_func(0xdeadbeefu, 0, 0xffu);
+    assert(ringl_get_error() == RINGL_INVALID_ENUM);
+    ringl_stencil_func(RINGL_GEQUAL, -1, 0x123u);
+    ringl_stencil_mask(0x1a5u);
+    ringl_stencil_op(RINGL_REPLACE, RINGL_INCR_WRAP, RINGL_DECR);
+    ringl_get_integerv(RINGL_STENCIL_FUNC, values);
+    assert(values[0] == (int32_t)RINGL_GEQUAL);
+    ringl_get_integerv(RINGL_STENCIL_REF, values);
+    assert(values[0] == 0xff);
+    ringl_get_integerv(RINGL_STENCIL_VALUE_MASK, values);
+    assert(values[0] == 0x23);
+    ringl_get_integerv(RINGL_STENCIL_WRITEMASK, values);
+    assert(values[0] == 0xa5);
+    ringl_stencil_op(0xdeadbeefu, RINGL_KEEP, RINGL_KEEP);
+    assert(ringl_get_error() == RINGL_INVALID_ENUM);
 
     ringl_blend_func(0xdeadbeefu, RINGL_ZERO);
     assert(ringl_get_error() == RINGL_INVALID_ENUM);

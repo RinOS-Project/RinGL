@@ -14,6 +14,8 @@ static uint32_t* capability_field(RinGLContext* context, uint32_t capability)
         return &context->cull_face_enabled;
     case RINGL_DEPTH_TEST:
         return &context->depth_test_enabled;
+    case RINGL_STENCIL_TEST:
+        return &context->stencil_test_enabled;
     case RINGL_BLEND:
         return &context->blend_enabled;
     default:
@@ -24,6 +26,14 @@ static uint32_t* capability_field(RinGLContext* context, uint32_t capability)
 static int depth_func_valid(uint32_t func)
 {
     return func >= RINGL_NEVER && func <= RINGL_ALWAYS;
+}
+
+static int stencil_operation_valid(uint32_t operation)
+{
+    return operation == RINGL_KEEP || operation == RINGL_ZERO ||
+           operation == RINGL_REPLACE || operation == RINGL_INCR ||
+           operation == RINGL_DECR || operation == RINGL_INVERT ||
+           operation == RINGL_INCR_WRAP || operation == RINGL_DECR_WRAP;
 }
 
 static int blend_factor_valid(uint32_t factor)
@@ -184,6 +194,67 @@ void ringl_depth_mask(uint32_t enabled)
     ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
 }
 
+void ringl_stencil_func(uint32_t func, int32_t reference, uint32_t mask)
+{
+    RinGLContext* context = ringl_get_current_context();
+    uint32_t clamped_reference;
+
+    if (context == NULL)
+        return;
+    if (!depth_func_valid(func)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return;
+    }
+    clamped_reference = (uint32_t)reference & 0xffu;
+    mask &= 0xffu;
+    if (context->stencil_func == func &&
+        context->stencil_reference == clamped_reference &&
+        context->stencil_value_mask == mask) {
+        return;
+    }
+    context->stencil_func = func;
+    context->stencil_reference = clamped_reference;
+    context->stencil_value_mask = mask;
+    ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
+}
+
+void ringl_stencil_mask(uint32_t mask)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL)
+        return;
+    mask &= 0xffu;
+    if (context->stencil_write_mask == mask)
+        return;
+    context->stencil_write_mask = mask;
+    ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
+}
+
+void ringl_stencil_op(uint32_t stencil_fail, uint32_t depth_fail,
+                      uint32_t depth_pass)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL)
+        return;
+    if (!stencil_operation_valid(stencil_fail) ||
+        !stencil_operation_valid(depth_fail) ||
+        !stencil_operation_valid(depth_pass)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return;
+    }
+    if (context->stencil_fail_operation == stencil_fail &&
+        context->stencil_depth_fail_operation == depth_fail &&
+        context->stencil_pass_operation == depth_pass) {
+        return;
+    }
+    context->stencil_fail_operation = stencil_fail;
+    context->stencil_depth_fail_operation = depth_fail;
+    context->stencil_pass_operation = depth_pass;
+    ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
+}
+
 void ringl_blend_func_separate(uint32_t source_rgb, uint32_t destination_rgb,
                                uint32_t source_alpha,
                                uint32_t destination_alpha)
@@ -310,6 +381,18 @@ void ringl_get_integerv(uint32_t pname, int32_t* values)
         return;
     case RINGL_DEPTH_WRITEMASK:
         values[0] = (int32_t)context->depth_write_mask;
+        return;
+    case RINGL_STENCIL_FUNC:
+        values[0] = (int32_t)context->stencil_func;
+        return;
+    case RINGL_STENCIL_REF:
+        values[0] = (int32_t)context->stencil_reference;
+        return;
+    case RINGL_STENCIL_VALUE_MASK:
+        values[0] = (int32_t)context->stencil_value_mask;
+        return;
+    case RINGL_STENCIL_WRITEMASK:
+        values[0] = (int32_t)context->stencil_write_mask;
         return;
     case RINGL_BLEND_SRC_RGB:
         values[0] = (int32_t)context->blend_source_rgb;

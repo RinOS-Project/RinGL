@@ -17,6 +17,14 @@ typedef struct RinGLPipelineKey {
     uint32_t depth_format;
     uint32_t depth_compare;
     uint32_t depth_write_enabled;
+    uint32_t stencil_test_enabled;
+    uint32_t stencil_compare;
+    uint32_t stencil_reference;
+    uint32_t stencil_read_mask;
+    uint32_t stencil_write_mask;
+    uint32_t stencil_fail_operation;
+    uint32_t stencil_depth_fail_operation;
+    uint32_t stencil_pass_operation;
     uint32_t primitive_topology;
     uint32_t vertex_stride;
     uint32_t attribute_count;

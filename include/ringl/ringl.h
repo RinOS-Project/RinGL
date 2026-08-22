@@ -27,6 +27,7 @@ extern "C" {
 #define RINGL_FLOAT          0x1406u
 
 #define RINGL_TRIANGLES        0x0004u
+#define RINGL_STENCIL_BUFFER_BIT 0x00000400u
 #define RINGL_DEPTH_BUFFER_BIT 0x00000100u
 #define RINGL_COLOR_BUFFER_BIT 0x00004000u
 
@@ -38,6 +39,14 @@ extern "C" {
 #define RINGL_NOTEQUAL 0x0205u
 #define RINGL_GEQUAL   0x0206u
 #define RINGL_ALWAYS   0x0207u
+
+#define RINGL_KEEP      0x1e00u
+#define RINGL_REPLACE   0x1e01u
+#define RINGL_INCR      0x1e02u
+#define RINGL_DECR      0x1e03u
+#define RINGL_INVERT    0x150au
+#define RINGL_INCR_WRAP 0x8507u
+#define RINGL_DECR_WRAP 0x8508u
 
 #define RINGL_SRC_ALPHA               0x0302u
 #define RINGL_ONE_MINUS_SRC_ALPHA     0x0303u
@@ -62,6 +71,11 @@ extern "C" {
 #define RINGL_CCW            0x0901u
 #define RINGL_CULL_FACE      0x0b44u
 #define RINGL_DEPTH_TEST     0x0b71u
+#define RINGL_STENCIL_TEST   0x0b90u
+#define RINGL_STENCIL_FUNC       0x0b92u
+#define RINGL_STENCIL_VALUE_MASK 0x0b93u
+#define RINGL_STENCIL_REF        0x0b97u
+#define RINGL_STENCIL_WRITEMASK  0x0b98u
 #define RINGL_DEPTH_WRITEMASK 0x0b72u
 #define RINGL_DEPTH_FUNC     0x0b74u
 #define RINGL_BLEND          0x0be2u
@@ -114,7 +128,9 @@ extern "C" {
 #define RINGL_RENDERBUFFER_BINDING  0x8ca7u
 #define RINGL_COLOR_ATTACHMENT0     0x8ce0u
 #define RINGL_DEPTH_ATTACHMENT      0x8d00u
+#define RINGL_DEPTH_STENCIL_ATTACHMENT 0x821au
 #define RINGL_DEPTH_COMPONENT32F    0x8cacu
+#define RINGL_DEPTH24_STENCIL8       0x88f0u
 #define RINGL_FRAMEBUFFER_COMPLETE              0x8cd5u
 #define RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT 0x8cd6u
 #define RINGL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT 0x8cd7u
@@ -148,6 +164,7 @@ extern "C" {
 #define RINGL_RIN_GPU_INDEX_UINT8          3u
 #define RINGL_RIN_GPU_FORMAT_RGBA8_UNORM   2u
 #define RINGL_RIN_GPU_FORMAT_D32_FLOAT     4u
+#define RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT 5u
 #define RINGL_RIN_GPU_IMAGE_USAGE_COPY_DESTINATION 0x1u
 #define RINGL_RIN_GPU_IMAGE_USAGE_SAMPLED          0x2u
 #define RINGL_RIN_GPU_IMAGE_USAGE_COLOR_TARGET     0x4u
@@ -169,6 +186,14 @@ extern "C" {
 #define RINGL_RIN_GPU_COMPARE_GREATER       6u
 #define RINGL_RIN_GPU_COMPARE_NOTEQUAL      7u
 #define RINGL_RIN_GPU_COMPARE_GEQUAL        8u
+#define RINGL_RIN_GPU_STENCIL_KEEP           1u
+#define RINGL_RIN_GPU_STENCIL_ZERO           2u
+#define RINGL_RIN_GPU_STENCIL_REPLACE        3u
+#define RINGL_RIN_GPU_STENCIL_INCREMENT_CLAMP 4u
+#define RINGL_RIN_GPU_STENCIL_DECREMENT_CLAMP 5u
+#define RINGL_RIN_GPU_STENCIL_INVERT         6u
+#define RINGL_RIN_GPU_STENCIL_INCREMENT_WRAP 7u
+#define RINGL_RIN_GPU_STENCIL_DECREMENT_WRAP 8u
 #define RINGL_RIN_GPU_BLEND_ZERO             1u
 #define RINGL_RIN_GPU_BLEND_ONE              2u
 #define RINGL_RIN_GPU_BLEND_SRC_ALPHA        3u
@@ -230,6 +255,17 @@ typedef struct RinGLRinGpuGraphicsPipelineNativeV1 {
     uint32_t cull_mode;
     uint32_t front_face;
     uint32_t reserved0;
+    /* Additive common-face stencil state. A zero enable bit requires every
+     * remaining field to be zero; the D32_FLOAT_S8_UINT target is required
+     * when it is enabled. */
+    uint32_t stencil_test_enabled;
+    uint32_t stencil_compare;
+    uint32_t stencil_reference;
+    uint32_t stencil_read_mask;
+    uint32_t stencil_write_mask;
+    uint32_t stencil_fail_operation;
+    uint32_t stencil_depth_fail_operation;
+    uint32_t stencil_pass_operation;
 } RinGLRinGpuGraphicsPipelineNativeV1;
 
 typedef struct RinGLRinGpuVaryingV1 {
@@ -286,6 +322,11 @@ typedef struct RinGLRinGpuRenderPassDepthV1 {
     float clear_blue;
     float clear_alpha;
     float clear_depth;
+    /* D32_FLOAT targets require these to remain zero. D32_FLOAT_S8_UINT
+     * accepts LOAD/CLEAR and STORE for stencil. */
+    uint32_t stencil_load_op;
+    uint32_t stencil_store_op;
+    uint32_t clear_stencil;
 } RinGLRinGpuRenderPassDepthV1;
 
 typedef struct RinGLRinGpuDrawVerticesV1 {
@@ -530,6 +571,10 @@ void ringl_cull_face(uint32_t mode);
 void ringl_front_face(uint32_t mode);
 void ringl_depth_func(uint32_t func);
 void ringl_depth_mask(uint32_t enabled);
+void ringl_stencil_func(uint32_t func, int32_t reference, uint32_t mask);
+void ringl_stencil_mask(uint32_t mask);
+void ringl_stencil_op(uint32_t stencil_fail, uint32_t depth_fail,
+                      uint32_t depth_pass);
 void ringl_blend_func(uint32_t source_factor, uint32_t destination_factor);
 void ringl_blend_func_separate(uint32_t source_rgb, uint32_t destination_rgb,
                                uint32_t source_alpha,
@@ -550,6 +595,7 @@ int ringl_get_default_framebuffer_state(uint32_t* state);
 int ringl_get_default_depth_framebuffer_state(uint32_t* state);
 void ringl_clear_color(float red, float green, float blue, float alpha);
 void ringl_clear_depth(float depth);
+void ringl_clear_stencil(int32_t stencil);
 void ringl_clear(uint32_t mask);
 void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count);
 void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,

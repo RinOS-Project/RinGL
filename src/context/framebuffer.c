@@ -22,7 +22,9 @@ static int framebuffer_valid(const RinGLDefaultFramebufferV1* framebuffer)
         return 0;
     }
     if (framebuffer->depth_target != 0u &&
-        framebuffer->depth_format != RINGL_RIN_GPU_FORMAT_D32_FLOAT) {
+        framebuffer->depth_format != RINGL_RIN_GPU_FORMAT_D32_FLOAT &&
+        framebuffer->depth_format !=
+            RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) {
         return 0;
     }
     return 1;

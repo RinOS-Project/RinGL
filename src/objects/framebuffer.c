@@ -20,7 +20,8 @@ static int color_attachment_valid(uint32_t attachment)
 
 static int depth_attachment_valid(uint32_t attachment)
 {
-    return attachment == RINGL_DEPTH_ATTACHMENT;
+    return attachment == RINGL_DEPTH_ATTACHMENT ||
+           attachment == RINGL_DEPTH_STENCIL_ATTACHMENT;
 }
 
 static RinGLFramebufferObject* bound_framebuffer(RinGLContext* context)
@@ -68,6 +69,7 @@ static void reset_depth_attachment(RinGLFramebufferObject* framebuffer)
         return;
     framebuffer->depth_attachment_kind = RINGL_FRAMEBUFFER_ATTACHMENT_NONE;
     framebuffer->depth_attachment_object = 0u;
+    framebuffer->depth_attachment_has_stencil = RINGL_FALSE;
 }
 
 static int color_attachment_dimensions(RinGLContext* context,
@@ -138,7 +140,10 @@ static int depth_attachment_dimensions(RinGLContext* context,
         return -1;
     renderbuffer = &context->renderbuffers[index];
     if (!renderbuffer->defined ||
-        renderbuffer->internal_format != RINGL_DEPTH_COMPONENT32F ||
+        renderbuffer->internal_format !=
+            (framebuffer->depth_attachment_has_stencil != 0u
+                 ? RINGL_DEPTH24_STENCIL8
+                 : RINGL_DEPTH_COMPONENT32F) ||
         renderbuffer->width == 0u || renderbuffer->height == 0u)
         return -1;
     *width_out = renderbuffer->width;
@@ -494,7 +499,8 @@ void ringl_renderbuffer_storage(uint32_t target, uint32_t internal_format,
         return;
     }
     if (internal_format != RINGL_RGBA8 &&
-        internal_format != RINGL_DEPTH_COMPONENT32F) {
+        internal_format != RINGL_DEPTH_COMPONENT32F &&
+        internal_format != RINGL_DEPTH24_STENCIL8) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
@@ -587,7 +593,8 @@ int ringl_renderbuffer_realize_depth_target(RinGLContext* context,
         return -1;
     object = &context->renderbuffers[index];
     if (!object->defined ||
-        object->internal_format != RINGL_DEPTH_COMPONENT32F ||
+        (object->internal_format != RINGL_DEPTH_COMPONENT32F &&
+         object->internal_format != RINGL_DEPTH24_STENCIL8) ||
         object->width == 0u || object->height == 0u) {
         return -1;
     }
@@ -595,7 +602,9 @@ int ringl_renderbuffer_realize_depth_target(RinGLContext* context,
         memset(&desc, 0, sizeof(desc));
         desc.width = object->width;
         desc.height = object->height;
-        desc.format = RINGL_RIN_GPU_FORMAT_D32_FLOAT;
+        desc.format = object->internal_format == RINGL_DEPTH24_STENCIL8
+            ? RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT
+            : RINGL_RIN_GPU_FORMAT_D32_FLOAT;
         desc.usage = RINGL_RIN_GPU_IMAGE_USAGE_DEPTH_STENCIL;
         if (ringl_backend_create_image_2d(context, &desc, &image) != 0 ||
             image == 0u) {
@@ -666,6 +675,8 @@ void ringl_framebuffer_renderbuffer(uint32_t target, uint32_t attachment,
             framebuffer->depth_attachment_kind =
                 RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER;
             framebuffer->depth_attachment_object = renderbuffer;
+            framebuffer->depth_attachment_has_stencil =
+                attachment == RINGL_DEPTH_STENCIL_ATTACHMENT;
         }
     }
     ringl_context_mark_dirty(context, RINGL_DIRTY_FRAMEBUFFER);

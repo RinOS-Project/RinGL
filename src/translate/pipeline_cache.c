@@ -146,6 +146,21 @@ static uint32_t native_depth_compare(uint32_t compare)
     }
 }
 
+static uint32_t native_stencil_operation(uint32_t operation)
+{
+    switch (operation) {
+    case RINGL_KEEP: return RINGL_RIN_GPU_STENCIL_KEEP;
+    case RINGL_ZERO: return RINGL_RIN_GPU_STENCIL_ZERO;
+    case RINGL_REPLACE: return RINGL_RIN_GPU_STENCIL_REPLACE;
+    case RINGL_INCR: return RINGL_RIN_GPU_STENCIL_INCREMENT_CLAMP;
+    case RINGL_DECR: return RINGL_RIN_GPU_STENCIL_DECREMENT_CLAMP;
+    case RINGL_INVERT: return RINGL_RIN_GPU_STENCIL_INVERT;
+    case RINGL_INCR_WRAP: return RINGL_RIN_GPU_STENCIL_INCREMENT_WRAP;
+    case RINGL_DECR_WRAP: return RINGL_RIN_GPU_STENCIL_DECREMENT_WRAP;
+    default: return 0u;
+    }
+}
+
 int ringl_build_pipeline_key(RinGLContext* context,
                              uint32_t color_format, uint32_t depth_format,
                              RinGLPipelineKey* key)
@@ -158,10 +173,14 @@ int ringl_build_pipeline_key(RinGLContext* context,
     uint32_t index;
 
     if (context == NULL || key == NULL || color_format == 0u ||
-        (depth_format != 0u && depth_format != RINGL_RIN_GPU_FORMAT_D32_FLOAT) ||
-        (context->depth_test_enabled &&
-         depth_format != RINGL_RIN_GPU_FORMAT_D32_FLOAT) ||
-        (!context->depth_test_enabled && depth_format != 0u))
+        (depth_format != 0u &&
+         depth_format != RINGL_RIN_GPU_FORMAT_D32_FLOAT &&
+         depth_format != RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) ||
+        (context->depth_test_enabled && depth_format == 0u) ||
+        (context->stencil_test_enabled &&
+         depth_format != RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) ||
+        (!context->depth_test_enabled && !context->stencil_test_enabled &&
+         depth_format != 0u))
         return -1;
     program = current_program(context);
     if (program == NULL || !program->link_status)
@@ -184,6 +203,30 @@ int ringl_build_pipeline_key(RinGLContext* context,
         if (result.depth_compare == 0u)
             return -1;
         result.depth_write_enabled = context->depth_write_mask;
+    } else if (context->stencil_test_enabled) {
+        /* Stencil-only GLES draws still use the combined attachment. The
+         * native depth stage is made observationally inert. */
+        result.depth_compare = RINGL_RIN_GPU_COMPARE_ALWAYS;
+        result.depth_write_enabled = RINGL_FALSE;
+    }
+    if (context->stencil_test_enabled) {
+        result.stencil_test_enabled = RINGL_TRUE;
+        result.stencil_compare = native_depth_compare(context->stencil_func);
+        result.stencil_reference = context->stencil_reference;
+        result.stencil_read_mask = context->stencil_value_mask;
+        result.stencil_write_mask = context->stencil_write_mask;
+        result.stencil_fail_operation =
+            native_stencil_operation(context->stencil_fail_operation);
+        result.stencil_depth_fail_operation =
+            native_stencil_operation(context->stencil_depth_fail_operation);
+        result.stencil_pass_operation =
+            native_stencil_operation(context->stencil_pass_operation);
+        if (result.stencil_compare == 0u ||
+            result.stencil_fail_operation == 0u ||
+            result.stencil_depth_fail_operation == 0u ||
+            result.stencil_pass_operation == 0u) {
+            return -1;
+        }
     }
     result.primitive_topology = RINGL_NATIVE_PRIMITIVE_TRIANGLE_LIST;
     result.vertex_stride = layout.stride;
@@ -297,6 +340,15 @@ static int create_pipeline(RinGLContext* context,
         desc.depth_format = key->depth_format;
         desc.depth_compare = key->depth_compare;
         desc.depth_write_enabled = key->depth_write_enabled;
+        desc.stencil_test_enabled = key->stencil_test_enabled;
+        desc.stencil_compare = key->stencil_compare;
+        desc.stencil_reference = key->stencil_reference;
+        desc.stencil_read_mask = key->stencil_read_mask;
+        desc.stencil_write_mask = key->stencil_write_mask;
+        desc.stencil_fail_operation = key->stencil_fail_operation;
+        desc.stencil_depth_fail_operation =
+            key->stencil_depth_fail_operation;
+        desc.stencil_pass_operation = key->stencil_pass_operation;
         desc.color_write_mask = key->color_write_mask;
         desc.cull_mode = cull;
         desc.front_face = front;
@@ -325,7 +377,8 @@ static int create_pipeline(RinGLContext* context,
             key->varying_count, pipeline_out);
     }
 
-    if (key->depth_format != 0u || key->varying_count != 0u || key->blend_enabled ||
+    if (key->depth_format != 0u || key->stencil_test_enabled ||
+        key->varying_count != 0u || key->blend_enabled ||
         key->cull_mode != 0u || key->front_face != RINGL_CCW ||
         key->color_write_mask != RINGL_RIN_GPU_COLOR_WRITE_ALL)
         return -1;

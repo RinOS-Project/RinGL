@@ -1,0 +1,431 @@
+/* SPDX-License-Identifier: MIT */
+#include "glsl_parser.h"
+
+#include <ctype.h>
+#include <stdio.h>
+#include <string.h>
+
+#include <ringl/ringl.h>
+
+typedef enum TokenKind {
+    TOK_EOF = 0,
+    TOK_IDENT,
+    TOK_NUMBER,
+    TOK_VOID,
+    TOK_FLOAT,
+    TOK_ATTRIBUTE,
+    TOK_LPAREN,
+    TOK_RPAREN,
+    TOK_LBRACE,
+    TOK_RBRACE,
+    TOK_SEMI,
+    TOK_ASSIGN,
+    TOK_PLUS,
+    TOK_MINUS,
+    TOK_STAR,
+    TOK_SLASH,
+    TOK_INVALID,
+} TokenKind;
+
+typedef struct Token {
+    TokenKind kind;
+    const char* begin;
+    size_t length;
+    uint32_t line;
+} Token;
+
+typedef struct Symbol {
+    char name[64];
+    uint32_t attribute;
+} Symbol;
+
+typedef struct Parser {
+    const char* source;
+    size_t length;
+    size_t offset;
+    uint32_t line;
+    Token token;
+    uint32_t shader_type;
+    uint32_t main_seen;
+    Symbol symbols[RINGL_GLSL_MAX_SYMBOLS];
+    uint32_t symbol_count;
+    RinGLGlslParseResult* result;
+} Parser;
+
+static void fail(Parser* parser, const char* message)
+{
+    if (parser->result->diagnostic[0] == '\0') {
+        (void)snprintf(parser->result->diagnostic,
+                       sizeof(parser->result->diagnostic),
+                       "line %u: %s", parser->token.line, message);
+    }
+}
+
+static int token_is_ident(const Token* token, const char* text)
+{
+    size_t length = strlen(text);
+    return token->kind == TOK_IDENT && token->length == length &&
+           memcmp(token->begin, text, length) == 0;
+}
+
+static void skip_space(Parser* parser)
+{
+    while (parser->offset < parser->length) {
+        char c = parser->source[parser->offset];
+        if (c == ' ' || c == '\t' || c == '\r') {
+            parser->offset++;
+            continue;
+        }
+        if (c == '\n') {
+            parser->offset++;
+            parser->line++;
+            continue;
+        }
+        if (c == '/' && parser->offset + 1u < parser->length &&
+            parser->source[parser->offset + 1u] == '/') {
+            parser->offset += 2u;
+            while (parser->offset < parser->length &&
+                   parser->source[parser->offset] != '\n')
+                parser->offset++;
+            continue;
+        }
+        break;
+    }
+}
+
+static TokenKind keyword_kind(const char* begin, size_t length)
+{
+    if (length == 4u && memcmp(begin, "void", 4u) == 0)
+        return TOK_VOID;
+    if (length == 5u && memcmp(begin, "float", 5u) == 0)
+        return TOK_FLOAT;
+    if (length == 9u && memcmp(begin, "attribute", 9u) == 0)
+        return TOK_ATTRIBUTE;
+    return TOK_IDENT;
+}
+
+static void next_token(Parser* parser)
+{
+    Token token;
+    char c;
+
+    skip_space(parser);
+    memset(&token, 0, sizeof(token));
+    token.line = parser->line;
+    token.begin = parser->source + parser->offset;
+
+    if (parser->offset >= parser->length) {
+        token.kind = TOK_EOF;
+        parser->token = token;
+        return;
+    }
+
+    c = parser->source[parser->offset++];
+    if (isalpha((unsigned char)c) || c == '_') {
+        size_t start = parser->offset - 1u;
+        while (parser->offset < parser->length) {
+            c = parser->source[parser->offset];
+            if (!isalnum((unsigned char)c) && c != '_')
+                break;
+            parser->offset++;
+        }
+        token.begin = parser->source + start;
+        token.length = parser->offset - start;
+        token.kind = keyword_kind(token.begin, token.length);
+        parser->token = token;
+        return;
+    }
+
+    if (isdigit((unsigned char)c) || c == '.') {
+        size_t start = parser->offset - 1u;
+        int dot_seen = c == '.';
+        while (parser->offset < parser->length) {
+            c = parser->source[parser->offset];
+            if (isdigit((unsigned char)c)) {
+                parser->offset++;
+                continue;
+            }
+            if (c == '.' && !dot_seen) {
+                dot_seen = 1;
+                parser->offset++;
+                continue;
+            }
+            break;
+        }
+        token.begin = parser->source + start;
+        token.length = parser->offset - start;
+        token.kind = TOK_NUMBER;
+        parser->token = token;
+        return;
+    }
+
+    token.length = 1u;
+    switch (c) {
+    case '(': token.kind = TOK_LPAREN; break;
+    case ')': token.kind = TOK_RPAREN; break;
+    case '{': token.kind = TOK_LBRACE; break;
+    case '}': token.kind = TOK_RBRACE; break;
+    case ';': token.kind = TOK_SEMI; break;
+    case '=': token.kind = TOK_ASSIGN; break;
+    case '+': token.kind = TOK_PLUS; break;
+    case '-': token.kind = TOK_MINUS; break;
+    case '*': token.kind = TOK_STAR; break;
+    case '/': token.kind = TOK_SLASH; break;
+    default: token.kind = TOK_INVALID; break;
+    }
+    parser->token = token;
+}
+
+static int accept(Parser* parser, TokenKind kind)
+{
+    if (parser->token.kind != kind)
+        return 0;
+    next_token(parser);
+    return 1;
+}
+
+static int expect(Parser* parser, TokenKind kind, const char* message)
+{
+    if (!accept(parser, kind)) {
+        fail(parser, message);
+        return 0;
+    }
+    return 1;
+}
+
+static int symbol_exists(const Parser* parser, const Token* token)
+{
+    uint32_t i;
+    for (i = 0; i < parser->symbol_count; ++i) {
+        size_t length = strlen(parser->symbols[i].name);
+        if (length == token->length &&
+            memcmp(parser->symbols[i].name, token->begin, length) == 0)
+            return 1;
+    }
+    return 0;
+}
+
+static int add_symbol(Parser* parser, const Token* token, uint32_t attribute)
+{
+    Symbol* symbol;
+    if (token->length == 0u || token->length >= sizeof(parser->symbols[0].name)) {
+        fail(parser, "identifier is too long");
+        return 0;
+    }
+    if (symbol_exists(parser, token)) {
+        fail(parser, "duplicate declaration");
+        return 0;
+    }
+    if (parser->symbol_count >= RINGL_GLSL_MAX_SYMBOLS) {
+        fail(parser, "too many declarations");
+        return 0;
+    }
+    symbol = &parser->symbols[parser->symbol_count++];
+    memcpy(symbol->name, token->begin, token->length);
+    symbol->name[token->length] = '\0';
+    symbol->attribute = attribute;
+    return 1;
+}
+
+static int expression(Parser* parser);
+
+static int primary(Parser* parser)
+{
+    if (accept(parser, TOK_NUMBER))
+        return 1;
+    if (parser->token.kind == TOK_IDENT) {
+        Token ident = parser->token;
+        if (!token_is_ident(&ident, "gl_Position") &&
+            !token_is_ident(&ident, "gl_FragColor") &&
+            !symbol_exists(parser, &ident)) {
+            fail(parser, "use of undeclared identifier");
+            return 0;
+        }
+        next_token(parser);
+        return 1;
+    }
+    if (accept(parser, TOK_LPAREN)) {
+        if (!expression(parser))
+            return 0;
+        return expect(parser, TOK_RPAREN, "expected ')' after expression");
+    }
+    fail(parser, "expected expression");
+    return 0;
+}
+
+static int unary(Parser* parser)
+{
+    if (accept(parser, TOK_PLUS) || accept(parser, TOK_MINUS))
+        return unary(parser);
+    return primary(parser);
+}
+
+static int multiplicative(Parser* parser)
+{
+    if (!unary(parser))
+        return 0;
+    while (parser->token.kind == TOK_STAR || parser->token.kind == TOK_SLASH) {
+        next_token(parser);
+        if (!unary(parser))
+            return 0;
+    }
+    return 1;
+}
+
+static int expression(Parser* parser)
+{
+    if (!multiplicative(parser))
+        return 0;
+    while (parser->token.kind == TOK_PLUS || parser->token.kind == TOK_MINUS) {
+        next_token(parser);
+        if (!multiplicative(parser))
+            return 0;
+    }
+    return 1;
+}
+
+static int assignment(Parser* parser)
+{
+    Token target = parser->token;
+    if (target.kind != TOK_IDENT) {
+        fail(parser, "expected assignment target");
+        return 0;
+    }
+    if (token_is_ident(&target, "gl_Position")) {
+        if (parser->shader_type != RINGL_VERTEX_SHADER) {
+            fail(parser, "gl_Position is only writable in vertex shaders");
+            return 0;
+        }
+    } else if (token_is_ident(&target, "gl_FragColor")) {
+        if (parser->shader_type != RINGL_FRAGMENT_SHADER) {
+            fail(parser, "gl_FragColor is only writable in fragment shaders");
+            return 0;
+        }
+    } else if (!symbol_exists(parser, &target)) {
+        fail(parser, "assignment to undeclared identifier");
+        return 0;
+    }
+    next_token(parser);
+    if (!expect(parser, TOK_ASSIGN, "expected '='"))
+        return 0;
+    if (!expression(parser))
+        return 0;
+    if (!expect(parser, TOK_SEMI, "expected ';' after assignment"))
+        return 0;
+    parser->result->statement_count++;
+    return 1;
+}
+
+static int local_declaration(Parser* parser)
+{
+    Token name;
+    next_token(parser); /* consume float */
+    if (parser->token.kind != TOK_IDENT) {
+        fail(parser, "expected identifier after float");
+        return 0;
+    }
+    name = parser->token;
+    if (!add_symbol(parser, &name, 0u))
+        return 0;
+    next_token(parser);
+    if (accept(parser, TOK_ASSIGN) && !expression(parser))
+        return 0;
+    if (!expect(parser, TOK_SEMI, "expected ';' after declaration"))
+        return 0;
+    parser->result->declaration_count++;
+    return 1;
+}
+
+static int main_function(Parser* parser)
+{
+    next_token(parser); /* consume void */
+    if (!token_is_ident(&parser->token, "main")) {
+        fail(parser, "only void main() is supported");
+        return 0;
+    }
+    if (parser->main_seen) {
+        fail(parser, "duplicate main function");
+        return 0;
+    }
+    parser->main_seen = 1u;
+    next_token(parser);
+    if (!expect(parser, TOK_LPAREN, "expected '(' after main") ||
+        !expect(parser, TOK_RPAREN, "expected ')' after main") ||
+        !expect(parser, TOK_LBRACE, "expected '{' for main body"))
+        return 0;
+
+    while (parser->token.kind != TOK_RBRACE && parser->token.kind != TOK_EOF) {
+        if (parser->token.kind == TOK_FLOAT) {
+            if (!local_declaration(parser))
+                return 0;
+        } else if (!assignment(parser)) {
+            return 0;
+        }
+    }
+    return expect(parser, TOK_RBRACE, "expected '}' after main body");
+}
+
+static int attribute_declaration(Parser* parser)
+{
+    Token name;
+    if (parser->shader_type != RINGL_VERTEX_SHADER) {
+        fail(parser, "attribute declarations require a vertex shader");
+        return 0;
+    }
+    next_token(parser); /* consume attribute */
+    if (!expect(parser, TOK_FLOAT, "only 'attribute float' is supported"))
+        return 0;
+    if (parser->token.kind != TOK_IDENT) {
+        fail(parser, "expected attribute identifier");
+        return 0;
+    }
+    name = parser->token;
+    if (!add_symbol(parser, &name, 1u))
+        return 0;
+    next_token(parser);
+    if (!expect(parser, TOK_SEMI, "expected ';' after attribute"))
+        return 0;
+    parser->result->attribute_count++;
+    parser->result->declaration_count++;
+    return 1;
+}
+
+int ringl_glsl_parse(uint32_t shader_type,
+                     const char* source,
+                     size_t source_length,
+                     RinGLGlslParseResult* result)
+{
+    Parser parser;
+
+    if (source == NULL || result == NULL)
+        return -1;
+    memset(result, 0, sizeof(*result));
+    memset(&parser, 0, sizeof(parser));
+    parser.source = source;
+    parser.length = source_length;
+    parser.line = 1u;
+    parser.shader_type = shader_type;
+    parser.result = result;
+    next_token(&parser);
+
+    while (parser.token.kind != TOK_EOF && result->diagnostic[0] == '\0') {
+        if (parser.token.kind == TOK_ATTRIBUTE) {
+            if (!attribute_declaration(&parser))
+                break;
+        } else if (parser.token.kind == TOK_VOID) {
+            if (!main_function(&parser))
+                break;
+        } else {
+            fail(&parser, "unsupported top-level declaration");
+            break;
+        }
+    }
+
+    if (result->diagnostic[0] == '\0' && !parser.main_seen)
+        fail(&parser, "missing void main()");
+    if (result->diagnostic[0] == '\0') {
+        result->ok = 1u;
+        return 0;
+    }
+    return 1;
+}

@@ -16,6 +16,16 @@ typedef struct RinGLPipelineKey {
     uint32_t primitive_topology;
     uint32_t vertex_stride;
     uint32_t attribute_count;
+    uint32_t blend_enabled;
+    uint32_t blend_source_rgb;
+    uint32_t blend_destination_rgb;
+    uint32_t blend_equation_rgb;
+    uint32_t blend_source_alpha;
+    uint32_t blend_destination_alpha;
+    uint32_t blend_equation_alpha;
+    uint32_t color_write_mask;
+    uint32_t cull_mode;
+    uint32_t front_face;
     RinGLResolvedVertexAttribute attributes[RINGL_MAX_VERTEX_ATTRIBS];
 } RinGLPipelineKey;
 

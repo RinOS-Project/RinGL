@@ -16,11 +16,12 @@ typedef struct TextureCall {
 } TextureCall;
 
 #define RINGL_TEXTURE_MAX_SAMPLERS RINGL_GLSL_MAX_SAMPLER_UNIFORMS
+#define RINGL_TEXTURE_MAX_CALLS RINGL_GLSL_MAX_SAMPLER_UNIFORMS
 
-_Static_assert(10u * RINGL_TEXTURE_MAX_SAMPLERS <=
+_Static_assert(10u * RINGL_TEXTURE_MAX_CALLS <=
                    RINGL_RSH1_MAX_REGISTERS,
                "texture profile exceeds the RSH1 register ceiling");
-_Static_assert(10u * RINGL_TEXTURE_MAX_SAMPLERS + 5u <=
+_Static_assert(10u * RINGL_TEXTURE_MAX_CALLS + 5u <=
                    RINGL_RSH1_MAX_INSTRUCTIONS,
                "texture profile exceeds the RSH1 instruction ceiling");
 
@@ -217,24 +218,25 @@ static void store_result(RinGLGlslLowerResult* result,
 }
 
 /* The fragment profile uses one constant coordinate pair and one RGBA sample
- * per declared sampler. Results are accumulated left-to-right. The register
- * layout is deliberately formulaic so every supported count has a fixed,
+ * per texture call. Results are accumulated left-to-right. The register
+ * layout is deliberately formulaic so every supported call count has a fixed,
  * auditable RSH1 shape:
  *
  *   [coordinates 2N][sampled RGBA 4N][raster inputs 4][sums 4(N - 1)]
  *
  * This preserves the historic N=1 and N=2 bytecode layouts exactly while
  * making the already-general RinGPU binding table reachable up to its RinGL
- * sampler declaration limit. */
-static void emit_texture_sum(const TextureCall* calls, uint32_t sampler_count,
+ * texture-call limit. */
+static void emit_texture_sum(const TextureCall* calls, uint32_t call_count,
+                             uint32_t resource_count,
                              RinGLGlslLowerResult* result)
 {
     RinGLRsh1HeaderV1 header;
     RinGLRsh1InstructionV1 instructions[RINGL_RSH1_MAX_INSTRUCTIONS];
-    uint32_t sample_base = sampler_count * 2u;
-    uint32_t input_base = sampler_count * 6u;
-    uint32_t add_base = 4u + sampler_count * 6u;
-    uint32_t store_base = sampler_count * 10u;
+    uint32_t sample_base = call_count * 2u;
+    uint32_t input_base = call_count * 6u;
+    uint32_t add_base = 4u + call_count * 6u;
+    uint32_t store_base = call_count * 10u;
     uint32_t final_base;
     uint32_t sampler;
     uint32_t component;
@@ -246,7 +248,7 @@ static void emit_texture_sum(const TextureCall* calls, uint32_t sampler_count,
             (uint16_t)(input_base + component);
         instructions[component].immediate = component;
     }
-    for (sampler = 0u; sampler < sampler_count; ++sampler) {
+    for (sampler = 0u; sampler < call_count; ++sampler) {
         uint32_t u_bits;
         uint32_t v_bits;
         uint32_t coordinate_instruction = 4u + sampler * 2u;
@@ -264,10 +266,10 @@ static void emit_texture_sum(const TextureCall* calls, uint32_t sampler_count,
             (uint16_t)(sampler * 2u + 1u);
         instructions[coordinate_instruction + 1u].immediate = v_bits;
     }
-    for (sampler = 0u; sampler < sampler_count; ++sampler) {
+    for (sampler = 0u; sampler < call_count; ++sampler) {
         uint32_t resource = calls[sampler].sampler_index * 2u;
         for (component = 0u; component < 4u; ++component) {
-            uint32_t instruction = 4u + sampler_count * 2u +
+            uint32_t instruction = 4u + call_count * 2u +
                 sampler * 4u + component;
             init_instruction(&instructions[instruction],
                              RINGL_RSH1_OP_SAMPLE_IMAGE_2D_F32);
@@ -283,7 +285,7 @@ static void emit_texture_sum(const TextureCall* calls, uint32_t sampler_count,
     }
 
     final_base = sample_base;
-    for (sampler = 1u; sampler < sampler_count; ++sampler) {
+    for (sampler = 1u; sampler < call_count; ++sampler) {
         uint32_t destination_base = input_base + sampler * 4u;
         for (component = 0u; component < 4u; ++component) {
             uint32_t instruction = add_base + (sampler - 1u) * 4u + component;
@@ -313,10 +315,10 @@ static void emit_texture_sum(const TextureCall* calls, uint32_t sampler_count,
         (size_t)(store_base + 5u) * sizeof(instructions[0]);
     header.stage = RINGL_RSH1_STAGE_FRAGMENT;
     header.instruction_count = store_base + 5u;
-    header.register_count = sampler_count * 10u;
+    header.register_count = call_count * 10u;
     header.input_count = 4u;
     header.output_count = 4u;
-    header.resource_count = sampler_count * 2u;
+    header.resource_count = resource_count;
     store_result(result, &header, instructions);
 }
 
@@ -330,9 +332,10 @@ int ringl_glsl_lower_texture2d_rsh1(
 {
     const char* end;
     const char* cursor;
-    TextureCall calls[RINGL_TEXTURE_MAX_SAMPLERS];
+    TextureCall calls[RINGL_TEXTURE_MAX_CALLS];
     uint32_t seen_samplers = 0u;
     uint32_t call_index;
+    uint32_t call_count;
 
     if (source == NULL || sampler_names == NULL || sampler_name_stride == 0u ||
         result == NULL)
@@ -344,12 +347,18 @@ int ringl_glsl_lower_texture2d_rsh1(
         return 1;
     }
     end = source + source_length;
+    call_count = count_texture_calls(source, end);
+    if (call_count == 0u || call_count > RINGL_TEXTURE_MAX_CALLS) {
+        (void)snprintf(result->diagnostic, sizeof(result->diagnostic),
+                       "bounded texture2D lowering supports one to eight texture2D calls");
+        return 1;
+    }
     if (!find_fragment_assignment(source, end, &cursor)) {
         (void)snprintf(result->diagnostic, sizeof(result->diagnostic),
                        "bounded texture2D lowering requires a gl_FragColor texture2D assignment");
         return 1;
     }
-    for (call_index = 0u; call_index < sampler_count; ++call_index) {
+    for (call_index = 0u; call_index < call_count; ++call_index) {
         uint32_t sampler_bit;
 
         if ((call_index != 0u && !expect_char(&cursor, end, '+')) ||
@@ -361,7 +370,7 @@ int ringl_glsl_lower_texture2d_rsh1(
             return 1;
         }
         sampler_bit = UINT32_C(1) << calls[call_index].sampler_index;
-        if ((seen_samplers & sampler_bit) != 0u) {
+        if (sampler_count != 1u && (seen_samplers & sampler_bit) != 0u) {
             (void)snprintf(result->diagnostic, sizeof(result->diagnostic),
                            "bounded texture2D lowering requires each declared sampler exactly once");
             return 1;
@@ -369,11 +378,12 @@ int ringl_glsl_lower_texture2d_rsh1(
         seen_samplers |= sampler_bit;
     }
     if (!expect_char(&cursor, end, ';') ||
-        count_texture_calls(source, end) != sampler_count) {
+        count_texture_calls(source, end) != call_count ||
+        (sampler_count != 1u && call_count != sampler_count)) {
         (void)snprintf(result->diagnostic, sizeof(result->diagnostic),
-                       "bounded texture2D lowering requires exactly one constant-coordinate texture2D call per sampler");
+                       "bounded multi-sampler lowering requires exactly one constant-coordinate texture2D call per sampler");
         return 1;
     }
-    emit_texture_sum(calls, sampler_count, result);
+    emit_texture_sum(calls, call_count, sampler_count * 2u, result);
     return 0;
 }

@@ -83,7 +83,13 @@ int main(void)
         "texture2D(firstTexture, vec2(0.5)) + "
         "texture2D(secondTexture, vec2(0.125, 0.875));\n"
         "}\n";
-    const char* repeated_sampler_source =
+    const char* repeated_single_sampler_source =
+        "uniform sampler2D colorTexture;\n"
+        "void main() {\n"
+        "  gl_FragColor = texture2D(colorTexture, vec2(0.25)) + "
+        "texture2D(colorTexture, vec2(0.75));\n"
+        "}\n";
+    const char* unused_sampler_source =
         "uniform sampler2D firstTexture;\n"
         "uniform sampler2D secondTexture;\n"
         "void main() {\n"
@@ -187,9 +193,32 @@ int main(void)
         assert(store->source0 == 16u + component);
     }
 
-    /* This profile deliberately does not silently accept repeated sampler
-     * references in place of a missing declared resource. */
-    ringl_shader_source(shader, repeated_sampler_source, -1);
+    /* One declared sampler may be sampled repeatedly. The resource pair stays
+     * dense and typed while every call receives independent coordinates and
+     * result registers. */
+    ringl_shader_source(shader, repeated_single_sampler_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + sizeof(two_sampler_instructions));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    memcpy(two_sampler_instructions, blob + sizeof(header),
+           sizeof(two_sampler_instructions));
+    assert(header.instruction_count == 25u);
+    assert(header.register_count == 20u);
+    assert(header.resource_count == 2u);
+    for (component = 0u; component < 4u; ++component) {
+        assert(two_sampler_instructions[8u + component].resource == 0u);
+        assert(two_sampler_instructions[8u + component].immediate == 1u);
+        assert(two_sampler_instructions[12u + component].resource == 0u);
+        assert(two_sampler_instructions[12u + component].immediate == 1u);
+    }
+
+    /* RinGPU validates each declared resource as typed and used. Do not hide
+     * an unused declaration by silently manufacturing a dummy resource use. */
+    ringl_shader_source(shader, unused_sampler_source, -1);
     ringl_compile_shader(shader);
     assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
     assert(ringl_lower_shader_rsh1(shader) != 0);

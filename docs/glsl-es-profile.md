@@ -16,9 +16,10 @@ The current first-triangle slice supports:
 - constants and simple assignments;
 - one `uniform sampler2D` and one `texture2D()` call with either constant
   `vec2` coordinates or the initial `varying vec2` texture-coordinate path;
-- a separate, constant-coordinate-only multi-sampler profile: one through
-  eight declared `sampler2D` uniforms are each sampled once and their results
-  are added left-to-right for `gl_FragColor`;
+- a constant-coordinate-only texture profile: one declared `sampler2D` may be
+  sampled one through eight times, while a multi-declaration program uses each
+  of one through eight declared samplers exactly once; results are added
+  left-to-right for `gl_FragColor`;
 - a matched, perspective-interpolated `varying vec2` between the initial
   vertex and fragment profiles;
 - diagnostics for unsupported syntax instead of silently accepting it.
@@ -44,14 +45,17 @@ void main() {
 
 The normal texture path is intentionally narrow: it accepts exactly one sampler
 and one sample operation, and the varying path recognizes the canonical
-position/UV textured-triangle form. A distinct multi-sampler profile accepts
-one through eight declarations, one finite constant-coordinate sample from each
-declaration, and an exact left-to-right `texture2D(a, vec2(...)) + ...`
-assignment. Its RSH1 resource pairs are declaration ordered (`[0, 1]`, then
-`[2, 3]`, and so on) so calls may appear in a different order without changing
-bindings. The profile has a formulaic maximum of 85 instructions and 80
-registers, below RinGL's 96-register ceiling and RinGPU's public 256-register
-limit. Repeated sampling, nonconstant coordinates in this profile, other
+position/UV textured-triangle form. The constant-coordinate profile permits a
+single declaration in one through eight calls, or one through eight declarations
+with one finite sample from each declaration, in an exact left-to-right
+`texture2D(a, vec2(...)) + ...` assignment. A repeated one-sampler call shares
+its one image/sampler pair; multi-declaration pairs remain declaration ordered
+(`[0, 1]`, then `[2, 3]`, and so on), so calls may appear in a different order
+without changing bindings. The profile has a formulaic maximum of 85
+instructions and 80 registers, below RinGL's 96-register ceiling and RinGPU's
+public 256-register limit. A repeated sample with another declared-but-unused
+sampler remains rejected until active-resource reflection can construct a
+selective typed bind group. Nonconstant coordinates in this profile, other
 arithmetic, vector locals, matrices, other uniform types, additional varying
 types, derivatives, loops, user functions, precision edge cases, and broader
 GLSL ES built-ins remain incremental work.

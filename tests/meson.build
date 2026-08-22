@@ -141,3 +141,11 @@ textured_draw_test = executable(
 )
 
 test('textured-draw', textured_draw_test)
+
+sync_test = executable(
+  'ringl-sync-test',
+  'sync_test.c',
+  dependencies: ringl_dep,
+)
+
+test('sync', sync_test)

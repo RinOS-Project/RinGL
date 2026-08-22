@@ -25,6 +25,7 @@ ringl_sources = files(
   'src/shader/reflection.c',
   'src/shader/shader.c',
   'src/shader/shader_ir.c',
+  'src/translate/draw.c',
   'src/translate/pipeline_cache.c',
   'src/translate/vertex_layout.c',
 )

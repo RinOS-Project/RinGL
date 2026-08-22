@@ -108,6 +108,7 @@ void ringl_context_destroy(RinGLContext* context)
     ringl_pipeline_cache_destroy(context);
     ringl_program_objects_destroy_all(context);
     ringl_shader_objects_destroy_all(context);
+    ringl_texture_objects_destroy_all(context);
     ringl_buffer_objects_destroy_all(context);
     context->magic = 0u;
     memset(&context->ringpu_ops, 0, sizeof(context->ringpu_ops));

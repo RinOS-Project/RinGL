@@ -77,3 +77,11 @@ reflection_test = executable(
 )
 
 test('reflection', reflection_test)
+
+pipeline_cache_test = executable(
+  'ringl-pipeline-cache-test',
+  'pipeline_cache_test.c',
+  dependencies: ringl_dep,
+)
+
+test('pipeline-cache', pipeline_cache_test)

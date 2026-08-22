@@ -41,6 +41,7 @@ extern "C" {
 #define RINGL_DIRTY_ALL         0x0000000fu
 
 #define RINGL_RIN_GPU_QUEUE_GRAPHICS       0x00000004u
+#define RINGL_RIN_GPU_IMAGE_UNDEFINED      0u
 #define RINGL_RIN_GPU_IMAGE_COLOR_TARGET   3u
 #define RINGL_RIN_GPU_IMAGE_PRESENT        4u
 #define RINGL_RIN_GPU_RENDER_LOAD          1u
@@ -203,6 +204,7 @@ uint32_t ringl_get_error(void);
 uint32_t ringl_context_dirty_bits(const RinGLContext* context);
 
 int ringl_set_default_framebuffer(const RinGLDefaultFramebufferV1* framebuffer);
+int ringl_set_default_framebuffer_state(uint32_t state);
 int ringl_get_default_framebuffer(RinGLDefaultFramebufferV1* framebuffer);
 void ringl_clear_color(float red, float green, float blue, float alpha);
 void ringl_clear(uint32_t mask);

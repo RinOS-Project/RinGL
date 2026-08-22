@@ -695,6 +695,29 @@ static int append_raster_defaults(Lower* lower)
     return 1;
 }
 
+/* Emit type-bearing loads for the fixed interpolant ABI.  They are unused by
+ * constant fragment shaders, but RinGPU validates every declared input when
+ * it builds a native graphics pipeline. */
+static int append_fragment_interpolant_inputs(Lower* lower)
+{
+    uint32_t index;
+
+    if (lower->shader_type != RINGL_FRAGMENT_SHADER ||
+        lower->output_count != 4u || lower->next_input != 0u) {
+        return 1;
+    }
+    for (index = 0u; index < 4u; ++index) {
+        uint16_t reg = new_reg(lower);
+        if (reg == RINGL_RSH1_UNUSED ||
+            !emit(lower, RINGL_RSH1_OP_LOAD_INPUT_F32, reg,
+                  RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED, index)) {
+            return 0;
+        }
+    }
+    lower->next_input = 4u;
+    return 1;
+}
+
 int ringl_glsl_lower_rsh1(uint32_t shader_type, const char* source,
                           size_t source_length,
                           RinGLGlslLowerResult* result)
@@ -715,11 +738,8 @@ int ringl_glsl_lower_rsh1(uint32_t shader_type, const char* source,
         return 1;
     if (!append_raster_defaults(&lower))
         return 1;
-    if (shader_type == RINGL_FRAGMENT_SHADER && lower.output_count == 4u &&
-        lower.next_input == 0u) {
-        /* The fixed raster ABI supplies four interpolant components. */
-        lower.next_input = 4u;
-    }
+    if (!append_fragment_interpolant_inputs(&lower))
+        return 1;
     if (!emit(&lower, RINGL_RSH1_OP_RETURN, RINGL_RSH1_UNUSED,
               RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED, 0u)) {
         return 1;

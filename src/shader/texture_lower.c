@@ -86,7 +86,7 @@ int ringl_glsl_lower_texture2d_rsh1(
     RinGLGlslLowerResult* result)
 {
     RinGLRsh1HeaderV1 header;
-    RinGLRsh1InstructionV1 ins[11];
+    RinGLRsh1InstructionV1 ins[15];
     const char* end;
     const char* call;
     const char* cursor;
@@ -142,36 +142,41 @@ int ringl_glsl_lower_texture2d_rsh1(
     memcpy(&u_bits, &u, sizeof(u_bits));
     memcpy(&v_bits, &v, sizeof(v_bits));
 
-    init_instruction(&ins[0], RINGL_RSH1_OP_CONST_F32);
-    ins[0].destination = 0u;
-    ins[0].immediate = u_bits;
-    init_instruction(&ins[1], RINGL_RSH1_OP_CONST_F32);
-    ins[1].destination = 1u;
-    ins[1].immediate = v_bits;
+    for (component = 0u; component < 4u; ++component) {
+        init_instruction(&ins[component], RINGL_RSH1_OP_LOAD_INPUT_F32);
+        ins[component].destination = (uint16_t)(6u + component);
+        ins[component].immediate = component;
+    }
+    init_instruction(&ins[4], RINGL_RSH1_OP_CONST_F32);
+    ins[4].destination = 0u;
+    ins[4].immediate = u_bits;
+    init_instruction(&ins[5], RINGL_RSH1_OP_CONST_F32);
+    ins[5].destination = 1u;
+    ins[5].immediate = v_bits;
 
     for (component = 0u; component < 4u; ++component) {
-        init_instruction(&ins[2u + component],
+        init_instruction(&ins[6u + component],
                          RINGL_RSH1_OP_SAMPLE_IMAGE_2D_F32);
-        ins[2u + component].flags = (uint16_t)component;
-        ins[2u + component].destination = (uint16_t)(2u + component);
-        ins[2u + component].source0 = 0u;
-        ins[2u + component].source1 = 1u;
-        ins[2u + component].resource = 0u;
-        ins[2u + component].immediate = 1u;
+        ins[6u + component].flags = (uint16_t)component;
+        ins[6u + component].destination = (uint16_t)(2u + component);
+        ins[6u + component].source0 = 0u;
+        ins[6u + component].source1 = 1u;
+        ins[6u + component].resource = 0u;
+        ins[6u + component].immediate = 1u;
 
-        init_instruction(&ins[6u + component], RINGL_RSH1_OP_STORE_OUTPUT_F32);
-        ins[6u + component].source0 = (uint16_t)(2u + component);
-        ins[6u + component].immediate = component;
+        init_instruction(&ins[10u + component], RINGL_RSH1_OP_STORE_OUTPUT_F32);
+        ins[10u + component].source0 = (uint16_t)(2u + component);
+        ins[10u + component].immediate = component;
     }
-    init_instruction(&ins[10], RINGL_RSH1_OP_RETURN);
+    init_instruction(&ins[14], RINGL_RSH1_OP_RETURN);
 
     memset(&header, 0, sizeof(header));
     header.magic = RINGL_RSH1_MAGIC;
     header.version = RINGL_RSH1_VERSION;
     header.header_size = sizeof(header);
     header.stage = RINGL_RSH1_STAGE_FRAGMENT;
-    header.instruction_count = 11u;
-    header.register_count = 6u;
+    header.instruction_count = 15u;
+    header.register_count = 10u;
     /* Match the fixed four-component interpolant ABI of the rasterizer. */
     header.input_count = 4u;
     header.output_count = 4u;

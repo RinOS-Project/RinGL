@@ -6,6 +6,7 @@
 #include <ringl/ringl.h>
 
 #define RSH1_MAGIC UINT32_C(0x31485352)
+#define RSH1_LOAD_INPUT_F32 45u
 #define RSH1_SAMPLE_IMAGE_2D_F32 55u
 #define RSH1_STORE_OUTPUT_F32 46u
 
@@ -50,7 +51,7 @@ int main(void)
     uint8_t blob[512];
     uint32_t size;
     Header header;
-    Instruction instructions[11];
+    Instruction instructions[15];
     uint32_t component;
     const char* source =
         "uniform sampler2D colorTexture;\n"
@@ -74,15 +75,19 @@ int main(void)
 
     assert(header.magic == RSH1_MAGIC);
     assert(header.stage == 2u);
-    assert(header.instruction_count == 11u);
-    assert(header.register_count == 6u);
+    assert(header.instruction_count == 15u);
+    assert(header.register_count == 10u);
     assert(header.input_count == 4u);
     assert(header.output_count == 4u);
     assert(header.resource_count == 2u);
 
     for (component = 0u; component < 4u; ++component) {
-        const Instruction* sample = &instructions[2u + component];
-        const Instruction* store = &instructions[6u + component];
+        const Instruction* input = &instructions[component];
+        const Instruction* sample = &instructions[6u + component];
+        const Instruction* store = &instructions[10u + component];
+        assert(input->opcode == RSH1_LOAD_INPUT_F32);
+        assert(input->destination == 6u + component);
+        assert(input->immediate == component);
         assert(sample->opcode == RSH1_SAMPLE_IMAGE_2D_F32);
         assert(sample->flags == component);
         assert(sample->destination == 2u + component);

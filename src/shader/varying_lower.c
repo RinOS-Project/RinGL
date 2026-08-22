@@ -146,7 +146,7 @@ static int lower_vertex(const char* source, RinGLGlslLowerResult* result)
 static int lower_fragment(const char* source, RinGLGlslLowerResult* result)
 {
     RinGLRsh1HeaderV1 header;
-    RinGLRsh1InstructionV1 ins[11];
+    RinGLRsh1InstructionV1 ins[13];
     char sampler[64];
     char varying[64];
     char expected[384];
@@ -167,27 +167,31 @@ static int lower_fragment(const char* source, RinGLGlslLowerResult* result)
     ins[0].destination = 0u; ins[0].immediate = 0u;
     init_instruction(&ins[1], RINGL_RSH1_OP_LOAD_INPUT_F32);
     ins[1].destination = 1u; ins[1].immediate = 1u;
+    init_instruction(&ins[2], RINGL_RSH1_OP_LOAD_INPUT_F32);
+    ins[2].destination = 6u; ins[2].immediate = 2u;
+    init_instruction(&ins[3], RINGL_RSH1_OP_LOAD_INPUT_F32);
+    ins[3].destination = 7u; ins[3].immediate = 3u;
     for (component = 0u; component < 4u; ++component) {
-        init_instruction(&ins[2u + component], RINGL_RSH1_OP_SAMPLE_IMAGE_2D_F32);
-        ins[2u + component].flags = (uint16_t)component;
-        ins[2u + component].destination = (uint16_t)(2u + component);
-        ins[2u + component].source0 = 0u;
-        ins[2u + component].source1 = 1u;
-        ins[2u + component].resource = 0u;
-        ins[2u + component].immediate = 1u;
-        init_instruction(&ins[6u + component], RINGL_RSH1_OP_STORE_OUTPUT_F32);
-        ins[6u + component].source0 = (uint16_t)(2u + component);
-        ins[6u + component].immediate = component;
+        init_instruction(&ins[4u + component], RINGL_RSH1_OP_SAMPLE_IMAGE_2D_F32);
+        ins[4u + component].flags = (uint16_t)component;
+        ins[4u + component].destination = (uint16_t)(2u + component);
+        ins[4u + component].source0 = 0u;
+        ins[4u + component].source1 = 1u;
+        ins[4u + component].resource = 0u;
+        ins[4u + component].immediate = 1u;
+        init_instruction(&ins[8u + component], RINGL_RSH1_OP_STORE_OUTPUT_F32);
+        ins[8u + component].source0 = (uint16_t)(2u + component);
+        ins[8u + component].immediate = component;
     }
-    init_instruction(&ins[10], RINGL_RSH1_OP_RETURN);
+    init_instruction(&ins[12], RINGL_RSH1_OP_RETURN);
 
     memset(&header, 0, sizeof(header));
     header.magic = RINGL_RSH1_MAGIC;
     header.version = RINGL_RSH1_VERSION;
     header.header_size = sizeof(header);
     header.stage = RINGL_RSH1_STAGE_FRAGMENT;
-    header.instruction_count = 11u;
-    header.register_count = 6u;
+    header.instruction_count = 13u;
+    header.register_count = 8u;
     /* UV uses inputs 0..1; inputs 2..3 are the fixed ABI padding. */
     header.input_count = 4u;
     header.output_count = 4u;

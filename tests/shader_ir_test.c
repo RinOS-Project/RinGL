@@ -198,7 +198,7 @@ int main(void)
     assert(header.input_count == 4u);
     assert(header.output_count == 4u);
     assert(header.resource_count == 2u);
-    assert(header.instruction_count == 11u);
+    assert(header.instruction_count == 15u);
 
     header = lower_and_read_header(vertex, varying_vertex_source,
                                    blob, sizeof(blob));
@@ -214,7 +214,7 @@ int main(void)
     assert(header.input_count == 4u);
     assert(header.output_count == 4u);
     assert(header.resource_count == 2u);
-    assert(header.instruction_count == 11u);
+    assert(header.instruction_count == 13u);
 
     ringl_shader_source(vertex, "void main() { gl_Position = 0.0; }", -1);
     assert(ringl_get_shader_compile_status(vertex) == RINGL_FALSE);

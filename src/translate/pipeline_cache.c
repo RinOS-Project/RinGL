@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "pipeline_cache.h"
+#include "../shader/rsh1_abi.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -44,6 +45,26 @@ static RinGLShaderObject* shader_object(RinGLContext* context,
     if (index >= RINGL_OBJECT_SLOT_COUNT)
         return NULL;
     return &context->shaders[index];
+}
+
+static int fixed_raster_interface(const RinGLShaderObject* vertex,
+                                  const RinGLShaderObject* fragment)
+{
+    RinGLRsh1HeaderV1 vertex_header;
+    RinGLRsh1HeaderV1 fragment_header;
+
+    if (vertex == NULL || fragment == NULL || vertex->rsh1 == NULL ||
+        fragment->rsh1 == NULL || vertex->rsh1_size < sizeof(vertex_header) ||
+        fragment->rsh1_size < sizeof(fragment_header)) {
+        return 0;
+    }
+    memcpy(&vertex_header, vertex->rsh1, sizeof(vertex_header));
+    memcpy(&fragment_header, fragment->rsh1, sizeof(fragment_header));
+    return vertex_header.stage == RINGL_RSH1_STAGE_VERTEX &&
+           vertex_header.output_count == 8u &&
+           fragment_header.stage == RINGL_RSH1_STAGE_FRAGMENT &&
+           fragment_header.input_count == 4u &&
+           fragment_header.output_count == 4u;
 }
 
 static RinGLPipelineCache* cache_for(RinGLContext* context, int create)
@@ -170,6 +191,20 @@ int ringl_build_pipeline_key(RinGLContext* context,
                 varying->fragment_input_location + component;
             native->type = 1u;
             native->interpolation = 1u;
+        }
+    }
+    if (context->ringpu_ops.create_graphics_pipeline_native != NULL &&
+        fixed_raster_interface(vertex, fragment)) {
+        if (result.varying_count > 4u)
+            return -1;
+        while (result.varying_count < 4u) {
+            RinGLRinGpuVaryingV1* native =
+                &result.varyings[result.varying_count];
+            native->vertex_output_location = 4u + result.varying_count;
+            native->fragment_input_location = result.varying_count;
+            native->type = 1u;
+            native->interpolation = 1u;
+            result.varying_count++;
         }
     }
 

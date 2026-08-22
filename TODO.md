@@ -49,14 +49,14 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 ## Phase 4 — First hardware-rendered triangle
 
 - [x] Create a default framebuffer representation backed by an embedding-supplied presentable RinGPU image.
-- [ ] Implement color clear.
+- [x] Implement color clear through a RinGPU render-pass clear submission.
 - [x] Build the first-slice pipeline-cache key from program, vertex layout, attachment format, and current immutable state.
 - [x] Lazily create/cache RinGPU graphics pipelines with bounded eviction and lifetime cleanup.
-- [ ] Automatically begin/end a RinGPU render pass around compatible GL operations.
-- [ ] Implement `glDrawArrays` for triangles.
-- [ ] Translate GL-visible resource state into required RinGPU transitions/barriers.
-- [ ] Submit and present the first triangle through RinGPU.
-- [ ] Add a deterministic triangle integration test or sample.
+- [x] Begin/end RinGPU render passes for the first clear and draw operations.
+- [x] Implement first-slice `glDrawArrays(GL_TRIANGLES, ...)` translation.
+- [x] Track the default color image between PRESENT and COLOR_TARGET states and emit required transitions.
+- [ ] Connect the RinOS adapter to the public RinGPU command functions and present a triangle on a real RinGPU target.
+- [x] Add a deterministic mock-RinGPU triangle integration test covering upload, shaders, pipeline, clear, draw, submit, and present ordering.
 
 ## Phase 5 — Indexed drawing and textures
 
@@ -110,7 +110,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 ## Phase 10 — Testing and conformance
 
 - [ ] Add unit tests for every state transition and validation rule.
-- [ ] Add mock-RinGPU tests that inspect generated commands without requiring hardware.
+- [x] Add mock-RinGPU tests that inspect generated commands without requiring hardware for the first triangle path.
 - [ ] Add hardware/QEMU integration tests where RinGPU support exists.
 - [ ] Add shader compiler differential/negative tests.
 - [ ] Add API trace tests for representative GL sequences.

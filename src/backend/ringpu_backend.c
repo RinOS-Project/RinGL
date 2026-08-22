@@ -53,6 +53,27 @@ int ringl_backend_create_shader_module(RinGLContext* context,
                                                     shader_module_out);
 }
 
+int ringl_backend_create_graphics_pipeline(
+    RinGLContext* context,
+    const RinGLRinGpuGraphicsPipelineV1* desc,
+    const RinGLRinGpuVertexAttributeV1* attributes,
+    uint32_t attribute_count,
+    uint64_t* pipeline_out)
+{
+    if (context == NULL || desc == NULL || pipeline_out == NULL ||
+        attribute_count != desc->attribute_count ||
+        (attribute_count != 0u && attributes == NULL) ||
+        !context->has_ringpu_ops ||
+        context->ringpu_ops.create_graphics_pipeline == NULL) {
+        return -1;
+    }
+
+    *pipeline_out = 0u;
+    return context->ringpu_ops.create_graphics_pipeline(
+        context->ringpu.session, desc, attributes, attribute_count,
+        pipeline_out);
+}
+
 void ringl_backend_destroy_object(RinGLContext* context, uint64_t object)
 {
     if (context == NULL || object == 0u || !context->has_ringpu_ops ||

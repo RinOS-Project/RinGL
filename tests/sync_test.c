@@ -16,6 +16,8 @@ typedef struct FakeBackend {
     uint32_t waits;
     uint32_t transitions;
     uint32_t readbacks;
+    uint32_t render_passes;
+    uint32_t queue_submits;
     uint32_t destroys;
 } FakeBackend;
 
@@ -64,10 +66,61 @@ static int fake_transition_image(void* session, uint64_t command_list,
                                  uint32_t new_state)
 {
     FakeBackend* backend = session;
-    assert(command_list != 0u && image == 700u);
-    assert(old_state == RINGL_RIN_GPU_IMAGE_PRESENT);
-    assert(new_state == RINGL_RIN_GPU_IMAGE_COPY_SOURCE);
+    assert(command_list != 0u);
+    if (image == 700u) {
+        assert(old_state == RINGL_RIN_GPU_IMAGE_PRESENT);
+        assert(new_state == RINGL_RIN_GPU_IMAGE_COPY_SOURCE);
+    } else {
+        assert(image == 701u);
+        assert((old_state == RINGL_RIN_GPU_IMAGE_UNDEFINED &&
+                new_state == RINGL_RIN_GPU_IMAGE_COLOR_TARGET) ||
+               (old_state == RINGL_RIN_GPU_IMAGE_COLOR_TARGET &&
+                new_state == RINGL_RIN_GPU_IMAGE_COPY_SOURCE));
+    }
     backend->transitions++;
+    return 0;
+}
+
+static int fake_create_image_2d(void* session,
+                                const RinGLRinGpuImage2DV1* desc,
+                                uint64_t* image_out)
+{
+    (void)session;
+    assert(desc != NULL && image_out != NULL);
+    assert(desc->width == 8u && desc->height == 8u);
+    assert(desc->format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM);
+    assert(desc->usage == (RINGL_RIN_GPU_IMAGE_USAGE_COLOR_TARGET |
+                           RINGL_RIN_GPU_IMAGE_USAGE_COPY_SOURCE));
+    *image_out = 701u;
+    return 0;
+}
+
+static int fake_begin_render_pass(void* session, uint64_t command_list,
+                                  const RinGLRinGpuRenderPassV1* pass)
+{
+    FakeBackend* backend = session;
+
+    assert(command_list != 0u && pass != NULL);
+    assert(pass->color_target == 701u);
+    assert(pass->load_op == RINGL_RIN_GPU_RENDER_CLEAR);
+    assert(pass->store_op == RINGL_RIN_GPU_RENDER_STORE);
+    backend->render_passes++;
+    return 0;
+}
+
+static int fake_end_render_pass(void* session, uint64_t command_list)
+{
+    (void)session;
+    return command_list != 0u ? 0 : -1;
+}
+
+static int fake_queue_submit(void* session, uint64_t queue,
+                             uint64_t command_list)
+{
+    FakeBackend* backend = session;
+
+    assert(queue == 900u && command_list != 0u);
+    backend->queue_submits++;
     return 0;
 }
 
@@ -117,16 +170,22 @@ static int fake_readback(void* session, uint64_t image,
                          void* destination, uint64_t destination_size)
 {
     FakeBackend* backend = session;
-    uint8_t expected_bgra[8] = {
+    const uint8_t expected_bgra[8] = {
         30u, 20u, 10u, 255u,
         60u, 50u, 40u, 128u,
     };
-    assert(image == 700u && readback != NULL && destination != NULL);
+    const uint8_t expected_rgba[8] = {
+        10u, 20u, 30u, 255u,
+        40u, 50u, 60u, 128u,
+    };
+    assert(image == (backend->readbacks < 2u ? 700u : 701u) &&
+           readback != NULL && destination != NULL);
     assert(readback->x == 1u && readback->y == 2u);
     assert(readback->width == 2u && readback->height == 1u);
     assert(readback->destination_row_pitch_bytes == 8u);
     assert(destination_size == sizeof(expected_bgra));
-    memcpy(destination, expected_bgra, sizeof(expected_bgra));
+    memcpy(destination, image == 700u ? expected_bgra : expected_rgba,
+           sizeof(expected_bgra));
     backend->readbacks++;
     return 0;
 }
@@ -143,7 +202,11 @@ int main(void)
         .create_command_list = fake_create_command_list,
         .reset_command_list = fake_reset_command_list,
         .transition_image = fake_transition_image,
+        .begin_render_pass = fake_begin_render_pass,
         .close_command_list = fake_close,
+        .end_render_pass = fake_end_render_pass,
+        .queue_submit = fake_queue_submit,
+        .create_image_2d = fake_create_image_2d,
     };
     RinGLRinGpuBindingV1 binding = {
         .struct_size = sizeof(binding),
@@ -176,6 +239,9 @@ int main(void)
     };
     RinGLContext* context = NULL;
     uint32_t texture = 0u;
+    uint32_t source_framebuffer = 0u;
+    uint32_t renderbuffer = 0u;
+    uint32_t depth_renderbuffer = 0u;
     uint8_t pixels[8] = {0};
     const uint8_t expected_rgba[8] = {
         10u, 20u, 30u, 255u,
@@ -215,12 +281,44 @@ int main(void)
     assert(ringl_get_error() == RINGL_INVALID_VALUE);
     assert(backend.readbacks == 2u);
 
+    ringl_gen_renderbuffers(1, &renderbuffer);
+    ringl_bind_renderbuffer(RINGL_RENDERBUFFER, renderbuffer);
+    ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_RGBA8, 8, 8);
+    ringl_gen_framebuffers(1, &source_framebuffer);
+    ringl_bind_framebuffer(RINGL_FRAMEBUFFER, source_framebuffer);
+    ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT0,
+                                   RINGL_RENDERBUFFER, renderbuffer);
+    assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
+           RINGL_FRAMEBUFFER_COMPLETE);
+    ringl_clear(RINGL_COLOR_BUFFER_BIT);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(backend.transitions == 2u && backend.render_passes == 1u &&
+           backend.queue_submits == 1u);
+    ringl_copy_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 1, 2, 2, 1);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(backend.transitions == 3u);
+    assert(backend.submits == 4u && backend.waits == 4u);
+    assert(backend.readbacks == 3u);
+    assert(memcmp(context->textures[ringl_object_slot_index(texture)].shadow_bytes,
+                  expected_rgba, sizeof(expected_rgba)) == 0);
+    ringl_gen_renderbuffers(1, &depth_renderbuffer);
+    ringl_bind_renderbuffer(RINGL_RENDERBUFFER, depth_renderbuffer);
+    ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_DEPTH_COMPONENT32F,
+                               4, 4);
+    ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER, RINGL_DEPTH_ATTACHMENT,
+                                   RINGL_RENDERBUFFER, depth_renderbuffer);
+    assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
+           RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT);
+    ringl_copy_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 1, 2, 2, 1);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    assert(backend.transitions == 3u && backend.readbacks == 3u);
+
     assert(ringl_context_set_sync_ops(context, NULL) == 0);
     assert(backend.destroys == 1u); /* fence */
     ringl_finish();
     assert(ringl_get_error() == RINGL_INVALID_OPERATION);
 
     ringl_context_destroy(context);
-    assert(backend.destroys == 2u); /* command list + fence */
+    assert(backend.destroys == 3u); /* renderbuffer image + command list + fence */
     return 0;
 }

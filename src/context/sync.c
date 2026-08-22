@@ -157,7 +157,11 @@ int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
     if (width == 0 || height == 0)
         return 0;
     if (!context->has_sync_ops || context->sync_ops.readback_image_2d == NULL ||
-        pixels == NULL || ringl_resolve_color_target(context, &target) != 0 ||
+        pixels == NULL ||
+        (context->framebuffer_binding != 0u &&
+         ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) !=
+             RINGL_FRAMEBUFFER_COMPLETE) ||
+        ringl_resolve_color_target(context, &target) != 0 ||
         x < 0 || y < 0 ||
         (uint64_t)(uint32_t)x + (uint64_t)(uint32_t)width >
             target.width ||

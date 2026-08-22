@@ -816,7 +816,7 @@ void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
     }
     texture = bound_texture_2d(context);
     if (texture == NULL || !texture->defined || texture->format != RINGL_RGBA ||
-        texture->shadow_bytes == NULL || context->framebuffer_binding != 0u) {
+        texture->shadow_bytes == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
@@ -825,6 +825,12 @@ void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
         (uint32_t)width > texture->width - (uint32_t)xoffset ||
         (uint32_t)height > texture->height - (uint32_t)yoffset) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if (context->framebuffer_binding != 0u &&
+        ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) !=
+            RINGL_FRAMEBUFFER_COMPLETE) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
     if (ringl_resolve_color_target(context, &source) != 0) {

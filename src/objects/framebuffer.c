@@ -18,6 +18,11 @@ static int color_attachment_valid(uint32_t attachment)
     return attachment == RINGL_COLOR_ATTACHMENT0;
 }
 
+static int depth_attachment_valid(uint32_t attachment)
+{
+    return attachment == RINGL_DEPTH_ATTACHMENT;
+}
+
 static RinGLFramebufferObject* bound_framebuffer(RinGLContext* context)
 {
     uint32_t index;
@@ -55,6 +60,90 @@ static void reset_color_attachment(RinGLFramebufferObject* framebuffer)
     framebuffer->color_attachment_kind = RINGL_FRAMEBUFFER_ATTACHMENT_NONE;
     framebuffer->color_attachment_object = 0u;
     framebuffer->color_attachment_level = 0;
+}
+
+static void reset_depth_attachment(RinGLFramebufferObject* framebuffer)
+{
+    if (framebuffer == NULL)
+        return;
+    framebuffer->depth_attachment_kind = RINGL_FRAMEBUFFER_ATTACHMENT_NONE;
+    framebuffer->depth_attachment_object = 0u;
+}
+
+static int color_attachment_dimensions(RinGLContext* context,
+                                       const RinGLFramebufferObject* framebuffer,
+                                       uint32_t* width_out, uint32_t* height_out)
+{
+    uint32_t index;
+
+    if (context == NULL || framebuffer == NULL || width_out == NULL ||
+        height_out == NULL)
+        return -1;
+    if (framebuffer->color_attachment_kind ==
+        RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D) {
+        RinGLTextureObject* texture;
+
+        if (ringl_object_lookup(context, framebuffer->color_attachment_object,
+                                RINGL_OBJECT_TEXTURE) == NULL ||
+            framebuffer->color_attachment_level != 0)
+            return -1;
+        index = ringl_object_slot_index(framebuffer->color_attachment_object);
+        if (index >= RINGL_OBJECT_SLOT_COUNT)
+            return -1;
+        texture = &context->textures[index];
+        if (!texture->defined || texture->format != RINGL_RGBA ||
+            texture->width == 0u || texture->height == 0u)
+            return -1;
+        *width_out = texture->width;
+        *height_out = texture->height;
+        return 0;
+    }
+    if (framebuffer->color_attachment_kind ==
+        RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER) {
+        RinGLRenderbufferObject* renderbuffer;
+
+        if (ringl_object_lookup(context, framebuffer->color_attachment_object,
+                                RINGL_OBJECT_RENDERBUFFER) == NULL)
+            return -1;
+        index = ringl_object_slot_index(framebuffer->color_attachment_object);
+        if (index >= RINGL_OBJECT_SLOT_COUNT)
+            return -1;
+        renderbuffer = &context->renderbuffers[index];
+        if (!renderbuffer->defined ||
+            renderbuffer->internal_format != RINGL_RGBA8 ||
+            renderbuffer->width == 0u || renderbuffer->height == 0u)
+            return -1;
+        *width_out = renderbuffer->width;
+        *height_out = renderbuffer->height;
+        return 0;
+    }
+    return -1;
+}
+
+static int depth_attachment_dimensions(RinGLContext* context,
+                                       const RinGLFramebufferObject* framebuffer,
+                                       uint32_t* width_out, uint32_t* height_out)
+{
+    uint32_t index;
+    RinGLRenderbufferObject* renderbuffer;
+
+    if (context == NULL || framebuffer == NULL || width_out == NULL ||
+        height_out == NULL || framebuffer->depth_attachment_kind !=
+            RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER ||
+        ringl_object_lookup(context, framebuffer->depth_attachment_object,
+                            RINGL_OBJECT_RENDERBUFFER) == NULL)
+        return -1;
+    index = ringl_object_slot_index(framebuffer->depth_attachment_object);
+    if (index >= RINGL_OBJECT_SLOT_COUNT)
+        return -1;
+    renderbuffer = &context->renderbuffers[index];
+    if (!renderbuffer->defined ||
+        renderbuffer->internal_format != RINGL_DEPTH_COMPONENT32F ||
+        renderbuffer->width == 0u || renderbuffer->height == 0u)
+        return -1;
+    *width_out = renderbuffer->width;
+    *height_out = renderbuffer->height;
+    return 0;
 }
 
 static void generate_objects(RinGLContext* context, int32_t count,
@@ -257,7 +346,10 @@ uint32_t ringl_check_framebuffer_status(uint32_t target)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLFramebufferObject* framebuffer;
-    uint32_t index;
+    uint32_t color_width;
+    uint32_t color_height;
+    uint32_t depth_width;
+    uint32_t depth_height;
 
     if (context == NULL)
         return 0u;
@@ -274,40 +366,19 @@ uint32_t ringl_check_framebuffer_status(uint32_t target)
     if (framebuffer == NULL)
         return RINGL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT;
     if (framebuffer->color_attachment_kind ==
-        RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D) {
-        RinGLTextureObject* texture;
-
-        if (ringl_object_lookup(context, framebuffer->color_attachment_object,
-                                RINGL_OBJECT_TEXTURE) == NULL)
-            return RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
-        index = ringl_object_slot_index(framebuffer->color_attachment_object);
-        if (index >= RINGL_OBJECT_SLOT_COUNT)
-            return RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
-        texture = &context->textures[index];
-        return texture->defined && texture->format == RINGL_RGBA &&
-                       texture->width != 0u && texture->height != 0u &&
-                       framebuffer->color_attachment_level == 0
-            ? RINGL_FRAMEBUFFER_COMPLETE
-            : RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
-    }
-    if (framebuffer->color_attachment_kind ==
-        RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER) {
-        RinGLRenderbufferObject* renderbuffer;
-
-        if (ringl_object_lookup(context, framebuffer->color_attachment_object,
-                                RINGL_OBJECT_RENDERBUFFER) == NULL)
-            return RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
-        index = ringl_object_slot_index(framebuffer->color_attachment_object);
-        if (index >= RINGL_OBJECT_SLOT_COUNT)
-            return RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
-        renderbuffer = &context->renderbuffers[index];
-        return renderbuffer->defined &&
-                       renderbuffer->internal_format == RINGL_RGBA8 &&
-                       renderbuffer->width != 0u && renderbuffer->height != 0u
-            ? RINGL_FRAMEBUFFER_COMPLETE
-            : RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
-    }
-    return RINGL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT;
+        RINGL_FRAMEBUFFER_ATTACHMENT_NONE)
+        return RINGL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT;
+    if (color_attachment_dimensions(context, framebuffer, &color_width,
+                                    &color_height) != 0)
+        return RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
+    if (framebuffer->depth_attachment_kind ==
+        RINGL_FRAMEBUFFER_ATTACHMENT_NONE)
+        return RINGL_FRAMEBUFFER_COMPLETE;
+    if (depth_attachment_dimensions(context, framebuffer, &depth_width,
+                                    &depth_height) != 0 ||
+        color_width != depth_width || color_height != depth_height)
+        return RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
+    return RINGL_FRAMEBUFFER_COMPLETE;
 }
 
 void ringl_gen_renderbuffers(int32_t count, uint32_t* renderbuffers)
@@ -422,7 +493,8 @@ void ringl_renderbuffer_storage(uint32_t target, uint32_t internal_format,
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
-    if (internal_format != RINGL_RGBA8) {
+    if (internal_format != RINGL_RGBA8 &&
+        internal_format != RINGL_DEPTH_COMPONENT32F) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
@@ -492,6 +564,53 @@ int ringl_renderbuffer_realize_color_target(RinGLContext* context,
     return 0;
 }
 
+int ringl_renderbuffer_realize_depth_target(RinGLContext* context,
+                                            uint32_t renderbuffer,
+                                            uint64_t* image_out,
+                                            uint32_t** image_state_out,
+                                            uint32_t* width_out,
+                                            uint32_t* height_out)
+{
+    uint32_t index;
+    RinGLRenderbufferObject* object;
+    RinGLRinGpuImage2DV1 desc;
+    uint64_t image = 0u;
+
+    if (context == NULL || image_out == NULL || image_state_out == NULL ||
+        width_out == NULL || height_out == NULL || renderbuffer == 0u ||
+        ringl_object_lookup(context, renderbuffer,
+                            RINGL_OBJECT_RENDERBUFFER) == NULL) {
+        return -1;
+    }
+    index = ringl_object_slot_index(renderbuffer);
+    if (index >= RINGL_OBJECT_SLOT_COUNT)
+        return -1;
+    object = &context->renderbuffers[index];
+    if (!object->defined ||
+        object->internal_format != RINGL_DEPTH_COMPONENT32F ||
+        object->width == 0u || object->height == 0u) {
+        return -1;
+    }
+    if (object->ringpu_image == 0u) {
+        memset(&desc, 0, sizeof(desc));
+        desc.width = object->width;
+        desc.height = object->height;
+        desc.format = RINGL_RIN_GPU_FORMAT_D32_FLOAT;
+        desc.usage = RINGL_RIN_GPU_IMAGE_USAGE_DEPTH_STENCIL;
+        if (ringl_backend_create_image_2d(context, &desc, &image) != 0 ||
+            image == 0u) {
+            return -1;
+        }
+        object->ringpu_image = image;
+        object->ringpu_image_state = RINGL_RIN_GPU_IMAGE_UNDEFINED;
+    }
+    *image_out = object->ringpu_image;
+    *image_state_out = &object->ringpu_image_state;
+    *width_out = object->width;
+    *height_out = object->height;
+    return 0;
+}
+
 void ringl_framebuffer_objects_destroy_all(RinGLContext* context)
 {
     uint32_t index;
@@ -518,7 +637,8 @@ void ringl_framebuffer_renderbuffer(uint32_t target, uint32_t attachment,
 
     if (context == NULL)
         return;
-    if (!framebuffer_target_valid(target) || !color_attachment_valid(attachment) ||
+    if (!framebuffer_target_valid(target) ||
+        (!color_attachment_valid(attachment) && !depth_attachment_valid(attachment)) ||
         !renderbuffer_target_valid(renderbuffer_target)) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
@@ -532,13 +652,21 @@ void ringl_framebuffer_renderbuffer(uint32_t target, uint32_t attachment,
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
-    if (renderbuffer == 0u) {
+    if (renderbuffer == 0u && color_attachment_valid(attachment)) {
         reset_color_attachment(framebuffer);
+    } else if (renderbuffer == 0u) {
+        reset_depth_attachment(framebuffer);
     } else {
-        framebuffer->color_attachment_kind =
-            RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER;
-        framebuffer->color_attachment_object = renderbuffer;
-        framebuffer->color_attachment_level = 0;
+        if (color_attachment_valid(attachment)) {
+            framebuffer->color_attachment_kind =
+                RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER;
+            framebuffer->color_attachment_object = renderbuffer;
+            framebuffer->color_attachment_level = 0;
+        } else {
+            framebuffer->depth_attachment_kind =
+                RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER;
+            framebuffer->depth_attachment_object = renderbuffer;
+        }
     }
     ringl_context_mark_dirty(context, RINGL_DIRTY_FRAMEBUFFER);
 }
@@ -575,13 +703,20 @@ void ringl_framebuffer_detach_renderbuffer(RinGLContext* context,
         RinGLFramebufferObject* framebuffer = &context->framebuffers[index];
 
         if (context->objects[index].type != RINGL_OBJECT_FRAMEBUFFER ||
-            context->objects[index].state == RINGL_OBJECT_FREE ||
-            framebuffer->color_attachment_kind !=
-                RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER ||
-            framebuffer->color_attachment_object != renderbuffer) {
+            context->objects[index].state == RINGL_OBJECT_FREE) {
             continue;
         }
-        reset_color_attachment(framebuffer);
-        ringl_context_mark_dirty(context, RINGL_DIRTY_FRAMEBUFFER);
+        if (framebuffer->color_attachment_kind ==
+                RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER &&
+            framebuffer->color_attachment_object == renderbuffer) {
+            reset_color_attachment(framebuffer);
+            ringl_context_mark_dirty(context, RINGL_DIRTY_FRAMEBUFFER);
+        }
+        if (framebuffer->depth_attachment_kind ==
+                RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER &&
+            framebuffer->depth_attachment_object == renderbuffer) {
+            reset_depth_attachment(framebuffer);
+            ringl_context_mark_dirty(context, RINGL_DIRTY_FRAMEBUFFER);
+        }
     }
 }

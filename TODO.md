@@ -102,7 +102,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Map viewport/scissor state through dynamic RinGPU raster-state commands, including finite negative viewport origins and clipped scissor rectangles.
 - [x] Preserve no-op semantics for zero-area viewport, all-channel color mask off, and `CULL_FACE` with `FRONT_AND_BACK` in the current color-only profile.
 - [x] Map D32 clear and `LESS`/`LEQUAL`/`ALWAYS` depth-tested draws for an embedding-supplied default framebuffer through native RinGPU depth render passes.
-- [ ] Map depth testing for custom depth renderbuffer/FBO attachments after their storage and completeness support is implemented in RinGL.
+- [x] Map D32 custom depth-renderbuffer FBO attachments with matching RGBA8 color attachments to lazy RinGPU images, depth render-pass clear/load, and `LESS`/`LEQUAL`/`ALWAYS` depth-tested draws; strict C11 and the RinOS surface integration test cover completeness, dimension mismatch rejection, clear, and draw behavior.
 - [ ] Implement stencil support after framebuffer/renderbuffer depth-stencil storage is in place.
 
 ## Phase 7 — Data movement, synchronization, and observability

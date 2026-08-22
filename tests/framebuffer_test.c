@@ -21,6 +21,8 @@ int main(void)
     };
     RinGLDefaultFramebufferV1 copy;
     uint32_t framebuffer_state = 0xfeedfaceu;
+    uint32_t framebuffers[1] = { 0u };
+    uint32_t renderbuffers[2] = { 0u, 0u };
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -86,6 +88,35 @@ int main(void)
     memset(&copy, 0xff, sizeof(copy));
     assert(ringl_get_default_framebuffer(&copy) == 1);
     assert(copy.color_target == 0u);
+
+    ringl_gen_renderbuffers(2, renderbuffers);
+    ringl_bind_renderbuffer(RINGL_RENDERBUFFER, renderbuffers[0]);
+    ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_RGBA8, 4, 4);
+    ringl_bind_renderbuffer(RINGL_RENDERBUFFER, renderbuffers[1]);
+    ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_DEPTH_COMPONENT32F,
+                               4, 4);
+    ringl_gen_framebuffers(1, framebuffers);
+    ringl_bind_framebuffer(RINGL_FRAMEBUFFER, framebuffers[0]);
+    ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT0,
+                                   RINGL_RENDERBUFFER, renderbuffers[0]);
+    ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER, RINGL_DEPTH_ATTACHMENT,
+                                   RINGL_RENDERBUFFER, renderbuffers[1]);
+    assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
+           RINGL_FRAMEBUFFER_COMPLETE);
+    ringl_bind_renderbuffer(RINGL_RENDERBUFFER, renderbuffers[1]);
+    ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_DEPTH_COMPONENT32F,
+                               2, 4);
+    assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
+           RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT);
+    ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_DEPTH_COMPONENT32F,
+                               4, 4);
+    assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
+           RINGL_FRAMEBUFFER_COMPLETE);
+    ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER, RINGL_DEPTH_ATTACHMENT,
+                                   RINGL_RENDERBUFFER, 0u);
+    assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
+           RINGL_FRAMEBUFFER_COMPLETE);
+    ringl_bind_framebuffer(RINGL_FRAMEBUFFER, 0u);
 
     ringl_context_destroy(context);
     return 0;

@@ -44,6 +44,8 @@ typedef struct RinGLFramebufferObject {
     uint32_t color_attachment_kind;
     uint32_t color_attachment_object;
     int32_t color_attachment_level;
+    uint32_t depth_attachment_kind;
+    uint32_t depth_attachment_object;
     uint32_t reserved0;
 } RinGLFramebufferObject;
 
@@ -304,6 +306,12 @@ void ringl_framebuffer_detach_renderbuffer(RinGLContext* context,
                                            uint32_t renderbuffer);
 void ringl_framebuffer_objects_destroy_all(RinGLContext* context);
 int ringl_renderbuffer_realize_color_target(RinGLContext* context,
+                                            uint32_t renderbuffer,
+                                            uint64_t* image_out,
+                                            uint32_t** image_state_out,
+                                            uint32_t* width_out,
+                                            uint32_t* height_out);
+int ringl_renderbuffer_realize_depth_target(RinGLContext* context,
                                             uint32_t renderbuffer,
                                             uint64_t* image_out,
                                             uint32_t** image_state_out,

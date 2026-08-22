@@ -67,13 +67,42 @@ int ringl_resolve_color_target(RinGLContext* context,
 
 int ringl_resolve_depth_target(RinGLContext* context, RinGLDepthTarget* target)
 {
+    RinGLFramebufferObject* framebuffer;
+    uint32_t index;
+    uint32_t width;
+    uint32_t height;
+
     if (context == NULL || target == NULL)
         return -1;
     memset(target, 0, sizeof(*target));
-    if (context->framebuffer_binding != 0u || !context->has_default_framebuffer ||
-        context->default_framebuffer.depth_target == 0u) {
-        return 1;
+    if (context->framebuffer_binding != 0u) {
+        if (ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) !=
+            RINGL_FRAMEBUFFER_COMPLETE ||
+            ringl_object_lookup(context, context->framebuffer_binding,
+                                RINGL_OBJECT_FRAMEBUFFER) == NULL)
+            return -1;
+        index = ringl_object_slot_index(context->framebuffer_binding);
+        if (index >= RINGL_OBJECT_SLOT_COUNT)
+            return -1;
+        framebuffer = &context->framebuffers[index];
+        if (framebuffer->depth_attachment_kind ==
+            RINGL_FRAMEBUFFER_ATTACHMENT_NONE)
+            return 1;
+        if (framebuffer->depth_attachment_kind !=
+            RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER ||
+            ringl_renderbuffer_realize_depth_target(
+                context, framebuffer->depth_attachment_object, &target->image,
+                &target->state, &width, &height) != 0)
+            return -1;
+        target->format = RINGL_RIN_GPU_FORMAT_D32_FLOAT;
+        return target->image != 0u && target->state != NULL && width != 0u &&
+                       height != 0u
+            ? 0
+            : -1;
     }
+    if (!context->has_default_framebuffer ||
+        context->default_framebuffer.depth_target == 0u)
+        return 1;
     target->image = context->default_framebuffer.depth_target;
     target->format = context->default_framebuffer.depth_format;
     target->state = &context->default_depth_framebuffer_state;

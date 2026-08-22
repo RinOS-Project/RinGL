@@ -154,19 +154,21 @@ tests/               unit and integration tests
 ## Status
 
 The bounded first-triangle and textured-triangle translation paths are
-implemented and covered by strict C11 mock-RinGPU tests. A color-only FBO
-slice is also implemented: level-zero RGBA8 texture and renderbuffer
-attachments are completeness-checked, realized as RinGPU color targets, used
-by clear/draw render passes, and read back through `COPY_SOURCE`. The RinOS
-surface integration test verifies texture-FBO clear and triangle output plus
-renderbuffer-FBO clear as actual RGBA pixels. A trusted embedding can query
-the default color image's post-submit state, allowing its caller-owned
-presentation surface to remain synchronized across RinGL `present()` and
-later content updates. When that embedding supplies a D32 target, RinGL also
-executes default-framebuffer depth clear and `LESS`/`LEQUAL`/`ALWAYS`
-depth-tested draws through a RinGPU depth render pass.
+implemented and covered by strict C11 mock-RinGPU tests. Level-zero RGBA8
+texture/renderbuffer color attachments are completeness-checked, realized as
+RinGPU color targets, used by clear/draw render passes, and read back through
+`COPY_SOURCE`. A matching `DEPTH_COMPONENT32F` renderbuffer can now be
+attached as `DEPTH_ATTACHMENT`; the pair is rejected on an invalid attachment
+or dimension mismatch, and its D32 image is realized lazily as a RinGPU depth
+target. The RinOS surface integration test verifies a depth-only clear while
+preserving color and `LESS` depth-tested triangle output from such a custom
+FBO. A trusted embedding can query the default color image's post-submit
+state, allowing its caller-owned presentation surface to remain synchronized
+across RinGL `present()` and later content updates. When that embedding
+supplies a D32 target, RinGL also executes default-framebuffer depth clear and
+`LESS`/`LEQUAL`/`ALWAYS` depth-tested draws through a RinGPU depth render pass.
 
-This remains a bounded profile. Custom depth/stencil FBO attachments,
+This remains a bounded profile. Texture depth attachments, stencil,
 multisampling, multiple color attachments, remaining depth comparisons, and
 broad GLES framebuffer semantics are not implemented.
 

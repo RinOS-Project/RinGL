@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #include <assert.h>
 #include <stdint.h>
+#include <string.h>
 
 #include <ringl/ringl.h>
 
@@ -27,6 +28,10 @@ int main(void)
     };
     RinGLBlendColorV1 blend_color = {
         .struct_size = sizeof(blend_color),
+        .api_version = RINGL_API_VERSION,
+    };
+    RinGLDepthRangeV1 depth_range = {
+        .struct_size = sizeof(depth_range),
         .api_version = RINGL_API_VERSION,
     };
     RinGLDefaultFramebufferV1 framebuffer = {
@@ -183,6 +188,32 @@ int main(void)
     assert(values[0] == (int32_t)RINGL_GEQUAL);
     ringl_get_integerv(RINGL_DEPTH_WRITEMASK, values);
     assert(values[0] == (int32_t)RINGL_FALSE);
+
+    assert(ringl_get_depth_range(&depth_range) == 0);
+    assert(depth_range.z_near == 0.0f && depth_range.z_far == 1.0f);
+    ringl_depth_range(-0.5f, 1.5f);
+    assert(ringl_get_depth_range(&depth_range) == 0);
+    assert(depth_range.z_near == 0.0f && depth_range.z_far == 1.0f);
+    ringl_depth_range(0.75f, 0.25f);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_get_depth_range(&depth_range) == 0);
+    assert(depth_range.z_near == 0.75f && depth_range.z_far == 0.25f);
+    {
+        uint32_t nan_bits = 0x7fc00000u;
+        float nan;
+
+        memcpy(&nan, &nan_bits, sizeof(nan));
+        ringl_depth_range(nan, 0.5f);
+    }
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    assert(ringl_get_depth_range(&depth_range) == 0);
+    assert(depth_range.z_near == 0.75f && depth_range.z_far == 0.25f);
+    depth_range.struct_size = sizeof(depth_range) - 1u;
+    depth_range.z_near = 0.125f;
+    depth_range.z_far = 0.875f;
+    assert(ringl_get_depth_range(&depth_range) == -1);
+    assert(depth_range.z_near == 0.125f && depth_range.z_far == 0.875f);
+    depth_range.struct_size = sizeof(depth_range);
 
     ringl_stencil_func(0xdeadbeefu, 0, 0xffu);
     assert(ringl_get_error() == RINGL_INVALID_ENUM);

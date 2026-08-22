@@ -240,6 +240,63 @@ void ringl_depth_mask(uint32_t enabled)
     ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
 }
 
+static int depth_range_component(float value, float* result)
+{
+    uint32_t bits;
+
+    memcpy(&bits, &value, sizeof(bits));
+    if ((bits & 0x7f800000u) == 0x7f800000u)
+        return 0;
+    if (value <= 0.0f)
+        *result = 0.0f;
+    else if (value >= 1.0f)
+        *result = 1.0f;
+    else
+        *result = value;
+    return 1;
+}
+
+int ringl_get_depth_range(RinGLDepthRangeV1* range)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLDepthRangeV1 snapshot;
+
+    if (context == NULL || range == NULL ||
+        range->struct_size < sizeof(*range) ||
+        range->api_version != RINGL_API_VERSION) {
+        return -1;
+    }
+    snapshot.struct_size = sizeof(snapshot);
+    snapshot.api_version = RINGL_API_VERSION;
+    snapshot.z_near = context->depth_range_near;
+    snapshot.z_far = context->depth_range_far;
+    snapshot.reserved0 = 0u;
+    *range = snapshot;
+    return 0;
+}
+
+void ringl_depth_range(float z_near, float z_far)
+{
+    RinGLContext* context = ringl_get_current_context();
+    float clamped_near;
+    float clamped_far;
+
+    if (context == NULL)
+        return;
+    if (!depth_range_component(z_near, &clamped_near) ||
+        !depth_range_component(z_far, &clamped_far)) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if (context->depth_range_near == clamped_near &&
+        context->depth_range_far == clamped_far) {
+        return;
+    }
+    context->depth_range_near = clamped_near;
+    context->depth_range_far = clamped_far;
+    ringl_context_mark_dirty(context, RINGL_DIRTY_VIEWPORT);
+}
+
 void ringl_stencil_func(uint32_t func, int32_t reference, uint32_t mask)
 {
     ringl_stencil_func_separate(RINGL_FRONT_AND_BACK, func, reference, mask);

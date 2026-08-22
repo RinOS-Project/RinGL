@@ -147,7 +147,7 @@ static int fake_set_raster_state(void* session, uint64_t command_list,
     assert(command_list != 0u && state != NULL);
     assert(state->viewport_x == -9.0f && state->viewport_y == -4.0f);
     assert(state->viewport_width == 100.0f && state->viewport_height == 80.0f);
-    assert(state->min_depth == 0.0f && state->max_depth == 1.0f);
+    assert(state->min_depth == 0.25f && state->max_depth == 0.75f);
     assert(state->scissor_enabled == 1u);
     assert(state->scissor_x == 0 && state->scissor_y == 3);
     assert(state->scissor_width == 15u && state->scissor_height == 30u);
@@ -366,6 +366,7 @@ int main(void)
     ringl_uniform_1i(sampler_location, 0);
 
     ringl_viewport(-9, -4, 100, 80);
+    ringl_depth_range(0.25f, 0.75f);
     ringl_scissor(-5, 3, 20, 30);
     ringl_enable(RINGL_SCISSOR_TEST);
     ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);

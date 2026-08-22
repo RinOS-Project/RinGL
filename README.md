@@ -282,6 +282,13 @@ that RinGL resolves into RinGPU's V2 pipeline descriptor. Its versioned input
 is validated before the complete snapshot is copied out, so a browser can
 answer `BLEND_COLOR` without reusing clear-color state or exposing internals.
 
+`ringl_depth_range()` retains the OpenGL depth-range state separately from the
+viewport. It rejects non-finite inputs without changing state, clamps each
+finite endpoint independently to `[0,1]`, and preserves reversed ranges.
+`RinGLDepthRangeV1` exposes that state through a versioned, failure-atomic
+snapshot. Draw translation passes the exact pair through RinGPU raster state,
+rather than treating every range as the default `[0,1]`.
+
 Custom RGBA8 renderbuffer FBOs may additionally attach a matching
 `DEPTH24_STENCIL8` renderbuffer or level-zero
 `DEPTH24_STENCIL8`/`DEPTH_STENCIL`/`UNSIGNED_INT_24_8` texture through

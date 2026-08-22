@@ -127,6 +127,7 @@ extern "C" {
 #define RINGL_MAX_COMBINED_TEXTURE_IMAGE_UNITS 0x8b4du
 #define RINGL_CULL_FACE_MODE                0x0b45u
 #define RINGL_FRONT_FACE                    0x0b46u
+#define RINGL_DEPTH_RANGE                   0x0b70u
 
 #define RINGL_ARRAY_BUFFER          0x8892u
 #define RINGL_ELEMENT_ARRAY_BUFFER  0x8893u
@@ -835,6 +836,16 @@ typedef struct RinGLBlendColorV1 {
     uint32_t reserved0;
 } RinGLBlendColorV1;
 
+/* Snapshot of the clamped WebGL depth-range endpoints consumed by the
+ * RinGPU raster state. */
+typedef struct RinGLDepthRangeV1 {
+    uint32_t struct_size;
+    uint32_t api_version;
+    float z_near;
+    float z_far;
+    uint32_t reserved0;
+} RinGLDepthRangeV1;
+
 /* This is a read-only description of RinGL's currently bound custom
  * framebuffer. It is intentionally separate from GLES query entry points so
  * an embedding can inspect the bounded object-model slice without claiming
@@ -873,6 +884,11 @@ void ringl_cull_face(uint32_t mode);
 void ringl_front_face(uint32_t mode);
 void ringl_depth_func(uint32_t func);
 void ringl_depth_mask(uint32_t enabled);
+/* Finite endpoints are independently clamped to [0, 1]; reversed ranges are
+ * valid and are forwarded to RinGPU without reordering. */
+void ringl_depth_range(float z_near, float z_far);
+/* Returns the tracked depth range only for a complete v1 output header. */
+int ringl_get_depth_range(RinGLDepthRangeV1* range);
 void ringl_stencil_func(uint32_t func, int32_t reference, uint32_t mask);
 void ringl_stencil_func_separate(uint32_t face, uint32_t func,
                                  int32_t reference, uint32_t mask);

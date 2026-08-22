@@ -218,6 +218,8 @@ struct RinGLContext {
     float clear_alpha;
     float clear_depth;
     uint32_t clear_stencil;
+    float depth_range_near;
+    float depth_range_far;
 
     int32_t viewport_x;
     int32_t viewport_y;

@@ -408,8 +408,8 @@ static int set_raster_state(RinGLContext* context, uint64_t command_list,
     state.viewport_y = (float)context->viewport_y;
     state.viewport_width = (float)context->viewport_width;
     state.viewport_height = (float)context->viewport_height;
-    state.min_depth = 0.0f;
-    state.max_depth = 1.0f;
+    state.min_depth = context->depth_range_near;
+    state.max_depth = context->depth_range_far;
 
     if (context->scissor_enabled) {
         x0 = context->scissor_x;

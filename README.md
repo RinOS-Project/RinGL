@@ -269,6 +269,17 @@ stores that exact Float32 value in both RSH1 texture-coordinate registers, so
 the resource-aware RinGPU surface path samples `(value, value)` rather than
 silently using an arbitrary second coordinate.
 
+A separate bounded fragment profile supports two declared `sampler2D` uniforms
+when each is sampled exactly once at finite constant coordinates and the two
+samples are added for `gl_FragColor`. The lowerer assigns the declaration-ordered
+RSH1 resource pairs `[0, 1]` and `[2, 3]`; RinGL realizes both texture units,
+records transitions for distinct images before the draw, and publishes those
+tracked states only after submission succeeds. The focused RinGL-to-RinGPU-to-
+Aquamarine test verifies direct and indexed draws with red plus green textures
+producing an actual yellow pixel. This is not general multi-texture GLSL:
+repeated samples, arbitrary expressions, nonconstant coordinates, and
+varying-coordinate multi-sampler shaders remain unsupported.
+
 The initial varying bridge now also executes a bounded vertex-color profile:
 `attribute vec2 position; attribute vec4 color; varying vec4 vertexColor;`
 with `gl_Position = vec4(position, 0.0, 1.0)`, `vertexColor = color`, and

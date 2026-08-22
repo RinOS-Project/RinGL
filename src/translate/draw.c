@@ -459,80 +459,121 @@ static RinGLProgramObject* current_program(RinGLContext* context)
     return &context->programs[index];
 }
 
+typedef struct RinGLTextureTransitionSet {
+    uint32_t texture_indices[RINGL_MAX_SAMPLER_UNIFORMS];
+    uint32_t count;
+} RinGLTextureTransitionSet;
+
+static int texture_transition_set_contains(
+    const RinGLTextureTransitionSet* set, uint32_t texture_index)
+{
+    uint32_t index;
+
+    if (set == NULL)
+        return 0;
+    for (index = 0u; index < set->count; ++index) {
+        if (set->texture_indices[index] == texture_index)
+            return 1;
+    }
+    return 0;
+}
+
+static int texture_transition_set_add(RinGLTextureTransitionSet* set,
+                                      uint32_t texture_index)
+{
+    if (set == NULL || set->count >= RINGL_MAX_SAMPLER_UNIFORMS)
+        return -1;
+    set->texture_indices[set->count++] = texture_index;
+    return 0;
+}
+
 static int prepare_graphics_resources(RinGLContext* context,
                                       uint64_t command_list,
                                       uint64_t pipeline,
                                       uint64_t color_target,
-                                      uint32_t* texture_index_out,
-                                      uint32_t* transitioned_out)
+                                      RinGLTextureTransitionSet*
+                                          transitioned_out)
 {
     RinGLProgramObject* program;
-    RinGLRinGpuGraphicsBindingV1 bindings[2];
-    RinGLTextureObject* texture;
+    RinGLRinGpuGraphicsBindingV1
+        bindings[RINGL_MAX_SAMPLER_UNIFORMS * 2u];
     uint64_t image;
     uint64_t sampler;
     uint32_t texture_name;
     uint32_t texture_index;
+    uint32_t sampler_index;
+    uint32_t binding_count;
+    RinGLTextureTransitionSet transitioned = {0};
     int32_t unit;
 
-    if (texture_index_out != NULL)
-        *texture_index_out = UINT32_MAX;
     if (transitioned_out != NULL)
-        *transitioned_out = 0u;
+        memset(transitioned_out, 0, sizeof(*transitioned_out));
 
     program = current_program(context);
     if (program == NULL)
         return -1;
     if (program->sampler_uniform_count == 0u)
         return 0;
-    if (program->sampler_uniform_count != 1u ||
+    if (program->sampler_uniform_count > RINGL_MAX_SAMPLER_UNIFORMS ||
         context->ringpu_ops.create_graphics_bind_group == NULL ||
         context->ringpu_ops.bind_graphics_resources == NULL)
         return -1;
 
-    unit = program->sampler_uniforms[0].texture_unit;
-    if (unit < 0 || (uint32_t)unit >= RINGL_MAX_TEXTURE_UNITS)
-        return -1;
-    texture_name = context->bound_texture_2d[(uint32_t)unit];
-    if (texture_name == 0u ||
-        ringl_object_lookup(context, texture_name, RINGL_OBJECT_TEXTURE) == NULL)
-        return -1;
-    texture_index = ringl_object_slot_index(texture_name);
-    if (texture_index >= RINGL_OBJECT_SLOT_COUNT)
-        return -1;
-    texture = &context->textures[texture_index];
+    memset(bindings, 0, sizeof(bindings));
+    binding_count = program->sampler_uniform_count * 2u;
+    for (sampler_index = 0u;
+         sampler_index < program->sampler_uniform_count;
+         ++sampler_index) {
+        RinGLTextureObject* texture;
 
-    if (ringl_texture_realize_unit(context, (uint32_t)unit, &image, &sampler) != 0 ||
-        image == 0u || sampler == 0u)
-        return -1;
-    if (image == color_target)
-        return -1;
-    if (texture->ringpu_image_state != RINGL_RIN_GPU_IMAGE_SHADER_READ) {
-        if (ringl_backend_transition_image(context, command_list, image,
-                                           texture->ringpu_image_state,
-                                           RINGL_RIN_GPU_IMAGE_SHADER_READ) != 0)
+        unit = program->sampler_uniforms[sampler_index].texture_unit;
+        if (unit < 0 || (uint32_t)unit >= RINGL_MAX_TEXTURE_UNITS)
             return -1;
-        if (transitioned_out != NULL)
-            *transitioned_out = 1u;
+        texture_name = context->bound_texture_2d[(uint32_t)unit];
+        if (texture_name == 0u ||
+            ringl_object_lookup(context, texture_name,
+                                RINGL_OBJECT_TEXTURE) == NULL) {
+            return -1;
+        }
+        texture_index = ringl_object_slot_index(texture_name);
+        if (texture_index >= RINGL_OBJECT_SLOT_COUNT)
+            return -1;
+        texture = &context->textures[texture_index];
+        if (ringl_texture_realize_unit(context, (uint32_t)unit, &image,
+                                       &sampler) != 0 ||
+            image == 0u || sampler == 0u || image == color_target) {
+            return -1;
+        }
+        if (texture->ringpu_image_state != RINGL_RIN_GPU_IMAGE_SHADER_READ &&
+            !texture_transition_set_contains(&transitioned, texture_index)) {
+            if (ringl_backend_transition_image(
+                    context, command_list, image,
+                    texture->ringpu_image_state,
+                    RINGL_RIN_GPU_IMAGE_SHADER_READ) != 0) {
+                return -1;
+            }
+            if (texture_transition_set_add(&transitioned, texture_index) != 0)
+                return -1;
+        }
+        bindings[sampler_index * 2u].binding = sampler_index * 2u;
+        bindings[sampler_index * 2u].kind =
+            RINGL_RIN_GPU_RESOURCE_SAMPLED_IMAGE;
+        bindings[sampler_index * 2u].access = RINGL_RIN_GPU_RESOURCE_READ;
+        bindings[sampler_index * 2u].resource = image;
+        bindings[sampler_index * 2u + 1u].binding = sampler_index * 2u + 1u;
+        bindings[sampler_index * 2u + 1u].kind =
+            RINGL_RIN_GPU_RESOURCE_SAMPLER;
+        bindings[sampler_index * 2u + 1u].resource = sampler;
     }
 
-    memset(bindings, 0, sizeof(bindings));
-    bindings[0].binding = 0u;
-    bindings[0].kind = RINGL_RIN_GPU_RESOURCE_SAMPLED_IMAGE;
-    bindings[0].access = RINGL_RIN_GPU_RESOURCE_READ;
-    bindings[0].resource = image;
-    bindings[1].binding = 1u;
-    bindings[1].kind = RINGL_RIN_GPU_RESOURCE_SAMPLER;
-    bindings[1].resource = sampler;
-
     if (ringl_backend_create_graphics_bind_group(
-            context, pipeline, bindings, 2u,
+            context, pipeline, bindings, binding_count,
             &context->graphics_bind_group) != 0 ||
         context->graphics_bind_group == 0u)
         return -1;
 
-    if (texture_index_out != NULL)
-        *texture_index_out = texture_index;
+    if (transitioned_out != NULL)
+        *transitioned_out = transitioned;
     return 0;
 }
 
@@ -545,15 +586,25 @@ static int bind_graphics_resources(RinGLContext* context,
         context, command_list, context->graphics_bind_group);
 }
 
-static void publish_texture_transition(RinGLContext* context,
-                                       uint32_t texture_index,
-                                       uint32_t transitioned)
+static void publish_texture_transitions(RinGLContext* context,
+                                        const RinGLTextureTransitionSet*
+                                            transitioned)
 {
-    if (context == NULL || !transitioned ||
-        texture_index >= RINGL_OBJECT_SLOT_COUNT)
+    uint32_t index;
+
+    if (context == NULL || transitioned == NULL ||
+        transitioned->count > RINGL_MAX_SAMPLER_UNIFORMS)
         return;
-    context->textures[texture_index].ringpu_image_state =
-        RINGL_RIN_GPU_IMAGE_SHADER_READ;
+    for (index = 0u; index < transitioned->count; ++index) {
+        if (transitioned->texture_indices[index] >= RINGL_OBJECT_SLOT_COUNT)
+            return;
+    }
+    for (index = 0u; index < transitioned->count; ++index) {
+        uint32_t texture_index = transitioned->texture_indices[index];
+
+        context->textures[texture_index].ringpu_image_state =
+            RINGL_RIN_GPU_IMAGE_SHADER_READ;
+    }
 }
 
 void ringl_clear_color(float red, float green, float blue, float alpha)
@@ -700,8 +751,7 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
     uint64_t command_list;
     uint64_t pipeline;
     uint32_t buffer_index;
-    uint32_t texture_index = UINT32_MAX;
-    uint32_t texture_transitioned = 0u;
+    RinGLTextureTransitionSet texture_transitions = {0};
     int depth_status;
     int use_multi_buffer;
     int draw_result;
@@ -781,8 +831,7 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
             &pipeline) != 0 ||
         pipeline == 0u ||
         prepare_graphics_resources(context, command_list, pipeline, target.image,
-                                   &texture_index,
-                                   &texture_transitioned) != 0 ||
+                                   &texture_transitions) != 0 ||
         transition_to_color_target(context, command_list, &target) != 0 ||
         ((context->depth_test_enabled || context->stencil_test_enabled) &&
          transition_to_depth_target(context, command_list, &depth_target) != 0) ||
@@ -832,7 +881,7 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
-    publish_texture_transition(context, texture_index, texture_transitioned);
+    publish_texture_transitions(context, &texture_transitions);
     *target.state = RINGL_RIN_GPU_IMAGE_COLOR_TARGET;
     if (context->depth_test_enabled || context->stencil_test_enabled)
         *depth_target.state = RINGL_RIN_GPU_IMAGE_DEPTH_TARGET;
@@ -861,8 +910,7 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
     uint32_t vertex_count;
     uint32_t vertex_buffer_index;
     uint32_t index_buffer_index;
-    uint32_t texture_index = UINT32_MAX;
-    uint32_t texture_transitioned = 0u;
+    RinGLTextureTransitionSet texture_transitions = {0};
     int depth_status;
     int use_multi_buffer;
     int draw_result;
@@ -963,8 +1011,7 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
             &pipeline) != 0 ||
         pipeline == 0u ||
         prepare_graphics_resources(context, command_list, pipeline, target.image,
-                                   &texture_index,
-                                   &texture_transitioned) != 0 ||
+                                   &texture_transitions) != 0 ||
         transition_to_color_target(context, command_list, &target) != 0 ||
         ((context->depth_test_enabled || context->stencil_test_enabled) &&
          transition_to_depth_target(context, command_list, &depth_target) != 0) ||
@@ -1031,7 +1078,7 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
         return;
     }
 
-    publish_texture_transition(context, texture_index, texture_transitioned);
+    publish_texture_transitions(context, &texture_transitions);
     *target.state = RINGL_RIN_GPU_IMAGE_COLOR_TARGET;
     if (context->depth_test_enabled || context->stencil_test_enabled)
         *depth_target.state = RINGL_RIN_GPU_IMAGE_DEPTH_TARGET;

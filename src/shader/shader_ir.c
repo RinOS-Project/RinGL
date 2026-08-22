@@ -52,7 +52,9 @@ int ringl_lower_shader_rsh1(uint32_t shader)
         }
         rc = ringl_glsl_lower_texture2d_rsh1(
             object->source, (size_t)object->source_length,
-            object->sampler_uniform_names[0], object->sampler_uniform_count,
+            &object->sampler_uniform_names[0][0],
+            sizeof(object->sampler_uniform_names[0]),
+            object->sampler_uniform_count,
             &lowered);
     } else {
         rc = ringl_glsl_lower_rsh1(object->shader_type, object->source,

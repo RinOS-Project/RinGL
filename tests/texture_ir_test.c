@@ -9,6 +9,7 @@
 #define RSH1_LOAD_INPUT_F32 45u
 #define RSH1_SAMPLE_IMAGE_2D_F32 55u
 #define RSH1_STORE_OUTPUT_F32 46u
+#define RSH1_ADD_F32 20u
 
 typedef struct __attribute__((packed)) Header {
     uint32_t magic;
@@ -53,6 +54,7 @@ int main(void)
     uint32_t expected_bits;
     Header header;
     Instruction instructions[15];
+    Instruction two_sampler_instructions[25];
     uint32_t component;
     const char* source =
         "uniform sampler2D colorTexture;\n"
@@ -63,6 +65,13 @@ int main(void)
         "uniform sampler2D colorTexture;\n"
         "void main() {\n"
         "  gl_FragColor = texture2D(colorTexture, vec2(0.75));\n"
+        "}\n";
+    const char* two_sampler_source =
+        "uniform sampler2D firstTexture;\n"
+        "uniform sampler2D secondTexture;\n"
+        "void main() {\n"
+        "  gl_FragColor = texture2D(secondTexture, vec2(0.25, 0.75)) + "
+        "texture2D(firstTexture, vec2(0.5));\n"
         "}\n";
     float scalar_splat = 0.75f;
 
@@ -118,6 +127,38 @@ int main(void)
     memcpy(&expected_bits, &scalar_splat, sizeof(expected_bits));
     assert(instructions[4].immediate == expected_bits);
     assert(instructions[5].immediate == expected_bits);
+
+    ringl_shader_source(shader, two_sampler_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + sizeof(two_sampler_instructions));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    memcpy(two_sampler_instructions, blob + sizeof(header),
+           sizeof(two_sampler_instructions));
+    assert(header.instruction_count == 25u);
+    assert(header.register_count == 20u);
+    assert(header.resource_count == 4u);
+    for (component = 0u; component < 4u; ++component) {
+        const Instruction* second_sample =
+            &two_sampler_instructions[8u + component];
+        const Instruction* first_sample =
+            &two_sampler_instructions[12u + component];
+        const Instruction* add = &two_sampler_instructions[16u + component];
+        const Instruction* store = &two_sampler_instructions[20u + component];
+
+        assert(second_sample->opcode == RSH1_SAMPLE_IMAGE_2D_F32);
+        assert(second_sample->resource == 2u && second_sample->immediate == 3u);
+        assert(first_sample->opcode == RSH1_SAMPLE_IMAGE_2D_F32);
+        assert(first_sample->resource == 0u && first_sample->immediate == 1u);
+        assert(add->opcode == RSH1_ADD_F32);
+        assert(add->source0 == 4u + component);
+        assert(add->source1 == 8u + component);
+        assert(store->opcode == RSH1_STORE_OUTPUT_F32);
+        assert(store->source0 == 16u + component);
+    }
 
     ringl_context_destroy(context);
     return 0;

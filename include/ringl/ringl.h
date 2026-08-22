@@ -20,6 +20,9 @@ extern "C" {
 #define RINGL_TRUE  1u
 #define RINGL_FLOAT 0x1406u
 
+#define RINGL_TRIANGLES        0x0004u
+#define RINGL_COLOR_BUFFER_BIT 0x00004000u
+
 #define RINGL_ARRAY_BUFFER          0x8892u
 #define RINGL_ELEMENT_ARRAY_BUFFER  0x8893u
 #define RINGL_STREAM_DRAW           0x88e0u
@@ -36,6 +39,13 @@ extern "C" {
 #define RINGL_DIRTY_FRAMEBUFFER 0x00000004u
 #define RINGL_DIRTY_VIEWPORT    0x00000008u
 #define RINGL_DIRTY_ALL         0x0000000fu
+
+#define RINGL_RIN_GPU_QUEUE_GRAPHICS       0x00000004u
+#define RINGL_RIN_GPU_IMAGE_COLOR_TARGET   3u
+#define RINGL_RIN_GPU_IMAGE_PRESENT        4u
+#define RINGL_RIN_GPU_RENDER_LOAD          1u
+#define RINGL_RIN_GPU_RENDER_CLEAR         2u
+#define RINGL_RIN_GPU_RENDER_STORE         1u
 
 typedef struct RinGLContext RinGLContext;
 
@@ -54,6 +64,27 @@ typedef struct RinGLRinGpuGraphicsPipelineV1 {
     uint32_t vertex_stride;
     uint32_t attribute_count;
 } RinGLRinGpuGraphicsPipelineV1;
+
+typedef struct RinGLRinGpuRenderPassV1 {
+    uint64_t color_target;
+    uint32_t load_op;
+    uint32_t store_op;
+    float clear_red;
+    float clear_green;
+    float clear_blue;
+    float clear_alpha;
+} RinGLRinGpuRenderPassV1;
+
+typedef struct RinGLRinGpuDrawVerticesV1 {
+    uint64_t pipeline;
+    uint64_t color_target;
+    uint64_t vertex_buffer;
+    uint64_t vertex_offset;
+    uint32_t vertex_count;
+    uint32_t first_vertex;
+    uint32_t instance_count;
+    uint32_t first_instance;
+} RinGLRinGpuDrawVerticesV1;
 
 typedef int (*RinGLRinGpuCreateBufferFn)(void* session,
                                          uint64_t size_bytes,
@@ -74,6 +105,33 @@ typedef int (*RinGLRinGpuCreateGraphicsPipelineFn)(
     const RinGLRinGpuVertexAttributeV1* attributes,
     uint32_t attribute_count,
     uint64_t* pipeline_out);
+typedef int (*RinGLRinGpuCreateCommandListFn)(void* session,
+                                              uint32_t capabilities,
+                                              uint64_t* command_list_out);
+typedef int (*RinGLRinGpuResetCommandListFn)(void* session,
+                                             uint64_t command_list);
+typedef int (*RinGLRinGpuTransitionImageFn)(void* session,
+                                            uint64_t command_list,
+                                            uint64_t image,
+                                            uint32_t old_state,
+                                            uint32_t new_state);
+typedef int (*RinGLRinGpuBeginRenderPassFn)(
+    void* session, uint64_t command_list,
+    const RinGLRinGpuRenderPassV1* render_pass);
+typedef int (*RinGLRinGpuDrawVerticesFn)(
+    void* session, uint64_t command_list,
+    const RinGLRinGpuDrawVerticesV1* draw);
+typedef int (*RinGLRinGpuEndRenderPassFn)(void* session,
+                                          uint64_t command_list);
+typedef int (*RinGLRinGpuPresentFn)(void* session,
+                                    uint64_t command_list,
+                                    uint64_t image,
+                                    uint32_t display_id);
+typedef int (*RinGLRinGpuCloseCommandListFn)(void* session,
+                                             uint64_t command_list);
+typedef int (*RinGLRinGpuQueueSubmitFn)(void* session,
+                                        uint64_t queue,
+                                        uint64_t command_list);
 
 typedef struct RinGLRinGpuOpsV1 {
     uint32_t struct_size;
@@ -83,6 +141,15 @@ typedef struct RinGLRinGpuOpsV1 {
     RinGLRinGpuDestroyObjectFn destroy_object;
     RinGLRinGpuCreateShaderModuleFn create_shader_module;
     RinGLRinGpuCreateGraphicsPipelineFn create_graphics_pipeline;
+    RinGLRinGpuCreateCommandListFn create_command_list;
+    RinGLRinGpuResetCommandListFn reset_command_list;
+    RinGLRinGpuTransitionImageFn transition_image;
+    RinGLRinGpuBeginRenderPassFn begin_render_pass;
+    RinGLRinGpuDrawVerticesFn draw_vertices;
+    RinGLRinGpuEndRenderPassFn end_render_pass;
+    RinGLRinGpuPresentFn present;
+    RinGLRinGpuCloseCommandListFn close_command_list;
+    RinGLRinGpuQueueSubmitFn queue_submit;
 } RinGLRinGpuOpsV1;
 
 typedef struct RinGLRinGpuBindingV1 {
@@ -122,6 +189,7 @@ typedef struct RinGLDefaultFramebufferV1 {
     uint32_t color_format;
     uint32_t width;
     uint32_t height;
+    uint32_t display_id;
     uint32_t flags;
     uint32_t reserved0;
 } RinGLDefaultFramebufferV1;
@@ -136,6 +204,10 @@ uint32_t ringl_context_dirty_bits(const RinGLContext* context);
 
 int ringl_set_default_framebuffer(const RinGLDefaultFramebufferV1* framebuffer);
 int ringl_get_default_framebuffer(RinGLDefaultFramebufferV1* framebuffer);
+void ringl_clear_color(float red, float green, float blue, float alpha);
+void ringl_clear(uint32_t mask);
+void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count);
+int ringl_present(void);
 
 void ringl_gen_buffers(int32_t count, uint32_t* buffers);
 void ringl_delete_buffers(int32_t count, const uint32_t* buffers);

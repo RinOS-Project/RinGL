@@ -355,6 +355,7 @@ void ringl_link_program(uint32_t program)
         return;
     }
     object->link_status = RINGL_FALSE;
+    object->validate_status = RINGL_FALSE;
     object->attribute_count = 0u;
     object->sampler_uniform_count = 0u;
     object->varying_count = 0u;
@@ -420,6 +421,56 @@ uint32_t ringl_get_program_link_status(uint32_t program)
         return RINGL_FALSE;
     }
     return object->link_status;
+}
+
+void ringl_validate_program(uint32_t program)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLProgramObject* object;
+
+    if (context == NULL)
+        return;
+    object = ringl_program_object(context, program);
+    if (object == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+
+    /* A successfully linked RinGL executable has already passed the only
+     * backend validation that this bounded implementation can require. */
+    object->validate_status = object->link_status ? RINGL_TRUE : RINGL_FALSE;
+}
+
+int ringl_get_program_info(uint32_t program, RinGLProgramInfoV1* info)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLProgramObject* object;
+    RinGLProgramInfoV1 result;
+
+    if (context == NULL || info == NULL)
+        return -1;
+    if (info->struct_size < sizeof(*info) || info->api_version != RINGL_API_VERSION)
+        return -1;
+    object = ringl_program_object(context, program);
+    if (object == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+
+    memset(&result, 0, sizeof(result));
+    result.struct_size = sizeof(result);
+    result.api_version = RINGL_API_VERSION;
+    result.link_status = object->link_status;
+    result.validate_status = object->validate_status;
+    result.attached_shader_count =
+        (object->vertex_shader != 0u ? 1u : 0u) +
+        (object->fragment_shader != 0u ? 1u : 0u);
+    if (object->link_status) {
+        result.active_attribute_count = object->attribute_count;
+        result.active_uniform_count = object->sampler_uniform_count;
+    }
+    *info = result;
+    return 0;
 }
 
 uint64_t ringl_get_program_info_log(uint32_t program, char* buffer,

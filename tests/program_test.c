@@ -20,6 +20,10 @@ int main(void)
     uint32_t retained_program;
     int32_t location;
     char log[160];
+    RinGLProgramInfoV1 info = {
+        .struct_size = sizeof(info),
+        .api_version = RINGL_API_VERSION,
+    };
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -54,8 +58,19 @@ int main(void)
      * even though the current shared RSH1 ABI cannot lower texture2D yet. */
     ringl_attach_shader(program, vertex);
     ringl_attach_shader(program, fragment);
+    assert(ringl_get_program_info(program, &info) == 0);
+    assert(info.link_status == RINGL_FALSE && info.validate_status == RINGL_FALSE &&
+           info.attached_shader_count == 2u && info.active_attribute_count == 0u &&
+           info.active_uniform_count == 0u);
     ringl_link_program(program);
     assert(ringl_get_program_link_status(program) == RINGL_TRUE);
+    assert(ringl_get_program_info(program, &info) == 0);
+    assert(info.link_status == RINGL_TRUE && info.validate_status == RINGL_FALSE &&
+           info.attached_shader_count == 2u && info.active_attribute_count == 1u &&
+           info.active_uniform_count == 1u);
+    ringl_validate_program(program);
+    assert(ringl_get_program_info(program, &info) == 0);
+    assert(info.validate_status == RINGL_TRUE);
     assert(ringl_get_program_info_log(program, log, sizeof(log)) == 0u);
     assert(ringl_get_attrib_location(program, "position") == 3);
     assert(ringl_get_attrib_location(program, "missing") == -1);
@@ -66,6 +81,8 @@ int main(void)
     assert(ringl_get_attrib_location(program, "position") == 3);
     ringl_link_program(program);
     assert(ringl_get_program_link_status(program) == RINGL_TRUE);
+    assert(ringl_get_program_info(program, &info) == 0);
+    assert(info.validate_status == RINGL_FALSE);
     assert(ringl_get_attrib_location(program, "position") == 1);
 
     location = ringl_get_uniform_location(program, "colorTexture");
@@ -115,6 +132,10 @@ int main(void)
     ringl_bind_attrib_location(multi_program, 4u, "colorBA");
     ringl_link_program(multi_program);
     assert(ringl_get_program_link_status(multi_program) == RINGL_FALSE);
+    assert(ringl_get_program_info(multi_program, &info) == 0);
+    assert(info.link_status == RINGL_FALSE && info.validate_status == RINGL_FALSE &&
+           info.attached_shader_count == 2u && info.active_attribute_count == 0u &&
+           info.active_uniform_count == 0u);
     assert(ringl_get_program_info_log(multi_program, log, sizeof(log)) > 0u);
     ringl_bind_attrib_location(multi_program, 5u, "colorBA");
     ringl_link_program(multi_program);
@@ -127,6 +148,10 @@ int main(void)
     ringl_delete_program(program);
     assert(ringl_get_current_program() == 0u);
     assert(!ringl_is_program(program));
+    info.link_status = 0xffffffffu;
+    assert(ringl_get_program_info(program, &info) == -1);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    assert(info.link_status == 0xffffffffu);
 
     program = ringl_create_program();
     fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);

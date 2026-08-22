@@ -123,6 +123,7 @@ typedef struct RinGLProgramObject {
     uint32_t linked_vertex_shader;
     uint32_t linked_fragment_shader;
     uint32_t link_status;
+    uint32_t validate_status;
     uint32_t attribute_count;
     uint32_t sampler_uniform_count;
     uint32_t varying_count;

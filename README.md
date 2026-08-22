@@ -222,6 +222,14 @@ destruction releases the final pending reference. A linked executable keeps
 using its linked shader pair when later attach/detach calls change the pending
 link inputs.
 
+`RinGLProgramInfoV1` exposes a bounded snapshot of a live program's link and
+validation status, attached shader count, and linked active attribute/sampler
+uniform counts. `ringl_validate_program()` records successful validation only
+for a linked executable; each new link resets that state before it validates
+the replacement executable. The query validates its ABI header and only writes
+the caller-owned structure after it has validated the program, so an invalid
+program cannot partially publish stale metadata.
+
 Linked vertex shaders retain their active attribute declaration order and
 widths. `ringl_bind_attrib_location()` records a requested generic
 vertex-array index for the next successful link, and

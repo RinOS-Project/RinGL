@@ -180,6 +180,15 @@ extern "C" {
 #define RINGL_VERTEX_SHADER   0x8b31u
 #define RINGL_FRAGMENT_SHADER 0x8b30u
 
+/* WebGL 1 shader/program query names. */
+#define RINGL_COMPILE_STATUS     0x8b81u
+#define RINGL_LINK_STATUS        0x8b82u
+#define RINGL_VALIDATE_STATUS    0x8b83u
+#define RINGL_ATTACHED_SHADERS   0x8b85u
+#define RINGL_ACTIVE_UNIFORMS    0x8b86u
+#define RINGL_ACTIVE_ATTRIBUTES  0x8b89u
+#define RINGL_SHADER_TYPE        0x8b4fu
+
 #define RINGL_MAX_VERTEX_ATTRIBS 16u
 
 /* WebGL 1 vertex-attribute query names. */
@@ -744,6 +753,17 @@ typedef struct RinGLVertexAttribInfoV1 {
     uint64_t offset;
 } RinGLVertexAttribInfoV1;
 
+typedef struct RinGLProgramInfoV1 {
+    uint32_t struct_size;
+    uint32_t api_version;
+    uint32_t link_status;
+    uint32_t validate_status;
+    uint32_t attached_shader_count;
+    uint32_t active_attribute_count;
+    uint32_t active_uniform_count;
+    uint32_t reserved0;
+} RinGLProgramInfoV1;
+
 typedef struct RinGLDefaultFramebufferV1 {
     uint32_t struct_size;
     uint32_t api_version;
@@ -999,6 +1019,8 @@ void ringl_attach_shader(uint32_t program, uint32_t shader);
 void ringl_detach_shader(uint32_t program, uint32_t shader);
 void ringl_link_program(uint32_t program);
 uint32_t ringl_get_program_link_status(uint32_t program);
+void ringl_validate_program(uint32_t program);
+int ringl_get_program_info(uint32_t program, RinGLProgramInfoV1* info);
 uint64_t ringl_get_program_info_log(uint32_t program,
                                     char* buffer,
                                     uint64_t buffer_size);

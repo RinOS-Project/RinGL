@@ -214,8 +214,15 @@ with `gl_Position = vec4(position, 0.0, 1.0)`, `vertexColor = color`, and
 Float32 RinGPU inputs and the color to four perspective-interpolated scalar
 varyings; RSH1 lowering and a RinGL-to-RinGPU surface test verify the resulting
 RGBA pixels. This does not make arbitrary varying declarations or expressions
-available: `vec3`, multiple independent varyings, and general expressions
-remain outside the bounded profile.
+available: multiple independent varyings and general expressions remain outside
+the bounded profile.
+
+The corresponding bounded RGB profile accepts `attribute vec3 color` and
+`varying vec3 vertexColor`, with `gl_FragColor = vec4(vertexColor, 1.0)`.
+It uses three interpolated color slots, then explicitly writes `1.0` to the
+fourth fixed vertex output and loads that slot in the fragment RSH1. This keeps
+the native RinGPU interface fully mapped and type-checked instead of treating
+the unused alpha slot as an implicit value.
 
 This remains a bounded profile. A default caller-owned D32 surface has no
 stencil storage unless its embedding explicitly supplies the matching S8

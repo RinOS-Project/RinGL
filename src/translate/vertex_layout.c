@@ -24,7 +24,8 @@ int ringl_resolve_vertex_layout(const RinGLContext* context,
         if (!attrib->enabled)
             continue;
         if (attrib->buffer == 0u ||
-            (attrib->size != 1u && attrib->size != 2u && attrib->size != 4u) ||
+            (attrib->size != 1u && attrib->size != 2u && attrib->size != 3u &&
+             attrib->size != 4u) ||
             attrib->type != RINGL_FLOAT || attrib->normalized != RINGL_FALSE)
             return -1;
         if (ringl_object_lookup_const(context, attrib->buffer,

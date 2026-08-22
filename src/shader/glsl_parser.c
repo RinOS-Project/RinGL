@@ -14,6 +14,7 @@ typedef enum TokenKind {
     TOK_VOID,
     TOK_FLOAT,
     TOK_VEC2,
+    TOK_VEC3,
     TOK_VEC4,
     TOK_SAMPLER2D,
     TOK_ATTRIBUTE,
@@ -115,6 +116,8 @@ static TokenKind keyword_kind(const char* begin, size_t length)
         return TOK_FLOAT;
     if (length == 4u && memcmp(begin, "vec2", 4u) == 0)
         return TOK_VEC2;
+    if (length == 4u && memcmp(begin, "vec3", 4u) == 0)
+        return TOK_VEC3;
     if (length == 4u && memcmp(begin, "vec4", 4u) == 0)
         return TOK_VEC4;
     if (length == 9u && memcmp(begin, "sampler2D", 9u) == 0)
@@ -264,7 +267,8 @@ static int expression(Parser* parser);
 static int constructor(Parser* parser, TokenKind kind)
 {
     uint32_t component_count = 0u;
-    uint32_t target_components = kind == TOK_VEC2 ? 2u : 4u;
+    uint32_t target_components = kind == TOK_VEC2 ? 2u :
+                                 kind == TOK_VEC3 ? 3u : 4u;
 
     next_token(parser);
     if (!expect(parser, TOK_LPAREN, "expected '(' after vector constructor"))
@@ -335,7 +339,8 @@ static int primary(Parser* parser)
 {
     if (accept(parser, TOK_NUMBER))
         return 1;
-    if (parser->token.kind == TOK_VEC2 || parser->token.kind == TOK_VEC4)
+    if (parser->token.kind == TOK_VEC2 || parser->token.kind == TOK_VEC3 ||
+        parser->token.kind == TOK_VEC4)
         return constructor(parser, parser->token.kind);
     if (parser->token.kind == TOK_IDENT) {
         Token ident = parser->token;
@@ -497,11 +502,13 @@ static int attribute_declaration(Parser* parser)
         width = 1u;
     else if (parser->token.kind == TOK_VEC2)
         width = 2u;
+    else if (parser->token.kind == TOK_VEC3)
+        width = 3u;
     else if (parser->token.kind == TOK_VEC4)
         width = 4u;
     else {
         fail(parser,
-             "only 'attribute float', 'attribute vec2', and 'attribute vec4' are supported");
+             "only 'attribute float', 'attribute vec2', 'attribute vec3', and 'attribute vec4' are supported");
         return 0;
     }
     next_token(parser);
@@ -561,10 +568,12 @@ static int varying_declaration(Parser* parser)
     next_token(parser);
     if (parser->token.kind == TOK_VEC2) {
         width = 2u;
+    } else if (parser->token.kind == TOK_VEC3) {
+        width = 3u;
     } else if (parser->token.kind == TOK_VEC4) {
         width = 4u;
     } else {
-        fail(parser, "only 'varying vec2' or 'varying vec4' is supported");
+        fail(parser, "only 'varying vec2', 'varying vec3', or 'varying vec4' is supported");
         return 0;
     }
     next_token(parser);

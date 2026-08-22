@@ -159,6 +159,12 @@ int main(void)
     const char* color_varying_fragment_source =
         "varying vec4 vertexColor; "
         "void main() { gl_FragColor = vertexColor; }";
+    const char* color3_varying_vertex_source =
+        "attribute vec2 position; attribute vec3 color; varying vec3 vertexColor; "
+        "void main() { gl_Position = vec4(position, 0.0, 1.0); vertexColor = color; }";
+    const char* color3_varying_fragment_source =
+        "varying vec3 vertexColor; "
+        "void main() { gl_FragColor = vec4(vertexColor, 1.0); }";
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -231,6 +237,23 @@ int main(void)
     assert(header.instruction_count == 17u);
 
     header = lower_and_read_header(fragment, color_varying_fragment_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 4u);
+    assert(header.output_count == 4u);
+    assert(header.resource_count == 0u);
+    assert(header.instruction_count == 9u);
+
+    header = lower_and_read_header(vertex, color3_varying_vertex_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 5u);
+    assert(header.output_count == 8u);
+    assert(header.resource_count == 0u);
+    assert(header.instruction_count == 16u);
+    assert(header.register_count == 7u);
+
+    header = lower_and_read_header(fragment, color3_varying_fragment_source,
                                    blob, sizeof(blob));
     assert(header.stage == 2u);
     assert(header.input_count == 4u);

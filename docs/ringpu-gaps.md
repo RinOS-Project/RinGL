@@ -84,7 +84,23 @@ least:
 - cull enable and front/back selection;
 - clockwise/counter-clockwise front-face definition.
 
-## 4. Completion wait semantics for `glFinish`
+## 4. Vertex-input pipelines combined with depth/blend state
+
+RinGPU exposes separate vertex-layout, depth and blend graphics-pipeline entry
+points. The current depth and blend descriptors do not carry a vertex stride or
+vertex attributes, while `ringpu_create_graphics_pipeline_vertex()` carries the
+vertex layout but no depth/blend fields. RinGL's ordinary GLES draw path uses
+vertex buffers, so it cannot enable depth testing or blending by switching to a
+resource-free/procedural depth or blend pipeline.
+
+RinGL needs an additive pipeline contract that composes the existing bounded
+vertex-input layout with depth and blend state. A single combined versioned
+descriptor is one option; another is a compatible additive pipeline-state
+extension. The important requirement is that the same pipeline can retain the
+validated vertex stride/attributes while also carrying the native depth/blend
+configuration.
+
+## 5. Completion wait semantics for `glFinish`
 
 RinGPU exposes fence creation, a signal fence/value on queue submission, and a
 fence value query. RinGL still needs an explicit contract for waiting until all
@@ -98,7 +114,7 @@ example a versioned fence-wait API with timeout/device-loss semantics.
 RinGL must not implement `glFinish` by assuming that successful queue submission
 itself means GPU execution completion.
 
-## 5. CPU readback for `glReadPixels` and observable buffer reads
+## 6. CPU readback for `glReadPixels` and observable buffer reads
 
 The public API has CPU-to-GPU upload paths, but RinGL has not found a public
 GPU-to-CPU image/buffer readback primitive. GLES requires framebuffer readback
@@ -119,7 +135,8 @@ The current public RinGPU API already exposes the pieces RinGL needs for level-0
 RGBA8 texture object realization: CPU-visible images, `ringpu_upload_image`,
 `SHADER_READ` image state, sampler objects, typed graphics bindings, graphics
 resource binding commands, and sampled-image/sampler resource kinds in
-RinShader. It also exposes the first depth and blend pipeline contracts.
+RinShader. It also exposes the first depth and blend pipeline contracts for the
+profiles those descriptors can represent.
 
 RinGPU now also exposes an additive native `UINT8` index format, so RinGL maps
 GLES `UNSIGNED_BYTE` element indices directly rather than expanding them through

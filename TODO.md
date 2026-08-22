@@ -150,10 +150,14 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   RinGPU pipeline translation, validation, and software execution. The
   focused bridge output test verifies component-wise source and destination
   factors rather than accidentally treating them as alpha factors.
-- [ ] Add constant-color/constant-alpha and `SRC_ALPHA_SATURATE` factors only
-  with a versioned RinGPU pipeline descriptor that carries a validated blend
-  constant; current unsupported values remain `INVALID_ENUM` rather than
-  silently receiving alpha-factor semantics.
+- [x] Add `SRC_ALPHA_SATURATE` as a source-only factor: RGB uses
+  `min(sourceAlpha, 1 - destinationAlpha)` and alpha uses one. RinGL and
+  RinGPU reject it in destination slots; the focused bridge test covers the
+  component result.
+- [ ] Add constant-color/constant-alpha factors only with a versioned RinGPU
+  pipeline descriptor that carries a validated blend constant; current
+  unsupported values remain `INVALID_ENUM` rather than silently receiving
+  alpha-factor semantics.
 - [x] Expose a versioned snapshot of mutable clear values so an embedding can perform the WebGL default-buffer clear without overwriting application clear state.
 - [x] Add a state-neutral default-framebuffer clear for trusted presentation
   embeddings: it forces WebGL's color/depth/stencil defaults without observing

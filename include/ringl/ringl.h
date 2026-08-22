@@ -202,6 +202,7 @@ extern "C" {
 #define RINGL_FRAGMENT_SHADER 0x8b30u
 
 /* WebGL 1 shader/program query names. */
+#define RINGL_DELETE_STATUS      0x8b80u
 #define RINGL_COMPILE_STATUS     0x8b81u
 #define RINGL_LINK_STATUS        0x8b82u
 #define RINGL_VALIDATE_STATUS    0x8b83u

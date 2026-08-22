@@ -51,8 +51,10 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Parse and validate the initial fragment-shader `texture2D(sampler2D, vec2(...))` form.
 - [x] Lower the initial one-sampler/one-call constant-coordinate `texture2D()` form to public RSH1 `SAMPLE_IMAGE_2D_F32` component operations.
 - [x] Add texture RSH1 tests for resource slots, component selectors, and RGBA output stores.
-- [ ] Expand texture expressions beyond the initial constant-coordinate one-sampler slice.
-- [ ] Add general vertex-to-fragment varying parsing/lowering and link metadata using the public RinGPU varying contract.
+- [x] Parse/link/lower the initial `varying vec2` profile and map it to public RinGPU perspective varying descriptors.
+- [x] Lower `texture2D(sampler2D, varyingVec2)` for the initial textured-triangle profile.
+- [ ] Expand texture expressions beyond the initial constant/varying-coordinate one-sampler slice.
+- [ ] Expand varying support beyond the initial `vec2` perspective-interpolated profile.
 
 ## Phase 4 — First hardware-rendered triangle
 
@@ -84,7 +86,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Add fake-RinGPU tests for image/sampler realization, cache hits, invalidation, and level-zero completeness.
 - [x] Transition sampled images to `SHADER_READ`, create typed image/sampler bind groups, and bind them inside the render pass before draws.
 - [x] Add a native-contract textured-draw mock test covering texture realization, resource transition, bind group creation, raster state, and draw ordering.
-- [ ] Add varying-backed texture coordinates and an end-to-end textured-triangle test with interpolated UVs.
+- [x] Add a varying-backed textured-triangle integration test with interleaved position/UV input and perspective-interpolated texture coordinates.
 
 ## Phase 6 — Framebuffers and fixed-function state
 
@@ -96,9 +98,8 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Implement depth-test function/write-mask GL state, defaults, validation, dirty tracking, and queries.
 - [x] Implement initial blend factor/equation and color-write-mask GL state, defaults, validation, dirty tracking, and queries.
 - [x] Map supported blend, cull, front-face, and color-write state into native RinGPU graphics pipelines and include it in pipeline caching.
-- [x] Map non-negative viewport and clipped scissor state through dynamic RinGPU raster-state commands.
+- [x] Map viewport/scissor state through dynamic RinGPU raster-state commands, including finite negative viewport origins and clipped scissor rectangles.
 - [x] Preserve no-op semantics for zero-area viewport, all-channel color mask off, and `CULL_FACE` with `FRONT_AND_BACK` in the current color-only profile.
-- [ ] Support negative viewport origins once the RinGPU raster-state contract accepts the GLES transform domain.
 - [ ] Map depth testing after depth renderbuffer/FBO attachment support is implemented in RinGL.
 - [ ] Implement stencil support after framebuffer/renderbuffer depth-stencil storage is in place.
 
@@ -133,6 +134,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [ ] Add unit tests for every state transition and validation rule.
 - [x] Add mock-RinGPU tests that inspect generated commands without requiring hardware for the first triangle path.
 - [x] Add a native-contract mock test for textured resource/raster ordering.
+- [x] Add RSH1 regression coverage for the initial varying-backed texture path.
 - [ ] Add hardware/QEMU integration tests where RinGPU support exists.
 - [ ] Add shader compiler differential/negative tests.
 - [ ] Add API trace tests for representative GL sequences.
@@ -141,7 +143,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 
 ## RinGPU/RinShader dependencies
 
-See `docs/ringpu-gaps.md`. RinGL should stop cleanly at concrete native-boundary gaps rather than introducing GL-specific behavior or private shader encodings into RinGPU.
+See `docs/ringpu-gaps.md`. There are currently no known native-contract blockers for the GLES 2.0 milestone; new entries should be added only for concrete representational gaps.
 
 ## Optional software backend
 

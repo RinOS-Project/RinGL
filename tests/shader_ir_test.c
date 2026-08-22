@@ -127,7 +127,6 @@ int main(void)
     uint8_t blob[4096];
     Header header;
     uint64_t first_module;
-    char log[192];
     const char* scalar_source =
         "attribute float x;\n"
         "void main() {\n"
@@ -188,14 +187,12 @@ int main(void)
     assert(header.output_count == 4u);
     assert(header.instruction_count >= 5u);
 
-    ringl_shader_source(fragment, texture_source, -1);
-    ringl_compile_shader(fragment);
-    assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
-    assert(ringl_lower_shader_rsh1(fragment) != 0);
-    assert(ringl_get_shader_rsh1_size(fragment) == 0u);
-    assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) > 0u);
-    assert(strstr(log, "texture2D") != NULL);
-    assert(strstr(log, "vec4") != NULL);
+    header = lower_and_read_header(fragment, texture_source, blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 0u);
+    assert(header.output_count == 4u);
+    assert(header.resource_count == 2u);
+    assert(header.instruction_count == 11u);
 
     ringl_shader_source(vertex, "void main() { gl_Position = 0.0; }", -1);
     assert(ringl_get_shader_compile_status(vertex) == RINGL_FALSE);

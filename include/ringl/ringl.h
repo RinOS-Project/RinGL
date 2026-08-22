@@ -18,7 +18,9 @@ extern "C" {
 
 #define RINGL_FALSE 0u
 #define RINGL_TRUE  1u
-#define RINGL_FLOAT 0x1406u
+#define RINGL_FLOAT          0x1406u
+#define RINGL_UNSIGNED_SHORT 0x1403u
+#define RINGL_UNSIGNED_INT   0x1405u
 
 #define RINGL_TRIANGLES        0x0004u
 #define RINGL_COLOR_BUFFER_BIT 0x00004000u
@@ -47,6 +49,8 @@ extern "C" {
 #define RINGL_RIN_GPU_RENDER_LOAD          1u
 #define RINGL_RIN_GPU_RENDER_CLEAR         2u
 #define RINGL_RIN_GPU_RENDER_STORE         1u
+#define RINGL_RIN_GPU_INDEX_UINT16         1u
+#define RINGL_RIN_GPU_INDEX_UINT32         2u
 
 typedef struct RinGLContext RinGLContext;
 
@@ -87,6 +91,21 @@ typedef struct RinGLRinGpuDrawVerticesV1 {
     uint32_t first_instance;
 } RinGLRinGpuDrawVerticesV1;
 
+typedef struct RinGLRinGpuDrawIndexedV1 {
+    uint64_t pipeline;
+    uint64_t color_target;
+    uint64_t vertex_buffer;
+    uint64_t index_buffer;
+    uint64_t vertex_offset;
+    uint64_t index_offset;
+    uint32_t index_format;
+    uint32_t index_count;
+    uint32_t vertex_count;
+    uint32_t first_index;
+    uint32_t instance_count;
+    uint32_t first_instance;
+} RinGLRinGpuDrawIndexedV1;
+
 typedef int (*RinGLRinGpuCreateBufferFn)(void* session,
                                          uint64_t size_bytes,
                                          uint64_t* buffer_out);
@@ -122,6 +141,9 @@ typedef int (*RinGLRinGpuBeginRenderPassFn)(
 typedef int (*RinGLRinGpuDrawVerticesFn)(
     void* session, uint64_t command_list,
     const RinGLRinGpuDrawVerticesV1* draw);
+typedef int (*RinGLRinGpuDrawIndexedFn)(
+    void* session, uint64_t command_list,
+    const RinGLRinGpuDrawIndexedV1* draw);
 typedef int (*RinGLRinGpuEndRenderPassFn)(void* session,
                                           uint64_t command_list);
 typedef int (*RinGLRinGpuPresentFn)(void* session,
@@ -151,6 +173,8 @@ typedef struct RinGLRinGpuOpsV1 {
     RinGLRinGpuPresentFn present;
     RinGLRinGpuCloseCommandListFn close_command_list;
     RinGLRinGpuQueueSubmitFn queue_submit;
+    /* Appended v1 operation. Older operation-table prefixes remain valid. */
+    RinGLRinGpuDrawIndexedFn draw_indexed;
 } RinGLRinGpuOpsV1;
 
 typedef struct RinGLRinGpuBindingV1 {
@@ -209,6 +233,8 @@ int ringl_get_default_framebuffer(RinGLDefaultFramebufferV1* framebuffer);
 void ringl_clear_color(float red, float green, float blue, float alpha);
 void ringl_clear(uint32_t mask);
 void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count);
+void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
+                         uint64_t offset);
 int ringl_present(void);
 
 void ringl_gen_buffers(int32_t count, uint32_t* buffers);

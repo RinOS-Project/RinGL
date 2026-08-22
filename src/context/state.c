@@ -79,6 +79,11 @@ static int blend_factor_valid(uint32_t factor)
            factor == RINGL_DST_COLOR || factor == RINGL_ONE_MINUS_DST_COLOR;
 }
 
+static int blend_source_factor_valid(uint32_t factor)
+{
+    return blend_factor_valid(factor) || factor == RINGL_SRC_ALPHA_SATURATE;
+}
+
 static int blend_equation_valid(uint32_t mode)
 {
     return mode == RINGL_FUNC_ADD || mode == RINGL_FUNC_SUBTRACT ||
@@ -384,9 +389,9 @@ void ringl_blend_func_separate(uint32_t source_rgb, uint32_t destination_rgb,
 
     if (context == NULL)
         return;
-    if (!blend_factor_valid(source_rgb) ||
+    if (!blend_source_factor_valid(source_rgb) ||
         !blend_factor_valid(destination_rgb) ||
-        !blend_factor_valid(source_alpha) ||
+        !blend_source_factor_valid(source_alpha) ||
         !blend_factor_valid(destination_alpha)) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;

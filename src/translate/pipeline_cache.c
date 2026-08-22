@@ -100,6 +100,8 @@ static uint32_t native_blend_factor(uint32_t factor)
     case RINGL_DST_COLOR: return RINGL_RIN_GPU_BLEND_DST_COLOR;
     case RINGL_ONE_MINUS_DST_COLOR:
         return RINGL_RIN_GPU_BLEND_ONE_MINUS_DST_COLOR;
+    case RINGL_SRC_ALPHA_SATURATE:
+        return RINGL_RIN_GPU_BLEND_SRC_ALPHA_SATURATE;
     default: return 0u;
     }
 }

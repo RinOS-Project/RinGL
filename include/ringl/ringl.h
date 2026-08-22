@@ -64,6 +64,7 @@ extern "C" {
 #define RINGL_ONE_MINUS_DST_ALPHA     0x0305u
 #define RINGL_DST_COLOR               0x0306u
 #define RINGL_ONE_MINUS_DST_COLOR     0x0307u
+#define RINGL_SRC_ALPHA_SATURATE      0x0308u
 #define RINGL_FUNC_ADD                0x8006u
 #define RINGL_MIN                     0x8007u
 #define RINGL_MAX                     0x8008u
@@ -235,6 +236,7 @@ extern "C" {
 #define RINGL_RIN_GPU_BLEND_ONE_MINUS_SRC_COLOR 8u
 #define RINGL_RIN_GPU_BLEND_DST_COLOR        9u
 #define RINGL_RIN_GPU_BLEND_ONE_MINUS_DST_COLOR 10u
+#define RINGL_RIN_GPU_BLEND_SRC_ALPHA_SATURATE 11u
 #define RINGL_RIN_GPU_BLEND_ADD              1u
 #define RINGL_RIN_GPU_BLEND_SUBTRACT         2u
 #define RINGL_RIN_GPU_BLEND_REVERSE_SUBTRACT 3u

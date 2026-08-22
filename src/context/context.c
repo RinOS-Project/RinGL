@@ -116,6 +116,10 @@ void ringl_context_destroy(RinGLContext* context)
         ringl_backend_destroy_object(context, context->graphics_command_list);
         context->graphics_command_list = 0u;
     }
+    if (context->graphics_bind_group != 0u) {
+        ringl_backend_destroy_object(context, context->graphics_bind_group);
+        context->graphics_bind_group = 0u;
+    }
     ringl_pipeline_cache_destroy(context);
     ringl_program_objects_destroy_all(context);
     ringl_shader_objects_destroy_all(context);

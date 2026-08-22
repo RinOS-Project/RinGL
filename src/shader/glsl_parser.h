@@ -7,12 +7,16 @@
 
 #define RINGL_GLSL_DIAGNOSTIC_MAX 160u
 #define RINGL_GLSL_MAX_SYMBOLS 64u
+#define RINGL_GLSL_MAX_SAMPLER_UNIFORMS 8u
+#define RINGL_GLSL_NAME_MAX 64u
 
 typedef struct RinGLGlslParseResult {
     uint32_t ok;
     uint32_t declaration_count;
     uint32_t statement_count;
     uint32_t attribute_count;
+    uint32_t sampler_uniform_count;
+    char sampler_uniform_names[RINGL_GLSL_MAX_SAMPLER_UNIFORMS][RINGL_GLSL_NAME_MAX];
     char diagnostic[RINGL_GLSL_DIAGNOSTIC_MAX];
 } RinGLGlslParseResult;
 

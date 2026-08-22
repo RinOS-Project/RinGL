@@ -53,6 +53,7 @@ int ringl_lower_shader_rsh1(uint32_t shader)
     memcpy(copy, lowered.bytes, lowered.byte_size);
 
     if (object->ringpu_module != 0u) {
+        ringl_invalidate_graphics_artifacts(context);
         ringl_backend_destroy_object(context, object->ringpu_module);
         object->ringpu_module = 0u;
     }
@@ -125,8 +126,10 @@ int ringl_realize_shader_module(uint32_t shader)
         return -1;
     }
 
-    if (object->ringpu_module != 0u)
+    if (object->ringpu_module != 0u) {
+        ringl_invalidate_graphics_artifacts(context);
         ringl_backend_destroy_object(context, object->ringpu_module);
+    }
     object->ringpu_module = module;
     object->info_log[0] = '\0';
     return 0;

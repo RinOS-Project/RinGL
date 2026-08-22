@@ -2,6 +2,7 @@
 #include "ringl_internal.h"
 
 #include <stddef.h>
+#include <string.h>
 
 static uint32_t* capability_field(RinGLContext* context, uint32_t capability)
 {
@@ -76,7 +77,11 @@ static int blend_factor_valid(uint32_t factor)
            factor == RINGL_SRC_COLOR || factor == RINGL_ONE_MINUS_SRC_COLOR ||
            factor == RINGL_SRC_ALPHA || factor == RINGL_ONE_MINUS_SRC_ALPHA ||
            factor == RINGL_DST_ALPHA || factor == RINGL_ONE_MINUS_DST_ALPHA ||
-           factor == RINGL_DST_COLOR || factor == RINGL_ONE_MINUS_DST_COLOR;
+           factor == RINGL_DST_COLOR || factor == RINGL_ONE_MINUS_DST_COLOR ||
+           factor == RINGL_CONSTANT_COLOR ||
+           factor == RINGL_ONE_MINUS_CONSTANT_COLOR ||
+           factor == RINGL_CONSTANT_ALPHA ||
+           factor == RINGL_ONE_MINUS_CONSTANT_ALPHA;
 }
 
 static int blend_source_factor_valid(uint32_t factor)
@@ -413,6 +418,52 @@ void ringl_blend_func(uint32_t source_factor, uint32_t destination_factor)
 {
     ringl_blend_func_separate(source_factor, destination_factor,
                               source_factor, destination_factor);
+}
+
+static int blend_color_component(float value, float* result)
+{
+    uint32_t bits;
+
+    memcpy(&bits, &value, sizeof(bits));
+    if ((bits & 0x7f800000u) == 0x7f800000u)
+        return 0;
+    if (value <= 0.0f)
+        *result = 0.0f;
+    else if (value >= 1.0f)
+        *result = 1.0f;
+    else
+        *result = value;
+    return 1;
+}
+
+void ringl_blend_color(float red, float green, float blue, float alpha)
+{
+    RinGLContext* context = ringl_get_current_context();
+    float clamped_red;
+    float clamped_green;
+    float clamped_blue;
+    float clamped_alpha;
+
+    if (context == NULL)
+        return;
+    if (!blend_color_component(red, &clamped_red) ||
+        !blend_color_component(green, &clamped_green) ||
+        !blend_color_component(blue, &clamped_blue) ||
+        !blend_color_component(alpha, &clamped_alpha)) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if (context->blend_constant_red == clamped_red &&
+        context->blend_constant_green == clamped_green &&
+        context->blend_constant_blue == clamped_blue &&
+        context->blend_constant_alpha == clamped_alpha) {
+        return;
+    }
+    context->blend_constant_red = clamped_red;
+    context->blend_constant_green = clamped_green;
+    context->blend_constant_blue = clamped_blue;
+    context->blend_constant_alpha = clamped_alpha;
+    ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
 }
 
 void ringl_blend_equation_separate(uint32_t mode_rgb, uint32_t mode_alpha)

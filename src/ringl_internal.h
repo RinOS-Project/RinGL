@@ -256,6 +256,10 @@ struct RinGLContext {
     uint32_t blend_destination_alpha;
     uint32_t blend_equation_rgb;
     uint32_t blend_equation_alpha;
+    float blend_constant_red;
+    float blend_constant_green;
+    float blend_constant_blue;
+    float blend_constant_alpha;
     uint32_t color_write_mask;
     uint32_t unpack_alignment;
 
@@ -328,6 +332,14 @@ int ringl_backend_create_graphics_pipeline_native(
     const RinGLRinGpuVaryingV1* varyings,
     uint32_t varying_count,
     uint64_t* pipeline_out);
+int ringl_backend_create_graphics_pipeline_native_v2(
+    RinGLContext* context,
+    const RinGLRinGpuGraphicsPipelineNativeV2* desc,
+    const RinGLRinGpuVertexAttributeV1* attributes,
+    uint32_t attribute_count,
+    const RinGLRinGpuVaryingV1* varyings,
+    uint32_t varying_count,
+    uint64_t* pipeline_out);
 int ringl_backend_create_graphics_pipeline_vertex_bindings(
     RinGLContext* context,
     const RinGLRinGpuGraphicsPipelineV1* desc,
@@ -339,6 +351,16 @@ int ringl_backend_create_graphics_pipeline_vertex_bindings(
 int ringl_backend_create_graphics_pipeline_native_vertex_bindings(
     RinGLContext* context,
     const RinGLRinGpuGraphicsPipelineNativeV1* desc,
+    const RinGLRinGpuVertexAttributeV2* attributes,
+    uint32_t attribute_count,
+    const RinGLRinGpuVertexBufferLayoutV1* vertex_bindings,
+    uint32_t vertex_binding_count,
+    const RinGLRinGpuVaryingV1* varyings,
+    uint32_t varying_count,
+    uint64_t* pipeline_out);
+int ringl_backend_create_graphics_pipeline_native_vertex_bindings_v2(
+    RinGLContext* context,
+    const RinGLRinGpuGraphicsPipelineNativeV2* desc,
     const RinGLRinGpuVertexAttributeV2* attributes,
     uint32_t attribute_count,
     const RinGLRinGpuVertexBufferLayoutV1* vertex_bindings,

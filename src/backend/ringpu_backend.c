@@ -166,6 +166,29 @@ int ringl_backend_create_graphics_pipeline_native(
                      varyings, varying_count, pipeline_out));
 }
 
+int ringl_backend_create_graphics_pipeline_native_v2(
+    RinGLContext* context,
+    const RinGLRinGpuGraphicsPipelineNativeV2* desc,
+    const RinGLRinGpuVertexAttributeV1* attributes,
+    uint32_t attribute_count,
+    const RinGLRinGpuVaryingV1* varyings,
+    uint32_t varying_count,
+    uint64_t* pipeline_out)
+{
+    if (context == NULL || desc == NULL || pipeline_out == NULL ||
+        (attribute_count != 0u && attributes == NULL) ||
+        (varying_count != 0u && varyings == NULL) ||
+        !context->has_ringpu_ops ||
+        context->ringpu_ops.create_graphics_pipeline_native_v2 == NULL) {
+        return -1;
+    }
+    *pipeline_out = 0u;
+    return ringl_backend_result(
+        context, context->ringpu_ops.create_graphics_pipeline_native_v2(
+                     context->ringpu.session, desc, attributes, attribute_count,
+                     varyings, varying_count, pipeline_out));
+}
+
 int ringl_backend_create_graphics_pipeline_vertex_bindings(
     RinGLContext* context,
     const RinGLRinGpuGraphicsPipelineV1* desc,
@@ -217,6 +240,37 @@ int ringl_backend_create_graphics_pipeline_native_vertex_bindings(
     return ringl_backend_result(
         context,
         context->ringpu_ops.create_graphics_pipeline_native_vertex_bindings(
+            context->ringpu.session, desc, attributes, attribute_count,
+            vertex_bindings, vertex_binding_count, varyings, varying_count,
+            pipeline_out));
+}
+
+int ringl_backend_create_graphics_pipeline_native_vertex_bindings_v2(
+    RinGLContext* context,
+    const RinGLRinGpuGraphicsPipelineNativeV2* desc,
+    const RinGLRinGpuVertexAttributeV2* attributes,
+    uint32_t attribute_count,
+    const RinGLRinGpuVertexBufferLayoutV1* vertex_bindings,
+    uint32_t vertex_binding_count,
+    const RinGLRinGpuVaryingV1* varyings,
+    uint32_t varying_count,
+    uint64_t* pipeline_out)
+{
+    if (context == NULL || desc == NULL || pipeline_out == NULL ||
+        (attribute_count != 0u && attributes == NULL) ||
+        vertex_binding_count == 0u ||
+        vertex_binding_count > RINGL_MAX_VERTEX_ATTRIBS ||
+        vertex_bindings == NULL ||
+        (varying_count != 0u && varyings == NULL) ||
+        !context->has_ringpu_ops ||
+        context->ringpu_ops
+                .create_graphics_pipeline_native_vertex_bindings_v2 == NULL) {
+        return -1;
+    }
+    *pipeline_out = 0u;
+    return ringl_backend_result(
+        context,
+        context->ringpu_ops.create_graphics_pipeline_native_vertex_bindings_v2(
             context->ringpu.session, desc, attributes, attribute_count,
             vertex_bindings, vertex_binding_count, varyings, varying_count,
             pipeline_out));

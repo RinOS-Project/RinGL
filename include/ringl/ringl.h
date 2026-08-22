@@ -65,6 +65,10 @@ extern "C" {
 #define RINGL_DST_COLOR               0x0306u
 #define RINGL_ONE_MINUS_DST_COLOR     0x0307u
 #define RINGL_SRC_ALPHA_SATURATE      0x0308u
+#define RINGL_CONSTANT_COLOR           0x8001u
+#define RINGL_ONE_MINUS_CONSTANT_COLOR 0x8002u
+#define RINGL_CONSTANT_ALPHA           0x8003u
+#define RINGL_ONE_MINUS_CONSTANT_ALPHA 0x8004u
 #define RINGL_FUNC_ADD                0x8006u
 #define RINGL_MIN                     0x8007u
 #define RINGL_MAX                     0x8008u
@@ -237,6 +241,10 @@ extern "C" {
 #define RINGL_RIN_GPU_BLEND_DST_COLOR        9u
 #define RINGL_RIN_GPU_BLEND_ONE_MINUS_DST_COLOR 10u
 #define RINGL_RIN_GPU_BLEND_SRC_ALPHA_SATURATE 11u
+#define RINGL_RIN_GPU_BLEND_CONSTANT_COLOR 12u
+#define RINGL_RIN_GPU_BLEND_ONE_MINUS_CONSTANT_COLOR 13u
+#define RINGL_RIN_GPU_BLEND_CONSTANT_ALPHA 14u
+#define RINGL_RIN_GPU_BLEND_ONE_MINUS_CONSTANT_ALPHA 15u
 #define RINGL_RIN_GPU_BLEND_ADD              1u
 #define RINGL_RIN_GPU_BLEND_SUBTRACT         2u
 #define RINGL_RIN_GPU_BLEND_REVERSE_SUBTRACT 3u
@@ -348,6 +356,16 @@ typedef struct RinGLRinGpuGraphicsPipelineNativeV1 {
     uint32_t back_stencil_depth_fail_operation;
     uint32_t back_stencil_pass_operation;
 } RinGLRinGpuGraphicsPipelineNativeV1;
+
+/* Additive native pipeline descriptor. Its V1 prefix remains byte-for-byte
+ * stable, while V2 carries the immutable constant blend color. */
+typedef struct RinGLRinGpuGraphicsPipelineNativeV2 {
+    RinGLRinGpuGraphicsPipelineNativeV1 base;
+    float blend_constant_red;
+    float blend_constant_green;
+    float blend_constant_blue;
+    float blend_constant_alpha;
+} RinGLRinGpuGraphicsPipelineNativeV2;
 
 typedef struct RinGLRinGpuVaryingV1 {
     uint32_t vertex_output_location;
@@ -546,6 +564,14 @@ typedef int (*RinGLRinGpuCreateGraphicsPipelineNativeFn)(
     const RinGLRinGpuVaryingV1* varyings,
     uint32_t varying_count,
     uint64_t* pipeline_out);
+typedef int (*RinGLRinGpuCreateGraphicsPipelineNativeV2Fn)(
+    void* session,
+    const RinGLRinGpuGraphicsPipelineNativeV2* desc,
+    const RinGLRinGpuVertexAttributeV1* attributes,
+    uint32_t attribute_count,
+    const RinGLRinGpuVaryingV1* varyings,
+    uint32_t varying_count,
+    uint64_t* pipeline_out);
 typedef int (*RinGLRinGpuCreateGraphicsPipelineVertexBindingsFn)(
     void* session,
     const RinGLRinGpuGraphicsPipelineV1* desc,
@@ -557,6 +583,16 @@ typedef int (*RinGLRinGpuCreateGraphicsPipelineVertexBindingsFn)(
 typedef int (*RinGLRinGpuCreateGraphicsPipelineNativeVertexBindingsFn)(
     void* session,
     const RinGLRinGpuGraphicsPipelineNativeV1* desc,
+    const RinGLRinGpuVertexAttributeV2* attributes,
+    uint32_t attribute_count,
+    const RinGLRinGpuVertexBufferLayoutV1* vertex_bindings,
+    uint32_t vertex_binding_count,
+    const RinGLRinGpuVaryingV1* varyings,
+    uint32_t varying_count,
+    uint64_t* pipeline_out);
+typedef int (*RinGLRinGpuCreateGraphicsPipelineNativeVertexBindingsV2Fn)(
+    void* session,
+    const RinGLRinGpuGraphicsPipelineNativeV2* desc,
     const RinGLRinGpuVertexAttributeV2* attributes,
     uint32_t attribute_count,
     const RinGLRinGpuVertexBufferLayoutV1* vertex_bindings,
@@ -657,6 +693,11 @@ typedef struct RinGLRinGpuOpsV1 {
         create_graphics_pipeline_native_vertex_bindings;
     RinGLRinGpuDrawVerticesV2Fn draw_vertices_v2;
     RinGLRinGpuDrawIndexedV2Fn draw_indexed_v2;
+    /* Optional V2 tail: needed only for constant blend factors. */
+    RinGLRinGpuCreateGraphicsPipelineNativeV2Fn
+        create_graphics_pipeline_native_v2;
+    RinGLRinGpuCreateGraphicsPipelineNativeVertexBindingsV2Fn
+        create_graphics_pipeline_native_vertex_bindings_v2;
 } RinGLRinGpuOpsV1;
 
 typedef struct RinGLRinGpuBindingV1 {
@@ -764,6 +805,7 @@ void ringl_blend_func(uint32_t source_factor, uint32_t destination_factor);
 void ringl_blend_func_separate(uint32_t source_rgb, uint32_t destination_rgb,
                                uint32_t source_alpha,
                                uint32_t destination_alpha);
+void ringl_blend_color(float red, float green, float blue, float alpha);
 void ringl_blend_equation(uint32_t mode);
 void ringl_blend_equation_separate(uint32_t mode_rgb, uint32_t mode_alpha);
 void ringl_color_mask(uint32_t red, uint32_t green, uint32_t blue,

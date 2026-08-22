@@ -45,6 +45,10 @@ typedef struct RinGLPipelineKey {
     uint32_t blend_source_alpha;
     uint32_t blend_destination_alpha;
     uint32_t blend_equation_alpha;
+    float blend_constant_red;
+    float blend_constant_green;
+    float blend_constant_blue;
+    float blend_constant_alpha;
     uint32_t color_write_mask;
     uint32_t cull_mode;
     uint32_t front_face;

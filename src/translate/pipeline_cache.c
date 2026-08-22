@@ -102,8 +102,33 @@ static uint32_t native_blend_factor(uint32_t factor)
         return RINGL_RIN_GPU_BLEND_ONE_MINUS_DST_COLOR;
     case RINGL_SRC_ALPHA_SATURATE:
         return RINGL_RIN_GPU_BLEND_SRC_ALPHA_SATURATE;
+    case RINGL_CONSTANT_COLOR:
+        return RINGL_RIN_GPU_BLEND_CONSTANT_COLOR;
+    case RINGL_ONE_MINUS_CONSTANT_COLOR:
+        return RINGL_RIN_GPU_BLEND_ONE_MINUS_CONSTANT_COLOR;
+    case RINGL_CONSTANT_ALPHA:
+        return RINGL_RIN_GPU_BLEND_CONSTANT_ALPHA;
+    case RINGL_ONE_MINUS_CONSTANT_ALPHA:
+        return RINGL_RIN_GPU_BLEND_ONE_MINUS_CONSTANT_ALPHA;
     default: return 0u;
     }
+}
+
+static int blend_factor_uses_constant(uint32_t factor)
+{
+    return factor == RINGL_CONSTANT_COLOR ||
+           factor == RINGL_ONE_MINUS_CONSTANT_COLOR ||
+           factor == RINGL_CONSTANT_ALPHA ||
+           factor == RINGL_ONE_MINUS_CONSTANT_ALPHA;
+}
+
+static int key_uses_constant_blend(const RinGLPipelineKey* key)
+{
+    return key->blend_enabled != 0u &&
+           (blend_factor_uses_constant(key->blend_source_rgb) ||
+            blend_factor_uses_constant(key->blend_destination_rgb) ||
+            blend_factor_uses_constant(key->blend_source_alpha) ||
+            blend_factor_uses_constant(key->blend_destination_alpha));
 }
 
 static uint32_t native_blend_op(uint32_t operation)
@@ -283,6 +308,10 @@ int ringl_build_pipeline_key(RinGLContext* context,
     result.blend_source_alpha = context->blend_source_alpha;
     result.blend_destination_alpha = context->blend_destination_alpha;
     result.blend_equation_alpha = context->blend_equation_alpha;
+    result.blend_constant_red = context->blend_constant_red;
+    result.blend_constant_green = context->blend_constant_green;
+    result.blend_constant_blue = context->blend_constant_blue;
+    result.blend_constant_alpha = context->blend_constant_alpha;
     result.color_write_mask = context->color_write_mask;
     result.cull_mode = context->cull_face_enabled ? context->cull_face_mode : 0u;
     result.front_face = context->front_face;
@@ -368,6 +397,7 @@ static int create_pipeline(RinGLContext* context,
     RinGLRinGpuVertexBufferLayoutV1
         vertex_bindings[RINGL_MAX_VERTEX_ATTRIBS];
     uint32_t index;
+    int requires_v2_blend;
 
     if (context == NULL || key == NULL || pipeline_out == NULL ||
         key->attribute_count > RINGL_MAX_VERTEX_INPUT_COMPONENTS ||
@@ -401,13 +431,23 @@ static int create_pipeline(RinGLContext* context,
          RINGL_RIN_GPU_VERTEX_INPUT_MULTI_BUFFER) == 0u)
         return -1;
 
-    if ((context->ringpu_ops.create_graphics_pipeline_native != NULL ||
+    requires_v2_blend = key_uses_constant_blend(key);
+
+    if ((requires_v2_blend != 0 &&
+         ((key->vertex_binding_count <= 1u &&
+           context->ringpu_ops.create_graphics_pipeline_native_v2 != NULL) ||
+          (key->vertex_binding_count > 1u &&
+           context->ringpu_ops
+                   .create_graphics_pipeline_native_vertex_bindings_v2 !=
+               NULL))) ||
+        (requires_v2_blend == 0 &&
+         (context->ringpu_ops.create_graphics_pipeline_native != NULL ||
          (key->vertex_binding_count > 1u &&
           context->ringpu_ops
                   .create_graphics_pipeline_native_vertex_bindings != NULL)) &&
         (key->vertex_binding_count <= 1u ||
          context->ringpu_ops.create_graphics_pipeline_native_vertex_bindings !=
-             NULL)) {
+             NULL))) {
         RinGLRinGpuGraphicsPipelineNativeV1 desc;
         uint32_t cull = native_cull_mode(key);
         uint32_t front = native_front_face(key->front_face);
@@ -466,9 +506,37 @@ static int create_pipeline(RinGLContext* context,
                 return -1;
         }
         if (key->vertex_binding_count > 1u) {
+            if (requires_v2_blend != 0) {
+                RinGLRinGpuGraphicsPipelineNativeV2 desc_v2;
+                memset(&desc_v2, 0, sizeof(desc_v2));
+                desc_v2.base = desc;
+                desc_v2.blend_constant_red = key->blend_constant_red;
+                desc_v2.blend_constant_green = key->blend_constant_green;
+                desc_v2.blend_constant_blue = key->blend_constant_blue;
+                desc_v2.blend_constant_alpha = key->blend_constant_alpha;
+                return ringl_backend_create_graphics_pipeline_native_vertex_bindings_v2(
+                    context, &desc_v2, binding_attributes,
+                    key->attribute_count, vertex_bindings,
+                    key->vertex_binding_count,
+                    key->varying_count == 0u ? NULL : key->varyings,
+                    key->varying_count, pipeline_out);
+            }
             return ringl_backend_create_graphics_pipeline_native_vertex_bindings(
                 context, &desc, binding_attributes, key->attribute_count,
                 vertex_bindings, key->vertex_binding_count,
+                key->varying_count == 0u ? NULL : key->varyings,
+                key->varying_count, pipeline_out);
+        }
+        if (requires_v2_blend != 0) {
+            RinGLRinGpuGraphicsPipelineNativeV2 desc_v2;
+            memset(&desc_v2, 0, sizeof(desc_v2));
+            desc_v2.base = desc;
+            desc_v2.blend_constant_red = key->blend_constant_red;
+            desc_v2.blend_constant_green = key->blend_constant_green;
+            desc_v2.blend_constant_blue = key->blend_constant_blue;
+            desc_v2.blend_constant_alpha = key->blend_constant_alpha;
+            return ringl_backend_create_graphics_pipeline_native_v2(
+                context, &desc_v2, attributes, key->attribute_count,
                 key->varying_count == 0u ? NULL : key->varyings,
                 key->varying_count, pipeline_out);
         }

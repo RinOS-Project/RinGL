@@ -19,6 +19,7 @@ int main(void)
     uint32_t retained_fragment;
     uint32_t retained_program;
     int32_t location;
+    int32_t uniform_value = -1;
     char log[160];
     RinGLProgramInfoV1 info = {
         .struct_size = sizeof(info),
@@ -94,10 +95,16 @@ int main(void)
     assert(ringl_get_current_program() == program);
     ringl_uniform_1i(location, 3);
     assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_get_uniform_1i(program, location, &uniform_value) == 0);
+    assert(uniform_value == 3);
     ringl_uniform_1i(-1, 7);
     assert(ringl_get_error() == RINGL_NO_ERROR);
     ringl_uniform_1i(99, 0);
     assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    uniform_value = -1;
+    assert(ringl_get_uniform_1i(program, 99, &uniform_value) == -1);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    assert(uniform_value == -1);
 
     multi_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
     multi_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);

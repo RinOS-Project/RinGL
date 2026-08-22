@@ -230,6 +230,12 @@ the replacement executable. The query validates its ABI header and only writes
 the caller-owned structure after it has validated the program, so an invalid
 program cannot partially publish stale metadata.
 
+The current bounded uniform profile consists of linked `sampler2D` values.
+`ringl_get_uniform_1i()` reads the selected texture unit for a specific linked
+program and location without depending on the current program binding. It
+checks the complete input before writing its caller-owned integer, so invalid
+programs or locations cannot expose a partially updated result.
+
 Linked vertex shaders retain their active attribute declaration order and
 widths. `ringl_bind_attrib_location()` records a requested generic
 vertex-array index for the next successful link, and

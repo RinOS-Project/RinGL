@@ -662,6 +662,24 @@ void ringl_uniform_1i(int32_t location, int32_t value)
     }
 }
 
+int ringl_get_uniform_1i(uint32_t program, int32_t location,
+                          int32_t* value_out)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLProgramObject* object;
+
+    if (context == NULL || value_out == NULL)
+        return -1;
+    object = ringl_program_object(context, program);
+    if (object == NULL || !object->link_status || location < 0 ||
+        (uint32_t)location >= object->sampler_uniform_count) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    *value_out = object->sampler_uniforms[location].texture_unit;
+    return 0;
+}
+
 void ringl_program_objects_destroy_all(RinGLContext* context)
 {
     uint32_t index;

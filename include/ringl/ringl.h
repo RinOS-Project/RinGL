@@ -1036,6 +1036,10 @@ uint32_t ringl_get_current_program(void);
 int32_t ringl_get_attrib_location(uint32_t program, const char* name);
 int32_t ringl_get_uniform_location(uint32_t program, const char* name);
 void ringl_uniform_1i(int32_t location, int32_t value);
+/* Reads a linked sampler uniform without borrowing program storage. Invalid
+ * program/location inputs leave value_out unchanged and record an error. */
+int ringl_get_uniform_1i(uint32_t program, int32_t location,
+                          int32_t* value_out);
 
 #ifdef __cplusplus
 }

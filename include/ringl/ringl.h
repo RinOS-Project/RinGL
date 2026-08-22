@@ -111,6 +111,9 @@ uint32_t ringl_get_shader_compile_status(uint32_t shader);
 uint32_t ringl_get_shader_type(uint32_t shader);
 uint64_t ringl_get_shader_source_length(uint32_t shader);
 uint64_t ringl_get_shader_info_log(uint32_t shader, char* buffer, uint64_t buffer_size);
+int ringl_lower_shader_rsh1(uint32_t shader);
+uint32_t ringl_get_shader_rsh1_size(uint32_t shader);
+uint32_t ringl_copy_shader_rsh1(uint32_t shader, void* output, uint32_t capacity);
 
 uint32_t ringl_create_program(void);
 void ringl_delete_program(uint32_t program);

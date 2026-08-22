@@ -26,6 +26,9 @@ static RinGLShaderObject* ringl_shader_object(RinGLContext* context,
 
 static void ringl_shader_reset_compile_state(RinGLShaderObject* object)
 {
+    free(object->rsh1);
+    object->rsh1 = NULL;
+    object->rsh1_size = 0u;
     object->compile_status = RINGL_FALSE;
     object->declaration_count = 0u;
     object->statement_count = 0u;
@@ -77,6 +80,7 @@ void ringl_delete_shader(uint32_t shader)
     if (object == NULL)
         return;
     free(object->source);
+    free(object->rsh1);
     memset(object, 0, sizeof(*object));
     ringl_object_release(context, shader, RINGL_OBJECT_SHADER);
 }
@@ -260,6 +264,7 @@ void ringl_shader_objects_destroy_all(RinGLContext* context)
             context->objects[index].state == RINGL_OBJECT_FREE)
             continue;
         free(context->shaders[index].source);
+        free(context->shaders[index].rsh1);
         memset(&context->shaders[index], 0, sizeof(context->shaders[index]));
     }
 }

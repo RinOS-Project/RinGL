@@ -147,6 +147,12 @@ int main(void)
         "void main() {\n"
         "  gl_FragColor = texture2D(colorTexture, vec2(0.25, 0.75));\n"
         "}\n";
+    const char* varying_vertex_source =
+        "attribute vec2 position; attribute vec2 texCoord; varying vec2 uv; "
+        "void main() { gl_Position = vec4(position, 0.0, 1.0); uv = texCoord; }";
+    const char* varying_fragment_source =
+        "uniform sampler2D colorTexture; varying vec2 uv; "
+        "void main() { gl_FragColor = texture2D(colorTexture, uv); }";
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -190,6 +196,22 @@ int main(void)
     header = lower_and_read_header(fragment, texture_source, blob, sizeof(blob));
     assert(header.stage == 2u);
     assert(header.input_count == 0u);
+    assert(header.output_count == 4u);
+    assert(header.resource_count == 2u);
+    assert(header.instruction_count == 11u);
+
+    header = lower_and_read_header(vertex, varying_vertex_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 4u);
+    assert(header.output_count == 6u);
+    assert(header.resource_count == 0u);
+    assert(header.instruction_count == 13u);
+
+    header = lower_and_read_header(fragment, varying_fragment_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 2u);
     assert(header.output_count == 4u);
     assert(header.resource_count == 2u);
     assert(header.instruction_count == 11u);

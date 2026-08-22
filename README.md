@@ -196,6 +196,12 @@ RinGPU buffer before swapping the object, so a failed allocation or upload
 leaves the previously visible buffer contents and CPU validation shadow
 unchanged.
 
+The public `RINGL_BUFFER_SIZE` and `RINGL_BUFFER_USAGE` enums name the
+WebGL-facing buffer queries served by `ringl_get_buffer_size()` and
+`ringl_get_buffer_usage()`. A bound buffer is required; target validation and
+the existing `INVALID_ENUM`/`INVALID_OPERATION` behavior remain at the RinGL
+boundary instead of being duplicated by browser embeddings.
+
 Browser-owned readback destinations use `ringl_read_pixels_to_bytes()`. It
 validates the tightly packed RGBA8 result size before it submits a readback,
 changes a tracked image state, or writes destination memory. Short output spans

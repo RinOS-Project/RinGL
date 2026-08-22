@@ -93,3 +93,11 @@ pipeline_cache_test = executable(
 )
 
 test('pipeline-cache', pipeline_cache_test)
+
+first_triangle_test = executable(
+  'ringl-first-triangle-test',
+  'first_triangle_test.c',
+  dependencies: ringl_dep,
+)
+
+test('first-triangle', first_triangle_test)

@@ -219,19 +219,20 @@ attachment are no-ops. The RinOS surface backend applies these rules to both
 the caller-owned BGRA target and offscreen RGBA FBO targets.
 
 Level-zero `RGBA`/`RGB`/`ALPHA`/`LUMINANCE`/`LUMINANCE_ALPHA` with
-`UNSIGNED_BYTE` are normalized into canonical RGBA8 shadow storage. The
-source row pitch follows WebGL's default four-byte unpack alignment, including
-the padding of RGB rows, before the texture is uploaded as a RinGPU sampled
-image. The RinOS surface backend now executes the matching typed sampled-image
+`UNSIGNED_BYTE` are normalized into canonical RGBA8 shadow storage. RinGL
+tracks WebGL 1 `UNPACK_ALIGNMENT`; all valid 1/2/4/8-byte row alignments are
+applied to `texImage2D` and `texSubImage2D`, including RGB padding and D32
+source rows, before the texture is uploaded as a RinGPU sampled image. The
+RinOS surface backend now executes the matching typed sampled-image
 and sampler bind group instead of treating it as a placeholder: it snapshots
 the bounded RGBA8 image into the resource-aware software executor and applies
 nearest or linear filtering with clamp-to-edge, repeat, or mirrored-repeat
 addressing. The level-zero executor has no derivatives or mip levels, so a
 texture larger than 1x1 requires matching minification and magnification
 filters; it rejects ambiguous min/mag selection rather than silently choosing
-one. The strict C11 RinGL tests cover format normalization and upload layout,
-and the surface integration test renders a normalized RGB texture through the
-real RinGPU resource binding.
+one. The strict C11 RinGL tests cover format normalization, tightly-packed RGB
+image/sub-image data, and padded D32 source rows; the surface integration test
+renders a normalized RGB texture through the real RinGPU resource binding.
 
 The one-sampler constant texture profile accepts both `vec2(u, v)` and the
 GLSL scalar-splat form `vec2(value)`. The latter requires a finite literal and

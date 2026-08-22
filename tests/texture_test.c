@@ -23,6 +23,22 @@ int main(void)
     assert(ringl_make_current(context) == 0);
     assert(ringl_get_active_texture() == RINGL_TEXTURE0);
     assert(ringl_get_bound_texture(RINGL_TEXTURE_2D) == 0u);
+    {
+        int32_t unpack_alignment = 0;
+
+        ringl_get_integerv(RINGL_UNPACK_ALIGNMENT, &unpack_alignment);
+        assert(unpack_alignment == 4);
+        ringl_pixel_storei(RINGL_UNPACK_ALIGNMENT, 1);
+        ringl_get_integerv(RINGL_UNPACK_ALIGNMENT, &unpack_alignment);
+        assert(unpack_alignment == 1);
+        ringl_pixel_storei(RINGL_UNPACK_ALIGNMENT, 3);
+        assert(ringl_get_error() == RINGL_INVALID_VALUE);
+        ringl_get_integerv(RINGL_UNPACK_ALIGNMENT, &unpack_alignment);
+        assert(unpack_alignment == 1);
+        ringl_pixel_storei(0x0cf6u, 4);
+        assert(ringl_get_error() == RINGL_INVALID_ENUM);
+        ringl_pixel_storei(RINGL_UNPACK_ALIGNMENT, 4);
+    }
 
     ringl_gen_textures(2, textures);
     assert(textures[0] != 0u && textures[1] != 0u);

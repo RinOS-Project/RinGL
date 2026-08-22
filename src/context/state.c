@@ -450,6 +450,23 @@ void ringl_color_mask(uint32_t red, uint32_t green, uint32_t blue,
     ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
 }
 
+void ringl_pixel_storei(uint32_t pname, int32_t param)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL)
+        return;
+    if (pname != RINGL_UNPACK_ALIGNMENT) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return;
+    }
+    if (param != 1 && param != 2 && param != 4 && param != 8) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    context->unpack_alignment = (uint32_t)param;
+}
+
 void ringl_get_integerv(uint32_t pname, int32_t* values)
 {
     RinGLContext* context = ringl_get_current_context();
@@ -478,6 +495,9 @@ void ringl_get_integerv(uint32_t pname, int32_t* values)
         return;
     case RINGL_CURRENT_PROGRAM:
         values[0] = (int32_t)context->current_program;
+        return;
+    case RINGL_UNPACK_ALIGNMENT:
+        values[0] = (int32_t)context->unpack_alignment;
         return;
     case RINGL_MAX_TEXTURE_SIZE_QUERY:
         values[0] = (int32_t)RINGL_MAX_TEXTURE_SIZE;

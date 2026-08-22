@@ -225,6 +225,7 @@ struct RinGLContext {
     uint32_t blend_equation_rgb;
     uint32_t blend_equation_alpha;
     uint32_t color_write_mask;
+    uint32_t unpack_alignment;
 
     RinGLObjectSlot objects[RINGL_OBJECT_SLOT_COUNT];
     RinGLBufferObject buffers[RINGL_OBJECT_SLOT_COUNT];

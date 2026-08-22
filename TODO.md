@@ -98,6 +98,9 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Implement texture object lifecycle and eight texture-unit bindings.
 - [x] Implement initial level-0 `RGBA`/`UNSIGNED_BYTE` 2D texture storage with bounded dimensions.
 - [x] Normalize level-zero `RGB`/`ALPHA`/`LUMINANCE`/`LUMINANCE_ALPHA` `UNSIGNED_BYTE` uploads into canonical RGBA8 storage, including default four-byte WebGL unpack-row alignment, and cover image/sub-image normalization through strict C11 tests.
+  - [x] Track WebGL 1 `UNPACK_ALIGNMENT` (1/2/4/8) and apply it consistently
+    to color, D32, and D32S8 `texImage2D`/`texSubImage2D` source rows before
+    canonical shadow storage or RinGPU upload.
 - [x] Implement robust CPU-side `texImage2D` zero initialization and bounded `texSubImage2D` updates.
 - [x] Implement GLES-style texture filtering/wrap sampler state and invalidate realized samplers when it changes.
 - [x] Implement sampler uniform locations and program-selected texture-unit state.

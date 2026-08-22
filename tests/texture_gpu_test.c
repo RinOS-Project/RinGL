@@ -130,6 +130,18 @@ int main(void)
         7u, 8u, 9u, 0xffu, 10u, 11u, 12u, 0xffu,
     };
     const uint8_t rgb_patch[3] = {21u, 22u, 23u};
+    const uint8_t tightly_packed_rgb_pixels[12] = {
+        31u, 32u, 33u, 34u, 35u, 36u,
+        37u, 38u, 39u, 40u, 41u, 42u,
+    };
+    const uint8_t tightly_packed_rgb_expected[16] = {
+        31u, 32u, 33u, 0xffu, 34u, 35u, 36u, 0xffu,
+        37u, 38u, 39u, 0xffu, 40u, 41u, 42u, 0xffu,
+    };
+    const uint8_t aligned_depth_pixels[12] = {
+        0u, 0u, 0x80u, 0x3fu, 0xa5u, 0xa5u, 0xa5u, 0xa5u,
+        0u, 0u, 0u, 0x3fu,
+    };
     const uint8_t luminance_alpha_pixels[8] = {
         1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u,
     };
@@ -203,6 +215,20 @@ int main(void)
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
     assert(memcmp(backend.last_upload, rgb_expected, sizeof(rgb_expected)) == 0);
+    ringl_pixel_storei(RINGL_UNPACK_ALIGNMENT, 1);
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGB, 2, 2, 0, RINGL_RGB,
+                       RINGL_UNSIGNED_BYTE, tightly_packed_rgb_pixels);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(memcmp(backend.last_upload, tightly_packed_rgb_expected,
+                  sizeof(tightly_packed_rgb_expected)) == 0);
+    ringl_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 2, 2, RINGL_RGB,
+                           RINGL_UNSIGNED_BYTE, tightly_packed_rgb_pixels);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(memcmp(backend.last_upload, tightly_packed_rgb_expected,
+                  sizeof(tightly_packed_rgb_expected)) == 0);
+    ringl_pixel_storei(RINGL_UNPACK_ALIGNMENT, 4);
     ringl_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 1, 0, 1, 1, RINGL_RGB,
                            RINGL_UNSIGNED_BYTE, rgb_patch);
     assert(ringl_get_error() == RINGL_NO_ERROR);
@@ -233,6 +259,27 @@ int main(void)
     assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
     assert(memcmp(backend.last_upload, luminance_expected,
                   sizeof(luminance_expected)) == 0);
+
+    ringl_gen_textures(1, &incomplete);
+    ringl_bind_texture(RINGL_TEXTURE_2D, incomplete);
+    ringl_pixel_storei(RINGL_UNPACK_ALIGNMENT, 8);
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_DEPTH_COMPONENT32F, 1, 2,
+                       0, RINGL_DEPTH_COMPONENT, RINGL_FLOAT,
+                       aligned_depth_pixels);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    {
+        RinGLTextureObject* depth_texture =
+            &context->textures[ringl_object_slot_index(incomplete)];
+        float depth0;
+        float depth1;
+
+        assert(depth_texture->shadow_size == 8u);
+        memcpy(&depth0, depth_texture->shadow_bytes, sizeof(depth0));
+        memcpy(&depth1, depth_texture->shadow_bytes + sizeof(depth0),
+               sizeof(depth1));
+        assert(depth0 == 1.0f && depth1 == 0.5f);
+    }
+    ringl_pixel_storei(RINGL_UNPACK_ALIGNMENT, 4);
 
     ringl_context_destroy(context);
     return 0;

@@ -111,6 +111,7 @@ int ringl_context_create(const RinGLContextDescV1* desc,
     context->blend_equation_rgb = RINGL_FUNC_ADD;
     context->blend_equation_alpha = RINGL_FUNC_ADD;
     context->color_write_mask = 0x0fu;
+    context->unpack_alignment = 4u;
 
     if (desc != NULL) {
         context->flags = desc->flags;

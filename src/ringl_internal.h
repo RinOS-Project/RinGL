@@ -109,6 +109,22 @@ struct RinGLContext {
     float clear_blue;
     float clear_alpha;
 
+    int32_t viewport_x;
+    int32_t viewport_y;
+    uint32_t viewport_width;
+    uint32_t viewport_height;
+    uint32_t viewport_initialized;
+    int32_t scissor_x;
+    int32_t scissor_y;
+    uint32_t scissor_width;
+    uint32_t scissor_height;
+    uint32_t scissor_enabled;
+    uint32_t cull_face_enabled;
+    uint32_t depth_test_enabled;
+    uint32_t blend_enabled;
+    uint32_t cull_face_mode;
+    uint32_t front_face;
+
     RinGLObjectSlot objects[RINGL_OBJECT_SLOT_COUNT];
     RinGLBufferObject buffers[RINGL_OBJECT_SLOT_COUNT];
     RinGLTextureObject textures[RINGL_OBJECT_SLOT_COUNT];

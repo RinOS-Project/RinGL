@@ -7,6 +7,22 @@
 
 static _Thread_local RinGLContext* ringl_current_context;
 
+void ringl_copy_c_string(char* destination, size_t capacity,
+                         const char* source)
+{
+    size_t length = 0u;
+
+    if (destination == NULL || capacity == 0u)
+        return;
+    if (source != NULL) {
+        while (length + 1u < capacity && source[length] != '\0')
+            ++length;
+        if (length != 0u)
+            memmove(destination, source, length);
+    }
+    destination[length] = '\0';
+}
+
 static int ringl_context_is_valid(const RinGLContext* context)
 {
     return context != NULL && context->magic == RINGL_CONTEXT_MAGIC;

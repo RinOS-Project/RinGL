@@ -44,11 +44,21 @@ The first-slice mappings are:
 - presentation -> `ringpu_command_present()`;
 - submission -> `ringpu_command_list_close()` and `ringpu_queue_submit()`.
 
-The WebEngine CMake integration is opt-in through `RIN_LADYBIRD_ENABLE_RINGL`; the standalone RinGL source root is supplied with `RIN_RINGL_SOURCE_ROOT`.
+The WebEngine CMake integration is opt-in through `RIN_LADYBIRD_ENABLE_RINGL`.
+Its default `RIN_RINGL_SOURCE_ROOT` is the checked-out `libs/RinGL` tree and
+can be overridden only for an explicitly selected external checkout.
 
 OS-Core also contains `rin_webgl_ringl_bridge.{h,c}`. The bridge borrows the existing `RinWebGLRingPUSurfaceContext`, obtains its RinGPU core/graphics queue/color image through a private native view, creates a RinGL context using the adapter, and binds that image as RinGL's default framebuffer. The surface remains the owner of the RinGPU core, queue, image, and caller-provided pixel backing store.
 
 During the initial bridge lifetime RinGL is the exclusive command producer for the borrowed surface. The legacy `rin_webgl_ringpu_surface_clear()` / `present()` helpers must not be interleaved with RinGL commands until shared image-state synchronization is generalized.
+
+The surface color image declares `COPY_SOURCE` and `CPU_READABLE` as well as
+its existing `COPY_DESTINATION`, `COLOR_TARGET`, and `PRESENT` uses. Its
+backend supplies bounded readback, so RinGL's default-framebuffer
+`RGBA/UNSIGNED_BYTE` `readPixels` path can transition to `COPY_SOURCE`, wait,
+read back, and swizzle BGRA storage to RGBA. The focused OS-Core
+`rin_webgl_ringl_bridge_test` covers clear, readback, and present through this
+borrowed surface.
 
 ## Shader module validation path
 
@@ -89,7 +99,7 @@ Before cache eviction during a draw, RinGL resets its reusable command list. Thi
 
 ## Default framebuffer and command path
 
-The embedding runtime owns the presentable image. It binds or replaces that image with `ringl_set_default_framebuffer()`, supplying the RinGPU image handle, format, dimensions, and display id. `ringl_set_default_framebuffer_state()` then lets an embedding tell RinGL whether a borrowed image currently starts as `UNDEFINED`, `COLOR_TARGET`, or `PRESENT`. This avoids inventing a PRESENT state for newly-created RinGPU images.
+The embedding runtime owns the presentable image. It binds or replaces that image with `ringl_set_default_framebuffer()`, supplying the RinGPU image handle, format, dimensions, and display id. `ringl_set_default_framebuffer_state()` then tells RinGL whether a borrowed image currently starts as `COLOR_TARGET` or `PRESENT`. When the WebEngine bridge borrows a freshly-created `UNDEFINED` image, it first invokes the surface owner's `begin_content_update()` operation. This records the real `UNDEFINED -> COLOR_TARGET` transition without clearing or presenting uninitialized content, then passes the observed `COLOR_TARGET` state to RinGL.
 
 The initial command path intentionally mirrors public RinGPU operations rather than hiding them behind a GL-shaped backend call:
 
@@ -120,11 +130,16 @@ ringl_present()
 
 RinGL reuses one graphics command list per context. Each new submission resets it before recording, preserving GL ordering while bounding command-list allocation. The context destroys the command list before cached pipelines and shader modules so RinGPU recorded-command references are released in dependency order.
 
-## Current visible-triangle blocker
+## Current visible-triangle status
 
-The public RinGPU command route is now connected in OS-Core, but the current `RinWebGLRingPUSurfaceContext` backend is still a deliberately narrow software presentation backend. Its backend submission implementation handles transitions, render-pass clear/end, and presentation, but does not yet execute `RIN_GPU_BACKEND_COMMAND_DRAW_VERTICES` into the caller-owned pixel surface.
-
-Additionally, RinGL's bootstrap GLSL profile currently exposes scalar `float` vertex I/O only. A standards-shaped visible triangle needs vector position support (or an equivalent multi-slot GLSL lowering) before `gl_Position` can represent a normal clip-space position. The milestone should therefore be completed by extending shader I/O and then teaching the selected RinGPU backend to execute the resulting draw, rather than by special-casing triangle coordinates in the adapter.
+The selected `RinWebGLRingPUSurfaceContext` backend executes generic
+`RIN_GPU_BACKEND_COMMAND_DRAW_VERTICES` into the caller-owned BGRA surface;
+the OS-Core surface test covers that native command path. RinGL's current
+vector position and initial texture/varying profiles lower through the same
+public RinGPU adapter. The browser-facing GLES/WebGL object and command bridge,
+front-buffer presentation contract, context-loss policy, and product/QEMU
+evidence remain separate unfinished work; no WebGL feature claim follows from
+this integration slice.
 
 ## Host operation table
 

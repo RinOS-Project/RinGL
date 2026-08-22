@@ -170,6 +170,8 @@ struct RinGLContext {
 void ringl_context_record_error(RinGLContext* context, uint32_t error);
 void ringl_context_mark_dirty(RinGLContext* context, uint32_t bits);
 void ringl_context_clear_dirty(RinGLContext* context, uint32_t bits);
+void ringl_copy_c_string(char* destination, size_t capacity,
+                         const char* source);
 
 int ringl_backend_create_buffer(RinGLContext* context,
                                 uint64_t size_bytes,

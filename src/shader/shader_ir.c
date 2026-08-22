@@ -45,10 +45,9 @@ int ringl_lower_shader_rsh1(uint32_t shader)
     } else if (object->sampler_uniform_count != 0u &&
                strstr(object->source, "texture2D") != NULL) {
         if (object->shader_type != RINGL_FRAGMENT_SHADER) {
-            (void)strncpy(object->info_log,
-                          "texture2D lowering requires a fragment shader",
-                          sizeof(object->info_log) - 1u);
-            object->info_log[sizeof(object->info_log) - 1u] = '\0';
+            ringl_copy_c_string(
+                object->info_log, sizeof(object->info_log),
+                "texture2D lowering requires a fragment shader");
             return -1;
         }
         rc = ringl_glsl_lower_texture2d_rsh1(
@@ -60,9 +59,8 @@ int ringl_lower_shader_rsh1(uint32_t shader)
                                    (size_t)object->source_length, &lowered);
     }
     if (rc != 0 || !lowered.ok) {
-        (void)strncpy(object->info_log, lowered.diagnostic,
-                      sizeof(object->info_log) - 1u);
-        object->info_log[sizeof(object->info_log) - 1u] = '\0';
+        ringl_copy_c_string(object->info_log, sizeof(object->info_log),
+                            lowered.diagnostic);
         return -1;
     }
 
@@ -142,9 +140,8 @@ int ringl_realize_shader_module(uint32_t shader)
     rc = ringl_backend_create_shader_module(context, object->rsh1,
                                             object->rsh1_size, &module);
     if (rc != 0 || module == 0u) {
-        (void)strncpy(object->info_log, "RinGPU rejected shader module",
-                      sizeof(object->info_log) - 1u);
-        object->info_log[sizeof(object->info_log) - 1u] = '\0';
+        ringl_copy_c_string(object->info_log, sizeof(object->info_log),
+                            "RinGPU rejected shader module");
         return -1;
     }
 

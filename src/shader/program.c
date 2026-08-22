@@ -55,10 +55,8 @@ static int ringl_program_add_sampler_uniform(RinGLProgramObject* program,
     if (program->sampler_uniform_count >= RINGL_MAX_SAMPLER_UNIFORMS)
         return 0;
     i = program->sampler_uniform_count++;
-    (void)strncpy(program->sampler_uniforms[i].name, name,
-                  sizeof(program->sampler_uniforms[i].name) - 1u);
-    program->sampler_uniforms[i].name[
-        sizeof(program->sampler_uniforms[i].name) - 1u] = '\0';
+    ringl_copy_c_string(program->sampler_uniforms[i].name,
+                        sizeof(program->sampler_uniforms[i].name), name);
     program->sampler_uniforms[i].texture_unit = 0;
     return 1;
 }
@@ -120,9 +118,9 @@ static int ringl_program_collect_varyings(RinGLProgramObject* program,
         if (!found || vertex_location + fragment_result.varying_widths[fi] > 32u ||
             fragment_location + fragment_result.varying_widths[fi] > 32u)
             return 0;
-        (void)strncpy(program->varyings[fi].name,
-                      fragment_result.varying_names[fi],
-                      sizeof(program->varyings[fi].name) - 1u);
+        ringl_copy_c_string(program->varyings[fi].name,
+                            sizeof(program->varyings[fi].name),
+                            fragment_result.varying_names[fi]);
         program->varyings[fi].width = fragment_result.varying_widths[fi];
         program->varyings[fi].vertex_output_location = vertex_location;
         program->varyings[fi].fragment_input_location = fragment_location;

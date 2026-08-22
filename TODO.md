@@ -110,7 +110,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Implement `glFinish` using an optional versioned sync extension, RinGPU fences, fenced queue submission, and `ringpu_wait_fence()`.
 - [x] Implement bounded default-framebuffer `RGBA/UNSIGNED_BYTE` `glReadPixels` logic through COPY_SOURCE transition, completion wait, RinGPU image readback, and BGRA-to-RGBA swizzle.
 - [x] Add a fake-RinGPU synchronization/readback test covering monotonic fence values, waits, COPY_SOURCE transition, and pixel swizzle.
-- [ ] Enable readback on the RinOS WebGL surface color image by creating it with `COPY_SOURCE` usage and `CPU_READABLE` in addition to its existing present/color-target flags.
+- [x] Enable readback on the RinOS WebGL surface color image by creating it with `COPY_SOURCE` usage and `CPU_READABLE` in addition to its existing present/color-target flags; the focused `rin_webgl_ringl_bridge_test` verifies clear, BGRA-to-RGBA readback, and present through the shared surface.
 - [ ] Define device-loss handling and GL-visible failure behavior.
 - [ ] Add broader tests for ordering across draws, copies, barriers, flushes, finish, and readbacks.
 

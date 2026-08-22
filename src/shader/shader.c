@@ -181,17 +181,16 @@ void ringl_compile_shader(uint32_t shader)
     }
     ringl_shader_reset_compile_state(context, object);
     if (object->source == NULL) {
-        (void)strncpy(object->info_log, "no shader source", sizeof(object->info_log) - 1u);
-        object->info_log[sizeof(object->info_log) - 1u] = '\0';
+        ringl_copy_c_string(object->info_log, sizeof(object->info_log),
+                            "no shader source");
         return;
     }
 
     parse_result = ringl_glsl_parse(object->shader_type, object->source,
                                     (size_t)object->source_length, &result);
     if (parse_result != 0 || !result.ok) {
-        (void)strncpy(object->info_log, result.diagnostic,
-                      sizeof(object->info_log) - 1u);
-        object->info_log[sizeof(object->info_log) - 1u] = '\0';
+        ringl_copy_c_string(object->info_log, sizeof(object->info_log),
+                            result.diagnostic);
         return;
     }
 

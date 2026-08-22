@@ -18,6 +18,7 @@ ringl_sources = files(
   'src/context/vertex_attrib.c',
   'src/objects/object_table.c',
   'src/objects/buffer.c',
+  'src/shader/glsl_parser.c',
   'src/shader/shader.c',
   'src/translate/vertex_layout.c',
 )

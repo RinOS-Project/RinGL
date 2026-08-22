@@ -47,7 +47,9 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Add linked-program reflection tests for the non-resource shader subset.
 - [x] Parse bounded `uniform sampler2D` declarations and retain names through shader compilation.
 - [x] Link sampler uniforms into program locations and implement `getUniformLocation`/`uniform1i`-style state.
-- [ ] Lower sampler/resource operations into RinShader resource metadata and update reflection for resource programs.
+- [x] Report linked sampler uniforms through program reflection.
+- [ ] Add GLSL ES `texture2D()` parsing/type validation.
+- [ ] Lower `texture2D()` after RinShader exposes an unambiguous 2D-coordinate/RGBA sample operation.
 
 ## Phase 4 — First hardware-rendered triangle
 
@@ -68,16 +70,16 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Implement `glDrawElements` for `UNSIGNED_SHORT`/`UNSIGNED_INT` with robust index-buffer and referenced-vertex range validation.
 - [x] Retain bounded buffer shadow contents so indexed draws can reject unsafe vertex fetches before RinGPU submission.
 - [x] Map indexed draws through the append-only RinGPU adapter boundary.
-- [ ] Add `UNSIGNED_BYTE` index support required by the GLES 2.0 profile.
+- [ ] Add `UNSIGNED_BYTE` index support required by the GLES 2.0 profile (blocked on a native RinGPU UINT8 index format or an agreed translation contract).
 - [x] Implement texture object lifecycle and eight texture-unit bindings.
 - [x] Implement initial level-0 `RGBA`/`UNSIGNED_BYTE` 2D texture storage with bounded dimensions.
 - [x] Implement robust CPU-side `texImage2D` zero initialization and bounded `texSubImage2D` updates.
 - [x] Implement GLES-style texture filtering/wrap sampler state and invalidate realized samplers when it changes.
 - [x] Implement sampler uniform locations and program-selected texture-unit state.
-- [ ] Add GLSL ES `texture2D()` parsing/type checks and RinShader lowering.
-- [ ] Realize defined texture storage as RinGPU sampled images and upload/copy shadow contents.
-- [ ] Map texture sampler state to lazily realized RinGPU sampler objects.
-- [ ] Bind realized sampled images/samplers to RinGPU graphics resource slots before draws.
+- [x] Lazily realize complete level-0 texture storage as CPU-visible RinGPU sampled RGBA8 images and upload the canonical shadow contents.
+- [x] Lazily map texture filtering/wrap state to RinGPU sampler objects.
+- [x] Add fake-RinGPU tests for image/sampler realization, cache hits, invalidation, and level-zero completeness.
+- [ ] Bind realized sampled images/samplers to RinGPU graphics resource slots before draws (waiting on texture sampling IR lowering).
 - [ ] Add a textured-triangle integration test.
 
 ## Phase 6 — Framebuffers and fixed-function state

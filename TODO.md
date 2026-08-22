@@ -48,10 +48,10 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 
 ## Phase 4 — First hardware-rendered triangle
 
-- [ ] Create a default framebuffer representation backed by a presentable RinGPU image.
+- [x] Create a default framebuffer representation backed by an embedding-supplied presentable RinGPU image.
 - [ ] Implement color clear.
-- [ ] Build a pipeline-cache key from program, vertex layout, attachment format, and fixed-function state.
-- [ ] Lazily create/cache RinGPU graphics pipelines.
+- [x] Build the first-slice pipeline-cache key from program, vertex layout, attachment format, and current immutable state.
+- [x] Lazily create/cache RinGPU graphics pipelines with bounded eviction and lifetime cleanup.
 - [ ] Automatically begin/end a RinGPU render pass around compatible GL operations.
 - [ ] Implement `glDrawArrays` for triangles.
 - [ ] Translate GL-visible resource state into required RinGPU transitions/barriers.

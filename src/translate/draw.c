@@ -14,16 +14,8 @@ static float clamp_color(float value)
     return value;
 }
 
-typedef struct RinGLColorTarget {
-    uint64_t image;
-    uint32_t format;
-    uint32_t width;
-    uint32_t height;
-    uint32_t* state;
-} RinGLColorTarget;
-
-static int resolve_color_target(RinGLContext* context,
-                                RinGLColorTarget* target)
+int ringl_resolve_color_target(RinGLContext* context,
+                               RinGLColorTarget* target)
 {
     RinGLFramebufferObject* framebuffer;
     uint32_t index;
@@ -400,7 +392,7 @@ void ringl_clear(uint32_t mask)
         return;
     }
     if (!command_ops_ready(context) ||
-        resolve_color_target(context, &target) != 0) {
+        ringl_resolve_color_target(context, &target) != 0) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
@@ -443,7 +435,7 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
     if (count == 0 || draw_is_noop(context))
         return;
     if (!command_ops_ready(context) ||
-        resolve_color_target(context, &target) != 0 ||
+        ringl_resolve_color_target(context, &target) != 0 ||
         context->ringpu_ops.draw_vertices == NULL ||
         (context->ringpu_ops.create_graphics_pipeline == NULL &&
          context->ringpu_ops.create_graphics_pipeline_native == NULL) ||
@@ -541,7 +533,7 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
     if (count == 0 || draw_is_noop(context))
         return;
     if (!command_ops_ready(context) ||
-        resolve_color_target(context, &target) != 0 ||
+        ringl_resolve_color_target(context, &target) != 0 ||
         context->ringpu_ops.draw_indexed == NULL ||
         (context->ringpu_ops.create_graphics_pipeline == NULL &&
          context->ringpu_ops.create_graphics_pipeline_native == NULL) ||

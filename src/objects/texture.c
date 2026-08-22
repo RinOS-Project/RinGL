@@ -142,7 +142,8 @@ static int texture_realize_image(RinGLContext* context,
         color_target_desc.format = RINGL_RIN_GPU_FORMAT_RGBA8_UNORM;
         color_target_desc.usage = RINGL_RIN_GPU_IMAGE_USAGE_COPY_DESTINATION |
                                   RINGL_RIN_GPU_IMAGE_USAGE_SAMPLED |
-                                  RINGL_RIN_GPU_IMAGE_USAGE_COLOR_TARGET;
+                                  RINGL_RIN_GPU_IMAGE_USAGE_COLOR_TARGET |
+                                  RINGL_RIN_GPU_IMAGE_USAGE_COPY_SOURCE;
         if (ringl_backend_create_image_2d(context, &color_target_desc, &image) != 0 ||
             image == 0u) {
             return -1;

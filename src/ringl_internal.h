@@ -121,6 +121,14 @@ typedef struct RinGLResolvedVertexLayout {
     RinGLResolvedVertexAttribute attributes[RINGL_MAX_VERTEX_ATTRIBS];
 } RinGLResolvedVertexLayout;
 
+typedef struct RinGLColorTarget {
+    uint64_t image;
+    uint32_t format;
+    uint32_t width;
+    uint32_t height;
+    uint32_t* state;
+} RinGLColorTarget;
+
 struct RinGLContext {
     uint32_t magic;
     uint32_t pending_error;
@@ -193,6 +201,8 @@ void ringl_context_mark_dirty(RinGLContext* context, uint32_t bits);
 void ringl_context_clear_dirty(RinGLContext* context, uint32_t bits);
 void ringl_copy_c_string(char* destination, size_t capacity,
                          const char* source);
+int ringl_resolve_color_target(RinGLContext* context,
+                               RinGLColorTarget* target);
 
 int ringl_backend_create_buffer(RinGLContext* context,
                                 uint64_t size_bytes,

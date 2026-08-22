@@ -255,7 +255,8 @@ int main(void)
     assert(backend.image_usages[0] ==
            (RINGL_RIN_GPU_IMAGE_USAGE_COPY_DESTINATION |
             RINGL_RIN_GPU_IMAGE_USAGE_SAMPLED |
-            RINGL_RIN_GPU_IMAGE_USAGE_COLOR_TARGET));
+            RINGL_RIN_GPU_IMAGE_USAGE_COLOR_TARGET |
+            RINGL_RIN_GPU_IMAGE_USAGE_COPY_SOURCE));
 
     ringl_gen_buffers(1, &vertex_buffer);
     ringl_bind_buffer(RINGL_ARRAY_BUFFER, vertex_buffer);
@@ -295,7 +296,9 @@ int main(void)
     ringl_clear(RINGL_COLOR_BUFFER_BIT);
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(backend.image_creates == 2u && backend.image_uploads == 1u);
-    assert(backend.image_usages[1] == RINGL_RIN_GPU_IMAGE_USAGE_COLOR_TARGET);
+    assert(backend.image_usages[1] ==
+           (RINGL_RIN_GPU_IMAGE_USAGE_COLOR_TARGET |
+            RINGL_RIN_GPU_IMAGE_USAGE_COPY_SOURCE));
     assert(backend.transitions == 2u && backend.passes == 3u);
     assert(backend.submissions == 3u);
     assert(backend.last_pass_target == backend.created_images[1]);

@@ -60,8 +60,8 @@ void ringl_flush(void);
  * completed. */
 void ringl_finish(void);
 
-/* Initial GLES2 readback slice: default framebuffer, RGBA/UNSIGNED_BYTE only.
- * Destination rows are tightly packed. */
+/* Initial GLES2 readback slice: the current complete color framebuffer,
+ * RGBA/UNSIGNED_BYTE only. Destination rows are tightly packed. */
 void ringl_read_pixels(int32_t x, int32_t y,
                        int32_t width, int32_t height,
                        uint32_t format, uint32_t type,

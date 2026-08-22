@@ -476,7 +476,8 @@ int ringl_renderbuffer_realize_color_target(RinGLContext* context,
         desc.width = object->width;
         desc.height = object->height;
         desc.format = RINGL_RIN_GPU_FORMAT_RGBA8_UNORM;
-        desc.usage = RINGL_RIN_GPU_IMAGE_USAGE_COLOR_TARGET;
+        desc.usage = RINGL_RIN_GPU_IMAGE_USAGE_COLOR_TARGET |
+                     RINGL_RIN_GPU_IMAGE_USAGE_COPY_SOURCE;
         if (ringl_backend_create_image_2d(context, &desc, &image) != 0 ||
             image == 0u) {
             return -1;

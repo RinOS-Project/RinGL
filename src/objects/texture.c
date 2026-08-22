@@ -9,6 +9,36 @@ static int texture_target_valid(uint32_t target)
     return target == RINGL_TEXTURE_2D;
 }
 
+static int min_filter_valid(uint32_t value)
+{
+    return value == RINGL_NEAREST || value == RINGL_LINEAR ||
+           value == RINGL_NEAREST_MIPMAP_NEAREST ||
+           value == RINGL_LINEAR_MIPMAP_NEAREST ||
+           value == RINGL_NEAREST_MIPMAP_LINEAR ||
+           value == RINGL_LINEAR_MIPMAP_LINEAR;
+}
+
+static int mag_filter_valid(uint32_t value)
+{
+    return value == RINGL_NEAREST || value == RINGL_LINEAR;
+}
+
+static int wrap_valid(uint32_t value)
+{
+    return value == RINGL_REPEAT || value == RINGL_CLAMP_TO_EDGE ||
+           value == RINGL_MIRRORED_REPEAT;
+}
+
+static void texture_init_defaults(RinGLTextureObject* texture)
+{
+    if (texture == NULL)
+        return;
+    texture->min_filter = RINGL_NEAREST_MIPMAP_LINEAR;
+    texture->mag_filter = RINGL_LINEAR;
+    texture->wrap_s = RINGL_REPEAT;
+    texture->wrap_t = RINGL_REPEAT;
+}
+
 static RinGLTextureObject* bound_texture_2d(RinGLContext* context)
 {
     uint32_t name;
@@ -96,6 +126,8 @@ void ringl_delete_textures(int32_t count, const uint32_t* textures)
         slot_index = ringl_object_slot_index(name);
         if (slot_index < RINGL_OBJECT_SLOT_COUNT) {
             ringl_backend_destroy_object(context,
+                                         context->textures[slot_index].ringpu_sampler);
+            ringl_backend_destroy_object(context,
                                          context->textures[slot_index].ringpu_image);
             free(context->textures[slot_index].shadow_bytes);
             memset(&context->textures[slot_index], 0,
@@ -128,6 +160,14 @@ void ringl_bind_texture(uint32_t target, uint32_t texture)
         if (slot == NULL) {
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return;
+        }
+        if (slot->state == RINGL_OBJECT_RESERVED) {
+            uint32_t slot_index = ringl_object_slot_index(texture);
+            if (slot_index >= RINGL_OBJECT_SLOT_COUNT) {
+                ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+                return;
+            }
+            texture_init_defaults(&context->textures[slot_index]);
         }
         ringl_object_promote(slot);
     }
@@ -190,6 +230,91 @@ uint32_t ringl_get_bound_texture(uint32_t target)
     if (context->active_texture_unit >= RINGL_MAX_TEXTURE_UNITS)
         return 0u;
     return context->bound_texture_2d[context->active_texture_unit];
+}
+
+void ringl_tex_parameteri(uint32_t target, uint32_t pname, int32_t param)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLTextureObject* texture;
+    uint32_t value = (uint32_t)param;
+    uint32_t* field;
+
+    if (context == NULL)
+        return;
+    if (!texture_target_valid(target)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return;
+    }
+    texture = bound_texture_2d(context);
+    if (texture == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+
+    if (pname == RINGL_TEXTURE_MIN_FILTER) {
+        if (!min_filter_valid(value)) {
+            ringl_context_record_error(context, RINGL_INVALID_ENUM);
+            return;
+        }
+        field = &texture->min_filter;
+    } else if (pname == RINGL_TEXTURE_MAG_FILTER) {
+        if (!mag_filter_valid(value)) {
+            ringl_context_record_error(context, RINGL_INVALID_ENUM);
+            return;
+        }
+        field = &texture->mag_filter;
+    } else if (pname == RINGL_TEXTURE_WRAP_S) {
+        if (!wrap_valid(value)) {
+            ringl_context_record_error(context, RINGL_INVALID_ENUM);
+            return;
+        }
+        field = &texture->wrap_s;
+    } else if (pname == RINGL_TEXTURE_WRAP_T) {
+        if (!wrap_valid(value)) {
+            ringl_context_record_error(context, RINGL_INVALID_ENUM);
+            return;
+        }
+        field = &texture->wrap_t;
+    } else {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return;
+    }
+
+    if (*field != value) {
+        ringl_backend_destroy_object(context, texture->ringpu_sampler);
+        texture->ringpu_sampler = 0u;
+        *field = value;
+        ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
+    }
+}
+
+int32_t ringl_get_tex_parameteri(uint32_t target, uint32_t pname)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLTextureObject* texture;
+
+    if (context == NULL)
+        return 0;
+    if (!texture_target_valid(target)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return 0;
+    }
+    texture = bound_texture_2d(context);
+    if (texture == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return 0;
+    }
+
+    if (pname == RINGL_TEXTURE_MIN_FILTER)
+        return (int32_t)texture->min_filter;
+    if (pname == RINGL_TEXTURE_MAG_FILTER)
+        return (int32_t)texture->mag_filter;
+    if (pname == RINGL_TEXTURE_WRAP_S)
+        return (int32_t)texture->wrap_s;
+    if (pname == RINGL_TEXTURE_WRAP_T)
+        return (int32_t)texture->wrap_t;
+    ringl_context_record_error(context, RINGL_INVALID_ENUM);
+    return 0;
 }
 
 void ringl_tex_image_2d(uint32_t target, int32_t level,
@@ -312,7 +437,9 @@ void ringl_texture_objects_destroy_all(RinGLContext* context)
         if (context->objects[index].type != RINGL_OBJECT_TEXTURE ||
             context->objects[index].state == RINGL_OBJECT_FREE)
             continue;
+        ringl_backend_destroy_object(context, context->textures[index].ringpu_sampler);
         ringl_backend_destroy_object(context, context->textures[index].ringpu_image);
+        context->textures[index].ringpu_sampler = 0u;
         context->textures[index].ringpu_image = 0u;
         free(context->textures[index].shadow_bytes);
         context->textures[index].shadow_bytes = NULL;

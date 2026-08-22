@@ -261,6 +261,24 @@ int main(void)
     ringl_get_integerv(RINGL_COLOR_WRITEMASK, values);
     assert(values[0] == 1 && values[1] == 0 && values[2] == 1 && values[3] == 0);
 
+    ringl_viewport(11, 22, 33, 44);
+    assert(ringl_get_integerv_bounded(RINGL_VIEWPORT, NULL, 4u) == -1);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    values[0] = 101;
+    values[1] = 102;
+    values[2] = 103;
+    values[3] = 104;
+    assert(ringl_get_integerv_bounded(RINGL_VIEWPORT, values, 3u) == -1);
+    assert(values[0] == 101 && values[1] == 102 && values[2] == 103 && values[3] == 104);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    assert(ringl_get_integerv_bounded(RINGL_VIEWPORT, values, 4u) == 0);
+    assert(values[0] == 11 && values[1] == 22 && values[2] == 33 && values[3] == 44);
+
+    values[0] = 201;
+    assert(ringl_get_integerv_bounded(0xdeadbeefu, values, 4u) == -1);
+    assert(values[0] == 201);
+    assert(ringl_get_error() == RINGL_INVALID_ENUM);
+
     ringl_get_integerv(0xdeadbeefu, values);
     assert(ringl_get_error() == RINGL_INVALID_ENUM);
 

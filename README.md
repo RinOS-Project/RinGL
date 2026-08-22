@@ -269,6 +269,14 @@ an invalid index records `INVALID_VALUE` and leaves that output unchanged.
 This lets a browser adapter implement both the scalar and typed-array query
 forms without a GLES dependency.
 
+`ringl_get_integerv_bounded()` is the corresponding general state-query ABI
+for embeddings. It accepts the caller's element capacity, determines the exact
+one- or four-integer result before writing, and rejects a null/short output
+without changing it. Unknown pnames record `INVALID_ENUM`; a short output
+records `INVALID_OPERATION`. The legacy `ringl_get_integerv()` remains for
+existing callers, but new browser-facing code uses the bounded entry point so
+viewport, scissor, and color-mask queries cannot overrun an output buffer.
+
 Custom RGBA8 renderbuffer FBOs may additionally attach a matching
 `DEPTH24_STENCIL8` renderbuffer or level-zero
 `DEPTH24_STENCIL8`/`DEPTH_STENCIL`/`UNSIGNED_INT_24_8` texture through

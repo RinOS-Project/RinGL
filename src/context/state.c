@@ -525,140 +525,209 @@ void ringl_pixel_storei(uint32_t pname, int32_t param)
     context->unpack_alignment = (uint32_t)param;
 }
 
-void ringl_get_integerv(uint32_t pname, int32_t* values)
+static size_t ringl_get_integerv_value_count(uint32_t pname)
+{
+    switch (pname) {
+    case RINGL_COLOR_WRITEMASK:
+    case RINGL_VIEWPORT:
+    case RINGL_SCISSOR_BOX:
+        return 4u;
+    case RINGL_ARRAY_BUFFER_BINDING:
+    case RINGL_ELEMENT_ARRAY_BUFFER_BINDING:
+    case RINGL_ACTIVE_TEXTURE:
+    case RINGL_TEXTURE_BINDING_2D:
+    case RINGL_FRAMEBUFFER_BINDING:
+    case RINGL_RENDERBUFFER_BINDING:
+    case RINGL_CURRENT_PROGRAM:
+    case RINGL_UNPACK_ALIGNMENT:
+    case RINGL_MAX_TEXTURE_SIZE_QUERY:
+    case RINGL_MAX_TEXTURE_IMAGE_UNITS:
+    case RINGL_MAX_COMBINED_TEXTURE_IMAGE_UNITS:
+    case RINGL_MAX_VERTEX_ATTRIBS_QUERY:
+    case RINGL_CULL_FACE_MODE:
+    case RINGL_FRONT_FACE:
+    case RINGL_DEPTH_FUNC:
+    case RINGL_DEPTH_WRITEMASK:
+    case RINGL_STENCIL_FUNC:
+    case RINGL_STENCIL_REF:
+    case RINGL_STENCIL_VALUE_MASK:
+    case RINGL_STENCIL_FAIL:
+    case RINGL_STENCIL_PASS_DEPTH_FAIL:
+    case RINGL_STENCIL_PASS_DEPTH_PASS:
+    case RINGL_STENCIL_WRITEMASK:
+    case RINGL_STENCIL_BACK_FUNC:
+    case RINGL_STENCIL_BACK_FAIL:
+    case RINGL_STENCIL_BACK_PASS_DEPTH_FAIL:
+    case RINGL_STENCIL_BACK_PASS_DEPTH_PASS:
+    case RINGL_STENCIL_BACK_REF:
+    case RINGL_STENCIL_BACK_VALUE_MASK:
+    case RINGL_STENCIL_BACK_WRITEMASK:
+    case RINGL_BLEND_SRC_RGB:
+    case RINGL_BLEND_DST_RGB:
+    case RINGL_BLEND_SRC_ALPHA:
+    case RINGL_BLEND_DST_ALPHA:
+    case RINGL_BLEND_EQUATION_RGB:
+    case RINGL_BLEND_EQUATION_ALPHA:
+        return 1u;
+    default:
+        return 0u;
+    }
+}
+
+int ringl_get_integerv_bounded(uint32_t pname, int32_t* values,
+                               size_t value_count)
 {
     RinGLContext* context = ringl_get_current_context();
+    size_t required_values;
 
-    if (context == NULL || values == NULL)
-        return;
+    if (context == NULL)
+        return -1;
+    if (values == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+
+    required_values = ringl_get_integerv_value_count(pname);
+    if (required_values == 0u) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
+    if (value_count < required_values) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
 
     switch (pname) {
     case RINGL_ARRAY_BUFFER_BINDING:
         values[0] = (int32_t)context->array_buffer;
-        return;
+        return 0;
     case RINGL_ELEMENT_ARRAY_BUFFER_BINDING:
         values[0] = (int32_t)context->element_array_buffer;
-        return;
+        return 0;
     case RINGL_ACTIVE_TEXTURE:
         values[0] = (int32_t)(RINGL_TEXTURE0 + context->active_texture_unit);
-        return;
+        return 0;
     case RINGL_TEXTURE_BINDING_2D:
         values[0] = (int32_t)context->bound_texture_2d[context->active_texture_unit];
-        return;
+        return 0;
     case RINGL_FRAMEBUFFER_BINDING:
         values[0] = (int32_t)context->framebuffer_binding;
-        return;
+        return 0;
     case RINGL_RENDERBUFFER_BINDING:
         values[0] = (int32_t)context->renderbuffer_binding;
-        return;
+        return 0;
     case RINGL_CURRENT_PROGRAM:
         values[0] = (int32_t)context->current_program;
-        return;
+        return 0;
     case RINGL_UNPACK_ALIGNMENT:
         values[0] = (int32_t)context->unpack_alignment;
-        return;
+        return 0;
     case RINGL_MAX_TEXTURE_SIZE_QUERY:
         values[0] = (int32_t)RINGL_MAX_TEXTURE_SIZE;
-        return;
+        return 0;
     case RINGL_MAX_TEXTURE_IMAGE_UNITS:
     case RINGL_MAX_COMBINED_TEXTURE_IMAGE_UNITS:
         values[0] = (int32_t)RINGL_MAX_TEXTURE_UNITS;
-        return;
+        return 0;
     case RINGL_MAX_VERTEX_ATTRIBS_QUERY:
         values[0] = (int32_t)RINGL_MAX_VERTEX_ATTRIBS;
-        return;
+        return 0;
     case RINGL_CULL_FACE_MODE:
         values[0] = (int32_t)context->cull_face_mode;
-        return;
+        return 0;
     case RINGL_FRONT_FACE:
         values[0] = (int32_t)context->front_face;
-        return;
+        return 0;
     case RINGL_DEPTH_FUNC:
         values[0] = (int32_t)context->depth_func;
-        return;
+        return 0;
     case RINGL_DEPTH_WRITEMASK:
         values[0] = (int32_t)context->depth_write_mask;
-        return;
+        return 0;
     case RINGL_STENCIL_FUNC:
         values[0] = (int32_t)context->stencil_func;
-        return;
+        return 0;
     case RINGL_STENCIL_REF:
         values[0] = (int32_t)context->stencil_reference;
-        return;
+        return 0;
     case RINGL_STENCIL_VALUE_MASK:
         values[0] = (int32_t)context->stencil_value_mask;
-        return;
+        return 0;
     case RINGL_STENCIL_FAIL:
         values[0] = (int32_t)context->stencil_fail_operation;
-        return;
+        return 0;
     case RINGL_STENCIL_PASS_DEPTH_FAIL:
         values[0] = (int32_t)context->stencil_depth_fail_operation;
-        return;
+        return 0;
     case RINGL_STENCIL_PASS_DEPTH_PASS:
         values[0] = (int32_t)context->stencil_pass_operation;
-        return;
+        return 0;
     case RINGL_STENCIL_WRITEMASK:
         values[0] = (int32_t)context->stencil_write_mask;
-        return;
+        return 0;
     case RINGL_STENCIL_BACK_FUNC:
         values[0] = (int32_t)context->back_stencil_func;
-        return;
+        return 0;
     case RINGL_STENCIL_BACK_FAIL:
         values[0] = (int32_t)context->back_stencil_fail_operation;
-        return;
+        return 0;
     case RINGL_STENCIL_BACK_PASS_DEPTH_FAIL:
         values[0] = (int32_t)context->back_stencil_depth_fail_operation;
-        return;
+        return 0;
     case RINGL_STENCIL_BACK_PASS_DEPTH_PASS:
         values[0] = (int32_t)context->back_stencil_pass_operation;
-        return;
+        return 0;
     case RINGL_STENCIL_BACK_REF:
         values[0] = (int32_t)context->back_stencil_reference;
-        return;
+        return 0;
     case RINGL_STENCIL_BACK_VALUE_MASK:
         values[0] = (int32_t)context->back_stencil_value_mask;
-        return;
+        return 0;
     case RINGL_STENCIL_BACK_WRITEMASK:
         values[0] = (int32_t)context->back_stencil_write_mask;
-        return;
+        return 0;
     case RINGL_BLEND_SRC_RGB:
         values[0] = (int32_t)context->blend_source_rgb;
-        return;
+        return 0;
     case RINGL_BLEND_DST_RGB:
         values[0] = (int32_t)context->blend_destination_rgb;
-        return;
+        return 0;
     case RINGL_BLEND_SRC_ALPHA:
         values[0] = (int32_t)context->blend_source_alpha;
-        return;
+        return 0;
     case RINGL_BLEND_DST_ALPHA:
         values[0] = (int32_t)context->blend_destination_alpha;
-        return;
+        return 0;
     case RINGL_BLEND_EQUATION_RGB:
         values[0] = (int32_t)context->blend_equation_rgb;
-        return;
+        return 0;
     case RINGL_BLEND_EQUATION_ALPHA:
         values[0] = (int32_t)context->blend_equation_alpha;
-        return;
+        return 0;
     case RINGL_COLOR_WRITEMASK:
         values[0] = (context->color_write_mask & 0x01u) != 0u;
         values[1] = (context->color_write_mask & 0x02u) != 0u;
         values[2] = (context->color_write_mask & 0x04u) != 0u;
         values[3] = (context->color_write_mask & 0x08u) != 0u;
-        return;
+        return 0;
     case RINGL_VIEWPORT:
         values[0] = context->viewport_x;
         values[1] = context->viewport_y;
         values[2] = (int32_t)context->viewport_width;
         values[3] = (int32_t)context->viewport_height;
-        return;
+        return 0;
     case RINGL_SCISSOR_BOX:
         values[0] = context->scissor_x;
         values[1] = context->scissor_y;
         values[2] = (int32_t)context->scissor_width;
         values[3] = (int32_t)context->scissor_height;
-        return;
+        return 0;
     default:
-        ringl_context_record_error(context, RINGL_INVALID_ENUM);
-        return;
+        return -1;
     }
+}
+
+void ringl_get_integerv(uint32_t pname, int32_t* values)
+{
+    (void)ringl_get_integerv_bounded(pname, values, 4u);
 }

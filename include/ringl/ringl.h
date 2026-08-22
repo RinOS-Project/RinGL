@@ -106,6 +106,9 @@ extern "C" {
 #define RINGL_DEPTH_WRITEMASK 0x0b72u
 #define RINGL_DEPTH_FUNC     0x0b74u
 #define RINGL_BLEND          0x0be2u
+#define RINGL_DEPTH_CLEAR_VALUE 0x0b73u
+#define RINGL_STENCIL_CLEAR_VALUE 0x0b91u
+#define RINGL_COLOR_CLEAR_VALUE 0x0c22u
 #define RINGL_COLOR_WRITEMASK 0x0c23u
 #define RINGL_SCISSOR_TEST   0x0c11u
 #define RINGL_UNPACK_ALIGNMENT 0x0cf5u
@@ -839,6 +842,13 @@ RinGLContext* ringl_get_current_context(void);
 uint32_t ringl_get_error(void);
 uint32_t ringl_context_is_lost(const RinGLContext* context);
 uint32_t ringl_context_dirty_bits(const RinGLContext* context);
+/* Writes the complete integer result only when `value_count` is large enough.
+ * It returns zero on success and -1 on an invalid query, missing context, or
+ * short/null output. Failures leave the caller's output unchanged. */
+int ringl_get_integerv_bounded(uint32_t pname, int32_t* values,
+                               size_t value_count);
+/* Legacy unbounded form. New embedding code must use
+ * ringl_get_integerv_bounded() so vector queries cannot overrun its output. */
 void ringl_get_integerv(uint32_t pname, int32_t* values);
 void ringl_enable(uint32_t capability);
 void ringl_disable(uint32_t capability);

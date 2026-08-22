@@ -4,28 +4,34 @@ This file records only gaps in the shared RinGPU/RinShader contract that block
 RinGL from implementing GLES semantics cleanly. RinGL must not work around these
 by adding GL-specific behavior to RinGPU or by inventing private RSH1 encodings.
 
-## 1. 2D RGBA texture sampling in RinShader
+## 1. RGBA result contract for 2D texture sampling
 
 GLES 2.0 `texture2D(sampler2D, vec2)` consumes two floating-point coordinates
 and returns an RGBA `vec4`.
 
-RSH1 v1 currently exposes `SAMPLE_IMAGE_F32` with one scalar `source0` register
-and one scalar destination register. The validator treats `resource` as the
-sampled-image slot and `immediate` as the sampler slot. The existing software
-executor consequently implements a one-dimensional scalar sample.
+RinShader now exposes additive `SAMPLE_IMAGE_2D_I32` and
+`SAMPLE_IMAGE_2D_F32` opcodes. Their validator-visible input/resource contract
+solves the coordinate side of the previous gap: `source0` and `source1` are the
+U/V coordinates, `resource` names the sampled image, and `immediate` names the
+sampler.
 
-RinGL needs an additive, validator-visible RinShader contract that can represent
-at least:
+The remaining ambiguity is the result. The current instruction still has one
+scalar `destination` register and the validator defines only that one register.
+There is no component selector and no published rule that the destination names
+four consecutive RGBA registers. RinGL therefore still cannot map GLSL
+`texture2D()`'s `vec4` result without inventing semantics.
 
-- a 2D floating-point coordinate (`u`, `v`);
-- one sampled-image resource binding and one sampler binding;
-- four floating-point result components (`r`, `g`, `b`, `a`);
-- fragment-stage validation with deterministic resource reflection.
+RinGL needs the shared contract to define one of the following, or an equivalent
+unambiguous versioned representation:
 
-The exact ABI shape belongs to RinShader/RinGPU. RinGL only requires that the
-operation be unambiguous and versioned. Once available, the existing RinGL
-`sampler2D` uniform metadata, texture-unit state, sampled-image realization and
-sampler realization can lower directly to it.
+- one sample instruction that writes four defined floating-point RGBA result
+  registers; or
+- a component-selection mechanism that lets four scalar sample instructions
+  retrieve R/G/B/A deterministically.
+
+Once that result contract is published, the existing RinGL sampler uniform
+metadata, texture-unit state, sampled-image realization and sampler realization
+can lower directly to it.
 
 ## 2. General vertex-to-fragment varying contract
 
@@ -61,20 +67,7 @@ RinGL needs a versioned contract that provides at least:
 RinGL should not encode `gl_Position` and user varyings into an undocumented
 positional output convention.
 
-## 3. `UNSIGNED_BYTE` index format
-
-GLES 2.0 `glDrawElements` requires `UNSIGNED_BYTE` and `UNSIGNED_SHORT` index
-formats. RinGPU currently publishes only native `UINT16` and `UINT32` index
-formats.
-
-RinGL currently robustly supports the native two formats and deliberately does
-not send byte indices through a mismatched RinGPU format. A RinGPU `UINT8` index
-format would let RinGL map the GLES operation directly. Alternatively, if the
-RinGPU project explicitly prefers translation layers to expand byte indices,
-that policy should be documented as part of the contract so RinGL can implement
-and test a bounded transient-index conversion path.
-
-## 4. Viewport, scissor and rasterizer state
+## 3. Viewport, scissor and rasterizer state
 
 RinGL now tracks GLES viewport/scissor/culling/front-face state and exposes the
 corresponding queries. The current public RinGPU graphics descriptors and draw
@@ -91,7 +84,7 @@ least:
 - cull enable and front/back selection;
 - clockwise/counter-clockwise front-face definition.
 
-## 5. Completion wait semantics for `glFinish`
+## 4. Completion wait semantics for `glFinish`
 
 RinGPU exposes fence creation, a signal fence/value on queue submission, and a
 fence value query. RinGL still needs an explicit contract for waiting until all
@@ -105,7 +98,7 @@ example a versioned fence-wait API with timeout/device-loss semantics.
 RinGL must not implement `glFinish` by assuming that successful queue submission
 itself means GPU execution completion.
 
-## 6. CPU readback for `glReadPixels` and observable buffer reads
+## 5. CPU readback for `glReadPixels` and observable buffer reads
 
 The public API has CPU-to-GPU upload paths, but RinGL has not found a public
 GPU-to-CPU image/buffer readback primitive. GLES requires framebuffer readback
@@ -126,5 +119,8 @@ The current public RinGPU API already exposes the pieces RinGL needs for level-0
 RGBA8 texture object realization: CPU-visible images, `ringpu_upload_image`,
 `SHADER_READ` image state, sampler objects, typed graphics bindings, graphics
 resource binding commands, and sampled-image/sampler resource kinds in
-RinShader. It also exposes the first depth and blend pipeline contracts. Those
-should be used directly rather than duplicated in RinGL.
+RinShader. It also exposes the first depth and blend pipeline contracts.
+
+RinGPU now also exposes an additive native `UINT8` index format, so RinGL maps
+GLES `UNSIGNED_BYTE` element indices directly rather than expanding them through
+a private transient conversion path.

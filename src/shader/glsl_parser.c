@@ -32,6 +32,12 @@ typedef enum TokenKind {
     TOK_INVALID,
 } TokenKind;
 
+typedef enum SymbolKind {
+    SYMBOL_VALUE = 0,
+    SYMBOL_ATTRIBUTE = 1,
+    SYMBOL_SAMPLER2D = 2,
+} SymbolKind;
+
 typedef struct Token {
     TokenKind kind;
     const char* begin;
@@ -41,7 +47,8 @@ typedef struct Token {
 
 typedef struct Symbol {
     char name[64];
-    uint32_t attribute;
+    uint32_t kind;
+    uint32_t width;
 } Symbol;
 
 typedef struct Parser {
@@ -207,19 +214,25 @@ static int expect(Parser* parser, TokenKind kind, const char* message)
     return 1;
 }
 
-static int symbol_exists(const Parser* parser, const Token* token)
+static Symbol* find_symbol(Parser* parser, const Token* token)
 {
     uint32_t i;
     for (i = 0; i < parser->symbol_count; ++i) {
         size_t length = strlen(parser->symbols[i].name);
         if (length == token->length &&
             memcmp(parser->symbols[i].name, token->begin, length) == 0)
-            return 1;
+            return &parser->symbols[i];
     }
-    return 0;
+    return NULL;
 }
 
-static int add_symbol(Parser* parser, const Token* token, uint32_t attribute)
+static int symbol_exists(Parser* parser, const Token* token)
+{
+    return find_symbol(parser, token) != NULL;
+}
+
+static int add_symbol(Parser* parser, const Token* token,
+                      uint32_t kind, uint32_t width)
 {
     Symbol* symbol;
     if (token->length == 0u || token->length >= sizeof(parser->symbols[0].name)) {
@@ -237,7 +250,8 @@ static int add_symbol(Parser* parser, const Token* token, uint32_t attribute)
     symbol = &parser->symbols[parser->symbol_count++];
     memcpy(symbol->name, token->begin, token->length);
     symbol->name[token->length] = '\0';
-    symbol->attribute = attribute;
+    symbol->kind = kind;
+    symbol->width = width;
     return 1;
 }
 
@@ -245,8 +259,8 @@ static int expression(Parser* parser);
 
 static int constructor(Parser* parser, TokenKind kind)
 {
-    uint32_t argument_count = 0u;
-    uint32_t max_arguments = kind == TOK_VEC2 ? 2u : 4u;
+    uint32_t component_count = 0u;
+    uint32_t target_components = kind == TOK_VEC2 ? 2u : 4u;
 
     next_token(parser);
     if (!expect(parser, TOK_LPAREN, "expected '(' after vector constructor"))
@@ -258,8 +272,8 @@ static int constructor(Parser* parser, TokenKind kind)
     for (;;) {
         if (!expression(parser))
             return 0;
-        argument_count++;
-        if (argument_count > max_arguments) {
+        component_count++;
+        if (component_count > target_components) {
             fail(parser, "too many vector constructor arguments");
             return 0;
         }
@@ -267,6 +281,44 @@ static int constructor(Parser* parser, TokenKind kind)
             break;
     }
     return expect(parser, TOK_RPAREN, "expected ')' after vector constructor");
+}
+
+static int texture2d_call(Parser* parser)
+{
+    Token sampler_name;
+    Symbol* sampler;
+
+    if (parser->shader_type != RINGL_FRAGMENT_SHADER) {
+        fail(parser, "texture2D is only supported in fragment shaders");
+        return 0;
+    }
+    next_token(parser); /* consume texture2D */
+    if (!expect(parser, TOK_LPAREN, "expected '(' after texture2D"))
+        return 0;
+    if (parser->token.kind != TOK_IDENT) {
+        fail(parser, "texture2D requires a sampler2D uniform");
+        return 0;
+    }
+    sampler_name = parser->token;
+    sampler = find_symbol(parser, &sampler_name);
+    if (sampler == NULL || sampler->kind != SYMBOL_SAMPLER2D) {
+        fail(parser, "texture2D first argument must be sampler2D");
+        return 0;
+    }
+    next_token(parser);
+    if (!expect(parser, TOK_COMMA, "expected ',' after texture2D sampler"))
+        return 0;
+
+    /* The current fragment profile has no varying/local vec2 declarations yet,
+     * so require a vec2 constructor here. This is deliberately strict rather
+     * than accepting an untyped expression that the RSH1 lowerer cannot prove. */
+    if (parser->token.kind != TOK_VEC2) {
+        fail(parser, "texture2D coordinate must be vec2");
+        return 0;
+    }
+    if (!constructor(parser, TOK_VEC2))
+        return 0;
+    return expect(parser, TOK_RPAREN, "expected ')' after texture2D arguments");
 }
 
 static int primary(Parser* parser)
@@ -277,6 +329,8 @@ static int primary(Parser* parser)
         return constructor(parser, parser->token.kind);
     if (parser->token.kind == TOK_IDENT) {
         Token ident = parser->token;
+        if (token_is_ident(&ident, "texture2D"))
+            return texture2d_call(parser);
         if (!token_is_ident(&ident, "gl_Position") &&
             !token_is_ident(&ident, "gl_FragColor") &&
             !symbol_exists(parser, &ident)) {
@@ -329,6 +383,7 @@ static int expression(Parser* parser)
 static int assignment(Parser* parser)
 {
     Token target = parser->token;
+    Symbol* symbol;
     if (target.kind != TOK_IDENT) {
         fail(parser, "expected assignment target");
         return 0;
@@ -343,9 +398,16 @@ static int assignment(Parser* parser)
             fail(parser, "gl_FragColor is only writable in fragment shaders");
             return 0;
         }
-    } else if (!symbol_exists(parser, &target)) {
-        fail(parser, "assignment to undeclared identifier");
-        return 0;
+    } else {
+        symbol = find_symbol(parser, &target);
+        if (symbol == NULL) {
+            fail(parser, "assignment to undeclared identifier");
+            return 0;
+        }
+        if (symbol->kind == SYMBOL_SAMPLER2D) {
+            fail(parser, "sampler uniforms are read-only");
+            return 0;
+        }
     }
     next_token(parser);
     if (!expect(parser, TOK_ASSIGN, "expected '='"))
@@ -367,7 +429,7 @@ static int local_declaration(Parser* parser)
         return 0;
     }
     name = parser->token;
-    if (!add_symbol(parser, &name, 0u))
+    if (!add_symbol(parser, &name, SYMBOL_VALUE, 1u))
         return 0;
     next_token(parser);
     if (accept(parser, TOK_ASSIGN) && !expression(parser))
@@ -410,12 +472,17 @@ static int main_function(Parser* parser)
 static int attribute_declaration(Parser* parser)
 {
     Token name;
+    uint32_t width;
     if (parser->shader_type != RINGL_VERTEX_SHADER) {
         fail(parser, "attribute declarations require a vertex shader");
         return 0;
     }
     next_token(parser);
-    if (parser->token.kind != TOK_FLOAT && parser->token.kind != TOK_VEC2) {
+    if (parser->token.kind == TOK_FLOAT)
+        width = 1u;
+    else if (parser->token.kind == TOK_VEC2)
+        width = 2u;
+    else {
         fail(parser, "only 'attribute float' and 'attribute vec2' are supported");
         return 0;
     }
@@ -425,7 +492,7 @@ static int attribute_declaration(Parser* parser)
         return 0;
     }
     name = parser->token;
-    if (!add_symbol(parser, &name, 1u))
+    if (!add_symbol(parser, &name, SYMBOL_ATTRIBUTE, width))
         return 0;
     next_token(parser);
     if (!expect(parser, TOK_SEMI, "expected ';' after attribute"))
@@ -451,7 +518,7 @@ static int uniform_declaration(Parser* parser)
         return 0;
     }
     name = parser->token;
-    if (!add_symbol(parser, &name, 0u))
+    if (!add_symbol(parser, &name, SYMBOL_SAMPLER2D, 0u))
         return 0;
     if (parser->result->sampler_uniform_count >= RINGL_GLSL_MAX_SAMPLER_UNIFORMS) {
         fail(parser, "too many sampler uniforms");

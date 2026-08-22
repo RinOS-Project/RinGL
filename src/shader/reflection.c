@@ -105,7 +105,7 @@ int ringl_get_program_reflection(uint32_t program,
     result.vertex_output_count = vertex_header.output_count;
     result.fragment_input_count = fragment_header.input_count;
     result.fragment_output_count = fragment_header.output_count;
-    result.active_uniform_count = 0u;
+    result.active_uniform_count = object->sampler_uniform_count;
     result.vertex_shader_module = vertex->ringpu_module;
     result.fragment_shader_module = fragment->ringpu_module;
 

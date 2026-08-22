@@ -11,6 +11,8 @@ typedef struct FakeBackend {
     uint32_t shader_creates;
     uint32_t pipeline_creates;
     uint32_t submissions;
+    uint32_t indexed_draws;
+    uint32_t indexed_formats[2];
     float clear[4];
 } FakeBackend;
 
@@ -148,7 +150,8 @@ static int fake_draw_indexed(void* session, uint64_t command_list,
     assert(command_list != 0u && draw != NULL);
     assert(draw->pipeline != 0u && draw->vertex_buffer != 0u);
     assert(draw->index_buffer != 0u && draw->color_target == 700u);
-    assert(draw->index_format == RINGL_RIN_GPU_INDEX_UINT16);
+    assert(backend->indexed_draws < 2u);
+    backend->indexed_formats[backend->indexed_draws++] = draw->index_format;
     assert(draw->index_offset == 0u && draw->first_index == 0u);
     assert(draw->index_count == 3u && draw->vertex_count == 3u);
     assert(draw->instance_count == 1u);
@@ -247,6 +250,7 @@ int main(void)
          0.00f,  0.75f,
     };
     const uint16_t indices[3] = {0u, 1u, 2u};
+    const uint8_t byte_indices[3] = {0u, 1u, 2u};
     const uint16_t bad_indices[3] = {0u, 1u, 3u};
     char commands[65];
 
@@ -294,6 +298,11 @@ int main(void)
     ringl_draw_elements(RINGL_TRIANGLES, 3, RINGL_UNSIGNED_SHORT, 0u);
     assert(ringl_get_error() == RINGL_NO_ERROR);
 
+    ringl_buffer_data(RINGL_ELEMENT_ARRAY_BUFFER, sizeof(byte_indices),
+                      byte_indices, RINGL_STATIC_DRAW);
+    ringl_draw_elements(RINGL_TRIANGLES, 3, RINGL_UNSIGNED_BYTE, 0u);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+
     ringl_buffer_data(RINGL_ELEMENT_ARRAY_BUFFER, sizeof(bad_indices),
                       bad_indices, RINGL_STATIC_DRAW);
     ringl_draw_elements(RINGL_TRIANGLES, 3, RINGL_UNSIGNED_SHORT, 0u);
@@ -304,7 +313,10 @@ int main(void)
 
     assert(backend.shader_creates == 2u);
     assert(backend.pipeline_creates == 1u);
-    assert(backend.submissions == 4u);
+    assert(backend.submissions == 5u);
+    assert(backend.indexed_draws == 2u);
+    assert(backend.indexed_formats[0] == RINGL_RIN_GPU_INDEX_UINT16);
+    assert(backend.indexed_formats[1] == 3u);
     assert(backend.clear[0] == 0.0f);
     assert(backend.clear[1] == 0.25f);
     assert(backend.clear[2] == 1.0f);
@@ -312,7 +324,7 @@ int main(void)
     assert(backend.command_count < sizeof(commands));
     memcpy(commands, backend.commands, backend.command_count);
     commands[backend.command_count] = '\0';
-    assert(strcmp(commands, "NTBECSRBDECSRBIECSRTPCS") == 0);
+    assert(strcmp(commands, "NTBECSRBDECSRBIECSRBIECSRTPCS") == 0);
 
     ringl_context_destroy(context);
     return 0;

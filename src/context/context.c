@@ -120,12 +120,17 @@ void ringl_context_destroy(RinGLContext* context)
         ringl_backend_destroy_object(context, context->graphics_bind_group);
         context->graphics_bind_group = 0u;
     }
+    if (context->finish_fence != 0u) {
+        ringl_backend_destroy_object(context, context->finish_fence);
+        context->finish_fence = 0u;
+    }
     ringl_pipeline_cache_destroy(context);
     ringl_program_objects_destroy_all(context);
     ringl_shader_objects_destroy_all(context);
     ringl_texture_objects_destroy_all(context);
     ringl_buffer_objects_destroy_all(context);
     context->magic = 0u;
+    memset(&context->sync_ops, 0, sizeof(context->sync_ops));
     memset(&context->ringpu_ops, 0, sizeof(context->ringpu_ops));
     memset(&context->ringpu, 0, sizeof(context->ringpu));
     free(context);

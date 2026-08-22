@@ -2,6 +2,7 @@
 #include "ringl_internal.h"
 
 #include <stddef.h>
+#include <string.h>
 
 static RinGLVertexAttribState* ringl_vertex_attrib(RinGLContext* context,
                                                    uint32_t index)
@@ -174,6 +175,22 @@ int ringl_get_vertex_attrib(uint32_t index, RinGLVertexAttribInfoV1* info)
     info->stride = attrib->stride;
     info->buffer = attrib->buffer;
     info->offset = attrib->offset;
+    return 0;
+}
+
+int ringl_get_vertex_attrib_current(uint32_t index, float values[4])
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLVertexAttribState* attrib;
+
+    if (context == NULL || values == NULL)
+        return -1;
+    attrib = ringl_vertex_attrib(context, index);
+    if (attrib == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+    memcpy(values, attrib->current_value, sizeof(attrib->current_value));
     return 0;
 }
 

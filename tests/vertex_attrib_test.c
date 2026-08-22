@@ -25,6 +25,7 @@ int main(void)
     uint32_t vertex;
     uint32_t fragment;
     uint32_t program;
+    float current_value[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -186,6 +187,14 @@ int main(void)
     ringl_use_program(program);
     ringl_disable_vertex_attrib_array(0u);
     ringl_vertex_attrib3f(0u, -1.5f, 2.25f, 3.5f);
+    assert(ringl_get_vertex_attrib_current(0u, current_value) == 0);
+    assert(current_value[0] == -1.5f && current_value[1] == 2.25f &&
+           current_value[2] == 3.5f && current_value[3] == 1.0f);
+    assert(ringl_get_vertex_attrib_current(RINGL_MAX_VERTEX_ATTRIBS,
+                                           current_value) == -1);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    assert(current_value[0] == -1.5f && current_value[1] == 2.25f &&
+           current_value[2] == 3.5f && current_value[3] == 1.0f);
     assert(ringl_resolve_vertex_layout(context, &layout) == 0);
     assert(layout.buffer == 0u && layout.stride == 0u);
     assert(layout.attribute_count == 4u &&

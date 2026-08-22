@@ -182,6 +182,16 @@ extern "C" {
 
 #define RINGL_MAX_VERTEX_ATTRIBS 16u
 
+/* WebGL 1 vertex-attribute query names. */
+#define RINGL_CURRENT_VERTEX_ATTRIB                 0x8626u
+#define RINGL_VERTEX_ATTRIB_ARRAY_ENABLED           0x8622u
+#define RINGL_VERTEX_ATTRIB_ARRAY_SIZE              0x8623u
+#define RINGL_VERTEX_ATTRIB_ARRAY_STRIDE            0x8624u
+#define RINGL_VERTEX_ATTRIB_ARRAY_TYPE              0x8625u
+#define RINGL_VERTEX_ATTRIB_ARRAY_NORMALIZED        0x886au
+#define RINGL_VERTEX_ATTRIB_ARRAY_POINTER           0x8645u
+#define RINGL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING    0x889fu
+
 #define RINGL_DIRTY_PIPELINE    0x00000001u
 #define RINGL_DIRTY_BINDINGS    0x00000002u
 #define RINGL_DIRTY_FRAMEBUFFER 0x00000004u
@@ -952,6 +962,9 @@ void ringl_vertex_attrib3f(uint32_t index, float x, float y, float z);
 void ringl_vertex_attrib4f(uint32_t index, float x, float y, float z,
                            float w);
 int ringl_get_vertex_attrib(uint32_t index, RinGLVertexAttribInfoV1* info);
+/* Copies the current generic attribute value into exactly four floats. The
+ * caller owns the fixed-size output; invalid indices leave it unchanged. */
+int ringl_get_vertex_attrib_current(uint32_t index, float values[4]);
 
 uint32_t ringl_create_shader(uint32_t shader_type);
 void ringl_delete_shader(uint32_t shader);

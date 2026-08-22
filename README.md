@@ -239,6 +239,15 @@ for more than one stream, `RINGL_RIN_GPU_VERTEX_INPUT_MULTI_BUFFER` with the
 matching V2 callbacks. Otherwise RinGL reports `INVALID_OPERATION` rather than
 interpreting Float32 bits as an address or flattening distinct streams.
 
+The public vertex-attribute query surface uses the WebGL 1 numeric names
+`RINGL_CURRENT_VERTEX_ATTRIB`, `RINGL_VERTEX_ATTRIB_ARRAY_*`, and a versioned
+`RinGLVertexAttribInfoV1` for array enable/format/stride/captured-buffer/offset
+state. `ringl_get_vertex_attrib_current()` copies the generic value into an
+embedding-owned four-float output, so no caller observes RinGL internal state;
+an invalid index records `INVALID_VALUE` and leaves that output unchanged.
+This lets a browser adapter implement both the scalar and typed-array query
+forms without a GLES dependency.
+
 Custom RGBA8 renderbuffer FBOs may additionally attach a matching
 `DEPTH24_STENCIL8` renderbuffer or level-zero
 `DEPTH24_STENCIL8`/`DEPTH_STENCIL`/`UNSIGNED_INT_24_8` texture through

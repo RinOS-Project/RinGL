@@ -4,7 +4,7 @@ RinGL is a user-space OpenGL/OpenGL ES compatibility layer. It does not discover
 
 The embedding runtime creates or selects the RinGPU execution environment, then supplies RinGL with a versioned `RinGLRinGpuBindingV1` when a context is created. The binding contains an embedding-owned opaque session, a small operation table, the selected graphics queue handle, and the queue capability snapshot.
 
-The context copies both the fixed-width binding and the v1 operation table, so the caller's descriptors may be temporary. Ownership of the opaque session remains with the embedding runtime.
+The context copies both the fixed-width binding and the caller-provided prefix of the v1 operation table, so older compatible tables remain valid and the caller's descriptors may be temporary. Ownership of the opaque session remains with the embedding runtime.
 
 ## Public visible-upload path
 
@@ -57,16 +57,69 @@ RinGPU backend shader module
 
 `ringl_realize_shader_module()` is transactional. A newly created RinGPU module replaces the previous module only after creation succeeds. Replacing shader source, recompiling, re-lowering, deleting the shader, or destroying the context invalidates and releases stale realized modules.
 
+## Graphics pipeline path
+
+RinGL builds a deterministic first-slice pipeline key from the linked vertex/fragment shader modules, color attachment format, triangle-list topology, vertex stride, and resolved vertex attributes. A bounded cache reuses identical pipelines and evicts old entries in FIFO order.
+
+The adapter's `create_graphics_pipeline` callback maps directly to `ringpu_create_graphics_pipeline_vertex()`. The RinOS adapter fills a `RinGpuGraphicsPipelineVertexDescV1`, converts each `RinGLRinGpuVertexAttributeV1` to `RinGpuVertexAttributeV1`, and forwards the linked RinGPU shader-module handles unchanged.
+
+Before cache eviction during a draw, RinGL resets its reusable command list. This releases references retained by the previous recorded submission before an old pipeline is destroyed.
+
+## Default framebuffer and command path
+
+The embedding runtime owns the presentable image. It binds or replaces that image with `ringl_set_default_framebuffer()`, supplying the RinGPU image handle, format, dimensions, and display id. RinGL treats a newly supplied image as being in `RIN_GPU_IMAGE_STATE_PRESENT` and tracks subsequent first-slice transitions itself.
+
+The initial command path intentionally mirrors public RinGPU operations rather than hiding them behind a GL-shaped backend call:
+
+```text
+ringl_clear()
+  reset/create command list
+  PRESENT -> COLOR_TARGET when required
+  begin render pass (CLEAR)
+  end render pass
+  close + queue submit
+
+ringl_draw_arrays(GL_TRIANGLES)
+  reset/create command list
+  resolve/validate vertex fetch
+  lookup/create graphics pipeline
+  PRESENT -> COLOR_TARGET when required
+  begin render pass (LOAD)
+  ringpu_command_draw_vertices equivalent
+  end render pass
+  close + queue submit
+
+ringl_present()
+  reset/create command list
+  COLOR_TARGET -> PRESENT when required
+  present command
+  close + queue submit
+```
+
+The RinOS adapter maps these callbacks to:
+
+- `ringpu_create_command_list()`;
+- `ringpu_command_list_reset()`;
+- `ringpu_command_transition_image()`;
+- `ringpu_command_begin_render_pass()`;
+- `ringpu_command_draw_vertices()`;
+- `ringpu_command_end_render_pass()`;
+- `ringpu_command_present()`;
+- `ringpu_command_list_close()`;
+- `ringpu_queue_submit()`.
+
+RinGL reuses one graphics command list per context. Each new submission resets it before recording, preserving GL ordering while bounding command-list allocation. The context destroys the command list before cached pipelines and shader modules so RinGPU recorded-command references are released in dependency order.
+
 ## Host operation table
 
-The v1 callbacks are:
+The v1 callbacks are append-only. The current groups are:
 
-- `create_buffer(session, size, out)` — create a RinGPU buffer suitable for the initial GLES buffer roles and visible uploads;
-- `upload_buffer(session, buffer, offset, data, size)` — call the public RinGPU visible-upload path;
-- `destroy_object(session, object)` — release the underlying RinGPU handle;
-- `create_shader_module(session, rsh1, size, out)` — map validated RinGL-generated RSH1 onto `ringpu_create_shader_module()`.
+- buffer storage: `create_buffer`, `upload_buffer`, `destroy_object`;
+- shader realization: `create_shader_module`;
+- graphics pipeline realization: `create_graphics_pipeline`;
+- graphics commands: `create_command_list`, `reset_command_list`, `transition_image`, `begin_render_pass`, `draw_vertices`, `end_render_pass`, `present`, `close_command_list`, and `queue_submit`.
 
-The shader callback is optional for validation-only contexts. Calls that require an actual RinGPU module fail rather than silently accepting an unvalidated backend object.
+Shader, pipeline, and command callbacks are optional for validation-only contexts. Operations that require a missing capability report a GL-visible failure instead of silently falling back to a software renderer.
 
 `ringl_buffer_data()` uses the buffer callbacks transactionally. It creates and optionally uploads replacement storage first; only after both operations succeed does it destroy the previous backing buffer and publish the new storage in GL state. A failed replacement therefore leaves the previous GL buffer storage intact.
 
@@ -89,8 +142,6 @@ RinOS / browser / native embedding runtime
 
 A context may be created without a RinGPU binding for validation-only unit tests. Operations that require actual GPU storage report a GL-visible error instead of silently falling back to a software renderer.
 
-The command-list/render-pass translation path will live under `src/translate/` and will use the selected graphics queue from the binding. The host operation table is not intended to replace RinGPU command encoding; it keeps only the embedding-owned session representation outside the portable GL core.
-
 ## ABI policy
 
-Public structures carry `struct_size` and `api_version`. RinGL v1 accepts structures at least as large as the v1 definition and requires reserved fields to be zero. Operation tables are copied into the context so their storage does not need to outlive context creation. New compatible fields should be appended. Incompatible semantic changes require a new API version or a new versioned structure.
+Public structures carry `struct_size` and `api_version`. RinGL v1 accepts the required v1 prefix and zero-initializes newer appended operation-table fields when an older compatible table is supplied. Reserved fields must remain zero. Operation tables are copied into the context so their storage does not need to outlive context creation. New compatible fields should be appended. Incompatible semantic changes require a new API version or a new versioned structure.

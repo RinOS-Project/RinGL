@@ -106,11 +106,13 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 ## Phase 7 — Data movement, synchronization, and observability
 
 - [ ] Implement clear/copy paths that must end or split render passes.
-- [ ] Implement `glFlush` semantics.
-- [ ] Implement `glFinish` semantics using RinGPU fences and `ringpu_wait_fence()`.
-- [ ] Implement bounded framebuffer `glReadPixels` through CPU-readable RinGPU images/readback.
+- [x] Implement current immediate-submit `glFlush` semantics.
+- [x] Implement `glFinish` using an optional versioned sync extension, RinGPU fences, fenced queue submission, and `ringpu_wait_fence()`.
+- [x] Implement bounded default-framebuffer `RGBA/UNSIGNED_BYTE` `glReadPixels` logic through COPY_SOURCE transition, completion wait, RinGPU image readback, and BGRA-to-RGBA swizzle.
+- [x] Add a fake-RinGPU synchronization/readback test covering monotonic fence values, waits, COPY_SOURCE transition, and pixel swizzle.
+- [ ] Enable readback on the RinOS WebGL surface color image by creating it with `COPY_SOURCE` usage and `CPU_READABLE` in addition to its existing present/color-target flags.
 - [ ] Define device-loss handling and GL-visible failure behavior.
-- [ ] Add tests for ordering across draws, copies, barriers, flushes, finish, and readbacks.
+- [ ] Add broader tests for ordering across draws, copies, barriers, flushes, finish, and readbacks.
 
 ## Phase 8 — OpenGL ES compatibility expansion
 
@@ -135,6 +137,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Add mock-RinGPU tests that inspect generated commands without requiring hardware for the first triangle path.
 - [x] Add a native-contract mock test for textured resource/raster ordering.
 - [x] Add RSH1 regression coverage for the initial varying-backed texture path.
+- [x] Add mock synchronization/readback coverage for `finish` and default-framebuffer `readPixels`.
 - [ ] Add hardware/QEMU integration tests where RinGPU support exists.
 - [ ] Add shader compiler differential/negative tests.
 - [ ] Add API trace tests for representative GL sequences.

@@ -45,3 +45,11 @@ glsl_parser_test = executable(
 )
 
 test('glsl-parser', glsl_parser_test)
+
+program_test = executable(
+  'ringl-program-test',
+  'program_test.c',
+  dependencies: ringl_dep,
+)
+
+test('program', program_test)

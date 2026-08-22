@@ -196,6 +196,13 @@ RinGPU buffer before swapping the object, so a failed allocation or upload
 leaves the previously visible buffer contents and CPU validation shadow
 unchanged.
 
+Browser-owned readback destinations use `ringl_read_pixels_to_bytes()`. It
+validates the tightly packed RGBA8 result size before it submits a readback,
+changes a tracked image state, or writes destination memory. Short output spans
+produce `INVALID_OPERATION` without modifying the destination. The older raw
+pointer `ringl_read_pixels()` form remains for trusted native callers that can
+prove destination capacity independently.
+
 Shader source inspection is similarly bounded: `ringl_get_shader_source_length()`
 returns the complete stored length and `ringl_copy_shader_source()` copies only a
 NUL-terminated prefix fitting in caller capacity. Invalid handles report

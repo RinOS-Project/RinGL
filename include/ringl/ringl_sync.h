@@ -66,6 +66,15 @@ void ringl_read_pixels(int32_t x, int32_t y,
                        int32_t width, int32_t height,
                        uint32_t format, uint32_t type,
                        void* pixels);
+/* Bounded readback for untrusted destination spans. The supported
+ * RGBA/UNSIGNED_BYTE result is tightly packed, so pixels_size must cover
+ * width * height * 4 bytes. A short destination records INVALID_OPERATION
+ * before command submission or destination writes. The raw-pointer entry
+ * point above remains a trusted native compatibility API. */
+void ringl_read_pixels_to_bytes(int32_t x, int32_t y,
+                                int32_t width, int32_t height,
+                                uint32_t format, uint32_t type,
+                                void* pixels, uint64_t pixels_size);
 
 #ifdef __cplusplus
 }

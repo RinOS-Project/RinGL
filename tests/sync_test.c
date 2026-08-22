@@ -264,6 +264,7 @@ int main(void)
     uint32_t texture_before_loss;
     uint32_t submits_before_loss;
     uint32_t buffer = 0u;
+    uint32_t index;
     const uint8_t buffer_data[4] = {1u, 2u, 3u, 4u};
     FakeBackend command_loss_backend = {0};
     uint8_t pixels[8] = {0};
@@ -284,7 +285,18 @@ int main(void)
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(backend.submits == 1u && backend.waits == 1u);
 
-    ringl_read_pixels(1, 2, 2, 1, RINGL_RGBA, RINGL_UNSIGNED_BYTE, pixels);
+    memset(pixels, 0xa5, sizeof(pixels));
+    ringl_read_pixels_to_bytes(1, 2, 2, 1, RINGL_RGBA,
+                               RINGL_UNSIGNED_BYTE, pixels,
+                               sizeof(pixels) - 1u);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    assert(backend.transitions == 0u && backend.submits == 1u &&
+           backend.waits == 1u && backend.readbacks == 0u);
+    for (index = 0u; index < sizeof(pixels); ++index)
+        assert(pixels[index] == 0xa5u);
+
+    ringl_read_pixels_to_bytes(1, 2, 2, 1, RINGL_RGBA,
+                               RINGL_UNSIGNED_BYTE, pixels, sizeof(pixels));
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(backend.transitions == 1u);
     assert(backend.submits == 2u && backend.waits == 2u);

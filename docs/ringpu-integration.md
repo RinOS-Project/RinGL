@@ -38,6 +38,16 @@ the previous definition. Browser/other untrusted embeddings must use these
 bounded APIs; the older raw-pointer forms are compatibility entry points for
 trusted native callers only.
 
+## Bounded color-readback path
+
+`ringl_read_pixels_to_bytes()` accepts a destination capacity for the current
+complete color target's tightly packed RGBA8 readback. It rejects a short
+destination with `RINGL_INVALID_OPERATION` before a RinGPU command list is
+created, the target transitions to `COPY_SOURCE`, or destination memory is
+written. Browser embeddings must use this API; `ringl_read_pixels()` remains a
+trusted native-only compatibility form because it cannot determine destination
+capacity from a raw pointer.
+
 The callback boundary remains useful because RinGL is a standalone repository and should not hard-wire an OS-Core internal session type into its portable context ABI.
 
 ## OS-Core adapter

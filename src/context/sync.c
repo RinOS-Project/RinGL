@@ -224,6 +224,25 @@ int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
     return 0;
 }
 
+static int readback_required_bytes(int32_t width, int32_t height,
+                                   uint64_t* bytes_out)
+{
+    uint64_t row_bytes;
+
+    if (bytes_out == NULL || width < 0 || height < 0)
+        return -1;
+    if (width == 0 || height == 0) {
+        *bytes_out = 0u;
+        return 0;
+    }
+
+    row_bytes = (uint64_t)(uint32_t)width * 4u;
+    if ((uint64_t)(uint32_t)height > UINT64_MAX / row_bytes)
+        return -1;
+    *bytes_out = row_bytes * (uint64_t)(uint32_t)height;
+    return 0;
+}
+
 void ringl_read_pixels(int32_t x, int32_t y,
                        int32_t width, int32_t height,
                        uint32_t format, uint32_t type,
@@ -239,6 +258,33 @@ void ringl_read_pixels(int32_t x, int32_t y,
     }
     if (width < 0 || height < 0) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if (ringl_read_color_target_rgba(context, x, y, width, height, pixels) != 0)
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+}
+
+void ringl_read_pixels_to_bytes(int32_t x, int32_t y,
+                                int32_t width, int32_t height,
+                                uint32_t format, uint32_t type,
+                                void* pixels, uint64_t pixels_size)
+{
+    RinGLContext* context = ringl_get_current_context();
+    uint64_t required_bytes;
+
+    if (context == NULL)
+        return;
+    if (format != RINGL_RGBA || type != RINGL_UNSIGNED_BYTE) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return;
+    }
+    if (readback_required_bytes(width, height, &required_bytes) != 0) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if ((required_bytes != 0u && pixels == NULL) ||
+        pixels_size < required_bytes) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
     if (ringl_read_color_target_rgba(context, x, y, width, height, pixels) != 0)

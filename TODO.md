@@ -237,6 +237,10 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [ ] Keep WebGL validation/security policy outside the raw RinGL GL implementation.
 - [ ] Define a clean embedding API for browser contexts and surfaces.
 - [ ] Ensure robust buffer/texture access independent of backend behavior.
+  - [x] Add a capacity-checked `readPixels` import/export boundary for
+    browser-owned destinations. The bounded RGBA8 API rejects short spans
+    before command submission, image-state transition, or destination writes;
+    its raw-pointer predecessor is documented as trusted native-only.
 - [ ] Ensure context loss can be propagated predictably to a browser implementation.
 - [ ] Audit allocation limits and integer overflow paths for untrusted content.
 - [ ] Add WebGL-oriented negative tests for malformed state and shader input.

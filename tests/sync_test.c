@@ -197,7 +197,12 @@ int main(void)
     assert(backend.readbacks == 1u);
     assert(memcmp(pixels, expected_rgba, sizeof(pixels)) == 0);
 
+    assert(ringl_context_set_sync_ops(context, NULL) == 0);
+    assert(backend.destroys == 1u); /* fence */
+    ringl_finish();
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+
     ringl_context_destroy(context);
-    assert(backend.destroys == 2u); /* command list + finish fence */
+    assert(backend.destroys == 2u); /* command list + fence */
     return 0;
 }

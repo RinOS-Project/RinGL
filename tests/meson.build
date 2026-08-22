@@ -69,3 +69,11 @@ program_gpu_test = executable(
 )
 
 test('program-gpu', program_gpu_test)
+
+reflection_test = executable(
+  'ringl-reflection-test',
+  'reflection_test.c',
+  dependencies: ringl_dep,
+)
+
+test('reflection', reflection_test)

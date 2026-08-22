@@ -192,6 +192,21 @@ previous storage, and requested depth/stencil clears without a matching
 attachment are no-ops. The RinOS surface backend applies these rules to both
 the caller-owned BGRA target and offscreen RGBA FBO targets.
 
+Level-zero `RGBA`/`RGB`/`ALPHA`/`LUMINANCE`/`LUMINANCE_ALPHA` with
+`UNSIGNED_BYTE` are normalized into canonical RGBA8 shadow storage. The
+source row pitch follows WebGL's default four-byte unpack alignment, including
+the padding of RGB rows, before the texture is uploaded as a RinGPU sampled
+image. The RinOS surface backend now executes the matching typed sampled-image
+and sampler bind group instead of treating it as a placeholder: it snapshots
+the bounded RGBA8 image into the resource-aware software executor and applies
+nearest or linear filtering with clamp-to-edge, repeat, or mirrored-repeat
+addressing. The level-zero executor has no derivatives or mip levels, so a
+texture larger than 1x1 requires matching minification and magnification
+filters; it rejects ambiguous min/mag selection rather than silently choosing
+one. The strict C11 RinGL tests cover format normalization and upload layout,
+and the surface integration test renders a normalized RGB texture through the
+real RinGPU resource binding.
+
 This remains a bounded profile. A default caller-owned D32 surface has no
 stencil storage unless its embedding explicitly supplies the matching S8
 plane; that D32S8 default target executes the same front/back stencil path.

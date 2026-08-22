@@ -83,6 +83,84 @@ static int texture_level0_complete(const RinGLTextureObject* texture)
     return texture->width == 1u && texture->height == 1u;
 }
 
+static int texture_color_format(uint32_t format)
+{
+    return format == RINGL_RGBA || format == RINGL_RGB ||
+           format == RINGL_ALPHA || format == RINGL_LUMINANCE ||
+           format == RINGL_LUMINANCE_ALPHA;
+}
+
+static uint32_t texture_external_texel_bytes(uint32_t format)
+{
+    switch (format) {
+    case RINGL_RGBA:
+        return 4u;
+    case RINGL_RGB:
+        return 3u;
+    case RINGL_LUMINANCE_ALPHA:
+        return 2u;
+    case RINGL_ALPHA:
+    case RINGL_LUMINANCE:
+        return 1u;
+    default:
+        return 4u;
+    }
+}
+
+static uint64_t texture_source_row_pitch(uint32_t width, uint32_t format)
+{
+    uint64_t row_bytes = (uint64_t)width *
+                         texture_external_texel_bytes(format);
+
+    return (row_bytes + 3u) & ~UINT64_C(3);
+}
+
+static void texture_copy_color_texels(uint8_t* destination,
+                                      const uint8_t* source,
+                                      uint32_t format, uint32_t texel_count)
+{
+    uint32_t index;
+    uint32_t source_texel_bytes = texture_external_texel_bytes(format);
+
+    for (index = 0u; index < texel_count; ++index) {
+        const uint8_t* source_texel =
+            source + (uint64_t)index * source_texel_bytes;
+        uint8_t* destination_texel = destination + (uint64_t)index * 4u;
+
+        switch (format) {
+        case RINGL_RGBA:
+            memcpy(destination_texel, source_texel, 4u);
+            break;
+        case RINGL_RGB:
+            destination_texel[0] = source_texel[0];
+            destination_texel[1] = source_texel[1];
+            destination_texel[2] = source_texel[2];
+            destination_texel[3] = UINT8_MAX;
+            break;
+        case RINGL_ALPHA:
+            destination_texel[0] = 0u;
+            destination_texel[1] = 0u;
+            destination_texel[2] = 0u;
+            destination_texel[3] = source_texel[0];
+            break;
+        case RINGL_LUMINANCE:
+            destination_texel[0] = source_texel[0];
+            destination_texel[1] = source_texel[0];
+            destination_texel[2] = source_texel[0];
+            destination_texel[3] = UINT8_MAX;
+            break;
+        case RINGL_LUMINANCE_ALPHA:
+            destination_texel[0] = source_texel[0];
+            destination_texel[1] = source_texel[0];
+            destination_texel[2] = source_texel[0];
+            destination_texel[3] = source_texel[1];
+            break;
+        default:
+            break;
+        }
+    }
+}
+
 static uint32_t texture_storage_texel_bytes(uint32_t format)
 {
     return format == RINGL_DEPTH24_STENCIL8 ? 8u : 4u;
@@ -189,7 +267,7 @@ static int texture_realize_image(RinGLContext* context,
             image == 0u) {
             return -1;
         }
-    } else if (texture->format == RINGL_RGBA) {
+    } else if (texture_color_format(texture->format)) {
         memset(&desc, 0, sizeof(desc));
         desc.width = texture->width;
         desc.height = texture->height;
@@ -264,7 +342,8 @@ int ringl_texture_realize_unit(RinGLContext* context, uint32_t unit,
     if (slot_index >= RINGL_OBJECT_SLOT_COUNT)
         return -1;
     texture = &context->textures[slot_index];
-    if (texture->format != RINGL_RGBA || !texture_level0_complete(texture) ||
+    if (!texture_color_format(texture->format) ||
+        !texture_level0_complete(texture) ||
         texture_realize_image(context, texture) != 0 ||
         texture_realize_sampler(context, texture) != 0) {
         return -1;
@@ -549,7 +628,7 @@ void ringl_tex_image_2d(uint32_t target, int32_t level,
     if (context == NULL)
         return;
     if (!texture_target_valid(target) ||
-        !((internal_format == RINGL_RGBA && format == RINGL_RGBA &&
+        !((texture_color_format(internal_format) && internal_format == format &&
            type == RINGL_UNSIGNED_BYTE) ||
           (internal_format == RINGL_DEPTH_COMPONENT32F &&
            format == RINGL_DEPTH_COMPONENT && type == RINGL_FLOAT) ||
@@ -580,7 +659,18 @@ void ringl_tex_image_2d(uint32_t target, int32_t level,
             return;
         }
         if (pixels != NULL) {
-            if (internal_format == RINGL_DEPTH24_STENCIL8) {
+            if (texture_color_format(internal_format)) {
+                uint32_t row;
+                uint64_t source_row_pitch = texture_source_row_pitch(
+                    (uint32_t)width, internal_format);
+
+                for (row = 0u; row < (uint32_t)height; ++row) {
+                    texture_copy_color_texels(
+                        replacement + (uint64_t)row * (uint32_t)width * 4u,
+                        (const uint8_t*)pixels + row * source_row_pitch,
+                        internal_format, (uint32_t)width);
+                }
+            } else if (internal_format == RINGL_DEPTH24_STENCIL8) {
                 texture_copy_depth_stencil_texels(
                     replacement, pixels, (uint32_t)width * (uint32_t)height);
             } else {
@@ -628,8 +718,8 @@ void ringl_tex_sub_image_2d(uint32_t target, int32_t level,
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
-    if (!((texture->format == RINGL_RGBA && format == RINGL_RGBA &&
-           type == RINGL_UNSIGNED_BYTE) ||
+    if (!((texture_color_format(texture->format) &&
+           texture->format == format && type == RINGL_UNSIGNED_BYTE) ||
           (texture->format == RINGL_DEPTH_COMPONENT32F &&
            format == RINGL_DEPTH_COMPONENT && type == RINGL_FLOAT) ||
           (texture->format == RINGL_DEPTH24_STENCIL8 &&
@@ -654,9 +744,15 @@ void ringl_tex_sub_image_2d(uint32_t target, int32_t level,
         uint64_t destination_offset =
             ((uint64_t)((uint32_t)yoffset + row) * texture->width +
              (uint32_t)xoffset) * texture_storage_texel_bytes(texture->format);
-        uint64_t source_offset = (uint64_t)row * (uint32_t)width * 4u;
+        uint64_t source_offset = (uint64_t)row *
+            texture_source_row_pitch((uint32_t)width, format);
 
-        if (texture->format == RINGL_DEPTH24_STENCIL8) {
+        if (texture_color_format(texture->format)) {
+            texture_copy_color_texels(
+                texture->shadow_bytes + destination_offset,
+                (const uint8_t*)pixels + source_offset, texture->format,
+                (uint32_t)width);
+        } else if (texture->format == RINGL_DEPTH24_STENCIL8) {
             texture_copy_depth_stencil_texels(
                 texture->shadow_bytes + destination_offset,
                 (const uint8_t*)pixels + source_offset, (uint32_t)width);

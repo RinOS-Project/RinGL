@@ -114,8 +114,12 @@ extern "C" {
 
 #define RINGL_TEXTURE_2D 0x0de1u
 #define RINGL_TEXTURE0   0x84c0u
+#define RINGL_ALPHA      0x1906u
+#define RINGL_RGB        0x1907u
 #define RINGL_RGBA       0x1908u
 #define RINGL_DEPTH_COMPONENT 0x1902u
+#define RINGL_LUMINANCE  0x1909u
+#define RINGL_LUMINANCE_ALPHA 0x190au
 #define RINGL_DEPTH_STENCIL 0x84f9u
 #define RINGL_RGBA8      0x8058u
 #define RINGL_FLOAT       0x1406u

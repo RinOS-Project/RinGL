@@ -121,6 +121,33 @@ int main(void)
         9u, 10u, 11u, 12u, 13u, 14u, 15u, 16u,
     };
     const uint8_t patch[4] = {21u, 22u, 23u, 24u};
+    const uint8_t rgb_pixels[16] = {
+        1u, 2u, 3u, 4u, 5u, 6u, 0xffu, 0xffu,
+        7u, 8u, 9u, 10u, 11u, 12u, 0xffu, 0xffu,
+    };
+    const uint8_t rgb_expected[16] = {
+        1u, 2u, 3u, 0xffu, 4u, 5u, 6u, 0xffu,
+        7u, 8u, 9u, 0xffu, 10u, 11u, 12u, 0xffu,
+    };
+    const uint8_t rgb_patch[3] = {21u, 22u, 23u};
+    const uint8_t luminance_alpha_pixels[8] = {
+        1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u,
+    };
+    const uint8_t luminance_alpha_expected[16] = {
+        1u, 1u, 1u, 2u, 3u, 3u, 3u, 4u,
+        5u, 5u, 5u, 6u, 7u, 7u, 7u, 8u,
+    };
+    const uint8_t alpha_pixels[8] = {
+        9u, 10u, 0xffu, 0xffu, 11u, 12u, 0xffu, 0xffu,
+    };
+    const uint8_t alpha_expected[16] = {
+        0u, 0u, 0u, 9u, 0u, 0u, 0u, 10u,
+        0u, 0u, 0u, 11u, 0u, 0u, 0u, 12u,
+    };
+    const uint8_t luminance_expected[16] = {
+        9u, 9u, 9u, 0xffu, 10u, 10u, 10u, 0xffu,
+        11u, 11u, 11u, 0xffu, 12u, 12u, 12u, 0xffu,
+    };
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -168,6 +195,44 @@ int main(void)
     ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 2, 2, 0,
                        RINGL_RGBA, RINGL_UNSIGNED_BYTE, pixels);
     assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) != 0);
+
+    ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MIN_FILTER,
+                         RINGL_LINEAR);
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGB, 2, 2, 0, RINGL_RGB,
+                       RINGL_UNSIGNED_BYTE, rgb_pixels);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(memcmp(backend.last_upload, rgb_expected, sizeof(rgb_expected)) == 0);
+    ringl_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 1, 0, 1, 1, RINGL_RGB,
+                           RINGL_UNSIGNED_BYTE, rgb_patch);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(backend.last_upload[4] == 21u);
+    assert(backend.last_upload[5] == 22u);
+    assert(backend.last_upload[6] == 23u);
+    assert(backend.last_upload[7] == UINT8_MAX);
+
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_LUMINANCE_ALPHA, 2, 2, 0,
+                       RINGL_LUMINANCE_ALPHA, RINGL_UNSIGNED_BYTE,
+                       luminance_alpha_pixels);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(memcmp(backend.last_upload, luminance_alpha_expected,
+                  sizeof(luminance_alpha_expected)) == 0);
+
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_ALPHA, 2, 2, 0,
+                       RINGL_ALPHA, RINGL_UNSIGNED_BYTE, alpha_pixels);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(memcmp(backend.last_upload, alpha_expected, sizeof(alpha_expected)) ==
+           0);
+
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_LUMINANCE, 2, 2, 0,
+                       RINGL_LUMINANCE, RINGL_UNSIGNED_BYTE, alpha_pixels);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(memcmp(backend.last_upload, luminance_expected,
+                  sizeof(luminance_expected)) == 0);
 
     ringl_context_destroy(context);
     return 0;

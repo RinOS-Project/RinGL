@@ -79,6 +79,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Map indexed draws through the append-only RinGPU adapter boundary, including native RinGPU `UINT8` indices.
 - [x] Implement texture object lifecycle and eight texture-unit bindings.
 - [x] Implement initial level-0 `RGBA`/`UNSIGNED_BYTE` 2D texture storage with bounded dimensions.
+- [x] Normalize level-zero `RGB`/`ALPHA`/`LUMINANCE`/`LUMINANCE_ALPHA` `UNSIGNED_BYTE` uploads into canonical RGBA8 storage, including default four-byte WebGL unpack-row alignment, and cover image/sub-image normalization through strict C11 tests.
 - [x] Implement robust CPU-side `texImage2D` zero initialization and bounded `texSubImage2D` updates.
 - [x] Implement GLES-style texture filtering/wrap sampler state and invalidate realized samplers when it changes.
 - [x] Implement sampler uniform locations and program-selected texture-unit state.
@@ -88,6 +89,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Transition sampled images to `SHADER_READ`, create typed image/sampler bind groups, and bind them inside the render pass before draws.
 - [x] Add a native-contract textured-draw mock test covering texture realization, resource transition, bind group creation, raster state, and draw ordering.
 - [x] Add a varying-backed textured-triangle integration test with interleaved position/UV input and perspective-interpolated texture coordinates.
+- [x] Execute level-zero color sampled-image/sampler bind groups through the RinOS RinGPU surface backend and resource-aware rasterizer; the integration test renders normalized RGB data with linear filtering and repeat/mirrored-repeat addressing. The bounded level-zero executor rejects non-1x1 textures whose min/mag filters differ because it has no derivative/LOD selection.
 
 ## Phase 6 — Framebuffers and fixed-function state
 

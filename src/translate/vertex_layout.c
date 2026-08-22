@@ -109,3 +109,65 @@ int ringl_validate_vertex_fetch(const RinGLContext* context,
     }
     return 0;
 }
+
+int ringl_validate_index_fetch(const RinGLContext* context,
+                               uint32_t index_type,
+                               uint64_t offset,
+                               uint32_t count,
+                               uint32_t* max_index_out)
+{
+    const RinGLBufferObject* buffer;
+    uint32_t slot_index;
+    uint32_t index_size;
+    uint64_t bytes;
+    uint32_t max_index = 0u;
+    uint32_t i;
+
+    if (context == NULL || max_index_out == NULL ||
+        context->element_array_buffer == 0u)
+        return -1;
+    if (ringl_object_lookup_const(context, context->element_array_buffer,
+                                  RINGL_OBJECT_BUFFER) == NULL)
+        return -1;
+
+    if (index_type == RINGL_UNSIGNED_SHORT)
+        index_size = 2u;
+    else if (index_type == RINGL_UNSIGNED_INT)
+        index_size = 4u;
+    else
+        return -1;
+
+    if ((offset & (uint64_t)(index_size - 1u)) != 0u)
+        return -1;
+    if ((uint64_t)count > UINT64_MAX / index_size)
+        return -1;
+    bytes = (uint64_t)count * index_size;
+    if (offset > UINT64_MAX - bytes)
+        return -1;
+
+    slot_index = ringl_object_slot_index(context->element_array_buffer);
+    if (slot_index >= RINGL_OBJECT_SLOT_COUNT)
+        return -1;
+    buffer = &context->buffers[slot_index];
+    if (offset + bytes > buffer->size_bytes ||
+        (bytes != 0u && buffer->shadow_bytes == NULL))
+        return -1;
+
+    for (i = 0u; i < count; ++i) {
+        uint32_t value;
+        const uint8_t* source = buffer->shadow_bytes + offset +
+            (uint64_t)i * index_size;
+        if (index_size == 2u) {
+            uint16_t value16;
+            memcpy(&value16, source, sizeof(value16));
+            value = value16;
+        } else {
+            memcpy(&value, source, sizeof(value));
+        }
+        if (value > max_index)
+            max_index = value;
+    }
+
+    *max_index_out = max_index;
+    return 0;
+}

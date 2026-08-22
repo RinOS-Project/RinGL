@@ -20,6 +20,10 @@ int main(void)
 {
     RinGLContext* context = make_context();
     int32_t values[4] = {0};
+    RinGLClearValuesV1 clear_values = {
+        .struct_size = sizeof(clear_values),
+        .api_version = RINGL_API_VERSION,
+    };
     RinGLDefaultFramebufferV1 framebuffer = {
         .struct_size = sizeof(framebuffer),
         .api_version = RINGL_API_VERSION,
@@ -35,6 +39,24 @@ int main(void)
     assert(!ringl_is_enabled(RINGL_DEPTH_TEST));
     assert(!ringl_is_enabled(RINGL_STENCIL_TEST));
     assert(!ringl_is_enabled(RINGL_BLEND));
+
+    assert(ringl_get_clear_values(&clear_values) == 0);
+    assert(clear_values.red == 0.0f && clear_values.green == 0.0f &&
+           clear_values.blue == 0.0f && clear_values.alpha == 0.0f &&
+           clear_values.depth == 1.0f && clear_values.stencil == 0);
+    ringl_clear_color(0.25f, 0.5f, 0.75f, 1.0f);
+    ringl_clear_depth(0.125f);
+    ringl_clear_stencil(-1);
+    assert(ringl_get_clear_values(&clear_values) == 0);
+    assert(clear_values.red == 0.25f && clear_values.green == 0.5f &&
+           clear_values.blue == 0.75f && clear_values.alpha == 1.0f &&
+           clear_values.depth == 0.125f && clear_values.stencil == 255);
+    clear_values.struct_size = sizeof(clear_values) - 1u;
+    assert(ringl_get_clear_values(&clear_values) == -1);
+    clear_values.struct_size = sizeof(clear_values);
+    clear_values.api_version = RINGL_API_VERSION + 1u;
+    assert(ringl_get_clear_values(&clear_values) == -1);
+    clear_values.api_version = RINGL_API_VERSION;
 
     ringl_get_integerv(RINGL_CULL_FACE_MODE, values);
     assert(values[0] == (int32_t)RINGL_BACK);

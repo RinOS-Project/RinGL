@@ -658,6 +658,29 @@ static void publish_texture_transitions(RinGLContext* context,
     }
 }
 
+int ringl_get_clear_values(RinGLClearValuesV1* values)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLClearValuesV1 snapshot;
+
+    if (context == NULL || values == NULL ||
+        values->struct_size < sizeof(*values) ||
+        values->api_version != RINGL_API_VERSION)
+        return -1;
+
+    memset(&snapshot, 0, sizeof(snapshot));
+    snapshot.struct_size = sizeof(snapshot);
+    snapshot.api_version = RINGL_API_VERSION;
+    snapshot.red = context->clear_red;
+    snapshot.green = context->clear_green;
+    snapshot.blue = context->clear_blue;
+    snapshot.alpha = context->clear_alpha;
+    snapshot.depth = context->clear_depth;
+    snapshot.stencil = (int32_t)context->clear_stencil;
+    *values = snapshot;
+    return 0;
+}
+
 void ringl_clear_color(float red, float green, float blue, float alpha)
 {
     RinGLContext* context = ringl_get_current_context();

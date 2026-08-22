@@ -696,6 +696,20 @@ typedef struct RinGLDefaultFramebufferV1 {
     uint32_t reserved1;
 } RinGLDefaultFramebufferV1;
 
+/* Snapshot of the mutable clear values for an embedding that must issue an
+ * internal clear without changing the WebGL-visible clear state. */
+typedef struct RinGLClearValuesV1 {
+    uint32_t struct_size;
+    uint32_t api_version;
+    float red;
+    float green;
+    float blue;
+    float alpha;
+    float depth;
+    int32_t stencil;
+    uint32_t reserved0;
+} RinGLClearValuesV1;
+
 /* This is a read-only description of RinGL's currently bound custom
  * framebuffer. It is intentionally separate from GLES query entry points so
  * an embedding can inspect the bounded object-model slice without claiming
@@ -756,6 +770,9 @@ int ringl_get_default_framebuffer(RinGLDefaultFramebufferV1* framebuffer);
  * framebuffer is configured and leaves state unchanged on failure. */
 int ringl_get_default_framebuffer_state(uint32_t* state);
 int ringl_get_default_depth_framebuffer_state(uint32_t* state);
+/* Returns the current context's clear state. The output must describe the
+ * complete v1 structure; failures leave it unchanged. */
+int ringl_get_clear_values(RinGLClearValuesV1* values);
 void ringl_clear_color(float red, float green, float blue, float alpha);
 void ringl_clear_depth(float depth);
 void ringl_clear_stencil(int32_t stencil);

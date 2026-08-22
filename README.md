@@ -241,6 +241,11 @@ previous storage, and requested depth/stencil clears without a matching
 attachment are no-ops. The RinOS surface backend applies these rules to both
 the caller-owned BGRA target and offscreen RGBA FBO targets.
 
+`ringl_get_clear_values()` snapshots the current mutable color, depth, and
+stencil clear values through a versioned structure. An embedding can therefore
+perform WebGL's post-presentation default clear and restore the application
+state instead of silently changing the next author-visible `glClear`.
+
 Level-zero `RGBA`/`RGB`/`ALPHA`/`LUMINANCE`/`LUMINANCE_ALPHA` with
 `UNSIGNED_BYTE` are normalized into canonical RGBA8 shadow storage. RinGL
 tracks WebGL 1 `UNPACK_ALIGNMENT`; all valid 1/2/4/8-byte row alignments are

@@ -36,11 +36,15 @@ The first-slice mappings are:
 
 - buffer creation/upload/destruction -> `ringpu_create_buffer()`, `ringpu_upload_buffer()`, `ringpu_destroy()`;
 - shader modules -> `ringpu_create_shader_module()`;
-- vertex graphics pipelines -> `ringpu_create_graphics_pipeline_vertex()`;
+- vertex graphics pipelines -> `ringpu_create_graphics_pipeline_vertex()` or
+  `ringpu_create_graphics_pipeline_vertex_bindings()`;
 - command lists -> `ringpu_create_command_list()` and `ringpu_command_list_reset()`;
 - image transitions -> `ringpu_command_transition_image()`;
 - render passes -> `ringpu_command_begin_render_pass()` / `ringpu_command_end_render_pass()`;
-- vertex drawing -> `ringpu_command_draw_vertices()`;
+- vertex drawing -> `ringpu_command_draw_vertices()` or
+  `ringpu_command_draw_vertices_v2()`;
+- indexed vertex drawing -> `ringpu_command_draw_indexed()` or
+  `ringpu_command_draw_indexed_v2()`;
 - presentation -> `ringpu_command_present()`;
 - submission -> `ringpu_command_list_close()` and `ringpu_queue_submit()`.
 
@@ -100,13 +104,18 @@ RinGPU backend shader module
 
 RinGL builds a deterministic first-slice pipeline key from the linked
 vertex/fragment shader modules, color attachment format, triangle-list
-topology, vertex stride, and resolved vertex attributes. Active program
+topology, resolved vertex bindings/strides, and resolved vertex attributes. Active program
 attributes are selected through their linked generic GL locations, then emitted
 as dense scalar RSH1/RinGPU inputs. This means `bindAttribLocation` affects the
 actual vertex fetch source without exposing sparse GL indices to RinGPU. A
 bounded cache reuses identical pipelines and evicts old entries in FIFO order.
 
-The adapter's `create_graphics_pipeline` callback maps directly to `ringpu_create_graphics_pipeline_vertex()`. The RinOS adapter fills a `RinGpuGraphicsPipelineVertexDescV1`, converts each `RinGLRinGpuVertexAttributeV1` to `RinGpuVertexAttributeV1`, and forwards the linked RinGPU shader-module handles unchanged.
+The adapter's V1 `create_graphics_pipeline` callback maps directly to
+`ringpu_create_graphics_pipeline_vertex()`. Its additive V2 callbacks map
+multi-stream layouts to `ringpu_create_graphics_pipeline_vertex_bindings()` or
+the native-state counterpart, converting each `RinGLRinGpuVertexAttributeV2`
+and dense `RinGLRinGpuVertexBufferLayoutV1` while preserving linked shader
+module handles.
 
 The binding must advertise `RINGL_RIN_GPU_VERTEX_INPUT_CONSTANT_FLOAT32` before
 RinGL emits a disabled active generic attribute. RinGL then marks the scalar
@@ -114,11 +123,12 @@ descriptor as constant and stores the exact IEEE-754 binary32 bits in its
 offset field; the RinOS adapter maps that contract to
 `RIN_GPU_VERTEX_ATTRIBUTE_CONSTANT_FLOAT32`. RinGPU permits zero vertex stride
 only when every attribute is constant, and that draw has no vertex buffer or
-vertex offset. Mixed streamed and constant inputs retain the bounded shared
-stream buffer/stride rule. This explicit capability prevents an older callback
-from interpreting a Float32 bit pattern as a buffer offset; unsupported
-constant input fails the GL draw rather than being emulated. Multiple enabled
-vertex-buffer bindings remain outside the current RinGL profile.
+vertex offset. Mixed streamed and constant inputs use the same V2 descriptor
+when more than one captured `(buffer, effective stride)` pair is active. The
+binding must advertise `RINGL_RIN_GPU_VERTEX_INPUT_MULTI_BUFFER` and provide
+the matching create/draw callbacks; otherwise RinGL rejects the draw before it
+records a command. This explicit capability prevents an older callback from
+interpreting Float32 bits as a buffer offset or silently collapsing streams.
 
 Before cache eviction during a draw, RinGL resets its reusable command list. This releases references retained by the previous recorded submission before an old pipeline is destroyed.
 

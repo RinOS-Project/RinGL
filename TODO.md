@@ -180,8 +180,12 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   active values use the default `(0, 0, 0, 1)` or `vertexAttrib[1-4]f` state as
   explicit Float32 RinGPU descriptors, while an embedding without the declared
   constant-input capability rejects the draw.
-- [ ] Implement independent vertex-buffer bindings; enabled active arrays still
-  require one shared buffer and effective stride in the bounded renderer.
+- [x] Implement independent vertex-buffer bindings. Active arrays are grouped
+  by their captured `(buffer, effective stride)` into dense V2 bindings;
+  direct and indexed draws use that V2 path only when the embedding advertises
+  the capability and callbacks. Single-stream and all-constant layouts retain
+  the V1 ABI. Layout and RinGPU/Aquamarine bridge tests cover distinct x/y
+  buffers, a disabled generic value, and both draw forms.
 - [ ] Decide the boundary for OpenGL ES 3.x features.
 - [ ] Add VAOs, instancing, additional texture formats, MRT, and other GLES 3.x features only after the underlying RinGPU contracts are ready.
 

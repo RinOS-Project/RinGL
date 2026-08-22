@@ -266,6 +266,7 @@ int ringl_build_pipeline_key(RinGLContext* context,
     }
     result.primitive_topology = RINGL_NATIVE_PRIMITIVE_TRIANGLE_LIST;
     result.vertex_stride = layout.stride;
+    result.vertex_binding_count = layout.binding_count;
     result.attribute_count = layout.attribute_count;
     result.blend_enabled = context->blend_enabled;
     result.blend_source_rgb = context->blend_source_rgb;
@@ -279,6 +280,8 @@ int ringl_build_pipeline_key(RinGLContext* context,
     result.front_face = context->front_face;
     for (index = 0u; index < layout.attribute_count; ++index)
         result.attributes[index] = layout.attributes[index];
+    for (index = 0u; index < layout.binding_count; ++index)
+        result.bindings[index] = layout.bindings[index];
     for (index = 0u; index < program->varying_count; ++index) {
         uint32_t component;
         const RinGLProgramVarying* varying = &program->varyings[index];
@@ -298,7 +301,13 @@ int ringl_build_pipeline_key(RinGLContext* context,
             native->interpolation = 1u;
         }
     }
-    if (context->ringpu_ops.create_graphics_pipeline_native != NULL &&
+    if ((context->ringpu_ops.create_graphics_pipeline_native != NULL ||
+         (layout.binding_count > 1u &&
+          context->ringpu_ops
+                  .create_graphics_pipeline_native_vertex_bindings != NULL)) &&
+        (layout.binding_count <= 1u ||
+         context->ringpu_ops.create_graphics_pipeline_native_vertex_bindings !=
+             NULL) &&
         fixed_raster_interface(vertex, fragment)) {
         if (result.varying_count > 4u)
             return -1;
@@ -346,22 +355,51 @@ static int create_pipeline(RinGLContext* context,
 {
     RinGLRinGpuVertexAttributeV1
         attributes[RINGL_MAX_VERTEX_INPUT_COMPONENTS];
+    RinGLRinGpuVertexAttributeV2
+        binding_attributes[RINGL_MAX_VERTEX_INPUT_COMPONENTS];
+    RinGLRinGpuVertexBufferLayoutV1
+        vertex_bindings[RINGL_MAX_VERTEX_ATTRIBS];
     uint32_t index;
 
     if (context == NULL || key == NULL || pipeline_out == NULL ||
         key->attribute_count > RINGL_MAX_VERTEX_INPUT_COMPONENTS ||
+        key->vertex_binding_count > RINGL_MAX_VERTEX_ATTRIBS ||
         key->varying_count > RINGL_PIPELINE_MAX_SCALAR_VARYINGS)
         return -1;
 
     memset(attributes, 0, sizeof(attributes));
+    memset(binding_attributes, 0, sizeof(binding_attributes));
+    memset(vertex_bindings, 0, sizeof(vertex_bindings));
     for (index = 0u; index < key->attribute_count; ++index) {
         attributes[index].location = key->attributes[index].location;
         attributes[index].format = key->attributes[index].format;
         attributes[index].offset = key->attributes[index].offset;
         attributes[index].flags = key->attributes[index].flags;
+        binding_attributes[index].location = key->attributes[index].location;
+        binding_attributes[index].format = key->attributes[index].format;
+        binding_attributes[index].offset = key->attributes[index].offset;
+        binding_attributes[index].flags = key->attributes[index].flags;
+        binding_attributes[index].binding = key->attributes[index].binding;
     }
+    for (index = 0u; index < key->vertex_binding_count; ++index) {
+        if (key->bindings[index].buffer == 0u ||
+            key->bindings[index].stride == 0u)
+            return -1;
+        vertex_bindings[index].binding = index;
+        vertex_bindings[index].stride = key->bindings[index].stride;
+    }
+    if (key->vertex_binding_count > 1u &&
+        (context->ringpu.vertex_input_capabilities &
+         RINGL_RIN_GPU_VERTEX_INPUT_MULTI_BUFFER) == 0u)
+        return -1;
 
-    if (context->ringpu_ops.create_graphics_pipeline_native != NULL) {
+    if ((context->ringpu_ops.create_graphics_pipeline_native != NULL ||
+         (key->vertex_binding_count > 1u &&
+          context->ringpu_ops
+                  .create_graphics_pipeline_native_vertex_bindings != NULL)) &&
+        (key->vertex_binding_count <= 1u ||
+         context->ringpu_ops.create_graphics_pipeline_native_vertex_bindings !=
+             NULL)) {
         RinGLRinGpuGraphicsPipelineNativeV1 desc;
         uint32_t cull = native_cull_mode(key);
         uint32_t front = native_front_face(key->front_face);
@@ -419,6 +457,13 @@ static int create_pipeline(RinGLContext* context,
                 desc.alpha_operation == 0u)
                 return -1;
         }
+        if (key->vertex_binding_count > 1u) {
+            return ringl_backend_create_graphics_pipeline_native_vertex_bindings(
+                context, &desc, binding_attributes, key->attribute_count,
+                vertex_bindings, key->vertex_binding_count,
+                key->varying_count == 0u ? NULL : key->varyings,
+                key->varying_count, pipeline_out);
+        }
         return ringl_backend_create_graphics_pipeline_native(
             context, &desc, attributes, key->attribute_count,
             key->varying_count == 0u ? NULL : key->varyings,
@@ -439,6 +484,11 @@ static int create_pipeline(RinGLContext* context,
         desc.primitive_topology = key->primitive_topology;
         desc.vertex_stride = key->vertex_stride;
         desc.attribute_count = key->attribute_count;
+        if (key->vertex_binding_count > 1u) {
+            return ringl_backend_create_graphics_pipeline_vertex_bindings(
+                context, &desc, binding_attributes, key->attribute_count,
+                vertex_bindings, key->vertex_binding_count, pipeline_out);
+        }
         return ringl_backend_create_graphics_pipeline(
             context, &desc, attributes, key->attribute_count, pipeline_out);
     }

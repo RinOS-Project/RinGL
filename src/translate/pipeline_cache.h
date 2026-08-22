@@ -35,6 +35,7 @@ typedef struct RinGLPipelineKey {
     uint32_t back_stencil_pass_operation;
     uint32_t primitive_topology;
     uint32_t vertex_stride;
+    uint32_t vertex_binding_count;
     uint32_t attribute_count;
     uint32_t varying_count;
     uint32_t blend_enabled;
@@ -49,6 +50,7 @@ typedef struct RinGLPipelineKey {
     uint32_t front_face;
     RinGLResolvedVertexAttribute
         attributes[RINGL_MAX_VERTEX_INPUT_COMPONENTS];
+    RinGLResolvedVertexBinding bindings[RINGL_MAX_VERTEX_ATTRIBS];
     RinGLRinGpuVaryingV1 varyings[RINGL_PIPELINE_MAX_SCALAR_VARYINGS];
 } RinGLPipelineKey;
 

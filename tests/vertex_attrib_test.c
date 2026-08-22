@@ -19,7 +19,9 @@ int main(void)
     };
     RinGLResolvedVertexLayout layout;
     uint32_t buffer = 0u;
+    uint32_t second_buffer = 0u;
     uint32_t slot_index;
+    uint32_t second_slot_index;
     uint32_t vertex;
     uint32_t fragment;
     uint32_t program;
@@ -71,6 +73,29 @@ int main(void)
     assert(layout.attribute_count == 2u);
     assert(layout.attributes[0].location == 0u);
     assert(layout.attributes[1].location == 1u);
+
+    /* Enabled arrays may independently select their captured buffer and
+     * effective stride. The V1 compatibility fields are deliberately zero
+     * when this layout needs the multi-binding backend contract. */
+    ringl_gen_buffers(1, &second_buffer);
+    assert(second_buffer != 0u);
+    second_slot_index = ringl_object_slot_index(second_buffer);
+    assert(second_slot_index < RINGL_OBJECT_SLOT_COUNT);
+    context->buffers[second_slot_index].size_bytes = 12u;
+    ringl_bind_buffer(RINGL_ARRAY_BUFFER, second_buffer);
+    ringl_vertex_attrib_pointer(1u, 1, RINGL_FLOAT, RINGL_FALSE, 4, 0u);
+    assert(ringl_resolve_vertex_layout(context, &layout) == 0);
+    assert(layout.buffer == 0u && layout.stride == 0u);
+    assert(layout.binding_count == 2u);
+    assert(layout.bindings[0].buffer == buffer &&
+           layout.bindings[0].stride == 8u);
+    assert(layout.bindings[1].buffer == second_buffer &&
+           layout.bindings[1].stride == 4u);
+    assert(layout.attributes[0].binding == 0u);
+    assert(layout.attributes[1].binding == 1u);
+    assert(ringl_validate_vertex_fetch(context, 0u, 3u, &layout) == 0);
+    assert(ringl_validate_vertex_fetch(context, 0u, 4u, &layout) != 0);
+    ringl_bind_buffer(RINGL_ARRAY_BUFFER, buffer);
 
     ringl_vertex_attrib_pointer(2u, 3, RINGL_FLOAT, RINGL_FALSE, 12, 0u);
     assert(ringl_get_error() == RINGL_NO_ERROR);
@@ -185,6 +210,7 @@ int main(void)
     assert(ringl_resolve_vertex_layout(context, &layout) == 0);
     assert(layout.buffer == 0u && layout.has_constant_attributes == RINGL_TRUE);
 
+    ringl_delete_buffers(1, &second_buffer);
     ringl_context_destroy(context);
     return 0;
 }

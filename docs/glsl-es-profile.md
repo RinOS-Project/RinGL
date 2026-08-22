@@ -61,14 +61,18 @@ components into dense RSH1 locations. This keeps the generic GL namespace out
 of the RinGPU ABI while ensuring that an unrelated enabled array is not
 silently fetched.
 
-Enabled active arrays in the bounded renderer share one buffer and effective
-stride. A disabled active array is not fetched: its current generic value
-(initially `(0, 0, 0, 1)`, then updated by `vertexAttrib[1-4]f`) is lowered to
-explicit constant Float32 scalar descriptors. An embedding must advertise
-`RINGL_RIN_GPU_VERTEX_INPUT_CONSTANT_FLOAT32`; without it the draw is rejected
-with `INVALID_OPERATION`, so Float32 bits can never be mistaken for a byte
-offset or silently replaced with stale input. Independent buffer bindings and
-general vertex pulling remain unsupported.
+Each enabled active array retains the buffer and effective stride captured by
+its `vertexAttribPointer` call. RinGL groups equal `(buffer, stride)` pairs
+into dense V2 bindings, so direct and indexed draws can source independent
+active arrays without copying or rebinding their storage. A disabled active
+array is not fetched: its current generic value (initially `(0, 0, 0, 1)`,
+then updated by `vertexAttrib[1-4]f`) is lowered to explicit constant Float32
+scalar descriptors. An embedding must advertise
+`RINGL_RIN_GPU_VERTEX_INPUT_CONSTANT_FLOAT32` and, when more than one stream
+is needed, `RINGL_RIN_GPU_VERTEX_INPUT_MULTI_BUFFER` with matching V2
+callbacks; otherwise the draw is rejected with `INVALID_OPERATION`. This keeps
+Float32 bits from being mistaken for byte offsets and does not silently flatten
+distinct streams. General vertex pulling remains unsupported.
 
 ## Compiler boundary
 

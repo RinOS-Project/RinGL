@@ -248,6 +248,10 @@ extern "C" {
  * address into a vertex buffer. */
 #define RINGL_RIN_GPU_VERTEX_ATTRIBUTE_CONSTANT_FLOAT32 0x00000001u
 #define RINGL_RIN_GPU_VERTEX_INPUT_CONSTANT_FLOAT32     0x00000001u
+/* Independent vertex bindings carry a dense binding number, stride and
+ * buffer handle for each enabled array source. It is additive to the V1
+ * single-buffer ABI and must be advertised with matching V2 callbacks. */
+#define RINGL_RIN_GPU_VERTEX_INPUT_MULTI_BUFFER          0x00000002u
 
 typedef struct RinGLContext RinGLContext;
 
@@ -258,6 +262,30 @@ typedef struct RinGLRinGpuVertexAttributeV1 {
     uint32_t reserved0;
     uint32_t flags;
 } RinGLRinGpuVertexAttributeV1;
+
+typedef struct RinGLRinGpuVertexAttributeV2 {
+    uint32_t location;
+    uint32_t format;
+    uint32_t offset;
+    uint32_t reserved0;
+    uint32_t flags;
+    uint32_t binding;
+    uint32_t reserved1;
+} RinGLRinGpuVertexAttributeV2;
+
+typedef struct RinGLRinGpuVertexBufferLayoutV1 {
+    uint32_t binding;
+    uint32_t stride;
+    uint32_t flags;
+    uint32_t reserved0;
+} RinGLRinGpuVertexBufferLayoutV1;
+
+typedef struct RinGLRinGpuVertexBufferBindingV1 {
+    uint32_t binding;
+    uint32_t reserved0;
+    uint64_t buffer;
+    uint64_t offset;
+} RinGLRinGpuVertexBufferBindingV1;
 
 typedef struct RinGLRinGpuGraphicsPipelineV1 {
     uint64_t vertex_shader;
@@ -405,6 +433,19 @@ typedef struct RinGLRinGpuDrawVerticesV1 {
     uint32_t first_instance;
 } RinGLRinGpuDrawVerticesV1;
 
+typedef struct RinGLRinGpuDrawVerticesV2 {
+    uint64_t pipeline;
+    uint64_t color_target;
+    uint32_t vertex_count;
+    uint32_t first_vertex;
+    uint32_t instance_count;
+    uint32_t first_instance;
+    uint32_t binding_count;
+    uint32_t reserved0;
+    RinGLRinGpuVertexBufferBindingV1
+        vertex_buffers[RINGL_MAX_VERTEX_ATTRIBS];
+} RinGLRinGpuDrawVerticesV2;
+
 typedef struct RinGLRinGpuDrawIndexedV1 {
     uint64_t pipeline;
     uint64_t color_target;
@@ -419,6 +460,23 @@ typedef struct RinGLRinGpuDrawIndexedV1 {
     uint32_t instance_count;
     uint32_t first_instance;
 } RinGLRinGpuDrawIndexedV1;
+
+typedef struct RinGLRinGpuDrawIndexedV2 {
+    uint64_t pipeline;
+    uint64_t color_target;
+    uint64_t index_buffer;
+    uint64_t index_offset;
+    uint32_t index_format;
+    uint32_t index_count;
+    uint32_t vertex_count;
+    uint32_t first_index;
+    uint32_t instance_count;
+    uint32_t first_instance;
+    uint32_t binding_count;
+    uint32_t reserved0;
+    RinGLRinGpuVertexBufferBindingV1
+        vertex_buffers[RINGL_MAX_VERTEX_ATTRIBS];
+} RinGLRinGpuDrawIndexedV2;
 
 typedef struct RinGLRinGpuSampledImage2DV1 {
     uint32_t width;
@@ -478,6 +536,24 @@ typedef int (*RinGLRinGpuCreateGraphicsPipelineNativeFn)(
     const RinGLRinGpuVaryingV1* varyings,
     uint32_t varying_count,
     uint64_t* pipeline_out);
+typedef int (*RinGLRinGpuCreateGraphicsPipelineVertexBindingsFn)(
+    void* session,
+    const RinGLRinGpuGraphicsPipelineV1* desc,
+    const RinGLRinGpuVertexAttributeV2* attributes,
+    uint32_t attribute_count,
+    const RinGLRinGpuVertexBufferLayoutV1* vertex_bindings,
+    uint32_t vertex_binding_count,
+    uint64_t* pipeline_out);
+typedef int (*RinGLRinGpuCreateGraphicsPipelineNativeVertexBindingsFn)(
+    void* session,
+    const RinGLRinGpuGraphicsPipelineNativeV1* desc,
+    const RinGLRinGpuVertexAttributeV2* attributes,
+    uint32_t attribute_count,
+    const RinGLRinGpuVertexBufferLayoutV1* vertex_bindings,
+    uint32_t vertex_binding_count,
+    const RinGLRinGpuVaryingV1* varyings,
+    uint32_t varying_count,
+    uint64_t* pipeline_out);
 typedef int (*RinGLRinGpuCreateCommandListFn)(void* session,
                                               uint32_t capabilities,
                                               uint64_t* command_list_out);
@@ -509,6 +585,12 @@ typedef int (*RinGLRinGpuDrawVerticesFn)(
 typedef int (*RinGLRinGpuDrawIndexedFn)(
     void* session, uint64_t command_list,
     const RinGLRinGpuDrawIndexedV1* draw);
+typedef int (*RinGLRinGpuDrawVerticesV2Fn)(
+    void* session, uint64_t command_list,
+    const RinGLRinGpuDrawVerticesV2* draw);
+typedef int (*RinGLRinGpuDrawIndexedV2Fn)(
+    void* session, uint64_t command_list,
+    const RinGLRinGpuDrawIndexedV2* draw);
 typedef int (*RinGLRinGpuEndRenderPassFn)(void* session,
                                           uint64_t command_list);
 typedef int (*RinGLRinGpuPresentFn)(void* session,
@@ -559,6 +641,12 @@ typedef struct RinGLRinGpuOpsV1 {
     RinGLRinGpuBindGraphicsResourcesFn bind_graphics_resources;
     RinGLRinGpuCreateImage2DFn create_image_2d;
     RinGLRinGpuBeginRenderPassDepthFn begin_render_pass_depth;
+    RinGLRinGpuCreateGraphicsPipelineVertexBindingsFn
+        create_graphics_pipeline_vertex_bindings;
+    RinGLRinGpuCreateGraphicsPipelineNativeVertexBindingsFn
+        create_graphics_pipeline_native_vertex_bindings;
+    RinGLRinGpuDrawVerticesV2Fn draw_vertices_v2;
+    RinGLRinGpuDrawIndexedV2Fn draw_indexed_v2;
 } RinGLRinGpuOpsV1;
 
 typedef struct RinGLRinGpuBindingV1 {

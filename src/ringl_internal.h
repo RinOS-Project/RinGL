@@ -151,13 +151,23 @@ typedef struct RinGLResolvedVertexAttribute {
     uint32_t format;
     uint32_t offset;
     uint32_t flags;
+    uint32_t binding;
 } RinGLResolvedVertexAttribute;
 
-typedef struct RinGLResolvedVertexLayout {
+typedef struct RinGLResolvedVertexBinding {
     uint32_t buffer;
     uint32_t stride;
+} RinGLResolvedVertexBinding;
+
+typedef struct RinGLResolvedVertexLayout {
+    /* The legacy fields are populated only for one streamed binding, so
+     * callers still using V1 can retain their previous fast path. */
+    uint32_t buffer;
+    uint32_t stride;
+    uint32_t binding_count;
     uint32_t attribute_count;
     uint32_t has_constant_attributes;
+    RinGLResolvedVertexBinding bindings[RINGL_MAX_VERTEX_ATTRIBS];
     RinGLResolvedVertexAttribute
         attributes[RINGL_MAX_VERTEX_INPUT_COMPONENTS];
 } RinGLResolvedVertexLayout;
@@ -316,6 +326,24 @@ int ringl_backend_create_graphics_pipeline_native(
     const RinGLRinGpuVaryingV1* varyings,
     uint32_t varying_count,
     uint64_t* pipeline_out);
+int ringl_backend_create_graphics_pipeline_vertex_bindings(
+    RinGLContext* context,
+    const RinGLRinGpuGraphicsPipelineV1* desc,
+    const RinGLRinGpuVertexAttributeV2* attributes,
+    uint32_t attribute_count,
+    const RinGLRinGpuVertexBufferLayoutV1* vertex_bindings,
+    uint32_t vertex_binding_count,
+    uint64_t* pipeline_out);
+int ringl_backend_create_graphics_pipeline_native_vertex_bindings(
+    RinGLContext* context,
+    const RinGLRinGpuGraphicsPipelineNativeV1* desc,
+    const RinGLRinGpuVertexAttributeV2* attributes,
+    uint32_t attribute_count,
+    const RinGLRinGpuVertexBufferLayoutV1* vertex_bindings,
+    uint32_t vertex_binding_count,
+    const RinGLRinGpuVaryingV1* varyings,
+    uint32_t varying_count,
+    uint64_t* pipeline_out);
 int ringl_backend_create_command_list(RinGLContext* context,
                                       uint32_t capabilities,
                                       uint64_t* command_list_out);
@@ -348,6 +376,12 @@ int ringl_backend_draw_vertices(RinGLContext* context,
 int ringl_backend_draw_indexed(RinGLContext* context,
                                uint64_t command_list,
                                const RinGLRinGpuDrawIndexedV1* draw);
+int ringl_backend_draw_vertices_v2(RinGLContext* context,
+                                   uint64_t command_list,
+                                   const RinGLRinGpuDrawVerticesV2* draw);
+int ringl_backend_draw_indexed_v2(RinGLContext* context,
+                                  uint64_t command_list,
+                                  const RinGLRinGpuDrawIndexedV2* draw);
 int ringl_backend_end_render_pass(RinGLContext* context,
                                   uint64_t command_list);
 int ringl_backend_present(RinGLContext* context,

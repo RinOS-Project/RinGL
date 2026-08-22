@@ -166,6 +166,62 @@ int ringl_backend_create_graphics_pipeline_native(
                      varyings, varying_count, pipeline_out));
 }
 
+int ringl_backend_create_graphics_pipeline_vertex_bindings(
+    RinGLContext* context,
+    const RinGLRinGpuGraphicsPipelineV1* desc,
+    const RinGLRinGpuVertexAttributeV2* attributes,
+    uint32_t attribute_count,
+    const RinGLRinGpuVertexBufferLayoutV1* vertex_bindings,
+    uint32_t vertex_binding_count,
+    uint64_t* pipeline_out)
+{
+    if (context == NULL || desc == NULL || pipeline_out == NULL ||
+        attribute_count != desc->attribute_count ||
+        (attribute_count != 0u && attributes == NULL) ||
+        vertex_binding_count == 0u ||
+        vertex_binding_count > RINGL_MAX_VERTEX_ATTRIBS ||
+        vertex_bindings == NULL || !context->has_ringpu_ops ||
+        context->ringpu_ops.create_graphics_pipeline_vertex_bindings == NULL) {
+        return -1;
+    }
+    *pipeline_out = 0u;
+    return ringl_backend_result(
+        context, context->ringpu_ops.create_graphics_pipeline_vertex_bindings(
+                     context->ringpu.session, desc, attributes, attribute_count,
+                     vertex_bindings, vertex_binding_count, pipeline_out));
+}
+
+int ringl_backend_create_graphics_pipeline_native_vertex_bindings(
+    RinGLContext* context,
+    const RinGLRinGpuGraphicsPipelineNativeV1* desc,
+    const RinGLRinGpuVertexAttributeV2* attributes,
+    uint32_t attribute_count,
+    const RinGLRinGpuVertexBufferLayoutV1* vertex_bindings,
+    uint32_t vertex_binding_count,
+    const RinGLRinGpuVaryingV1* varyings,
+    uint32_t varying_count,
+    uint64_t* pipeline_out)
+{
+    if (context == NULL || desc == NULL || pipeline_out == NULL ||
+        (attribute_count != 0u && attributes == NULL) ||
+        vertex_binding_count == 0u ||
+        vertex_binding_count > RINGL_MAX_VERTEX_ATTRIBS ||
+        vertex_bindings == NULL ||
+        (varying_count != 0u && varyings == NULL) ||
+        !context->has_ringpu_ops ||
+        context->ringpu_ops.create_graphics_pipeline_native_vertex_bindings ==
+            NULL) {
+        return -1;
+    }
+    *pipeline_out = 0u;
+    return ringl_backend_result(
+        context,
+        context->ringpu_ops.create_graphics_pipeline_native_vertex_bindings(
+            context->ringpu.session, desc, attributes, attribute_count,
+            vertex_bindings, vertex_binding_count, varyings, varying_count,
+            pipeline_out));
+}
+
 int ringl_backend_create_command_list(RinGLContext* context,
                                       uint32_t capabilities,
                                       uint64_t* command_list_out)
@@ -305,6 +361,34 @@ int ringl_backend_draw_indexed(RinGLContext* context,
     return ringl_backend_result(
         context, context->ringpu_ops.draw_indexed(context->ringpu.session,
                                                   command_list, draw));
+}
+
+int ringl_backend_draw_vertices_v2(RinGLContext* context,
+                                   uint64_t command_list,
+                                   const RinGLRinGpuDrawVerticesV2* draw)
+{
+    if (context == NULL || command_list == 0u || draw == NULL ||
+        !context->has_ringpu_ops ||
+        context->ringpu_ops.draw_vertices_v2 == NULL) {
+        return -1;
+    }
+    return ringl_backend_result(
+        context, context->ringpu_ops.draw_vertices_v2(context->ringpu.session,
+                                                      command_list, draw));
+}
+
+int ringl_backend_draw_indexed_v2(RinGLContext* context,
+                                  uint64_t command_list,
+                                  const RinGLRinGpuDrawIndexedV2* draw)
+{
+    if (context == NULL || command_list == 0u || draw == NULL ||
+        !context->has_ringpu_ops ||
+        context->ringpu_ops.draw_indexed_v2 == NULL) {
+        return -1;
+    }
+    return ringl_backend_result(
+        context, context->ringpu_ops.draw_indexed_v2(context->ringpu.session,
+                                                     command_list, draw));
 }
 
 int ringl_backend_end_render_pass(RinGLContext* context,

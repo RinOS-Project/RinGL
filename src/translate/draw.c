@@ -659,12 +659,42 @@ void ringl_clear(uint32_t mask)
     ringl_context_clear_dirty(context, RINGL_DIRTY_FRAMEBUFFER);
 }
 
+static int ringl_resolve_vertex_buffer_bindings(
+    const RinGLContext* context, const RinGLResolvedVertexLayout* layout,
+    RinGLRinGpuVertexBufferBindingV1* bindings)
+{
+    uint32_t binding;
+
+    if (context == NULL || layout == NULL || bindings == NULL ||
+        layout->binding_count == 0u ||
+        layout->binding_count > RINGL_MAX_VERTEX_ATTRIBS)
+        return -1;
+    for (binding = 0u; binding < layout->binding_count; ++binding) {
+        uint32_t index = ringl_object_slot_index(layout->bindings[binding].buffer);
+        const RinGLBufferObject* buffer;
+
+        if (layout->bindings[binding].buffer == 0u ||
+            layout->bindings[binding].stride == 0u ||
+            index >= RINGL_OBJECT_SLOT_COUNT)
+            return -1;
+        buffer = &context->buffers[index];
+        if (buffer->ringpu_handle == 0u)
+            return -1;
+        bindings[binding].binding = binding;
+        bindings[binding].buffer = buffer->ringpu_handle;
+    }
+    return 0;
+}
+
 void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLResolvedVertexLayout layout;
     RinGLBufferObject* vertex_buffer = NULL;
     RinGLRinGpuDrawVerticesV1 draw;
+    RinGLRinGpuDrawVerticesV2 draw_v2;
+    RinGLRinGpuVertexBufferBindingV1
+        vertex_bindings[RINGL_MAX_VERTEX_ATTRIBS];
     RinGLColorTarget target;
     RinGLDepthTarget depth_target;
     uint64_t command_list;
@@ -673,6 +703,8 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
     uint32_t texture_index = UINT32_MAX;
     uint32_t texture_transitioned = 0u;
     int depth_status;
+    int use_multi_buffer;
+    int draw_result;
 
     if (context == NULL)
         return;
@@ -692,9 +724,6 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
         depth_status < 0 ||
         ((context->depth_test_enabled || context->stencil_test_enabled) &&
          depth_status != 0) ||
-        context->ringpu_ops.draw_vertices == NULL ||
-        (context->ringpu_ops.create_graphics_pipeline == NULL &&
-         context->ringpu_ops.create_graphics_pipeline_native == NULL) ||
         !draw_state_supported(context, &target,
                               depth_status == 0 ? &depth_target : NULL)) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
@@ -708,7 +737,29 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
-    if (layout.buffer != 0u) {
+    use_multi_buffer = layout.binding_count > 1u;
+    if ((use_multi_buffer &&
+         (((context->ringpu.vertex_input_capabilities &
+            RINGL_RIN_GPU_VERTEX_INPUT_MULTI_BUFFER) == 0u) ||
+          context->ringpu_ops.draw_vertices_v2 == NULL ||
+          (context->ringpu_ops.create_graphics_pipeline_vertex_bindings == NULL &&
+           context->ringpu_ops
+                   .create_graphics_pipeline_native_vertex_bindings == NULL))) ||
+        (!use_multi_buffer &&
+         (context->ringpu_ops.draw_vertices == NULL ||
+          (context->ringpu_ops.create_graphics_pipeline == NULL &&
+           context->ringpu_ops.create_graphics_pipeline_native == NULL)))) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    memset(vertex_bindings, 0, sizeof(vertex_bindings));
+    if (use_multi_buffer) {
+        if (ringl_resolve_vertex_buffer_bindings(context, &layout,
+                                                 vertex_bindings) != 0) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return;
+        }
+    } else if (layout.buffer != 0u) {
         buffer_index = ringl_object_slot_index(layout.buffer);
         if (buffer_index >= RINGL_OBJECT_SLOT_COUNT) {
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
@@ -751,14 +802,31 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
         return;
     }
 
-    memset(&draw, 0, sizeof(draw));
-    draw.pipeline = pipeline;
-    draw.color_target = target.image;
-    draw.vertex_buffer = vertex_buffer != NULL ? vertex_buffer->ringpu_handle : 0u;
-    draw.vertex_count = (uint32_t)count;
-    draw.first_vertex = (uint32_t)first;
-    draw.instance_count = 1u;
-    if (ringl_backend_draw_vertices(context, command_list, &draw) != 0 ||
+    if (use_multi_buffer) {
+        memset(&draw_v2, 0, sizeof(draw_v2));
+        draw_v2.pipeline = pipeline;
+        draw_v2.color_target = target.image;
+        draw_v2.vertex_count = (uint32_t)count;
+        draw_v2.first_vertex = (uint32_t)first;
+        draw_v2.instance_count = 1u;
+        draw_v2.binding_count = layout.binding_count;
+        memcpy(draw_v2.vertex_buffers, vertex_bindings,
+               sizeof(RinGLRinGpuVertexBufferBindingV1) *
+                   layout.binding_count);
+        draw_result = ringl_backend_draw_vertices_v2(context, command_list,
+                                                     &draw_v2);
+    } else {
+        memset(&draw, 0, sizeof(draw));
+        draw.pipeline = pipeline;
+        draw.color_target = target.image;
+        draw.vertex_buffer =
+            vertex_buffer != NULL ? vertex_buffer->ringpu_handle : 0u;
+        draw.vertex_count = (uint32_t)count;
+        draw.first_vertex = (uint32_t)first;
+        draw.instance_count = 1u;
+        draw_result = ringl_backend_draw_vertices(context, command_list, &draw);
+    }
+    if (draw_result != 0 ||
         ringl_backend_end_render_pass(context, command_list) != 0 ||
         submit_commands(context, command_list) != 0) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
@@ -782,6 +850,9 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
     RinGLBufferObject* vertex_buffer = NULL;
     RinGLBufferObject* index_buffer;
     RinGLRinGpuDrawIndexedV1 draw;
+    RinGLRinGpuDrawIndexedV2 draw_v2;
+    RinGLRinGpuVertexBufferBindingV1
+        vertex_bindings[RINGL_MAX_VERTEX_ATTRIBS];
     RinGLColorTarget target;
     RinGLDepthTarget depth_target;
     uint64_t command_list;
@@ -793,6 +864,8 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
     uint32_t texture_index = UINT32_MAX;
     uint32_t texture_transitioned = 0u;
     int depth_status;
+    int use_multi_buffer;
+    int draw_result;
 
     if (context == NULL)
         return;
@@ -817,9 +890,6 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
         depth_status < 0 ||
         ((context->depth_test_enabled || context->stencil_test_enabled) &&
          depth_status != 0) ||
-        context->ringpu_ops.draw_indexed == NULL ||
-        (context->ringpu_ops.create_graphics_pipeline == NULL &&
-         context->ringpu_ops.create_graphics_pipeline_native == NULL) ||
         !draw_state_supported(context, &target,
                               depth_status == 0 ? &depth_target : NULL)) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
@@ -840,13 +910,35 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
+    use_multi_buffer = layout.binding_count > 1u;
+    if ((use_multi_buffer &&
+         (((context->ringpu.vertex_input_capabilities &
+            RINGL_RIN_GPU_VERTEX_INPUT_MULTI_BUFFER) == 0u) ||
+          context->ringpu_ops.draw_indexed_v2 == NULL ||
+          (context->ringpu_ops.create_graphics_pipeline_vertex_bindings == NULL &&
+           context->ringpu_ops
+                   .create_graphics_pipeline_native_vertex_bindings == NULL))) ||
+        (!use_multi_buffer &&
+         (context->ringpu_ops.draw_indexed == NULL ||
+          (context->ringpu_ops.create_graphics_pipeline == NULL &&
+           context->ringpu_ops.create_graphics_pipeline_native == NULL)))) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
 
     index_buffer_index = ringl_object_slot_index(context->element_array_buffer);
     if (index_buffer_index >= RINGL_OBJECT_SLOT_COUNT) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
-    if (layout.buffer != 0u) {
+    memset(vertex_bindings, 0, sizeof(vertex_bindings));
+    if (use_multi_buffer) {
+        if (ringl_resolve_vertex_buffer_bindings(context, &layout,
+                                                 vertex_bindings) != 0) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return;
+        }
+    } else if (layout.buffer != 0u) {
         vertex_buffer_index = ringl_object_slot_index(layout.buffer);
         if (vertex_buffer_index >= RINGL_OBJECT_SLOT_COUNT) {
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
@@ -855,7 +947,8 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
         vertex_buffer = &context->buffers[vertex_buffer_index];
     }
     index_buffer = &context->buffers[index_buffer_index];
-    if ((vertex_buffer != NULL && vertex_buffer->ringpu_handle == 0u) ||
+    if ((!use_multi_buffer && vertex_buffer != NULL &&
+         vertex_buffer->ringpu_handle == 0u) ||
         index_buffer->ringpu_handle == 0u) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
@@ -891,22 +984,47 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
         return;
     }
 
-    memset(&draw, 0, sizeof(draw));
-    draw.pipeline = pipeline;
-    draw.color_target = target.image;
-    draw.vertex_buffer = vertex_buffer != NULL ? vertex_buffer->ringpu_handle : 0u;
-    draw.index_buffer = index_buffer->ringpu_handle;
-    draw.index_offset = offset;
-    if (type == RINGL_UNSIGNED_BYTE)
-        draw.index_format = RINGL_RIN_GPU_INDEX_UINT8;
-    else if (type == RINGL_UNSIGNED_SHORT)
-        draw.index_format = RINGL_RIN_GPU_INDEX_UINT16;
-    else
-        draw.index_format = RINGL_RIN_GPU_INDEX_UINT32;
-    draw.index_count = (uint32_t)count;
-    draw.vertex_count = vertex_count;
-    draw.instance_count = 1u;
-    if (ringl_backend_draw_indexed(context, command_list, &draw) != 0 ||
+    if (use_multi_buffer) {
+        memset(&draw_v2, 0, sizeof(draw_v2));
+        draw_v2.pipeline = pipeline;
+        draw_v2.color_target = target.image;
+        draw_v2.index_buffer = index_buffer->ringpu_handle;
+        draw_v2.index_offset = offset;
+        if (type == RINGL_UNSIGNED_BYTE)
+            draw_v2.index_format = RINGL_RIN_GPU_INDEX_UINT8;
+        else if (type == RINGL_UNSIGNED_SHORT)
+            draw_v2.index_format = RINGL_RIN_GPU_INDEX_UINT16;
+        else
+            draw_v2.index_format = RINGL_RIN_GPU_INDEX_UINT32;
+        draw_v2.index_count = (uint32_t)count;
+        draw_v2.vertex_count = vertex_count;
+        draw_v2.instance_count = 1u;
+        draw_v2.binding_count = layout.binding_count;
+        memcpy(draw_v2.vertex_buffers, vertex_bindings,
+               sizeof(RinGLRinGpuVertexBufferBindingV1) *
+                   layout.binding_count);
+        draw_result = ringl_backend_draw_indexed_v2(context, command_list,
+                                                    &draw_v2);
+    } else {
+        memset(&draw, 0, sizeof(draw));
+        draw.pipeline = pipeline;
+        draw.color_target = target.image;
+        draw.vertex_buffer =
+            vertex_buffer != NULL ? vertex_buffer->ringpu_handle : 0u;
+        draw.index_buffer = index_buffer->ringpu_handle;
+        draw.index_offset = offset;
+        if (type == RINGL_UNSIGNED_BYTE)
+            draw.index_format = RINGL_RIN_GPU_INDEX_UINT8;
+        else if (type == RINGL_UNSIGNED_SHORT)
+            draw.index_format = RINGL_RIN_GPU_INDEX_UINT16;
+        else
+            draw.index_format = RINGL_RIN_GPU_INDEX_UINT32;
+        draw.index_count = (uint32_t)count;
+        draw.vertex_count = vertex_count;
+        draw.instance_count = 1u;
+        draw_result = ringl_backend_draw_indexed(context, command_list, &draw);
+    }
+    if (draw_result != 0 ||
         ringl_backend_end_render_pass(context, command_list) != 0 ||
         submit_commands(context, command_list) != 0) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);

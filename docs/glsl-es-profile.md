@@ -14,8 +14,8 @@ The current first-triangle slice supports:
 - `vec2(...)` and `vec4(...)` constructors;
 - scalar or `vec4` writes to the stage output (`gl_Position` / `gl_FragColor`);
 - constants and simple assignments;
-- one `uniform sampler2D` and one `texture2D()` call with either constant
-  `vec2` coordinates or the initial `varying vec2` texture-coordinate path;
+- a canonical `varying vec2` texture-coordinate path with one through eight
+  `texture2D()` calls over one through eight `uniform sampler2D` declarations;
 - a constant-coordinate-only texture profile: one declared `sampler2D` may be
   sampled one through eight times, while a multi-declaration program uses each
   of one through eight declared samplers exactly once; results are added
@@ -43,22 +43,23 @@ void main() {
 }
 ```
 
-The normal texture path is intentionally narrow: it accepts exactly one sampler
-and one sample operation, and the varying path recognizes the canonical
-position/UV textured-triangle form. The constant-coordinate profile permits one
-through eight calls over one through eight declarations in an exact
-left-to-right `texture2D(a, vec2(...)) + ...` assignment. It compacts only
+The normal texture path is intentionally narrow, and the varying path recognizes
+the canonical position/UV textured-triangle form. The constant-coordinate
+profile permits one through eight calls over one through eight declarations in
+an exact left-to-right `texture2D(a, vec2(...)) + ...` assignment. It compacts only
 active declarations, in declaration order, into image/sampler pairs (`[0, 1]`,
 then `[2, 3]`, and so on); every repeated call references the corresponding
 pair. RinGL uses the saved active-declaration map to make the matching selective
 typed bind group, so unused declarations need no fabricated resource use. The
 profile has a formulaic maximum of 85 instructions and 80 registers, below
 RinGL's 96-register ceiling and RinGPU's public 256-register limit.
-The initial varying-coordinate multi-sampler extension accepts exactly two
-sampler declarations, one shared `varying vec2`, and an exact two-call
-addition; both pairs use the perspective-interpolated UV. Repeated,
-selectively active, or larger varying-coordinate sampler chains are not yet
-accepted.
+The varying-coordinate multi-sampler extension accepts one through eight calls
+over one through eight sampler declarations, one shared `varying vec2`, and an
+exact left-to-right addition. Calls may repeat an active sampler and inactive
+declarations are compacted in declaration order into dense image/sampler pairs;
+the saved map creates bindings for only those declarations. Its formulaic
+maximum is 69 instructions and 64 registers. Coordinates derived from locals or
+different varyings, other expressions, and larger chains are not yet accepted.
 Nonconstant coordinates in this profile, other arithmetic, vector locals,
 matrices, other uniform types, additional varying types, derivatives, loops,
 user functions, precision edge cases, and broader GLSL ES built-ins remain

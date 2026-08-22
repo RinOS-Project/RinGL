@@ -65,6 +65,91 @@ static int read_decl_name(const char* source, const char* prefix,
     return 1;
 }
 
+#define RINGL_VARYING_TEXTURE_MAX_SAMPLERS RINGL_GLSL_MAX_SAMPLER_UNIFORMS
+#define RINGL_VARYING_TEXTURE_MAX_CALLS RINGL_GLSL_MAX_SAMPLER_UNIFORMS
+
+typedef struct VaryingTextureCall {
+    uint32_t sampler_index;
+} VaryingTextureCall;
+
+_Static_assert(8u * RINGL_VARYING_TEXTURE_MAX_CALLS <=
+                   RINGL_RSH1_MAX_REGISTERS,
+               "varying texture profile exceeds the RSH1 register ceiling");
+_Static_assert(8u * RINGL_VARYING_TEXTURE_MAX_CALLS + 5u <=
+                   RINGL_RSH1_MAX_INSTRUCTIONS,
+               "varying texture profile exceeds the RSH1 instruction ceiling");
+
+static int consume_text(const char** cursor, const char* text)
+{
+    size_t length;
+
+    if (cursor == NULL || *cursor == NULL || text == NULL)
+        return 0;
+    length = strlen(text);
+    if (strncmp(*cursor, text, length) != 0)
+        return 0;
+    *cursor += length;
+    return 1;
+}
+
+static int read_identifier(const char** cursor, char* name, size_t capacity)
+{
+    const char* p;
+    size_t length = 0u;
+
+    if (cursor == NULL || *cursor == NULL || name == NULL || capacity == 0u)
+        return 0;
+    p = *cursor;
+    if (!isalpha((unsigned char)*p) && *p != '_')
+        return 0;
+    do {
+        if (length + 1u >= capacity)
+            return 0;
+        name[length++] = *p++;
+    } while (isalnum((unsigned char)*p) || *p == '_');
+    name[length] = '\0';
+    *cursor = p;
+    return 1;
+}
+
+static int sampler_index_for_name(char names[][64], uint32_t count,
+                                  const char* name, uint32_t* index_out)
+{
+    uint32_t index;
+
+    if (names == NULL || name == NULL || index_out == NULL)
+        return 0;
+    for (index = 0u; index < count; ++index) {
+        if (strcmp(names[index], name) == 0) {
+            *index_out = index;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int parse_varying_texture_call(const char** cursor,
+                                      char sampler_names[][64],
+                                      uint32_t sampler_count,
+                                      const char* varying,
+                                      VaryingTextureCall* call)
+{
+    char sampler[64];
+    char coordinate[64];
+
+    if (cursor == NULL || sampler_names == NULL || varying == NULL ||
+        call == NULL || !consume_text(cursor, "texture2D(") ||
+        !read_identifier(cursor, sampler, sizeof(sampler)) ||
+        !consume_text(cursor, ",") ||
+        !read_identifier(cursor, coordinate, sizeof(coordinate)) ||
+        !consume_text(cursor, ")") || strcmp(coordinate, varying) != 0 ||
+        !sampler_index_for_name(sampler_names, sampler_count, sampler,
+                                &call->sampler_index)) {
+        return 0;
+    }
+    return 1;
+}
+
 static int lower_vertex(const char* source, RinGLGlslLowerResult* result)
 {
     RinGLRsh1HeaderV1 header;
@@ -143,155 +228,172 @@ static int lower_vertex(const char* source, RinGLGlslLowerResult* result)
     return 0;
 }
 
-static int lower_fragment(const char* source, RinGLGlslLowerResult* result)
+/* This profile deliberately has one shared, perspective-interpolated vec2.
+ * The emitted layout preserves the historic one- and two-call bytecode while
+ * allowing bounded repeated and selectively active sampler chains:
+ *
+ *   [UV inputs][RGBA samples][RGBA left-to-right sums][RGBA stores][return]
+ */
+static int lower_fragment_texture_chain(const char* source,
+                                        RinGLGlslLowerResult* result)
 {
     RinGLRsh1HeaderV1 header;
-    RinGLRsh1InstructionV1 ins[13];
-    char sampler[64];
+    RinGLRsh1InstructionV1 ins[RINGL_RSH1_MAX_INSTRUCTIONS];
+    char sampler_names[RINGL_VARYING_TEXTURE_MAX_SAMPLERS][64];
     char varying[64];
-    char expected[384];
+    VaryingTextureCall calls[RINGL_VARYING_TEXTURE_MAX_CALLS];
+    uint32_t sampler_resource_indices[RINGL_VARYING_TEXTURE_MAX_SAMPLERS] = {0u};
+    uint32_t sampler_binding_indices[RINGL_VARYING_TEXTURE_MAX_SAMPLERS] = {0u};
+    const char* cursor;
+    uint32_t sampler_count = 0u;
+    uint32_t sampler_binding_count = 0u;
+    uint32_t call_count = 0u;
+    uint32_t sample_base;
+    uint32_t add_base;
+    uint32_t add_register_base;
+    uint32_t store_base;
+    uint32_t final_base;
+    uint32_t padding_base;
+    uint32_t call_index;
+    uint32_t sampler_index;
     uint32_t component;
     size_t total;
 
-    if (!read_decl_name(source, "uniformsampler2D", 0u, sampler, sizeof(sampler)) ||
-        !read_decl_name(source, "varyingvec2", 0u, varying, sizeof(varying)))
+    if (source == NULL || result == NULL)
         return 1;
-    (void)snprintf(expected, sizeof(expected),
-                   "uniformsampler2D%s;varyingvec2%s;"
-                   "voidmain(){gl_FragColor=texture2D(%s,%s);}",
-                   sampler, varying, sampler, varying);
-    if (strcmp(source, expected) != 0)
-        return 1;
-
-    init_instruction(&ins[0], RINGL_RSH1_OP_LOAD_INPUT_F32);
-    ins[0].destination = 0u; ins[0].immediate = 0u;
-    init_instruction(&ins[1], RINGL_RSH1_OP_LOAD_INPUT_F32);
-    ins[1].destination = 1u; ins[1].immediate = 1u;
-    init_instruction(&ins[2], RINGL_RSH1_OP_LOAD_INPUT_F32);
-    ins[2].destination = 6u; ins[2].immediate = 2u;
-    init_instruction(&ins[3], RINGL_RSH1_OP_LOAD_INPUT_F32);
-    ins[3].destination = 7u; ins[3].immediate = 3u;
-    for (component = 0u; component < 4u; ++component) {
-        init_instruction(&ins[4u + component], RINGL_RSH1_OP_SAMPLE_IMAGE_2D_F32);
-        ins[4u + component].flags = (uint16_t)component;
-        ins[4u + component].destination = (uint16_t)(2u + component);
-        ins[4u + component].source0 = 0u;
-        ins[4u + component].source1 = 1u;
-        ins[4u + component].resource = 0u;
-        ins[4u + component].immediate = 1u;
-        init_instruction(&ins[8u + component], RINGL_RSH1_OP_STORE_OUTPUT_F32);
-        ins[8u + component].source0 = (uint16_t)(2u + component);
-        ins[8u + component].immediate = component;
+    cursor = source;
+    while (strncmp(cursor, "uniformsampler2D", strlen("uniformsampler2D")) ==
+           0) {
+        if (sampler_count == RINGL_VARYING_TEXTURE_MAX_SAMPLERS ||
+            !consume_text(&cursor, "uniformsampler2D") ||
+            !read_identifier(&cursor, sampler_names[sampler_count],
+                             sizeof(sampler_names[sampler_count])) ||
+            !consume_text(&cursor, ";")) {
+            return 1;
+        }
+        for (sampler_index = 0u; sampler_index < sampler_count;
+             ++sampler_index) {
+            if (strcmp(sampler_names[sampler_index],
+                       sampler_names[sampler_count]) == 0) {
+                return 1;
+            }
+        }
+        ++sampler_count;
     }
-    init_instruction(&ins[12], RINGL_RSH1_OP_RETURN);
-
-    memset(&header, 0, sizeof(header));
-    header.magic = RINGL_RSH1_MAGIC;
-    header.version = RINGL_RSH1_VERSION;
-    header.header_size = sizeof(header);
-    header.stage = RINGL_RSH1_STAGE_FRAGMENT;
-    header.instruction_count = 13u;
-    header.register_count = 8u;
-    /* UV uses inputs 0..1; inputs 2..3 are the fixed ABI padding. */
-    header.input_count = 4u;
-    header.output_count = 4u;
-    header.resource_count = 2u;
-    total = sizeof(header) + sizeof(ins);
-    header.total_size = (uint32_t)total;
-    memcpy(result->bytes, &header, sizeof(header));
-    memcpy(result->bytes + sizeof(header), ins, sizeof(ins));
-    result->ok = 1u;
-    result->instruction_count = header.instruction_count;
-    result->register_count = header.register_count;
-    result->input_count = header.input_count;
-    result->output_count = header.output_count;
-    result->byte_size = header.total_size;
-    return 0;
-}
-
-static int lower_fragment_two_sampler(const char* source,
-                                      RinGLGlslLowerResult* result)
-{
-    RinGLRsh1HeaderV1 header;
-    RinGLRsh1InstructionV1 ins[21];
-    char first_sampler[64];
-    char second_sampler[64];
-    char varying[64];
-    char expected[512];
-    uint32_t component;
-    size_t total;
-
-    if (!read_decl_name(source, "uniformsampler2D", 0u, first_sampler,
-                        sizeof(first_sampler)) ||
-        !read_decl_name(source, "uniformsampler2D", 1u, second_sampler,
-                        sizeof(second_sampler)) ||
-        !read_decl_name(source, "varyingvec2", 0u, varying,
-                        sizeof(varying))) {
+    if (sampler_count == 0u || !consume_text(&cursor, "varyingvec2") ||
+        !read_identifier(&cursor, varying, sizeof(varying)) ||
+        !consume_text(&cursor, ";") ||
+        !consume_text(&cursor, "voidmain(){gl_FragColor=")) {
         return 1;
     }
-    (void)snprintf(expected, sizeof(expected),
-                   "uniformsampler2D%s;uniformsampler2D%s;varyingvec2%s;"
-                   "voidmain(){gl_FragColor=texture2D(%s,%s)+texture2D(%s,%s);}",
-                   first_sampler, second_sampler, varying, first_sampler,
-                   varying, second_sampler, varying);
-    if (strcmp(source, expected) != 0)
+    for (;;) {
+        if (call_count == RINGL_VARYING_TEXTURE_MAX_CALLS ||
+            !parse_varying_texture_call(&cursor, sampler_names, sampler_count,
+                                        varying, &calls[call_count])) {
+            return 1;
+        }
+        ++call_count;
+        if (*cursor != '+')
+            break;
+        ++cursor;
+    }
+    if (strcmp(cursor, ";}") != 0)
         return 1;
 
+    for (sampler_index = 0u; sampler_index < sampler_count; ++sampler_index) {
+        for (call_index = 0u; call_index < call_count; ++call_index) {
+            if (calls[call_index].sampler_index != sampler_index)
+                continue;
+            sampler_resource_indices[sampler_index] = sampler_binding_count;
+            sampler_binding_indices[sampler_binding_count++] = sampler_index;
+            break;
+        }
+    }
+    if (sampler_binding_count == 0u)
+        return 1;
+
+    sample_base = 4u;
+    add_base = sample_base + call_count * 4u;
+    store_base = add_base + (call_count - 1u) * 4u;
+    add_register_base = 2u + call_count * 4u;
+    final_base = call_count == 1u
+        ? 2u : add_register_base + (call_count - 2u) * 4u;
+    padding_base = final_base + 4u;
+    memset(ins, 0, sizeof(ins));
     for (component = 0u; component < 4u; ++component) {
         init_instruction(&ins[component], RINGL_RSH1_OP_LOAD_INPUT_F32);
         ins[component].destination = component < 2u
-            ? (uint16_t)component : (uint16_t)(14u + component - 2u);
+            ? (uint16_t)component
+            : (uint16_t)(padding_base + component - 2u);
         ins[component].immediate = component;
-        init_instruction(&ins[4u + component],
-                         RINGL_RSH1_OP_SAMPLE_IMAGE_2D_F32);
-        ins[4u + component].flags = (uint16_t)component;
-        ins[4u + component].destination = (uint16_t)(2u + component);
-        ins[4u + component].source0 = 0u;
-        ins[4u + component].source1 = 1u;
-        ins[4u + component].resource = 0u;
-        ins[4u + component].immediate = 1u;
-        init_instruction(&ins[8u + component],
-                         RINGL_RSH1_OP_SAMPLE_IMAGE_2D_F32);
-        ins[8u + component].flags = (uint16_t)component;
-        ins[8u + component].destination = (uint16_t)(6u + component);
-        ins[8u + component].source0 = 0u;
-        ins[8u + component].source1 = 1u;
-        ins[8u + component].resource = 2u;
-        ins[8u + component].immediate = 3u;
-        init_instruction(&ins[12u + component], RINGL_RSH1_OP_ADD_F32);
-        ins[12u + component].destination = (uint16_t)(10u + component);
-        ins[12u + component].source0 = (uint16_t)(2u + component);
-        ins[12u + component].source1 = (uint16_t)(6u + component);
-        init_instruction(&ins[16u + component],
-                         RINGL_RSH1_OP_STORE_OUTPUT_F32);
-        ins[16u + component].source0 = (uint16_t)(10u + component);
-        ins[16u + component].immediate = component;
     }
-    init_instruction(&ins[20], RINGL_RSH1_OP_RETURN);
+    for (call_index = 0u; call_index < call_count; ++call_index) {
+        uint32_t resource_pair =
+            sampler_resource_indices[calls[call_index].sampler_index] * 2u;
+
+        for (component = 0u; component < 4u; ++component) {
+            RinGLRsh1InstructionV1* sample =
+                &ins[sample_base + call_index * 4u + component];
+
+            init_instruction(sample, RINGL_RSH1_OP_SAMPLE_IMAGE_2D_F32);
+            sample->flags = (uint16_t)component;
+            sample->destination = (uint16_t)(2u + call_index * 4u + component);
+            sample->source0 = 0u;
+            sample->source1 = 1u;
+            sample->resource = (uint16_t)resource_pair;
+            sample->immediate = resource_pair + 1u;
+        }
+    }
+    for (call_index = 0u; call_index + 1u < call_count; ++call_index) {
+        uint32_t previous_base = call_index == 0u
+            ? 2u : add_register_base + (call_index - 1u) * 4u;
+        uint32_t next_base = 2u + (call_index + 1u) * 4u;
+        uint32_t destination_base = add_register_base + call_index * 4u;
+
+        for (component = 0u; component < 4u; ++component) {
+            RinGLRsh1InstructionV1* add =
+                &ins[add_base + call_index * 4u + component];
+
+            init_instruction(add, RINGL_RSH1_OP_ADD_F32);
+            add->destination = (uint16_t)(destination_base + component);
+            add->source0 = (uint16_t)(previous_base + component);
+            add->source1 = (uint16_t)(next_base + component);
+        }
+    }
+    for (component = 0u; component < 4u; ++component) {
+        RinGLRsh1InstructionV1* store = &ins[store_base + component];
+
+        init_instruction(store, RINGL_RSH1_OP_STORE_OUTPUT_F32);
+        store->source0 = (uint16_t)(final_base + component);
+        store->immediate = component;
+    }
+    init_instruction(&ins[store_base + 4u], RINGL_RSH1_OP_RETURN);
 
     memset(&header, 0, sizeof(header));
     header.magic = RINGL_RSH1_MAGIC;
     header.version = RINGL_RSH1_VERSION;
     header.header_size = sizeof(header);
     header.stage = RINGL_RSH1_STAGE_FRAGMENT;
-    header.instruction_count = 21u;
-    header.register_count = 16u;
+    header.instruction_count = store_base + 5u;
+    header.register_count = 8u * call_count;
     header.input_count = 4u;
     header.output_count = 4u;
-    header.resource_count = 4u;
-    total = sizeof(header) + sizeof(ins);
+    header.resource_count = sampler_binding_count * 2u;
+    total = sizeof(header) +
+        (size_t)header.instruction_count * sizeof(ins[0]);
     header.total_size = (uint32_t)total;
     memcpy(result->bytes, &header, sizeof(header));
-    memcpy(result->bytes + sizeof(header), ins, sizeof(ins));
+    memcpy(result->bytes + sizeof(header), ins,
+           (size_t)header.instruction_count * sizeof(ins[0]));
     result->ok = 1u;
     result->instruction_count = header.instruction_count;
     result->register_count = header.register_count;
     result->input_count = header.input_count;
     result->output_count = header.output_count;
     result->byte_size = header.total_size;
-    result->sampler_binding_count = 2u;
-    result->sampler_binding_indices[0] = 0u;
-    result->sampler_binding_indices[1] = 1u;
+    result->sampler_binding_count = sampler_binding_count;
+    memcpy(result->sampler_binding_indices, sampler_binding_indices,
+           (size_t)sampler_binding_count * sizeof(sampler_binding_indices[0]));
     return 0;
 }
 
@@ -636,14 +738,12 @@ int ringl_glsl_lower_varying_rsh1(uint32_t shader_type,
                shader_type == RINGL_FRAGMENT_SHADER) {
         rc = lower_fragment_two_vec2(compact, result);
         if (rc != 0)
-            rc = lower_fragment_two_sampler(compact, result);
-        if (rc != 0)
-            rc = lower_fragment(compact, result);
+            rc = lower_fragment_texture_chain(compact, result);
     }
     else if (shader_type == RINGL_VERTEX_SHADER)
         rc = lower_vertex(compact, result);
     else if (shader_type == RINGL_FRAGMENT_SHADER)
-        rc = lower_fragment(compact, result);
+        rc = lower_fragment_texture_chain(compact, result);
     else
         rc = 1;
     free(compact);

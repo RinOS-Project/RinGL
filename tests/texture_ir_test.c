@@ -110,6 +110,20 @@ int main(void)
         "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
         "varying vec2 uv; void main() { gl_FragColor = "
         "texture2D(firstTexture, uv) + texture2D(secondTexture, uv); }";
+    const char* varying_repeated_partial_source =
+        "uniform sampler2D unusedTexture; uniform sampler2D activeTexture; "
+        "varying vec2 uv; void main() { gl_FragColor = "
+        "texture2D(activeTexture, uv) + texture2D(activeTexture, uv) + "
+        "texture2D(activeTexture, uv); }";
+    const char* varying_eight_sampler_source =
+        "uniform sampler2D s0; uniform sampler2D s1; "
+        "uniform sampler2D s2; uniform sampler2D s3; "
+        "uniform sampler2D s4; uniform sampler2D s5; "
+        "uniform sampler2D s6; uniform sampler2D s7; varying vec2 uv; "
+        "void main() { gl_FragColor = texture2D(s7, uv) + "
+        "texture2D(s6, uv) + texture2D(s5, uv) + texture2D(s4, uv) + "
+        "texture2D(s3, uv) + texture2D(s2, uv) + texture2D(s1, uv) + "
+        "texture2D(s0, uv); }";
     float scalar_splat = 0.75f;
 
     assert(ringl_context_create(&desc, &context) == 0);
@@ -321,6 +335,67 @@ int main(void)
         assert(second_sample->resource == 2u && second_sample->immediate == 3u);
         assert(add->source0 == 2u + component);
         assert(add->source1 == 6u + component);
+    }
+
+    /* Repeated calls over a non-first declaration compact to one RSH1
+     * image/sampler pair while retaining independent samples and sums. */
+    ringl_shader_source(shader, varying_repeated_partial_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 29u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.instruction_count == 29u);
+    assert(header.register_count == 24u);
+    assert(header.resource_count == 2u);
+    for (component = 0u; component < 4u; ++component) {
+        const Instruction* first_sample =
+            (const Instruction*)(blob + sizeof(header)) + 4u + component;
+        const Instruction* second_sample =
+            (const Instruction*)(blob + sizeof(header)) + 8u + component;
+        const Instruction* third_sample =
+            (const Instruction*)(blob + sizeof(header)) + 12u + component;
+        const Instruction* first_add =
+            (const Instruction*)(blob + sizeof(header)) + 16u + component;
+        const Instruction* second_add =
+            (const Instruction*)(blob + sizeof(header)) + 20u + component;
+        const Instruction* store =
+            (const Instruction*)(blob + sizeof(header)) + 24u + component;
+
+        assert(first_sample->resource == 0u && first_sample->immediate == 1u);
+        assert(second_sample->resource == 0u && second_sample->immediate == 1u);
+        assert(third_sample->resource == 0u && third_sample->immediate == 1u);
+        assert(first_add->source0 == 2u + component);
+        assert(first_add->source1 == 6u + component);
+        assert(second_add->source0 == 14u + component);
+        assert(second_add->source1 == 10u + component);
+        assert(store->source0 == 18u + component);
+    }
+
+    /* The shared-coordinate profile reaches the declaration/call ceiling
+     * without exceeding the RSH1 limits. Calls remain in source order while
+     * active resource pairs remain declaration ordered. */
+    ringl_shader_source(shader, varying_eight_sampler_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 69u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.instruction_count == 69u);
+    assert(header.register_count == 64u);
+    assert(header.resource_count == 16u);
+    for (component = 0u; component < 4u; ++component) {
+        const Instruction* first_sample =
+            (const Instruction*)(blob + sizeof(header)) + 4u + component;
+        const Instruction* final_sample =
+            (const Instruction*)(blob + sizeof(header)) + 32u + component;
+
+        assert(first_sample->resource == 14u && first_sample->immediate == 15u);
+        assert(final_sample->resource == 0u && final_sample->immediate == 1u);
     }
 
     ringl_context_destroy(context);

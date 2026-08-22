@@ -174,15 +174,17 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
         return;
     }
     vertex_buffer = &context->buffers[buffer_index];
-    if (vertex_buffer->ringpu_handle == 0u ||
-        ringl_get_or_create_graphics_pipeline(
-            context, context->default_framebuffer.color_format, &pipeline) != 0 ||
-        pipeline == 0u) {
+    if (vertex_buffer->ringpu_handle == 0u) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
 
+    /* Reset first so the previous submission releases its pipeline references
+     * before the bounded cache considers evicting an old pipeline. */
     if (begin_commands(context, &command_list) != 0 ||
+        ringl_get_or_create_graphics_pipeline(
+            context, context->default_framebuffer.color_format, &pipeline) != 0 ||
+        pipeline == 0u ||
         transition_to_color_target(context, command_list) != 0 ||
         begin_color_pass(context, command_list, RINGL_RIN_GPU_RENDER_LOAD) != 0) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);

@@ -130,7 +130,9 @@ int ringl_validate_index_fetch(const RinGLContext* context,
                                   RINGL_OBJECT_BUFFER) == NULL)
         return -1;
 
-    if (index_type == RINGL_UNSIGNED_SHORT)
+    if (index_type == RINGL_UNSIGNED_BYTE)
+        index_size = 1u;
+    else if (index_type == RINGL_UNSIGNED_SHORT)
         index_size = 2u;
     else if (index_type == RINGL_UNSIGNED_INT)
         index_size = 4u;
@@ -157,7 +159,9 @@ int ringl_validate_index_fetch(const RinGLContext* context,
         uint32_t value;
         const uint8_t* source = buffer->shadow_bytes + offset +
             (uint64_t)i * index_size;
-        if (index_size == 2u) {
+        if (index_size == 1u) {
+            value = source[0];
+        } else if (index_size == 2u) {
             uint16_t value16;
             memcpy(&value16, source, sizeof(value16));
             value = value16;

@@ -76,21 +76,49 @@ and test a bounded transient-index conversion path.
 
 ## 4. Viewport, scissor and rasterizer state
 
-RinGL still needs GLES viewport/scissor/culling semantics. The current public
-RinGPU graphics descriptors and draw commands do not expose a native viewport,
-scissor rectangle, face-culling mode or front-face winding contract.
+RinGL now tracks GLES viewport/scissor/culling/front-face state and exposes the
+corresponding queries. The current public RinGPU graphics descriptors and draw
+commands do not expose a native viewport, scissor rectangle, face-culling mode
+or front-face winding contract, so RinGL deliberately does not claim that these
+states affect submitted rendering yet.
 
-Before RinGL can make those GL states affect submitted rendering, RinGPU needs a
-versioned rasterization-state contract. It may be immutable pipeline state,
-dynamic command state, or a combination, but it should cover at least:
+RinGPU needs a versioned rasterization-state contract. It may be immutable
+pipeline state, dynamic command state, or a combination, but it should cover at
+least:
 
 - viewport rectangle and depth range;
 - scissor enable/rectangle;
 - cull enable and front/back selection;
 - clockwise/counter-clockwise front-face definition.
 
-RinGL can track these states before that contract exists, but must not pretend
-they affect rendering until the backend boundary supports them.
+## 5. Completion wait semantics for `glFinish`
+
+RinGPU exposes fence creation, a signal fence/value on queue submission, and a
+fence value query. RinGL still needs an explicit contract for waiting until all
+previously submitted GPU work has completed before `glFinish` can return.
+
+If `ringpu_fence_value()` is defined to expose device-completed rather than only
+accepted/published work, RinGPU should document the allowed bounded wait/poll
+pattern and device-loss behavior. Otherwise RinGPU needs a wait primitive, for
+example a versioned fence-wait API with timeout/device-loss semantics.
+
+RinGL must not implement `glFinish` by assuming that successful queue submission
+itself means GPU execution completion.
+
+## 6. CPU readback for `glReadPixels` and observable buffer reads
+
+The public API has CPU-to-GPU upload paths, but RinGL has not found a public
+GPU-to-CPU image/buffer readback primitive. GLES requires framebuffer readback
+through `glReadPixels`, and later compatibility work may require observable
+buffer readback as well.
+
+RinGPU needs a bounded native readback contract, either through CPU-readable
+resources plus map/invalidate semantics or explicit buffer/image download APIs.
+It should define completion synchronization, row/slice pitch handling for
+images, bounds checking, cache synchronization, and device-loss behavior.
+
+RinGL should not read backend-private allocation cookies or rely on a software
+backend's host pointer to emulate this on hardware paths.
 
 ## Already available and not blockers
 
@@ -98,4 +126,5 @@ The current public RinGPU API already exposes the pieces RinGL needs for level-0
 RGBA8 texture object realization: CPU-visible images, `ringpu_upload_image`,
 `SHADER_READ` image state, sampler objects, typed graphics bindings, graphics
 resource binding commands, and sampled-image/sampler resource kinds in
-RinShader. Those should be used directly rather than duplicated in RinGL.
+RinShader. It also exposes the first depth and blend pipeline contracts. Those
+should be used directly rather than duplicated in RinGL.

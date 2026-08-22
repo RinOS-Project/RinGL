@@ -66,6 +66,8 @@ static RinGLPipelineKey make_key(uint32_t color_format, uint32_t offset)
     key.primitive_topology = RINGL_NATIVE_PRIMITIVE_TRIANGLE_LIST;
     key.vertex_stride = 8u;
     key.attribute_count = 2u;
+    key.color_write_mask = RINGL_RIN_GPU_COLOR_WRITE_ALL;
+    key.front_face = RINGL_CCW;
     key.attributes[0].location = 0u;
     key.attributes[0].format = RINGL_NATIVE_VERTEX_FLOAT32;
     key.attributes[0].offset = 0u;
@@ -116,6 +118,12 @@ int main(void)
     assert(!ringl_pipeline_key_equal(&a, &b));
     b = a;
     b.fragment_shader_module++;
+    assert(!ringl_pipeline_key_equal(&a, &b));
+    b = a;
+    b.front_face = RINGL_CW;
+    assert(!ringl_pipeline_key_equal(&a, &b));
+    b = a;
+    b.blend_enabled = 1u;
     assert(!ringl_pipeline_key_equal(&a, &b));
 
     assert(ringl_context_create(&desc, &context) == 0);

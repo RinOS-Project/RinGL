@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #include <assert.h>
 #include <stdint.h>
+#include <string.h>
 
 #include <ringl/ringl.h>
 
@@ -72,6 +73,7 @@ int main(void)
     uint32_t vertex;
     uint32_t fragment;
     uint32_t program;
+    char log[192];
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -92,6 +94,18 @@ int main(void)
     assert(backend.shader_creates == 2u);
     assert(ringl_get_shader_module(vertex) != 0u);
     assert(ringl_get_shader_module(fragment) != 0u);
+
+    ringl_shader_source(fragment,
+        "uniform sampler2D tex; "
+        "void main() { gl_FragColor = texture2D(tex, vec2(0.5, 0.5)); }",
+        -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+    ringl_link_program(program);
+    assert(ringl_get_program_link_status(program) == RINGL_FALSE);
+    assert(ringl_get_program_info_log(program, log, sizeof(log)) > 0u);
+    assert(strstr(log, "fragment shader") != NULL);
+    assert(backend.shader_creates == 2u);
 
     ringl_shader_source(fragment,
         "void main() { gl_FragColor = 0.5; }", -1);

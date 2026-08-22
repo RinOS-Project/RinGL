@@ -282,9 +282,12 @@ before the draw, and publishes tracked states only after submission succeeds.
 The focused RinGL-to-RinGPU-to-Aquamarine test leaves a first declaration
 unbound while repeated reads of the second draw their actual clamped result;
 it also verifies reverse-order red + green + blue and all eight samplers
-(sixteen typed resources) producing actual white pixels. This is not general
-multi-texture GLSL: arbitrary expressions, nonconstant coordinates, and
-varying-coordinate multi-sampler shaders remain unsupported.
+(sixteen typed resources) producing actual white pixels. The initial
+varying-coordinate extension also accepts exactly two declared samplers, one
+`varying vec2`, and `texture2D(first, uv) + texture2D(second, uv)`; both pairs
+use the perspective-interpolated coordinate and the bridge reaches an actual
+yellow pixel. Other arbitrary expressions, nonconstant coordinates, and
+varying-coordinate multi-sampler chains remain unsupported.
 
 The initial varying bridge now also executes a bounded vertex-color profile:
 `attribute vec2 position; attribute vec4 color; varying vec4 vertexColor;`

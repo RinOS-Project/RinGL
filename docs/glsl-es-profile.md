@@ -54,6 +54,11 @@ pair. RinGL uses the saved active-declaration map to make the matching selective
 typed bind group, so unused declarations need no fabricated resource use. The
 profile has a formulaic maximum of 85 instructions and 80 registers, below
 RinGL's 96-register ceiling and RinGPU's public 256-register limit.
+The initial varying-coordinate multi-sampler extension accepts exactly two
+sampler declarations, one shared `varying vec2`, and an exact two-call
+addition; both pairs use the perspective-interpolated UV. Repeated,
+selectively active, or larger varying-coordinate sampler chains are not yet
+accepted.
 Nonconstant coordinates in this profile, other arithmetic, vector locals,
 matrices, other uniform types, additional varying types, derivatives, loops,
 user functions, precision edge cases, and broader GLSL ES built-ins remain

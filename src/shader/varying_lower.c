@@ -209,6 +209,92 @@ static int lower_fragment(const char* source, RinGLGlslLowerResult* result)
     return 0;
 }
 
+static int lower_fragment_two_sampler(const char* source,
+                                      RinGLGlslLowerResult* result)
+{
+    RinGLRsh1HeaderV1 header;
+    RinGLRsh1InstructionV1 ins[21];
+    char first_sampler[64];
+    char second_sampler[64];
+    char varying[64];
+    char expected[512];
+    uint32_t component;
+    size_t total;
+
+    if (!read_decl_name(source, "uniformsampler2D", 0u, first_sampler,
+                        sizeof(first_sampler)) ||
+        !read_decl_name(source, "uniformsampler2D", 1u, second_sampler,
+                        sizeof(second_sampler)) ||
+        !read_decl_name(source, "varyingvec2", 0u, varying,
+                        sizeof(varying))) {
+        return 1;
+    }
+    (void)snprintf(expected, sizeof(expected),
+                   "uniformsampler2D%s;uniformsampler2D%s;varyingvec2%s;"
+                   "voidmain(){gl_FragColor=texture2D(%s,%s)+texture2D(%s,%s);}",
+                   first_sampler, second_sampler, varying, first_sampler,
+                   varying, second_sampler, varying);
+    if (strcmp(source, expected) != 0)
+        return 1;
+
+    for (component = 0u; component < 4u; ++component) {
+        init_instruction(&ins[component], RINGL_RSH1_OP_LOAD_INPUT_F32);
+        ins[component].destination = component < 2u
+            ? (uint16_t)component : (uint16_t)(14u + component - 2u);
+        ins[component].immediate = component;
+        init_instruction(&ins[4u + component],
+                         RINGL_RSH1_OP_SAMPLE_IMAGE_2D_F32);
+        ins[4u + component].flags = (uint16_t)component;
+        ins[4u + component].destination = (uint16_t)(2u + component);
+        ins[4u + component].source0 = 0u;
+        ins[4u + component].source1 = 1u;
+        ins[4u + component].resource = 0u;
+        ins[4u + component].immediate = 1u;
+        init_instruction(&ins[8u + component],
+                         RINGL_RSH1_OP_SAMPLE_IMAGE_2D_F32);
+        ins[8u + component].flags = (uint16_t)component;
+        ins[8u + component].destination = (uint16_t)(6u + component);
+        ins[8u + component].source0 = 0u;
+        ins[8u + component].source1 = 1u;
+        ins[8u + component].resource = 2u;
+        ins[8u + component].immediate = 3u;
+        init_instruction(&ins[12u + component], RINGL_RSH1_OP_ADD_F32);
+        ins[12u + component].destination = (uint16_t)(10u + component);
+        ins[12u + component].source0 = (uint16_t)(2u + component);
+        ins[12u + component].source1 = (uint16_t)(6u + component);
+        init_instruction(&ins[16u + component],
+                         RINGL_RSH1_OP_STORE_OUTPUT_F32);
+        ins[16u + component].source0 = (uint16_t)(10u + component);
+        ins[16u + component].immediate = component;
+    }
+    init_instruction(&ins[20], RINGL_RSH1_OP_RETURN);
+
+    memset(&header, 0, sizeof(header));
+    header.magic = RINGL_RSH1_MAGIC;
+    header.version = RINGL_RSH1_VERSION;
+    header.header_size = sizeof(header);
+    header.stage = RINGL_RSH1_STAGE_FRAGMENT;
+    header.instruction_count = 21u;
+    header.register_count = 16u;
+    header.input_count = 4u;
+    header.output_count = 4u;
+    header.resource_count = 4u;
+    total = sizeof(header) + sizeof(ins);
+    header.total_size = (uint32_t)total;
+    memcpy(result->bytes, &header, sizeof(header));
+    memcpy(result->bytes + sizeof(header), ins, sizeof(ins));
+    result->ok = 1u;
+    result->instruction_count = header.instruction_count;
+    result->register_count = header.register_count;
+    result->input_count = header.input_count;
+    result->output_count = header.output_count;
+    result->byte_size = header.total_size;
+    result->sampler_binding_count = 2u;
+    result->sampler_binding_indices[0] = 0u;
+    result->sampler_binding_indices[1] = 1u;
+    return 0;
+}
+
 static int lower_vertex_color(const char* source,
                               uint32_t color_width,
                               RinGLGlslLowerResult* result)
@@ -549,6 +635,8 @@ int ringl_glsl_lower_varying_rsh1(uint32_t shader_type,
     } else if (strstr(compact, "varyingvec2") != NULL &&
                shader_type == RINGL_FRAGMENT_SHADER) {
         rc = lower_fragment_two_vec2(compact, result);
+        if (rc != 0)
+            rc = lower_fragment_two_sampler(compact, result);
         if (rc != 0)
             rc = lower_fragment(compact, result);
     }

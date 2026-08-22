@@ -106,6 +106,10 @@ int main(void)
         "texture2D(s4, vec2(0.4)) + texture2D(s3, vec2(0.3)) + "
         "texture2D(s2, vec2(0.2)) + texture2D(s1, vec2(0.1)) + "
         "texture2D(s0, vec2(0.0)); }";
+    const char* varying_two_sampler_source =
+        "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
+        "varying vec2 uv; void main() { gl_FragColor = "
+        "texture2D(firstTexture, uv) + texture2D(secondTexture, uv); }";
     float scalar_splat = 0.75f;
 
     assert(ringl_context_create(&desc, &context) == 0);
@@ -293,6 +297,31 @@ int main(void)
     assert(header.instruction_count == 85u);
     assert(header.register_count == 80u);
     assert(header.resource_count == 16u);
+
+    ringl_shader_source(shader, varying_two_sampler_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 21u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.instruction_count == 21u);
+    assert(header.register_count == 16u);
+    assert(header.resource_count == 4u);
+    for (component = 0u; component < 4u; ++component) {
+        const Instruction* first_sample =
+            (const Instruction*)(blob + sizeof(header)) + 4u + component;
+        const Instruction* second_sample =
+            (const Instruction*)(blob + sizeof(header)) + 8u + component;
+        const Instruction* add =
+            (const Instruction*)(blob + sizeof(header)) + 12u + component;
+
+        assert(first_sample->resource == 0u && first_sample->immediate == 1u);
+        assert(second_sample->resource == 2u && second_sample->immediate == 3u);
+        assert(add->source0 == 2u + component);
+        assert(add->source1 == 6u + component);
+    }
 
     ringl_context_destroy(context);
     return 0;

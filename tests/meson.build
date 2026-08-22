@@ -38,6 +38,14 @@ texture_test = executable(
 
 test('texture', texture_test)
 
+texture_gpu_test = executable(
+  'ringl-texture-gpu-test',
+  'texture_gpu_test.c',
+  dependencies: ringl_dep,
+)
+
+test('texture-gpu', texture_gpu_test)
+
 vertex_attrib_test = executable(
   'ringl-vertex-attrib-test',
   'vertex_attrib_test.c',

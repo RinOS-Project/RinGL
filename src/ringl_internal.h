@@ -22,6 +22,7 @@ typedef struct RinGLShaderObject {
     char* source;
     uint8_t* rsh1;
     uint64_t source_length;
+    uint64_t ringpu_module;
     uint32_t rsh1_size;
     uint32_t shader_type;
     uint32_t compile_status;
@@ -95,6 +96,10 @@ int ringl_backend_upload_buffer(RinGLContext* context,
                                 uint64_t offset,
                                 const void* data,
                                 uint64_t size_bytes);
+int ringl_backend_create_shader_module(RinGLContext* context,
+                                       const void* rsh1,
+                                       uint64_t size_bytes,
+                                       uint64_t* shader_module_out);
 void ringl_backend_destroy_object(RinGLContext* context, uint64_t object);
 void ringl_buffer_objects_destroy_all(RinGLContext* context);
 void ringl_shader_objects_destroy_all(RinGLContext* context);

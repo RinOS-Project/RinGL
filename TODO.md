@@ -18,8 +18,8 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Add GL error state and `glGetError` semantics.
 - [x] Define internal object-name allocation with generation/lifetime checks.
 - [x] Add dirty-state tracking so ordinary state changes do not emit RinGPU commands immediately.
-- [ ] Implement basic state queries required by the initial profile.
-- [x] Add tests for context isolation, object-name reuse, and error behavior.
+- [x] Implement basic integer state queries for bindings, limits, program, viewport/scissor, and raster state.
+- [x] Add tests for context isolation, object-name reuse, error behavior, and fixed-function state queries.
 
 ## Phase 2 — Buffers and vertex input
 
@@ -48,8 +48,10 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Parse bounded `uniform sampler2D` declarations and retain names through shader compilation.
 - [x] Link sampler uniforms into program locations and implement `getUniformLocation`/`uniform1i`-style state.
 - [x] Report linked sampler uniforms through program reflection.
-- [ ] Add GLSL ES `texture2D()` parsing/type validation.
+- [x] Parse and validate the initial fragment-shader `texture2D(sampler2D, vec2(...))` form.
+- [x] Fail texture sampling RSH1 lowering explicitly rather than inventing a private IR encoding.
 - [ ] Lower `texture2D()` after RinShader exposes an unambiguous 2D-coordinate/RGBA sample operation.
+- [ ] Add general vertex-to-fragment varying support after RinShader/RinGPU exposes a position-builtin + user-varying interface contract.
 
 ## Phase 4 — First hardware-rendered triangle
 
@@ -79,7 +81,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Lazily realize complete level-0 texture storage as CPU-visible RinGPU sampled RGBA8 images and upload the canonical shadow contents.
 - [x] Lazily map texture filtering/wrap state to RinGPU sampler objects.
 - [x] Add fake-RinGPU tests for image/sampler realization, cache hits, invalidation, and level-zero completeness.
-- [ ] Bind realized sampled images/samplers to RinGPU graphics resource slots before draws (waiting on texture sampling IR lowering).
+- [ ] Bind realized sampled images/samplers to RinGPU graphics resource slots before draws (waiting on texture sampling IR lowering and varying linkage).
 - [ ] Add a textured-triangle integration test.
 
 ## Phase 6 — Framebuffers and fixed-function state
@@ -87,10 +89,11 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [ ] Implement framebuffer/renderbuffer object models.
 - [ ] Map FBO attachments to RinGPU render-pass attachments.
 - [ ] Implement framebuffer completeness validation for supported combinations.
-- [ ] Implement viewport and scissor state.
-- [ ] Implement face culling and front-face state.
-- [ ] Implement depth test/write state.
-- [ ] Implement blending and color write masks.
+- [x] Implement viewport and scissor GL state, validation, defaults, and queries.
+- [x] Implement face-culling/front-face GL state, validation, defaults, and queries.
+- [ ] Apply viewport/scissor/culling to submitted rendering after RinGPU exposes a rasterization-state contract.
+- [ ] Implement depth test/write state and map the supported subset to RinGPU depth pipelines.
+- [ ] Implement blending and color write masks and map the supported subset to RinGPU blend pipelines.
 - [ ] Implement stencil support once the required RinGPU contract is available.
 - [ ] Include all immutable draw-relevant state in pipeline caching.
 
@@ -130,6 +133,10 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [ ] Add API trace tests for representative GL sequences.
 - [ ] Run an appropriate GLES conformance suite when the implementation is mature enough.
 - [ ] Document every known incompatibility before advertising a supported GL/GLES version.
+
+## RinGPU/RinShader dependencies
+
+See `docs/ringpu-gaps.md`. RinGL should stop cleanly at these native-boundary gaps rather than introducing GL-specific behavior or private shader encodings into RinGPU.
 
 ## Optional software backend
 

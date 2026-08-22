@@ -18,9 +18,10 @@ extern "C" {
 
 #define RINGL_FALSE 0u
 #define RINGL_TRUE  1u
-#define RINGL_FLOAT          0x1406u
+#define RINGL_UNSIGNED_BYTE  0x1401u
 #define RINGL_UNSIGNED_SHORT 0x1403u
 #define RINGL_UNSIGNED_INT   0x1405u
+#define RINGL_FLOAT          0x1406u
 
 #define RINGL_TRIANGLES        0x0004u
 #define RINGL_COLOR_BUFFER_BIT 0x00004000u
@@ -33,7 +34,9 @@ extern "C" {
 
 #define RINGL_TEXTURE_2D 0x0de1u
 #define RINGL_TEXTURE0   0x84c0u
+#define RINGL_RGBA       0x1908u
 #define RINGL_MAX_TEXTURE_UNITS 8u
+#define RINGL_MAX_TEXTURE_SIZE  4096u
 
 #define RINGL_VERTEX_SHADER   0x8b31u
 #define RINGL_FRAGMENT_SHADER 0x8b30u
@@ -259,6 +262,15 @@ int ringl_is_texture(uint32_t texture);
 void ringl_active_texture(uint32_t texture_unit);
 uint32_t ringl_get_active_texture(void);
 uint32_t ringl_get_bound_texture(uint32_t target);
+void ringl_tex_image_2d(uint32_t target, int32_t level,
+                        uint32_t internal_format, int32_t width, int32_t height,
+                        int32_t border, uint32_t format, uint32_t type,
+                        const void* pixels);
+void ringl_tex_sub_image_2d(uint32_t target, int32_t level,
+                            int32_t xoffset, int32_t yoffset,
+                            int32_t width, int32_t height,
+                            uint32_t format, uint32_t type,
+                            const void* pixels);
 
 void ringl_enable_vertex_attrib_array(uint32_t index);
 void ringl_disable_vertex_attrib_array(uint32_t index);

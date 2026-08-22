@@ -116,6 +116,34 @@ static uint64_t texture_source_row_pitch(uint32_t width, uint32_t format,
     return (row_bytes + alignment - 1u) & ~(uint64_t)(alignment - 1u);
 }
 
+/* The final source row has no required trailing alignment padding. This
+ * calculation is an embedding boundary, so retain overflow checks even though
+ * the current texture dimensions are deliberately small. */
+static int texture_required_source_bytes(uint32_t width, uint32_t height,
+                                         uint32_t format, uint32_t alignment,
+                                         uint64_t* bytes_out)
+{
+    uint64_t row_bytes;
+    uint64_t row_pitch;
+
+    if (bytes_out == NULL || alignment == 0u)
+        return -1;
+    if (width == 0u || height == 0u) {
+        *bytes_out = 0u;
+        return 0;
+    }
+
+    row_bytes = (uint64_t)width * texture_external_texel_bytes(format);
+    if (row_bytes > UINT64_MAX - ((uint64_t)alignment - 1u))
+        return -1;
+    row_pitch = texture_source_row_pitch(width, format, alignment);
+    if ((uint64_t)(height - 1u) > (UINT64_MAX - row_bytes) / row_pitch)
+        return -1;
+
+    *bytes_out = (uint64_t)(height - 1u) * row_pitch + row_bytes;
+    return 0;
+}
+
 static void texture_copy_color_texels(uint8_t* destination,
                                       const uint8_t* source,
                                       uint32_t format, uint32_t texel_count)
@@ -616,10 +644,11 @@ int32_t ringl_get_tex_parameteri(uint32_t target, uint32_t pname)
     return 0;
 }
 
-void ringl_tex_image_2d(uint32_t target, int32_t level,
-                        uint32_t internal_format, int32_t width, int32_t height,
-                        int32_t border, uint32_t format, uint32_t type,
-                        const void* pixels)
+static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
+                                    uint32_t internal_format, int32_t width,
+                                    int32_t height, int32_t border,
+                                    uint32_t format, uint32_t type,
+                                    const void* pixels, uint64_t pixels_size)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLTextureObject* texture;
@@ -650,6 +679,17 @@ void ringl_tex_image_2d(uint32_t target, int32_t level,
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
+    if (pixels != NULL) {
+        uint64_t required_source_bytes;
+
+        if (texture_required_source_bytes((uint32_t)width, (uint32_t)height,
+                                          format, context->unpack_alignment,
+                                          &required_source_bytes) != 0 ||
+            pixels_size < required_source_bytes) {
+            ringl_context_record_error(context, RINGL_INVALID_VALUE);
+            return;
+        }
+    }
 
     size = (uint64_t)(uint32_t)width * (uint64_t)(uint32_t)height *
            texture_storage_texel_bytes(internal_format);
@@ -663,7 +703,7 @@ void ringl_tex_image_2d(uint32_t target, int32_t level,
             if (texture_color_format(internal_format)) {
                 uint32_t row;
                 uint64_t source_row_pitch = texture_source_row_pitch(
-                    (uint32_t)width, internal_format,
+                    (uint32_t)width, format,
                     context->unpack_alignment);
 
                 for (row = 0u; row < (uint32_t)height; ++row) {
@@ -675,7 +715,7 @@ void ringl_tex_image_2d(uint32_t target, int32_t level,
             } else if (internal_format == RINGL_DEPTH24_STENCIL8) {
                 uint32_t row;
                 uint64_t source_row_pitch = texture_source_row_pitch(
-                    (uint32_t)width, internal_format,
+                    (uint32_t)width, format,
                     context->unpack_alignment);
 
                 for (row = 0u; row < (uint32_t)height; ++row) {
@@ -687,7 +727,7 @@ void ringl_tex_image_2d(uint32_t target, int32_t level,
             } else {
                 uint32_t row;
                 uint64_t source_row_pitch = texture_source_row_pitch(
-                    (uint32_t)width, internal_format,
+                    (uint32_t)width, format,
                     context->unpack_alignment);
 
                 for (row = 0u; row < (uint32_t)height; ++row) {
@@ -712,11 +752,31 @@ void ringl_tex_image_2d(uint32_t target, int32_t level,
     ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
 }
 
-void ringl_tex_sub_image_2d(uint32_t target, int32_t level,
-                            int32_t xoffset, int32_t yoffset,
-                            int32_t width, int32_t height,
-                            uint32_t format, uint32_t type,
-                            const void* pixels)
+void ringl_tex_image_2d(uint32_t target, int32_t level,
+                        uint32_t internal_format, int32_t width, int32_t height,
+                        int32_t border, uint32_t format, uint32_t type,
+                        const void* pixels)
+{
+    ringl_tex_image_2d_impl(target, level, internal_format, width, height,
+                            border, format, type, pixels, UINT64_MAX);
+}
+
+void ringl_tex_image_2d_from_bytes(uint32_t target, int32_t level,
+                                   uint32_t internal_format, int32_t width,
+                                   int32_t height, int32_t border,
+                                   uint32_t format, uint32_t type,
+                                   const void* pixels, uint64_t pixels_size)
+{
+    ringl_tex_image_2d_impl(target, level, internal_format, width, height,
+                            border, format, type, pixels, pixels_size);
+}
+
+static void ringl_tex_sub_image_2d_impl(uint32_t target, int32_t level,
+                                        int32_t xoffset, int32_t yoffset,
+                                        int32_t width, int32_t height,
+                                        uint32_t format, uint32_t type,
+                                        const void* pixels,
+                                        uint64_t pixels_size)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLTextureObject* texture;
@@ -758,6 +818,17 @@ void ringl_tex_sub_image_2d(uint32_t target, int32_t level,
     if (pixels == NULL || texture->shadow_bytes == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
+    }
+    {
+        uint64_t required_source_bytes;
+
+        if (texture_required_source_bytes((uint32_t)width, (uint32_t)height,
+                                          format, context->unpack_alignment,
+                                          &required_source_bytes) != 0 ||
+            pixels_size < required_source_bytes) {
+            ringl_context_record_error(context, RINGL_INVALID_VALUE);
+            return;
+        }
     }
 
     for (row = 0u; row < (uint32_t)height; ++row) {
@@ -872,6 +943,27 @@ void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
     free(replacement);
     texture_discard_image(context, texture);
     ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
+}
+
+void ringl_tex_sub_image_2d(uint32_t target, int32_t level,
+                            int32_t xoffset, int32_t yoffset,
+                            int32_t width, int32_t height,
+                            uint32_t format, uint32_t type,
+                            const void* pixels)
+{
+    ringl_tex_sub_image_2d_impl(target, level, xoffset, yoffset, width,
+                                height, format, type, pixels, UINT64_MAX);
+}
+
+void ringl_tex_sub_image_2d_from_bytes(uint32_t target, int32_t level,
+                                       int32_t xoffset, int32_t yoffset,
+                                       int32_t width, int32_t height,
+                                       uint32_t format, uint32_t type,
+                                       const void* pixels,
+                                       uint64_t pixels_size)
+{
+    ringl_tex_sub_image_2d_impl(target, level, xoffset, yoffset, width,
+                                height, format, type, pixels, pixels_size);
 }
 
 void ringl_copy_tex_image_2d(uint32_t target, int32_t level,

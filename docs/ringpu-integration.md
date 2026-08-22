@@ -26,6 +26,18 @@ ringpu_upload_buffer()
 published as GL buffer storage
 ```
 
+## Bounded texture-import path
+
+`ringl_tex_image_2d_from_bytes()` and
+`ringl_tex_sub_image_2d_from_bytes()` accept a source pointer together with its
+byte extent. Before they allocate, replace, or patch CPU texture shadow storage,
+they calculate the exact bytes that valid source rows can read under the current
+`RINGL_UNPACK_ALIGNMENT`. This includes inter-row padding and excludes padding
+after the final row. A short source reports `RINGL_INVALID_VALUE`, preserving
+the previous definition. Browser/other untrusted embeddings must use these
+bounded APIs; the older raw-pointer forms are compatibility entry points for
+trusted native callers only.
+
 The callback boundary remains useful because RinGL is a standalone repository and should not hard-wire an OS-Core internal session type into its portable context ABI.
 
 ## OS-Core adapter

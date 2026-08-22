@@ -119,6 +119,11 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     to color, D32, and D32S8 `texImage2D`/`texSubImage2D` source rows before
     canonical shadow storage or RinGPU upload.
 - [x] Implement robust CPU-side `texImage2D` zero initialization and bounded `texSubImage2D` updates.
+  - [x] Add bounded `texImage2D`/`texSubImage2D` import entry points for
+    untrusted byte spans. They validate the exact readable bytes under the
+    current unpack alignment before allocating, replacing, or patching texture
+    shadow storage; legacy raw-pointer entry points are documented as trusted
+    native-only compatibility APIs.
 - [x] Implement GLES-style texture filtering/wrap sampler state and invalidate realized samplers when it changes.
 - [x] Implement sampler uniform locations and program-selected texture-unit state.
 - [x] Lazily realize complete level-0 texture storage as CPU-visible RinGPU sampled RGBA8 images and upload the canonical shadow contents.

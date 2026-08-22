@@ -275,6 +275,15 @@ one. The strict C11 RinGL tests cover format normalization, tightly-packed RGB
 image/sub-image data, and padded D32 source rows; the surface integration test
 renders a normalized RGB texture through the real RinGPU resource binding.
 
+Embeddings handling browser-facing byte uploads must use
+`ringl_tex_image_2d_from_bytes()` and `ringl_tex_sub_image_2d_from_bytes()`.
+Those APIs take the source extent and
+validate every readable row, including unpack-alignment padding but excluding
+unused padding after the final row, before allocating or changing texture
+shadow storage. A short byte span produces `INVALID_VALUE` with the prior
+definition intact. The older raw-pointer texture APIs remain only for trusted
+native callers that can prove the source extent independently.
+
 `copyTexSubImage2D` has a bounded data-movement path from the current complete
 RGBA color target, including a complete RGBA8 texture/renderbuffer FBO, into a
 defined level-zero `RGBA` texture. It validates FBO completeness and both source

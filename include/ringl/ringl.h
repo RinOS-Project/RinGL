@@ -874,11 +874,29 @@ void ringl_tex_image_2d(uint32_t target, int32_t level,
                         uint32_t internal_format, int32_t width, int32_t height,
                         int32_t border, uint32_t format, uint32_t type,
                         const void* pixels);
+/* Bounded texture-import paths for callers that receive untrusted bytes.
+ * When pixels is non-NULL it must cover every source row, including
+ * RINGL_UNPACK_ALIGNMENT padding between rows. A short source records
+ * RINGL_INVALID_VALUE before changing the texture. A NULL texImage source
+ * defines zero-initialized storage; non-empty texSubImage sources must not be
+ * NULL. The raw-pointer entry points above remain for trusted native callers
+ * that can independently guarantee the source extent. */
+void ringl_tex_image_2d_from_bytes(uint32_t target, int32_t level,
+                                   uint32_t internal_format, int32_t width,
+                                   int32_t height, int32_t border,
+                                   uint32_t format, uint32_t type,
+                                   const void* pixels, uint64_t pixels_size);
 void ringl_tex_sub_image_2d(uint32_t target, int32_t level,
                             int32_t xoffset, int32_t yoffset,
                             int32_t width, int32_t height,
                             uint32_t format, uint32_t type,
                             const void* pixels);
+void ringl_tex_sub_image_2d_from_bytes(uint32_t target, int32_t level,
+                                       int32_t xoffset, int32_t yoffset,
+                                       int32_t width, int32_t height,
+                                       uint32_t format, uint32_t type,
+                                       const void* pixels,
+                                       uint64_t pixels_size);
 /* Bounded copy path: the current complete RGBA color target to a level-zero
  * RGBA texture. Non-RGBA destinations remain rejected. */
 void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,

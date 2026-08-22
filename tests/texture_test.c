@@ -93,9 +93,17 @@ int main(void)
     ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 2, 2, 0,
                        RINGL_RGBA, RINGL_UNSIGNED_BYTE, pixels);
     assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_tex_image_2d_from_bytes(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 2, 2, 0,
+                                  RINGL_RGBA, RINGL_UNSIGNED_BYTE, pixels,
+                                  sizeof(pixels) - 1u);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
     ringl_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 1, 1, 1, 1,
                            RINGL_RGBA, RINGL_UNSIGNED_BYTE, patch);
     assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_tex_sub_image_2d_from_bytes(RINGL_TEXTURE_2D, 0, 0, 0, 1, 1,
+                                      RINGL_RGBA, RINGL_UNSIGNED_BYTE, patch,
+                                      sizeof(patch) - 1u);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
     ringl_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 2, 1, 1, 1,
                            RINGL_RGBA, RINGL_UNSIGNED_BYTE, patch);
     assert(ringl_get_error() == RINGL_INVALID_VALUE);

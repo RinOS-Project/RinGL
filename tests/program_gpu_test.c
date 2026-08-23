@@ -201,8 +201,8 @@ int main(void)
         "void main() { gl_Position = transform * position; uv = texCoord; }",
         -1);
     ringl_shader_source(matrix_fragment,
-        "precision mediump float; uniform sampler2D texture; "
-        "void main() { gl_FragColor = texture2D(texture, vec2(0.5, 0.5)); }",
+        "precision mediump float; uniform sampler2D texture; varying vec2 uv; "
+        "void main() { gl_FragColor = texture2D(texture, uv); }",
         -1);
     ringl_compile_shader(matrix_vertex);
     ringl_compile_shader(matrix_fragment);

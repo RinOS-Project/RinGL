@@ -426,8 +426,11 @@ to logical stencil state. The offscreen D24S8 surface allocation keeps F32
 depth and byte stencil in separate checked planes, so its eight-byte transfer
 format is never used as the in-memory depth pitch. Strict FBO tests and the
 actual RinGL-to-RinGPU-to-Aquamarine test cover these combinations. Texture
-cube faces, mip levels beyond zero, multisample storage, and resolve remain
-outside this bounded profile.
+attachments are not merely query-only: the same actual test runs a native D32
+renderbuffer together with a level-zero D24S8 stencil texture through clear,
+depth-fail stencil update, and RGBA readback. Texture cube faces, mip levels
+beyond zero, multisample storage, and resolve remain outside this bounded
+profile.
 
 `ringl_get_framebuffer_attachment()` is the versioned, caller-owned query for
 the bounded custom-FBO model. It reports the actual current
@@ -437,8 +440,8 @@ realizing a RinGPU image for observation. A combined query returns no object
 unless both logical aspects share one attachment. The older color-only helper
 is retained as a compatibility shorthand; new embeddings should use the
 attachment-point query. Texture cube faces, mip levels beyond zero, separate
-depth/stencil texture execution certification, and multisample attachments
-remain outside the profile.
+texture pairs beyond the verified D32-renderbuffer/D24S8-stencil-texture path,
+and multisample attachments remain outside the profile.
 
 `ringl_clear()` also carries a bounded lower-left clear region and an RGBA
 write mask to RinGPU. An enabled WebGL scissor clips color, depth, and stencil

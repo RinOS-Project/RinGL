@@ -456,16 +456,18 @@ and fragment-input locations, which the RinGPU pipeline maps one-to-one.
 This remains a bounded profile. A default caller-owned D32 surface has no
 stencil storage unless its embedding explicitly supplies the matching S8
 plane; that D32S8 default target executes the same front/back stencil path.
-Level-zero `DEPTH_COMPONENT32F` textures also execute through the existing
-bounded `sampler2D`/`texture2D()` RSH1 path. RinGL realizes D32 images with
-both depth-target and sampled usage; RinGPU's ordinary sampled-image binding
-accepts D32, and the Aquamarine executor projects a sampled texel to the
-deterministic `(depth, 0, 0, 1)` compatibility value. Only red is relied on
-by the WebGL depth-texture extension; the remaining values are this backend's
-documented deterministic choice. A texture equal to either active FBO
-attachment is rejected before it can form a feedback loop. D24S8 texture
-sampling, multisampling, multiple color attachments, and broad GLES
-framebuffer semantics are not implemented.
+Level-zero `DEPTH_COMPONENT32F` and `DEPTH24_STENCIL8` textures also execute
+through the existing bounded `sampler2D`/`texture2D()` RSH1 path. RinGL
+realizes their D32/D32S8 images with both depth-target and sampled usage;
+RinGPU's ordinary sampled-image binding accepts both, and the Aquamarine
+executor snapshots their depth plane as the deterministic
+`(depth, 0, 0, 1)` compatibility value. The D24S8 stencil plane remains in
+its native attachment storage and is not exposed by this regular sample path.
+Only red is relied on by the WebGL depth-texture extension; the remaining
+values are this backend's documented deterministic choice. A texture equal to
+either active FBO attachment is rejected before it can form a feedback loop.
+Multisampling, multiple color attachments, and broad GLES framebuffer
+semantics are not implemented.
 
 RinGL is not a GLES conformance claim. An exact backend
 `RINGL_RIN_GPU_ERROR_DEVICE_LOST` now makes the context sticky-lost: ordinary

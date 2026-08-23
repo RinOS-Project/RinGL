@@ -279,7 +279,8 @@ static int texture_realize_image(RinGLContext* context,
         color_target_desc.usage =
             RINGL_RIN_GPU_IMAGE_USAGE_COPY_DESTINATION |
             RINGL_RIN_GPU_IMAGE_USAGE_DEPTH_STENCIL;
-        if (texture->format == RINGL_DEPTH_COMPONENT32F)
+        if (texture->format == RINGL_DEPTH_COMPONENT32F ||
+            texture->format == RINGL_DEPTH24_STENCIL8)
             color_target_desc.usage |= RINGL_RIN_GPU_IMAGE_USAGE_SAMPLED;
         if (ringl_backend_create_image_2d(context, &color_target_desc,
                                           &image) != 0 || image == 0u) {
@@ -374,7 +375,8 @@ int ringl_texture_realize_unit(RinGLContext* context, uint32_t unit,
         return -1;
     texture = &context->textures[slot_index];
     if (!(texture_color_format(texture->format) ||
-          texture->format == RINGL_DEPTH_COMPONENT32F) ||
+          texture->format == RINGL_DEPTH_COMPONENT32F ||
+          texture->format == RINGL_DEPTH24_STENCIL8) ||
         !texture_level0_complete(texture) ||
         texture_realize_image(context, texture) != 0 ||
         texture_realize_sampler(context, texture) != 0) {

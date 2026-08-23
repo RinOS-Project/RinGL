@@ -118,6 +118,12 @@ boundaries retain both attachments rather than aliasing the source and copy.
 Depth/stencil, multisample, and other FBO copy semantics remain outside this
 slice.
 
+The strict RinGL sync test records the corresponding callback-level ordering:
+command-list create/reset, image transition, render-pass begin/end, immediate
+submit, fenced submit/wait, and readback for clear → copy → clear → flush →
+finish → readback. It requires `flush` to leave the trace unchanged because
+current RinGL submits observable render work immediately.
+
 The same level-zero sampled-image path accepts WebGL 1 packed texture input:
 `RGB`/`UNSIGNED_SHORT_5_6_5`, `RGBA`/`UNSIGNED_SHORT_4_4_4_4`, and
 `RGBA`/`UNSIGNED_SHORT_5_5_5_1` retain native RGB565/RGBA4/RGB5_A1 two-byte

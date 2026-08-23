@@ -559,6 +559,13 @@ flushes and finishes, then reads the original FBO again. This proves that the
 `COPY_SOURCE` and later `COLOR_TARGET` transitions split passes without aliasing
 or overwriting either attachment.
 
+The strict sync test complements that live-pixel evidence with an exact fake
+RinGPU event trace for clear → copy → clear → flush → finish → readback. It
+asserts command-list creation/reset, every `COPY_SOURCE`/`COLOR_TARGET`
+transition, render-pass begin/end, immediate queue submission, fenced submission
+and wait, plus readback order; `flush` is explicitly checked to add no deferred
+work under the current immediate-submit model.
+
 The one-sampler constant texture profile accepts both `vec2(u, v)` and the
 GLSL scalar-splat form `vec2(value)`. The latter requires a finite literal and
 stores that exact Float32 value in both RSH1 texture-coordinate registers, so

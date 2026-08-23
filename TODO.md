@@ -274,7 +274,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   `ringl_get_error()` reports `CONTEXT_LOST_WEBGL` once, and later calls do not
   mutate RinGL state. Focused fake-backend tests cover both a command callback
   and readback loss; browser event/recovery wiring remains separate work.
-- [ ] Add broader tests for ordering across draws, copies, barriers, flushes, finish, and readbacks.
+- [x] Add broader tests for ordering across draws, copies, barriers, flushes, finish, and readbacks. The actual RinGL→RinGPU→Aquamarine test verifies draw/copy/readback/flush/finish ownership across source and copied FBOs, while the strict sync test records the complete command-list reset, image-transition barrier, render-pass, queue submit, fence wait, and readback event sequence for clear → copy → clear → flush → finish → readback.
 
 ## Phase 8 — OpenGL ES compatibility expansion
 

@@ -8,6 +8,20 @@
 
 #include "../src/ringl_internal.h"
 
+enum FakeBackendTraceEvent {
+    FAKE_TRACE_CREATE_COMMAND_LIST = 1,
+    FAKE_TRACE_RESET_COMMAND_LIST,
+    FAKE_TRACE_TRANSITION_IMAGE,
+    FAKE_TRACE_BEGIN_RENDER_PASS,
+    FAKE_TRACE_END_RENDER_PASS,
+    FAKE_TRACE_CLOSE_COMMAND_LIST,
+    FAKE_TRACE_QUEUE_SUBMIT,
+    FAKE_TRACE_CREATE_FENCE,
+    FAKE_TRACE_SUBMIT_FENCED,
+    FAKE_TRACE_WAIT_FENCE,
+    FAKE_TRACE_READBACK,
+};
+
 typedef struct FakeBackend {
     uint64_t next_handle;
     uint64_t fence;
@@ -23,7 +37,19 @@ typedef struct FakeBackend {
     uint32_t render_passes;
     uint32_t queue_submits;
     uint32_t destroys;
+    uint32_t trace_enabled;
+    uint32_t trace_event_count;
+    uint32_t trace_events[64];
 } FakeBackend;
+
+static void fake_trace_event(FakeBackend* backend, uint32_t event)
+{
+    if (backend->trace_enabled == 0u)
+        return;
+    assert(backend->trace_event_count <
+           sizeof(backend->trace_events) / sizeof(backend->trace_events[0]));
+    backend->trace_events[backend->trace_event_count++] = event;
+}
 
 static int fake_create_buffer(void* session, uint64_t size_bytes,
                               uint64_t* buffer_out)
@@ -58,14 +84,16 @@ static int fake_create_command_list(void* session, uint32_t capabilities,
 {
     FakeBackend* backend = session;
     assert(capabilities == RINGL_RIN_GPU_QUEUE_GRAPHICS);
+    fake_trace_event(backend, FAKE_TRACE_CREATE_COMMAND_LIST);
     *command_list_out = ++backend->next_handle;
     return 0;
 }
 
 static int fake_reset_command_list(void* session, uint64_t command_list)
 {
-    (void)session;
+    FakeBackend* backend = session;
     assert(command_list != 0u);
+    fake_trace_event(backend, FAKE_TRACE_RESET_COMMAND_LIST);
     return 0;
 }
 
@@ -76,8 +104,13 @@ static int fake_transition_image(void* session, uint64_t command_list,
     FakeBackend* backend = session;
     assert(command_list != 0u);
     if (image == 700u) {
-        assert(old_state == RINGL_RIN_GPU_IMAGE_PRESENT);
-        assert(new_state == RINGL_RIN_GPU_IMAGE_COPY_SOURCE);
+        assert((old_state == RINGL_RIN_GPU_IMAGE_PRESENT &&
+                (new_state == RINGL_RIN_GPU_IMAGE_COPY_SOURCE ||
+                 new_state == RINGL_RIN_GPU_IMAGE_COLOR_TARGET)) ||
+               (old_state == RINGL_RIN_GPU_IMAGE_COLOR_TARGET &&
+                new_state == RINGL_RIN_GPU_IMAGE_COPY_SOURCE) ||
+               (old_state == RINGL_RIN_GPU_IMAGE_COPY_SOURCE &&
+                new_state == RINGL_RIN_GPU_IMAGE_COLOR_TARGET));
     } else if (image == 702u) {
         assert((old_state == RINGL_RIN_GPU_IMAGE_UNDEFINED &&
                 new_state == RINGL_RIN_GPU_IMAGE_COLOR_TARGET) ||
@@ -91,6 +124,7 @@ static int fake_transition_image(void* session, uint64_t command_list,
                 new_state == RINGL_RIN_GPU_IMAGE_COPY_SOURCE));
     }
     backend->transitions++;
+    fake_trace_event(backend, FAKE_TRACE_TRANSITION_IMAGE);
     return 0;
 }
 
@@ -118,16 +152,19 @@ static int fake_begin_render_pass(void* session, uint64_t command_list,
     FakeBackend* backend = session;
 
     assert(command_list != 0u && pass != NULL);
-    assert(pass->color_target == 701u || pass->color_target == 702u);
+    assert(pass->color_target == 700u || pass->color_target == 701u ||
+           pass->color_target == 702u);
     assert(pass->load_op == RINGL_RIN_GPU_RENDER_CLEAR);
     assert(pass->store_op == RINGL_RIN_GPU_RENDER_STORE);
     backend->render_passes++;
+    fake_trace_event(backend, FAKE_TRACE_BEGIN_RENDER_PASS);
     return 0;
 }
 
 static int fake_end_render_pass(void* session, uint64_t command_list)
 {
-    (void)session;
+    FakeBackend* backend = session;
+    fake_trace_event(backend, FAKE_TRACE_END_RENDER_PASS);
     return command_list != 0u ? 0 : -1;
 }
 
@@ -138,13 +175,15 @@ static int fake_queue_submit(void* session, uint64_t queue,
 
     assert(queue == 900u && command_list != 0u);
     backend->queue_submits++;
+    fake_trace_event(backend, FAKE_TRACE_QUEUE_SUBMIT);
     return 0;
 }
 
 static int fake_close(void* session, uint64_t command_list)
 {
-    (void)session;
+    FakeBackend* backend = session;
     assert(command_list != 0u);
+    fake_trace_event(backend, FAKE_TRACE_CLOSE_COMMAND_LIST);
     return 0;
 }
 
@@ -154,6 +193,7 @@ static int fake_create_fence(void* session, uint64_t initial_value,
     FakeBackend* backend = session;
     assert(initial_value == 0u);
     backend->fence = ++backend->next_handle;
+    fake_trace_event(backend, FAKE_TRACE_CREATE_FENCE);
     *fence_out = backend->fence;
     return 0;
 }
@@ -168,6 +208,7 @@ static int fake_submit_fenced(void* session, uint64_t queue,
     assert(signal_value > backend->last_signal_value);
     backend->last_signal_value = signal_value;
     backend->submits++;
+    fake_trace_event(backend, FAKE_TRACE_SUBMIT_FENCED);
     return 0;
 }
 
@@ -179,6 +220,7 @@ static int fake_wait_fence(void* session, uint64_t fence, uint64_t value,
     assert(value == backend->last_signal_value);
     assert(timeout_ns == RINGL_TIMEOUT_INFINITE);
     backend->waits++;
+    fake_trace_event(backend, FAKE_TRACE_WAIT_FENCE);
     return 0;
 }
 
@@ -223,6 +265,7 @@ static int fake_readback(void* session, uint64_t image,
         memcpy(destination, image == 700u ? expected_bgra : expected_rgba,
                sizeof(expected_bgra));
     backend->readbacks++;
+    fake_trace_event(backend, FAKE_TRACE_READBACK);
     return 0;
 }
 
@@ -327,8 +370,134 @@ static void copy_to_packed_mip_definition(RinGLContext* context,
     assert(copied[0] == first_expected && copied[1] == second_expected);
 }
 
+static void verify_full_submission_ordering(void)
+{
+    static const uint32_t expected_trace[] = {
+        FAKE_TRACE_CREATE_COMMAND_LIST,
+        FAKE_TRACE_TRANSITION_IMAGE,
+        FAKE_TRACE_BEGIN_RENDER_PASS,
+        FAKE_TRACE_END_RENDER_PASS,
+        FAKE_TRACE_CLOSE_COMMAND_LIST,
+        FAKE_TRACE_QUEUE_SUBMIT,
+        FAKE_TRACE_RESET_COMMAND_LIST,
+        FAKE_TRACE_TRANSITION_IMAGE,
+        FAKE_TRACE_CREATE_FENCE,
+        FAKE_TRACE_CLOSE_COMMAND_LIST,
+        FAKE_TRACE_SUBMIT_FENCED,
+        FAKE_TRACE_WAIT_FENCE,
+        FAKE_TRACE_READBACK,
+        FAKE_TRACE_RESET_COMMAND_LIST,
+        FAKE_TRACE_TRANSITION_IMAGE,
+        FAKE_TRACE_BEGIN_RENDER_PASS,
+        FAKE_TRACE_END_RENDER_PASS,
+        FAKE_TRACE_CLOSE_COMMAND_LIST,
+        FAKE_TRACE_QUEUE_SUBMIT,
+        FAKE_TRACE_RESET_COMMAND_LIST,
+        FAKE_TRACE_CLOSE_COMMAND_LIST,
+        FAKE_TRACE_SUBMIT_FENCED,
+        FAKE_TRACE_WAIT_FENCE,
+        FAKE_TRACE_RESET_COMMAND_LIST,
+        FAKE_TRACE_TRANSITION_IMAGE,
+        FAKE_TRACE_CLOSE_COMMAND_LIST,
+        FAKE_TRACE_SUBMIT_FENCED,
+        FAKE_TRACE_WAIT_FENCE,
+        FAKE_TRACE_READBACK,
+    };
+    FakeBackend backend = {0};
+    RinGLRinGpuOpsV1 ops = {
+        .struct_size = sizeof(ops),
+        .api_version = RINGL_API_VERSION,
+        .create_buffer = fake_create_buffer,
+        .upload_buffer = fake_upload_buffer,
+        .destroy_object = fake_destroy,
+        .create_command_list = fake_create_command_list,
+        .reset_command_list = fake_reset_command_list,
+        .transition_image = fake_transition_image,
+        .begin_render_pass = fake_begin_render_pass,
+        .close_command_list = fake_close,
+        .end_render_pass = fake_end_render_pass,
+        .queue_submit = fake_queue_submit,
+        .create_image_2d = fake_create_image_2d,
+    };
+    RinGLRinGpuBindingV1 binding = {
+        .struct_size = sizeof(binding),
+        .api_version = RINGL_API_VERSION,
+        .session = &backend,
+        .ops = &ops,
+        .graphics_queue = 900u,
+        .queue_capabilities = RINGL_RIN_GPU_QUEUE_GRAPHICS,
+    };
+    RinGLContextDescV1 desc = {
+        .struct_size = sizeof(desc),
+        .api_version = RINGL_API_VERSION,
+        .ringpu = &binding,
+    };
+    RinGLRinGpuSyncOpsV1 sync_ops = {
+        .struct_size = sizeof(sync_ops),
+        .api_version = RINGL_SYNC_API_VERSION,
+        .create_fence = fake_create_fence,
+        .queue_submit_fenced = fake_submit_fenced,
+        .wait_fence = fake_wait_fence,
+        .readback_image_2d = fake_readback,
+    };
+    RinGLDefaultFramebufferV1 framebuffer = {
+        .struct_size = sizeof(framebuffer),
+        .api_version = RINGL_API_VERSION,
+        .color_target = 700u,
+        .color_format = 3u, /* BGRA8_UNORM */
+        .width = 8u,
+        .height = 8u,
+    };
+    RinGLContext* context = NULL;
+    uint32_t texture = 0u;
+    uint8_t pixels[8] = {0u};
+    uint32_t event_index;
+    uint32_t trace_count_before_flush;
+
+    assert(ringl_context_create(&desc, &context) == 0);
+    assert(ringl_context_set_sync_ops(context, &sync_ops) == 0);
+    assert(ringl_make_current(context) == 0);
+    assert(ringl_set_default_framebuffer(&framebuffer) == 0);
+    backend.trace_enabled = 1u;
+
+    ringl_clear(RINGL_COLOR_BUFFER_BIT);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_gen_textures(1, &texture);
+    ringl_bind_texture(RINGL_TEXTURE_2D, texture);
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 2, 1, 0,
+                       RINGL_RGBA, RINGL_UNSIGNED_BYTE, NULL);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_copy_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 1, 2, 2, 1);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_clear(RINGL_COLOR_BUFFER_BIT);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+
+    trace_count_before_flush = backend.trace_event_count;
+    ringl_flush();
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(backend.trace_event_count == trace_count_before_flush);
+    ringl_finish();
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_read_pixels_to_bytes(1, 2, 2, 1, RINGL_RGBA,
+                               RINGL_UNSIGNED_BYTE, pixels, sizeof(pixels));
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(pixels[0] == 10u && pixels[1] == 20u && pixels[2] == 30u &&
+           pixels[3] == 255u && pixels[4] == 40u && pixels[5] == 50u &&
+           pixels[6] == 60u && pixels[7] == 128u);
+    assert(backend.trace_event_count ==
+           sizeof(expected_trace) / sizeof(expected_trace[0]));
+    for (event_index = 0u; event_index < backend.trace_event_count;
+         ++event_index) {
+        assert(backend.trace_events[event_index] == expected_trace[event_index]);
+    }
+
+    ringl_context_destroy(context);
+}
+
 int main(void)
 {
+    verify_full_submission_ordering();
+
     FakeBackend backend = {0};
     RinGLRinGpuOpsV1 ops = {
         .struct_size = sizeof(ops),

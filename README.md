@@ -330,6 +330,13 @@ module and atomically replaces only the vertex module on a matrix update. The
 focused RinGPU-module test verifies the fragment module retains its two typed
 image/sampler resources across the update.
 
+Stage selection is per linked uniform name, not merely per shader stage. In a
+transformed, tinted texture program, changing `transform` replaces only the
+vertex executable while changing `tint` replaces only the fragment executable;
+a name declared by both stages replaces both. Replacement modules are fully
+validated before the former artifact is destroyed, so a failed update retains
+the last linked executable and resource layout.
+
 That path now executes a bounded transformed textured-quad profile end to
 end: a vertex shader may transform an `attribute vec4` position (or construct
 one from `attribute vec2` position) with a `uniform mat4`, copy one

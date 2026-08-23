@@ -389,10 +389,11 @@ int main(void)
     ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);
     assert(ringl_get_error() == RINGL_NO_ERROR);
 
-    /* Link builds program-owned vertex and fragment modules. The matrix and
-     * tint setters each atomically rebuild those native RSH1 executables
-     * before the textured draw builds its pipeline. */
-    assert(backend.shader_creates == 6u);
+    /* Link builds program-owned vertex and fragment modules. The matrix
+     * setter replaces only the vertex executable; the tint setter replaces
+     * only the fragment executable before the textured draw builds its
+     * native pipeline. */
+    assert(backend.shader_creates == 4u);
     assert(backend.bind_group_creates == 1u);
     memcpy(commands, backend.commands, backend.command_count);
     commands[backend.command_count] = '\0';

@@ -175,6 +175,9 @@ int main(void)
     uint32_t matrix_vertex;
     uint32_t matrix_fragment;
     uint32_t matrix_program;
+    uint32_t shared_uniform_vertex;
+    uint32_t shared_uniform_fragment;
+    uint32_t shared_uniform_program;
     char log[192];
 
     assert(ringl_context_create(&desc, &context) == 0);
@@ -252,9 +255,8 @@ int main(void)
         int32_t tint_location = ringl_get_uniform_location(matrix_program, "tint");
         int32_t location = ringl_get_uniform_location(matrix_program, "transform");
 
-        /* `texture` occupies sampler location zero. The vertex mat4 remains
-         * independently mutable while the fragment uses its ordinary
-         * texture-lowering module. */
+        /* `texture` occupies sampler location zero. The transform and tint
+         * are independently mutable program-owned executables. */
         assert(tint_location == 1);
         assert(location == 2);
         ringl_use_program(matrix_program);
@@ -262,9 +264,9 @@ int main(void)
         backend.validate_expected_transform = 1u;
         ringl_uniform_matrix4fv(location, 0u, transform);
         assert(ringl_get_error() == RINGL_NO_ERROR);
-        assert(backend.shader_creates == 7u);
-        assert(backend.texture_fragment_modules == 3u);
-        assert(backend.tinted_texture_fragment_modules == 2u);
+        assert(backend.shader_creates == 6u);
+        assert(backend.texture_fragment_modules == 2u);
+        assert(backend.tinted_texture_fragment_modules == 1u);
         assert(backend.transformed_texture_vertex_modules == 2u);
         backend.expected_tint[0] = 0.5f;
         backend.expected_tint[1] = 1.0f;
@@ -276,20 +278,49 @@ int main(void)
                           backend.expected_tint[2],
                           backend.expected_tint[3]);
         assert(ringl_get_error() == RINGL_NO_ERROR);
-        assert(backend.shader_creates == 9u);
-        assert(backend.texture_fragment_modules == 4u);
-        assert(backend.tinted_texture_fragment_modules == 3u);
-        assert(backend.transformed_texture_vertex_modules == 3u);
+        assert(backend.shader_creates == 7u);
+        assert(backend.texture_fragment_modules == 3u);
+        assert(backend.tinted_texture_fragment_modules == 2u);
+        assert(backend.transformed_texture_vertex_modules == 2u);
         backend.reject_create = 1u;
         transform[0] = 7.0f;
         ringl_uniform_matrix4fv(location, 0u, transform);
         assert(ringl_get_error() == RINGL_INVALID_OPERATION);
-        assert(backend.shader_creates == 10u);
+        assert(backend.shader_creates == 8u);
         assert(ringl_get_uniform_matrix4f(matrix_program, location, values) == 0);
         assert(values[0] == 2.0f);
         backend.reject_create = 0u;
     }
     ringl_delete_program(matrix_program);
+
+    /* The same linked name in both stages deliberately rebuilds both
+     * executables. This complements the transform/tint assertions above,
+     * which prove that independent names rebuild only their owning stage. */
+    shared_uniform_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+    shared_uniform_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+    shared_uniform_program = ringl_create_program();
+    assert(shared_uniform_vertex != 0u && shared_uniform_fragment != 0u
+           && shared_uniform_program != 0u);
+    ringl_shader_source(shared_uniform_vertex,
+        "attribute float position; uniform float gain; "
+        "void main() { gl_Position = position * gain; }", -1);
+    ringl_shader_source(shared_uniform_fragment,
+        "uniform float gain; void main() { gl_FragColor = gain; }", -1);
+    ringl_compile_shader(shared_uniform_vertex);
+    ringl_compile_shader(shared_uniform_fragment);
+    assert(ringl_get_shader_compile_status(shared_uniform_vertex) == RINGL_TRUE);
+    assert(ringl_get_shader_compile_status(shared_uniform_fragment) == RINGL_TRUE);
+    ringl_attach_shader(shared_uniform_program, shared_uniform_vertex);
+    ringl_attach_shader(shared_uniform_program, shared_uniform_fragment);
+    ringl_link_program(shared_uniform_program);
+    assert(ringl_get_program_link_status(shared_uniform_program) == RINGL_TRUE);
+    assert(backend.shader_creates == 10u);
+    ringl_use_program(shared_uniform_program);
+    assert(ringl_get_uniform_location(shared_uniform_program, "gain") == 0);
+    ringl_uniform_1f(0, 0.5f);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(backend.shader_creates == 12u);
+    ringl_delete_program(shared_uniform_program);
 
     ringl_shader_source(fragment,
         "void main() { gl_FragColor = 0.5; }", -1);
@@ -297,7 +328,7 @@ int main(void)
     backend.reject_create = 1u;
     ringl_link_program(program);
     assert(ringl_get_program_link_status(program) == RINGL_FALSE);
-    assert(backend.shader_creates == 11u);
+    assert(backend.shader_creates == 13u);
 
     ringl_context_destroy(context);
     return 0;

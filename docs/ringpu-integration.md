@@ -141,9 +141,10 @@ software executor derives perspective-correct implicit gradients, applies
 sampler bias/min/max LOD, and executes nearest/linear mip selection with the
 independent min/mag texel filters. RGB565/RGBA4/RGB5_A1 generated chains keep
 their native packed storage and average stored component precision before
-repacking; packed color mip render targets remain outside this profile.
-Focused fake and real bridge tests inspect unpacked and packed level bytes, the
-RinGPU descriptor, and the distinct level-one colour selected from a
+repacking. The V5 color-subresource records execute their nonzero packed levels
+as FBO targets for clear, native draw, and RGBA readback. Focused fake and real
+bridge tests inspect unpacked and packed level bytes, the RinGPU descriptor,
+packed mip FBO output, and the distinct level-one colour selected from a
 three-level texture.
 
 ## Shader module validation path

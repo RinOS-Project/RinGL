@@ -587,7 +587,8 @@ static int texture_realize_image(RinGLContext* context,
              texture->format != RINGL_DEPTH_COMPONENT32F &&
              texture->format != RINGL_DEPTH24_STENCIL8) ||
             (texture->requires_color_target != 0u &&
-             texture->format != RINGL_RGBA)) {
+             texture->format != RINGL_RGBA &&
+             !texture_packed_color_format(texture->format))) {
             return -1;
         }
         memset(&mip_desc, 0, sizeof(mip_desc));
@@ -630,11 +631,13 @@ static int texture_realize_image(RinGLContext* context,
                                           &image) != 0 || image == 0u) {
             return -1;
         }
-    } else if (texture->format == RINGL_RGBA && texture->requires_color_target) {
+    } else if ((texture->format == RINGL_RGBA ||
+                texture_packed_color_format(texture->format)) &&
+               texture->requires_color_target) {
         memset(&color_target_desc, 0, sizeof(color_target_desc));
         color_target_desc.width = texture->width;
         color_target_desc.height = texture->height;
-        color_target_desc.format = RINGL_RIN_GPU_FORMAT_RGBA8_UNORM;
+        color_target_desc.format = texture_ringpu_format(texture->format);
         color_target_desc.usage = RINGL_RIN_GPU_IMAGE_USAGE_COPY_DESTINATION |
                                   RINGL_RIN_GPU_IMAGE_USAGE_SAMPLED |
                                   RINGL_RIN_GPU_IMAGE_USAGE_COLOR_TARGET |

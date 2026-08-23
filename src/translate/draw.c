@@ -83,7 +83,23 @@ int ringl_resolve_color_target(RinGLContext* context,
     }
     if (framebuffer->color_attachment_kind ==
         RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D) {
-        target->format = RINGL_RIN_GPU_FORMAT_RGBA8_UNORM;
+        index = ringl_object_slot_index(framebuffer->color_attachment_object);
+        if (index >= RINGL_OBJECT_SLOT_COUNT)
+            return -1;
+        switch (context->textures[index].format) {
+        case RINGL_RGB565:
+            target->format = RINGL_RIN_GPU_FORMAT_RGB565_UNORM;
+            break;
+        case RINGL_RGBA4:
+            target->format = RINGL_RIN_GPU_FORMAT_RGBA4_UNORM;
+            break;
+        case RINGL_RGB5_A1:
+            target->format = RINGL_RIN_GPU_FORMAT_RGB5_A1_UNORM;
+            break;
+        default:
+            target->format = RINGL_RIN_GPU_FORMAT_RGBA8_UNORM;
+            break;
+        }
     }
     return target->image != 0u && target->state != NULL &&
            target->width != 0u && target->height != 0u ? 0 : -1;

@@ -302,11 +302,13 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   to shader-read, and requires the backend to accept it rather than falling
   back to level zero. RinGPU/Aquamarine uses implicit fragment gradients plus
   sampler bias/min/max LOD for nearest/linear mip selection and independent
-  min/mag texel filtering. Packed-color mip render targets remain unsupported.
-  Strict C11 fake-backend and actual RinGPU bridge tests verify level
-  dimensions, bytes, the native two-level descriptor, level-one color plus
-  combined D24S8 FBO clear/depth-tested draw/readback, and distinct level-one
-  sampled output from a three-level texture.
+  min/mag texel filtering. Packed RGB565/RGBA4/RGB5_A1 levels use the same
+  V5 color subresource callbacks for FBO clear, draw, and readback. Strict C11
+  fake-backend and actual RinGPU bridge tests verify level dimensions, bytes,
+  the native two-level descriptor, level-one color plus combined D24S8 FBO
+  clear/depth-tested draw/readback, all three packed generated mip FBO
+  clear/draw/readback paths, and distinct level-one sampled output from a
+  three-level texture.
 - [ ] Decide the boundary for OpenGL ES 3.x features.
 - [ ] Add VAOs, instancing, additional texture formats, MRT, and other GLES 3.x features only after the underlying RinGPU contracts are ready.
 

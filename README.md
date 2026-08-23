@@ -491,9 +491,10 @@ chain, and never silently substitutes level zero for a backend that lacks that
 tail. The RinGPU/Aquamarine executor calculates implicit perspective-correct
 fragment gradients, applies sampler bias/min/max LOD, then performs nearest or
 linear mip selection and the independent min/mag texel filter. Packed-color
-mip render targets remain rejected. Exactly defined unpacked RGBA8 color mips
-execute clear, direct/multi-buffer draws, and readback through optional V5
-callbacks. Exact-dimension manual D32/D24S8 levels use V6 pass records for
+mip levels execute as FBO color targets through the same V5 subresource path:
+RGB565/RGBA4/RGB5_A1 clear, draw, and readback retain their native format.
+Exactly defined unpacked RGBA8 color mips execute through the same callbacks.
+Exact-dimension manual D32/D24S8 levels use V6 pass records for
 color/depth/stencil subresources; without the required tail the FBO reports
 `FRAMEBUFFER_UNSUPPORTED`. The strict C11 RinGL tests cover format
 normalization, tightly-packed RGB image/sub-image data, padded D32 source rows,

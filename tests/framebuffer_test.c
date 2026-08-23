@@ -153,7 +153,7 @@ int main(void)
     ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER, RINGL_DEPTH_ATTACHMENT,
                                    RINGL_RENDERBUFFER, renderbuffers[1]);
     assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
-           RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT);
+           RINGL_FRAMEBUFFER_COMPLETE);
     ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER,
                                    RINGL_STENCIL_ATTACHMENT,
                                    RINGL_RENDERBUFFER, renderbuffers[1]);
@@ -161,6 +161,10 @@ int main(void)
            RINGL_FRAMEBUFFER_COMPLETE);
     ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER,
                                    RINGL_STENCIL_ATTACHMENT,
+                                   RINGL_RENDERBUFFER, 0u);
+    assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
+           RINGL_FRAMEBUFFER_COMPLETE);
+    ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER, RINGL_DEPTH_ATTACHMENT,
                                    RINGL_RENDERBUFFER, 0u);
     assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
            RINGL_FRAMEBUFFER_COMPLETE);
@@ -181,7 +185,7 @@ int main(void)
                                    RINGL_DEPTH_ATTACHMENT,
                                    RINGL_RENDERBUFFER, renderbuffers[1]);
     assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
-           RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT);
+           RINGL_FRAMEBUFFER_COMPLETE);
     ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER,
                                    RINGL_STENCIL_ATTACHMENT,
                                    RINGL_RENDERBUFFER, 0u);

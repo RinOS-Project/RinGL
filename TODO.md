@@ -289,11 +289,15 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   accept only an existing same-format base image with exact bounded mip
   dimensions. Generated and manual levels remain distinct: a base sub-image
   update drops only generated levels, while all contiguous levels are realized
-  through the optional V2 RinGPU image/upload callbacks. A V1-only backend,
-  packed color, depth/stencil, automatic derivative/LOD selection, and
-  nonzero-mip framebuffer rendering remain unsupported rather than being
-  reported as completed. Strict C11 fake-backend and actual RinGPU bridge
-  tests verify level dimensions, bytes, and the native two-level descriptor.
+  through the optional V2 RinGPU image/upload callbacks. The optional V5
+  callback tail carries a nonzero color attachment's selected subresource
+  through transition, render pass, direct/multi-buffer draw, and readback;
+  absent callbacks yield `FRAMEBUFFER_UNSUPPORTED`, never level-zero output.
+  Packed color, depth/stencil attachments, automatic derivative/LOD selection,
+  and mip-filtered rendering remain unsupported rather than being reported as
+  completed. Strict C11 fake-backend and actual RinGPU bridge tests verify
+  level dimensions, bytes, the native two-level descriptor, and a level-one
+  FBO clear/draw/readback.
 - [ ] Decide the boundary for OpenGL ES 3.x features.
 - [ ] Add VAOs, instancing, additional texture formats, MRT, and other GLES 3.x features only after the underlying RinGPU contracts are ready.
 

@@ -355,6 +355,20 @@ int ringl_backend_transition_image(RinGLContext* context,
                                                       old_state, new_state));
 }
 
+int ringl_backend_transition_image_2d_mip_v2(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuImageTransition2DMipV2* transition)
+{
+    if (context == NULL || command_list == 0u || transition == NULL ||
+        transition->image == 0u || !context->has_ringpu_ops ||
+        context->ringpu_ops.transition_image_2d_mip_v2 == NULL) {
+        return -1;
+    }
+    return ringl_backend_result(
+        context, context->ringpu_ops.transition_image_2d_mip_v2(
+                     context->ringpu.session, command_list, transition));
+}
+
 int ringl_backend_begin_render_pass(RinGLContext* context,
                                     uint64_t command_list,
                                     const RinGLRinGpuRenderPassV1* render_pass)
@@ -367,6 +381,20 @@ int ringl_backend_begin_render_pass(RinGLContext* context,
     return ringl_backend_result(
         context, context->ringpu_ops.begin_render_pass(context->ringpu.session,
                                                        command_list, render_pass));
+}
+
+int ringl_backend_begin_render_pass_mip_v2(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuRenderPassMipV2* render_pass)
+{
+    if (context == NULL || command_list == 0u || render_pass == NULL ||
+        render_pass->base.color_target == 0u || !context->has_ringpu_ops ||
+        context->ringpu_ops.begin_render_pass_mip_v2 == NULL) {
+        return -1;
+    }
+    return ringl_backend_result(
+        context, context->ringpu_ops.begin_render_pass_mip_v2(
+                     context->ringpu.session, command_list, render_pass));
 }
 
 int ringl_backend_begin_render_pass_depth(
@@ -491,6 +519,66 @@ int ringl_backend_draw_indexed_v2(RinGLContext* context,
     return ringl_backend_result(
         context, context->ringpu_ops.draw_indexed_v2(context->ringpu.session,
                                                      command_list, draw));
+}
+
+int ringl_backend_draw_vertices_mip_v3(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuDrawVerticesMipV3* draw)
+{
+    if (context == NULL || command_list == 0u || draw == NULL ||
+        draw->base.pipeline == 0u || draw->base.color_target == 0u ||
+        !context->has_ringpu_ops ||
+        context->ringpu_ops.draw_vertices_mip_v3 == NULL) {
+        return -1;
+    }
+    return ringl_backend_result(
+        context, context->ringpu_ops.draw_vertices_mip_v3(
+                     context->ringpu.session, command_list, draw));
+}
+
+int ringl_backend_draw_vertices_bindings_mip_v3(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuDrawVerticesBindingsMipV3* draw)
+{
+    if (context == NULL || command_list == 0u || draw == NULL ||
+        draw->base.pipeline == 0u || draw->base.color_target == 0u ||
+        !context->has_ringpu_ops ||
+        context->ringpu_ops.draw_vertices_bindings_mip_v3 == NULL) {
+        return -1;
+    }
+    return ringl_backend_result(
+        context, context->ringpu_ops.draw_vertices_bindings_mip_v3(
+                     context->ringpu.session, command_list, draw));
+}
+
+int ringl_backend_draw_indexed_mip_v3(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuDrawIndexedMipV3* draw)
+{
+    if (context == NULL || command_list == 0u || draw == NULL ||
+        draw->base.pipeline == 0u || draw->base.color_target == 0u ||
+        !context->has_ringpu_ops ||
+        context->ringpu_ops.draw_indexed_mip_v3 == NULL) {
+        return -1;
+    }
+    return ringl_backend_result(
+        context, context->ringpu_ops.draw_indexed_mip_v3(
+                     context->ringpu.session, command_list, draw));
+}
+
+int ringl_backend_draw_indexed_bindings_mip_v3(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuDrawIndexedBindingsMipV3* draw)
+{
+    if (context == NULL || command_list == 0u || draw == NULL ||
+        draw->base.pipeline == 0u || draw->base.color_target == 0u ||
+        !context->has_ringpu_ops ||
+        context->ringpu_ops.draw_indexed_bindings_mip_v3 == NULL) {
+        return -1;
+    }
+    return ringl_backend_result(
+        context, context->ringpu_ops.draw_indexed_bindings_mip_v3(
+                     context->ringpu.session, command_list, draw));
 }
 
 int ringl_backend_end_render_pass(RinGLContext* context,

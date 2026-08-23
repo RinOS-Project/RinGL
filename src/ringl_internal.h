@@ -62,7 +62,9 @@ typedef struct RinGLTextureObject {
     uint32_t mag_filter;
     uint32_t wrap_s;
     uint32_t wrap_t;
-    uint32_t ringpu_image_state;
+    /* RinGPU tracks image state per subresource. Keeping the same ownership
+     * here prevents a render to mip 1 from publishing COLOR_TARGET for mip 0. */
+    uint32_t ringpu_image_state[RINGL_MAX_TEXTURE_MIP_LEVELS];
     uint32_t requires_color_target;
     /* Level zero remains in the fields above for ABI-local compatibility with
      * the existing framebuffer and query paths.  Higher levels are separate,
@@ -203,6 +205,7 @@ typedef struct RinGLColorTarget {
     uint32_t format;
     uint32_t width;
     uint32_t height;
+    uint32_t mip_level;
     uint32_t* state;
 } RinGLColorTarget;
 
@@ -211,6 +214,7 @@ typedef struct RinGLDepthTarget {
     uint32_t format;
     uint32_t has_depth;
     uint32_t has_stencil;
+    uint32_t mip_level;
     uint32_t* state;
 } RinGLDepthTarget;
 
@@ -426,11 +430,17 @@ int ringl_backend_reset_command_list(RinGLContext* context,
 int ringl_backend_transition_image(RinGLContext* context,
                                    uint64_t command_list,
                                    uint64_t image,
-                                   uint32_t old_state,
-                                   uint32_t new_state);
+                                    uint32_t old_state,
+                                    uint32_t new_state);
+int ringl_backend_transition_image_2d_mip_v2(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuImageTransition2DMipV2* transition);
 int ringl_backend_begin_render_pass(RinGLContext* context,
                                     uint64_t command_list,
-                                    const RinGLRinGpuRenderPassV1* render_pass);
+                                     const RinGLRinGpuRenderPassV1* render_pass);
+int ringl_backend_begin_render_pass_mip_v2(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuRenderPassMipV2* render_pass);
 int ringl_backend_begin_render_pass_depth(
     RinGLContext* context, uint64_t command_list,
     const RinGLRinGpuRenderPassDepthV1* render_pass);
@@ -458,7 +468,19 @@ int ringl_backend_draw_vertices_v2(RinGLContext* context,
                                    const RinGLRinGpuDrawVerticesV2* draw);
 int ringl_backend_draw_indexed_v2(RinGLContext* context,
                                   uint64_t command_list,
-                                  const RinGLRinGpuDrawIndexedV2* draw);
+                                   const RinGLRinGpuDrawIndexedV2* draw);
+int ringl_backend_draw_vertices_mip_v3(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuDrawVerticesMipV3* draw);
+int ringl_backend_draw_vertices_bindings_mip_v3(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuDrawVerticesBindingsMipV3* draw);
+int ringl_backend_draw_indexed_mip_v3(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuDrawIndexedMipV3* draw);
+int ringl_backend_draw_indexed_bindings_mip_v3(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuDrawIndexedBindingsMipV3* draw);
 int ringl_backend_end_render_pass(RinGLContext* context,
                                   uint64_t command_list);
 int ringl_backend_present(RinGLContext* context,
@@ -492,8 +514,9 @@ int ringl_renderbuffer_realize_depth_target(RinGLContext* context,
 int ringl_texture_require_color_target(RinGLContext* context,
                                        uint32_t texture);
 int ringl_texture_realize_color_target(RinGLContext* context,
-                                       uint32_t texture,
-                                       uint64_t* image_out,
+                                        uint32_t texture,
+                                        uint32_t mip_level,
+                                        uint64_t* image_out,
                                        uint32_t** image_state_out,
                                        uint32_t* width_out,
                                        uint32_t* height_out);

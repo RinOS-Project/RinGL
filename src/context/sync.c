@@ -216,6 +216,7 @@ int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
                                  int32_t width, int32_t height, void* pixels)
 {
     RinGLRinGpuImageReadback2DV1 readback;
+    RinGLRinGpuImageReadback2DMipV2 mip_readback;
     uint64_t command_list;
     uint64_t row_bytes;
     uint64_t total_bytes;
@@ -233,8 +234,7 @@ int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
     }
     if (width == 0 || height == 0)
         return 0;
-    if (!context->has_sync_ops || context->sync_ops.readback_image_2d == NULL ||
-        pixels == NULL ||
+    if (!context->has_sync_ops || pixels == NULL ||
         (context->framebuffer_binding != 0u &&
          ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) !=
              RINGL_FRAMEBUFFER_COMPLETE) ||
@@ -244,6 +244,12 @@ int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
             target.width ||
         (uint64_t)(uint32_t)y + (uint64_t)(uint32_t)height >
             target.height) {
+        return -1;
+    }
+    if ((target.mip_level == 0u &&
+         context->sync_ops.readback_image_2d == NULL) ||
+        (target.mip_level != 0u &&
+         context->sync_ops.readback_image_2d_mip_v2 == NULL)) {
         return -1;
     }
     row_bytes = (uint64_t)(uint32_t)width * 4u;
@@ -270,9 +276,18 @@ int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
     if (old_state == 0u ||
         prepare_empty_command_list(context, &command_list) != 0 ||
         (old_state != RINGL_RIN_GPU_IMAGE_COPY_SOURCE &&
-         ringl_backend_transition_image(context, command_list, target.image,
-                                        old_state,
-                                        RINGL_RIN_GPU_IMAGE_COPY_SOURCE) != 0) ||
+         (target.mip_level == 0u
+              ? ringl_backend_transition_image(
+                    context, command_list, target.image, old_state,
+                    RINGL_RIN_GPU_IMAGE_COPY_SOURCE)
+              : ringl_backend_transition_image_2d_mip_v2(
+                    context, command_list,
+                    &(RinGLRinGpuImageTransition2DMipV2){
+                        .image = target.image,
+                        .mip_level = target.mip_level,
+                        .old_state = old_state,
+                        .new_state = RINGL_RIN_GPU_IMAGE_COPY_SOURCE,
+                    })) != 0) ||
         submit_and_wait(context, command_list) != 0) {
         free(native_pixels);
         return -1;
@@ -285,9 +300,18 @@ int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
     readback.width = (uint32_t)width;
     readback.height = (uint32_t)height;
     readback.destination_row_pitch_bytes = native_row_bytes;
-    result = context->sync_ops.readback_image_2d(
-        context->ringpu.session, target.image, &readback,
-        native_pixels != NULL ? native_pixels : pixels, native_total_bytes);
+    if (target.mip_level == 0u) {
+        result = context->sync_ops.readback_image_2d(
+            context->ringpu.session, target.image, &readback,
+            native_pixels != NULL ? native_pixels : pixels, native_total_bytes);
+    } else {
+        memset(&mip_readback, 0, sizeof(mip_readback));
+        mip_readback.base = readback;
+        mip_readback.mip_level = target.mip_level;
+        result = context->sync_ops.readback_image_2d_mip_v2(
+            context->ringpu.session, target.image, &mip_readback,
+            native_pixels != NULL ? native_pixels : pixels, native_total_bytes);
+    }
     if (result == RINGL_RIN_GPU_ERROR_DEVICE_LOST) {
         ringl_context_mark_lost(context);
         free(native_pixels);

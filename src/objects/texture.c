@@ -37,7 +37,8 @@ static void texture_init_defaults(RinGLTextureObject* texture)
     texture->mag_filter = RINGL_LINEAR;
     texture->wrap_s = RINGL_REPEAT;
     texture->wrap_t = RINGL_REPEAT;
-    texture->ringpu_image_state = RINGL_RIN_GPU_IMAGE_UNDEFINED;
+    memset(texture->ringpu_image_state, RINGL_RIN_GPU_IMAGE_UNDEFINED,
+           sizeof(texture->ringpu_image_state));
 }
 
 static RinGLTextureObject* bound_texture_2d(RinGLContext* context)
@@ -159,6 +160,38 @@ static uint32_t texture_defined_mip_count(const RinGLTextureObject* texture)
             break;
         }
         count = level + 1u;
+    }
+    return count;
+}
+
+/* FBO attachment completeness is defined per level, not by sampler
+ * completeness.  A manually defined level 2 may therefore be attached even
+ * when level 1 is absent.  The RinGPU image still needs an extent that covers
+ * that sparse level; unprovided intermediate levels remain undefined and are
+ * never sampled by this bounded profile. */
+static uint32_t texture_highest_defined_mip_count(
+    const RinGLTextureObject* texture)
+{
+    uint32_t level;
+    uint32_t count = 0u;
+    uint32_t level_count;
+
+    if (!texture_level_storage_defined(texture, 0u))
+        return 0u;
+    level_count = texture_mip_level_count(texture->width, texture->height);
+    for (level = 0u; level < level_count; ++level) {
+        const RinGLTextureMipStorage* storage;
+
+        if (level == 0u) {
+            count = 1u;
+            continue;
+        }
+        storage = texture_mip_storage_const(texture, level);
+        if (texture_level_storage_defined(texture, level) && storage != NULL &&
+            storage->width == texture_expected_mip_width(texture, level) &&
+            storage->height == texture_expected_mip_height(texture, level)) {
+            count = level + 1u;
+        }
     }
     return count;
 }
@@ -461,7 +494,8 @@ static void texture_discard_image(RinGLContext* context,
         return;
     ringl_backend_destroy_object(context, texture->ringpu_image);
     texture->ringpu_image = 0u;
-    texture->ringpu_image_state = RINGL_RIN_GPU_IMAGE_UNDEFINED;
+    memset(texture->ringpu_image_state, RINGL_RIN_GPU_IMAGE_UNDEFINED,
+           sizeof(texture->ringpu_image_state));
 }
 
 static int texture_realize_image(RinGLContext* context,
@@ -485,7 +519,9 @@ static int texture_realize_image(RinGLContext* context,
             : !texture_level0_complete(texture))
         return -1;
 
-    mip_count = texture_defined_mip_count(texture);
+    mip_count = texture->requires_color_target != 0u
+        ? texture_highest_defined_mip_count(texture)
+        : texture_defined_mip_count(texture);
     if (mip_count == 0u)
         return -1;
 
@@ -606,7 +642,8 @@ static int texture_realize_image(RinGLContext* context,
     }
 
     texture->ringpu_image = image;
-    texture->ringpu_image_state = RINGL_RIN_GPU_IMAGE_UNDEFINED;
+    memset(texture->ringpu_image_state, RINGL_RIN_GPU_IMAGE_UNDEFINED,
+           sizeof(texture->ringpu_image_state));
     return 0;
 }
 
@@ -1558,6 +1595,7 @@ int ringl_texture_require_color_target(RinGLContext* context, uint32_t texture)
 }
 
 int ringl_texture_realize_color_target(RinGLContext* context, uint32_t texture,
+                                       uint32_t mip_level,
                                        uint64_t* image_out,
                                        uint32_t** image_state_out,
                                        uint32_t* width_out,
@@ -1566,7 +1604,8 @@ int ringl_texture_realize_color_target(RinGLContext* context, uint32_t texture,
     uint32_t index;
     RinGLTextureObject* object;
 
-    if (context == NULL || image_out == NULL || image_state_out == NULL ||
+    if (context == NULL || mip_level >= RINGL_MAX_TEXTURE_MIP_LEVELS ||
+        image_out == NULL || image_state_out == NULL ||
         width_out == NULL || height_out == NULL ||
         ringl_texture_require_color_target(context, texture) != 0)
         return -1;
@@ -1574,15 +1613,25 @@ int ringl_texture_realize_color_target(RinGLContext* context, uint32_t texture,
     if (index >= RINGL_OBJECT_SLOT_COUNT)
         return -1;
     object = &context->textures[index];
-    if (!texture_level0_storage_defined(object) ||
+    if (!texture_level_storage_defined(object, mip_level) ||
         texture_realize_image(context, object) != 0 ||
         object->ringpu_image == 0u) {
         return -1;
     }
     *image_out = object->ringpu_image;
-    *image_state_out = &object->ringpu_image_state;
-    *width_out = object->width;
-    *height_out = object->height;
+    *image_state_out = &object->ringpu_image_state[mip_level];
+    if (mip_level == 0u) {
+        *width_out = object->width;
+        *height_out = object->height;
+    } else {
+        const RinGLTextureMipStorage* storage =
+            texture_mip_storage_const(object, mip_level);
+
+        if (storage == NULL)
+            return -1;
+        *width_out = storage->width;
+        *height_out = storage->height;
+    }
     return 0;
 }
 
@@ -1611,7 +1660,7 @@ int ringl_texture_realize_depth_target(RinGLContext* context, uint32_t texture,
         return -1;
     }
     *image_out = object->ringpu_image;
-    *image_state_out = &object->ringpu_image_state;
+    *image_state_out = &object->ringpu_image_state[0];
     *width_out = object->width;
     *height_out = object->height;
     return 0;

@@ -20,6 +20,15 @@ typedef struct RinGLRinGpuImageReadback2DV1 {
     uint64_t destination_row_pitch_bytes;
 } RinGLRinGpuImageReadback2DV1;
 
+/* Optional explicit subresource readback. The original callback remains a
+ * trusted level-zero shorthand; callers must not use it for a nonzero FBO
+ * attachment because that would read a different image subresource. */
+typedef struct RinGLRinGpuImageReadback2DMipV2 {
+    RinGLRinGpuImageReadback2DV1 base;
+    uint32_t mip_level;
+    uint32_t array_layer;
+} RinGLRinGpuImageReadback2DMipV2;
+
 typedef int (*RinGLRinGpuCreateFenceFn)(void* session,
                                         uint64_t initial_value,
                                         uint64_t* fence_out);
@@ -36,6 +45,10 @@ typedef int (*RinGLRinGpuReadbackImage2DFn)(
     void* session, uint64_t image,
     const RinGLRinGpuImageReadback2DV1* readback,
     void* destination, uint64_t destination_size);
+typedef int (*RinGLRinGpuReadbackImage2DMipV2Fn)(
+    void* session, uint64_t image,
+    const RinGLRinGpuImageReadback2DMipV2* readback,
+    void* destination, uint64_t destination_size);
 
 typedef struct RinGLRinGpuSyncOpsV1 {
     uint32_t struct_size;
@@ -44,6 +57,8 @@ typedef struct RinGLRinGpuSyncOpsV1 {
     RinGLRinGpuQueueSubmitFencedFn queue_submit_fenced;
     RinGLRinGpuWaitFenceFn wait_fence;
     RinGLRinGpuReadbackImage2DFn readback_image_2d;
+    /* Optional V2 tail: explicit color-attachment mip readback. */
+    RinGLRinGpuReadbackImage2DMipV2Fn readback_image_2d_mip_v2;
 } RinGLRinGpuSyncOpsV1;
 
 /* Registers optional synchronization/readback operations for a context.

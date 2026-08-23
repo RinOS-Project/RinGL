@@ -123,9 +123,12 @@ clamped 2x2 box level on the CPU before replacing prior generated storage; a
 missing V2 callback or allocation failure leaves that prior chain untouched.
 Explicit nonzero levels are bounded to exact-dimension unpacked normalized
 color storage; `texSubImage2D` can update such a level and base-level updates
-retain manually defined levels while discarding only generated ones. This does
-not add automatic LOD selection, packed-color generation, or nonzero-mip FBO
-rendering. The OS-Core adapter maps each V2 descriptor directly to
+retain manually defined levels while discarding only generated ones. The
+optional V5 tail selects a color mip for transition, render pass, direct and
+multi-buffer draw, and readback; RinGL requires the complete tail and reports
+`FRAMEBUFFER_UNSUPPORTED` if an embedding cannot execute it. It does not add
+automatic LOD selection, packed-color generation, or nonzero-mip depth/stencil
+FBO rendering. The OS-Core adapter maps each V2 descriptor directly to
 `RinGpuImageDescV1.mip_levels` and each upload to
 `RinGpuImageUploadV1.mip_level`; focused fake and real bridge tests inspect the
 level bytes and resulting RinGPU image descriptor.

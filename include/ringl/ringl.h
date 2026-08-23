@@ -224,6 +224,7 @@ extern "C" {
 #define RINGL_FRAMEBUFFER_COMPLETE              0x8cd5u
 #define RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT 0x8cd6u
 #define RINGL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT 0x8cd7u
+#define RINGL_FRAMEBUFFER_UNSUPPORTED            0x8cddu
 
 #define RINGL_FRAMEBUFFER_ATTACHMENT_NONE          0u
 #define RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D    1u
@@ -618,6 +619,48 @@ typedef struct RinGLRinGpuDrawIndexedV2 {
         vertex_buffers[RINGL_MAX_VERTEX_ATTRIBS];
 } RinGLRinGpuDrawIndexedV2;
 
+/* Optional mip-render-target records. They deliberately wrap the previous
+ * records instead of extending them in place: an embedding which only
+ * understands the level-zero callbacks cannot accidentally render a requested
+ * nonzero attachment level as level zero. */
+typedef struct RinGLRinGpuImageTransition2DMipV2 {
+    uint64_t image;
+    uint32_t mip_level;
+    uint32_t array_layer;
+    uint32_t old_state;
+    uint32_t new_state;
+} RinGLRinGpuImageTransition2DMipV2;
+
+typedef struct RinGLRinGpuRenderPassMipV2 {
+    RinGLRinGpuRenderPassV1 base;
+    uint32_t color_mip_level;
+    uint32_t color_array_layer;
+} RinGLRinGpuRenderPassMipV2;
+
+typedef struct RinGLRinGpuDrawVerticesMipV3 {
+    RinGLRinGpuDrawVerticesV1 base;
+    uint32_t color_mip_level;
+    uint32_t color_array_layer;
+} RinGLRinGpuDrawVerticesMipV3;
+
+typedef struct RinGLRinGpuDrawVerticesBindingsMipV3 {
+    RinGLRinGpuDrawVerticesV2 base;
+    uint32_t color_mip_level;
+    uint32_t color_array_layer;
+} RinGLRinGpuDrawVerticesBindingsMipV3;
+
+typedef struct RinGLRinGpuDrawIndexedMipV3 {
+    RinGLRinGpuDrawIndexedV1 base;
+    uint32_t color_mip_level;
+    uint32_t color_array_layer;
+} RinGLRinGpuDrawIndexedMipV3;
+
+typedef struct RinGLRinGpuDrawIndexedBindingsMipV3 {
+    RinGLRinGpuDrawIndexedV2 base;
+    uint32_t color_mip_level;
+    uint32_t color_array_layer;
+} RinGLRinGpuDrawIndexedBindingsMipV3;
+
 typedef struct RinGLRinGpuSampledImage2DV1 {
     uint32_t width;
     uint32_t height;
@@ -744,11 +787,17 @@ typedef int (*RinGLRinGpuResetCommandListFn)(void* session,
 typedef int (*RinGLRinGpuTransitionImageFn)(void* session,
                                             uint64_t command_list,
                                             uint64_t image,
-                                            uint32_t old_state,
-                                            uint32_t new_state);
+                                             uint32_t old_state,
+                                             uint32_t new_state);
+typedef int (*RinGLRinGpuTransitionImage2DMipV2Fn)(
+    void* session, uint64_t command_list,
+    const RinGLRinGpuImageTransition2DMipV2* transition);
 typedef int (*RinGLRinGpuBeginRenderPassFn)(
     void* session, uint64_t command_list,
     const RinGLRinGpuRenderPassV1* render_pass);
+typedef int (*RinGLRinGpuBeginRenderPassMipV2Fn)(
+    void* session, uint64_t command_list,
+    const RinGLRinGpuRenderPassMipV2* render_pass);
 typedef int (*RinGLRinGpuBeginRenderPassDepthFn)(
     void* session, uint64_t command_list,
     const RinGLRinGpuRenderPassDepthV1* render_pass);
@@ -776,6 +825,18 @@ typedef int (*RinGLRinGpuDrawVerticesV2Fn)(
 typedef int (*RinGLRinGpuDrawIndexedV2Fn)(
     void* session, uint64_t command_list,
     const RinGLRinGpuDrawIndexedV2* draw);
+typedef int (*RinGLRinGpuDrawVerticesMipV3Fn)(
+    void* session, uint64_t command_list,
+    const RinGLRinGpuDrawVerticesMipV3* draw);
+typedef int (*RinGLRinGpuDrawVerticesBindingsMipV3Fn)(
+    void* session, uint64_t command_list,
+    const RinGLRinGpuDrawVerticesBindingsMipV3* draw);
+typedef int (*RinGLRinGpuDrawIndexedMipV3Fn)(
+    void* session, uint64_t command_list,
+    const RinGLRinGpuDrawIndexedMipV3* draw);
+typedef int (*RinGLRinGpuDrawIndexedBindingsMipV3Fn)(
+    void* session, uint64_t command_list,
+    const RinGLRinGpuDrawIndexedBindingsMipV3* draw);
 typedef int (*RinGLRinGpuEndRenderPassFn)(void* session,
                                           uint64_t command_list);
 typedef int (*RinGLRinGpuPresentFn)(void* session,
@@ -851,6 +912,14 @@ typedef struct RinGLRinGpuOpsV1 {
      * generated chain; older backends remain usable for level-zero textures. */
     RinGLRinGpuCreateImage2DMipV2Fn create_image_2d_mip_v2;
     RinGLRinGpuUploadImage2DMipV2Fn upload_image_2d_mip_v2;
+    /* Optional V5 tail: explicit nonzero color-attachment mips. All six
+     * callbacks are required before RinGL uses this path. */
+    RinGLRinGpuTransitionImage2DMipV2Fn transition_image_2d_mip_v2;
+    RinGLRinGpuBeginRenderPassMipV2Fn begin_render_pass_mip_v2;
+    RinGLRinGpuDrawVerticesMipV3Fn draw_vertices_mip_v3;
+    RinGLRinGpuDrawVerticesBindingsMipV3Fn draw_vertices_bindings_mip_v3;
+    RinGLRinGpuDrawIndexedMipV3Fn draw_indexed_mip_v3;
+    RinGLRinGpuDrawIndexedBindingsMipV3Fn draw_indexed_bindings_mip_v3;
 } RinGLRinGpuOpsV1;
 
 typedef struct RinGLRinGpuBindingV1 {

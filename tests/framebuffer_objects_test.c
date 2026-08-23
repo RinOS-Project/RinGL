@@ -196,11 +196,14 @@ int main(void)
 
     ringl_framebuffer_texture_2d(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT0,
                                  RINGL_TEXTURE_2D, texture, 1);
-    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
     attachment = attachment_info();
     assert(ringl_get_framebuffer_color_attachment(&attachment) == 0);
     assert(attachment.kind == RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D);
     assert(attachment.object == texture);
+    assert(attachment.level == 1);
+    assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
+           RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT);
 
     ringl_delete_textures(1, &texture);
     attachment = attachment_info();

@@ -48,23 +48,29 @@ static RinGLShaderObject* shader_object(RinGLContext* context,
 }
 
 static int fixed_raster_interface(const RinGLShaderObject* vertex,
-                                  const RinGLShaderObject* fragment)
+                                  const RinGLShaderObject* fragment,
+                                  uint32_t* scalar_varying_count)
 {
     RinGLRsh1HeaderV1 vertex_header;
     RinGLRsh1HeaderV1 fragment_header;
 
-    if (vertex == NULL || fragment == NULL || vertex->rsh1 == NULL ||
+    if (scalar_varying_count == NULL || vertex == NULL || fragment == NULL || vertex->rsh1 == NULL ||
         fragment->rsh1 == NULL || vertex->rsh1_size < sizeof(vertex_header) ||
         fragment->rsh1_size < sizeof(fragment_header)) {
         return 0;
     }
     memcpy(&vertex_header, vertex->rsh1, sizeof(vertex_header));
     memcpy(&fragment_header, fragment->rsh1, sizeof(fragment_header));
-    return vertex_header.stage == RINGL_RSH1_STAGE_VERTEX &&
-           vertex_header.output_count == 8u &&
-           fragment_header.stage == RINGL_RSH1_STAGE_FRAGMENT &&
-           fragment_header.input_count == 4u &&
-           fragment_header.output_count == 4u;
+    if (vertex_header.stage != RINGL_RSH1_STAGE_VERTEX ||
+        fragment_header.stage != RINGL_RSH1_STAGE_FRAGMENT ||
+        fragment_header.output_count != 4u)
+        return 0;
+    if ((vertex_header.output_count == 8u && fragment_header.input_count == 4u) ||
+        (vertex_header.output_count == 10u && fragment_header.input_count == 6u)) {
+        *scalar_varying_count = fragment_header.input_count;
+        return 1;
+    }
+    return 0;
 }
 
 static RinGLPipelineCache* cache_for(RinGLContext* context, int create)
@@ -218,6 +224,7 @@ int ringl_build_pipeline_key(RinGLContext* context,
     RinGLResolvedVertexLayout layout;
     RinGLPipelineKey result;
     uint32_t index;
+    uint32_t fixed_scalar_varying_count;
 
     if (context == NULL || key == NULL || color_format == 0u ||
         !native_primitive_topology_valid(primitive_topology) ||
@@ -361,10 +368,10 @@ int ringl_build_pipeline_key(RinGLContext* context,
         (layout.binding_count <= 1u ||
          context->ringpu_ops.create_graphics_pipeline_native_vertex_bindings !=
              NULL) &&
-        fixed_raster_interface(vertex, fragment)) {
-        if (result.varying_count > 4u)
+        fixed_raster_interface(vertex, fragment, &fixed_scalar_varying_count)) {
+        if (result.varying_count > fixed_scalar_varying_count)
             return -1;
-        while (result.varying_count < 4u) {
+        while (result.varying_count < fixed_scalar_varying_count) {
             RinGLRinGpuVaryingV1* native =
                 &result.varyings[result.varying_count];
             native->vertex_output_location = 4u + result.varying_count;

@@ -189,6 +189,16 @@ inside the RSH1 instruction/register limits; each subsequent RSH1 stage reads
 the preceding result rather than a host-side folded coordinate. The lowerer
 counts all locals, calls, optional call-local offsets, combines, stores, and
 color operations before it publishes the RSH1 blob.
+
+The next bounded native interface is three independent `varying vec2` texture
+coordinates. RinGL emits six scalar fragment inputs and a 10-scalar vertex
+output (clip `xyzw` plus those pairs), and the RinGPU surface keeps the extra
+two components in a private native clip/raster form while preserving the
+public compact RGBA clip-vertex V1 ABI. Six-plane clipping and perspective
+interpolation operate on every pair before the resource-aware fragment
+preflight and submission. This route is deliberately limited to triangle
+lists and direct coordinates; it does not claim general varying transport or
+three-input local expressions.
 For one sampled texture result, or an explicitly parenthesized additive sample
 chain, a finite `vec4` color literal is emitted as four RSH1 constants followed
 by component-wise `ADD_F32`, `SUB_F32`, `MUL_F32`, or nonzero `DIV_F32`

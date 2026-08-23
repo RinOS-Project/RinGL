@@ -186,7 +186,8 @@ Up to eight fragment-local values may be chained from the shared UV; each
 initializer is lowered in source order before samples and the complete shape is
 rejected before IR publication when it exceeds an RSH1 limit. This remains a
 deliberately narrow GLSL ES subset: other local vector expressions, more than
-eight locals, more than two UV varyings, and more than eight calls are still
+eight locals, more than three UV varyings, local expressions spanning three
+UV inputs, and more than eight calls are still
 unsupported.
 
 See [TODO.md](TODO.md) for the implementation roadmap.

@@ -226,8 +226,8 @@ static int parse_varying_texture_call(const char** cursor,
     }
     call->coordinate_input_location =
         coordinate_input_locations[coordinate_index];
-    if (call->coordinate_input_location != 0u &&
-        call->coordinate_input_location != 2u) {
+    if (call->coordinate_input_location > 4u ||
+        (call->coordinate_input_location & 1u) != 0u) {
         return 0;
     }
     call->secondary_coordinate_input_location = UINT32_MAX;
@@ -246,8 +246,8 @@ static int parse_varying_texture_call(const char** cursor,
         }
         call->secondary_coordinate_input_location =
             coordinate_input_locations[secondary_index];
-        if (call->secondary_coordinate_input_location != 0u &&
-            call->secondary_coordinate_input_location != 2u)
+        if (call->secondary_coordinate_input_location > 4u ||
+            (call->secondary_coordinate_input_location & 1u) != 0u)
             return 0;
         call->coordinate_kind = subtract
             ? RINGL_VARYING_TEXTURE_COORD_SUB_COORDINATE
@@ -541,10 +541,10 @@ static int lower_fragment_texture_chain(const char* source,
     RinGLRsh1HeaderV1 header;
     RinGLRsh1InstructionV1 ins[RINGL_RSH1_MAX_INSTRUCTIONS];
     char sampler_names[RINGL_VARYING_TEXTURE_MAX_SAMPLERS][64];
-    char varying_names[2][64];
-    char coordinate_names[2][64];
+    char varying_names[3][64];
+    char coordinate_names[3][64];
     char local_coordinate_names[RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES][64];
-    uint32_t coordinate_input_locations[2] = {0u, 2u};
+    uint32_t coordinate_input_locations[3] = {0u, 2u, 4u};
     uint32_t local_coordinate_kinds[RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES] = {0u};
     float local_offset_u[RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES] = {0.0f};
     float local_offset_v[RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES] = {0.0f};
@@ -612,7 +612,7 @@ static int lower_fragment_texture_chain(const char* source,
     while (strncmp(cursor, "varyingvec2", strlen("varyingvec2")) == 0) {
         uint32_t index;
 
-        if (varying_count == 2u || !consume_text(&cursor, "varyingvec2") ||
+        if (varying_count == 3u || !consume_text(&cursor, "varyingvec2") ||
             !read_identifier(&cursor, varying_names[varying_count],
                              sizeof(varying_names[varying_count])) ||
             !consume_text(&cursor, ";")) {
@@ -658,7 +658,8 @@ static int lower_fragment_texture_chain(const char* source,
                            "%s", local_coordinate_names[
                                local_coordinate_count - 1u]);
         }
-    } else if (strncmp(cursor, "vec2", strlen("vec2")) == 0) {
+    } else if (varying_count == 2u &&
+               strncmp(cursor, "vec2", strlen("vec2")) == 0) {
         const char* local_source;
 
         if (!parse_varying_texture_two_coordinate_local(
@@ -773,7 +774,7 @@ static int lower_fragment_texture_chain(const char* source,
     if (sampler_binding_count == 0u)
         return 1;
 
-    sample_base = 4u;
+    sample_base = varying_count == 3u ? 6u : 4u;
     instruction_cursor = sample_base;
     for (call_index = 0u; call_index < local_coordinate_count; ++call_index) {
         if (local_coordinate_kinds[call_index] !=
@@ -802,7 +803,11 @@ static int lower_fragment_texture_chain(const char* source,
         ? 2u : add_register_base + (call_count - 2u) * 4u;
     sampled_final_base = final_base;
     padding_base = final_base + 4u;
-    coordinate_temp_base = padding_base + 2u;
+    coordinate_temp_base = padding_base + (varying_count == 3u ? 4u : 2u);
+    /* Inputs beyond the first two coordinate components occupy the padding
+     * register tail. Reserve the extra pairs before local temporaries. */
+    if (varying_count > 2u)
+        temporary_register_count += (varying_count - 2u) * 2u;
     if (has_call_offset)
         temporary_register_count += 4u;
     if (store_base + 5u > RINGL_RSH1_MAX_INSTRUCTIONS ||
@@ -824,7 +829,7 @@ static int lower_fragment_texture_chain(const char* source,
     }
     instruction_cursor = sample_base;
     memset(ins, 0, sizeof(ins));
-    for (component = 0u; component < 4u; ++component) {
+    for (component = 0u; component < sample_base; ++component) {
         init_instruction(&ins[component], RINGL_RSH1_OP_LOAD_INPUT_F32);
         ins[component].destination = component < 2u
             ? (uint16_t)component
@@ -889,12 +894,11 @@ static int lower_fragment_texture_chain(const char* source,
         if (local_coordinate_count != 0u) {
             coordinate_u = local_coordinate_u;
             coordinate_v = local_coordinate_v;
-        } else if (calls[call_index].coordinate_input_location == 0u) {
-            coordinate_u = 0u;
-            coordinate_v = 1u;
         } else {
-            coordinate_u = padding_base;
-            coordinate_v = padding_base + 1u;
+            coordinate_u = calls[call_index].coordinate_input_location == 0u
+                ? 0u : padding_base +
+                    calls[call_index].coordinate_input_location - 2u;
+            coordinate_v = coordinate_u + 1u;
         }
 
         if (calls[call_index].coordinate_kind !=
@@ -906,7 +910,8 @@ static int lower_fragment_texture_chain(const char* source,
                 UINT32_MAX) {
                 uint32_t secondary_u =
                     calls[call_index].secondary_coordinate_input_location == 0u
-                    ? 0u : padding_base;
+                    ? 0u : padding_base +
+                        calls[call_index].secondary_coordinate_input_location - 2u;
                 uint32_t secondary_v = secondary_u + 1u;
 
                 emit_varying_texture_coordinate_combine(
@@ -994,7 +999,7 @@ static int lower_fragment_texture_chain(const char* source,
     header.instruction_count = store_base + 5u;
     header.register_count = 8u * call_count + temporary_register_count +
         (color_operation_enabled ? 8u : 0u);
-    header.input_count = 4u;
+    header.input_count = sample_base;
     header.output_count = 4u;
     header.resource_count = sampler_binding_count * 2u;
     total = sizeof(header) +
@@ -1262,6 +1267,86 @@ static int lower_vertex_two_vec2(const char* source,
     return 0;
 }
 
+static int lower_vertex_three_vec2(const char* source,
+                                   RinGLGlslLowerResult* result)
+{
+    RinGLRsh1HeaderV1 header;
+    RinGLRsh1InstructionV1 ins[21];
+    char position[64];
+    char first_attribute[64];
+    char second_attribute[64];
+    char third_attribute[64];
+    char first_varying[64];
+    char second_varying[64];
+    char third_varying[64];
+    char expected[1024];
+    uint32_t zero_bits = 0u;
+    float one = 1.0f;
+    uint32_t one_bits;
+    uint32_t input;
+    size_t total;
+
+    if (!read_decl_name(source, "attributevec2", 0u, position, sizeof(position)) ||
+        !read_decl_name(source, "attributevec2", 1u, first_attribute, sizeof(first_attribute)) ||
+        !read_decl_name(source, "attributevec2", 2u, second_attribute, sizeof(second_attribute)) ||
+        !read_decl_name(source, "attributevec2", 3u, third_attribute, sizeof(third_attribute)) ||
+        !read_decl_name(source, "varyingvec2", 0u, first_varying, sizeof(first_varying)) ||
+        !read_decl_name(source, "varyingvec2", 1u, second_varying, sizeof(second_varying)) ||
+        !read_decl_name(source, "varyingvec2", 2u, third_varying, sizeof(third_varying))) {
+        return 1;
+    }
+    (void)snprintf(expected, sizeof(expected),
+        "attributevec2%s;attributevec2%s;attributevec2%s;attributevec2%s;"
+        "varyingvec2%s;varyingvec2%s;varyingvec2%s;"
+        "voidmain(){gl_Position=vec4(%s,0.0,1.0);%s=%s;%s=%s;%s=%s;}",
+        position, first_attribute, second_attribute, third_attribute,
+        first_varying, second_varying, third_varying, position,
+        first_varying, first_attribute, second_varying, second_attribute,
+        third_varying, third_attribute);
+    if (strcmp(source, expected) != 0) return 1;
+    for (input = 0u; input < 8u; ++input) {
+        init_instruction(&ins[input], RINGL_RSH1_OP_LOAD_INPUT_F32);
+        ins[input].destination = (uint16_t)input;
+        ins[input].immediate = input;
+    }
+    memcpy(&one_bits, &one, sizeof(one_bits));
+    init_instruction(&ins[8], RINGL_RSH1_OP_CONST_F32);
+    ins[8].destination = 8u;
+    ins[8].immediate = zero_bits;
+    init_instruction(&ins[9], RINGL_RSH1_OP_CONST_F32);
+    ins[9].destination = 9u;
+    ins[9].immediate = one_bits;
+    for (input = 0u; input < 10u; ++input) {
+        init_instruction(&ins[10u + input], RINGL_RSH1_OP_STORE_OUTPUT_F32);
+        if (input < 2u) ins[10u + input].source0 = (uint16_t)input;
+        else if (input == 2u) ins[10u + input].source0 = 8u;
+        else if (input == 3u) ins[10u + input].source0 = 9u;
+        else ins[10u + input].source0 = (uint16_t)(input - 2u);
+        ins[10u + input].immediate = input;
+    }
+    init_instruction(&ins[20], RINGL_RSH1_OP_RETURN);
+    memset(&header, 0, sizeof(header));
+    header.magic = RINGL_RSH1_MAGIC;
+    header.version = RINGL_RSH1_VERSION;
+    header.header_size = sizeof(header);
+    header.stage = RINGL_RSH1_STAGE_VERTEX;
+    header.instruction_count = 21u;
+    header.register_count = 10u;
+    header.input_count = 8u;
+    header.output_count = 10u;
+    total = sizeof(header) + sizeof(ins);
+    header.total_size = (uint32_t)total;
+    memcpy(result->bytes, &header, sizeof(header));
+    memcpy(result->bytes + sizeof(header), ins, sizeof(ins));
+    result->ok = 1u;
+    result->instruction_count = header.instruction_count;
+    result->register_count = header.register_count;
+    result->input_count = header.input_count;
+    result->output_count = header.output_count;
+    result->byte_size = header.total_size;
+    return 0;
+}
+
 static int lower_fragment_two_vec2(const char* source,
                                    RinGLGlslLowerResult* result)
 {
@@ -1349,7 +1434,9 @@ int ringl_glsl_lower_varying_rsh1(uint32_t shader_type,
         rc = lower_fragment_color(compact, 3u, result);
     else if (strstr(compact, "varyingvec2") != NULL &&
              shader_type == RINGL_VERTEX_SHADER) {
-        rc = lower_vertex_two_vec2(compact, result);
+        rc = lower_vertex_three_vec2(compact, result);
+        if (rc != 0)
+            rc = lower_vertex_two_vec2(compact, result);
         if (rc != 0)
             rc = lower_vertex(compact, result);
     } else if (strstr(compact, "varyingvec2") != NULL &&

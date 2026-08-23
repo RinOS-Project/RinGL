@@ -114,6 +114,13 @@ int main(void)
         "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
         "varying vec2 uv; void main() { gl_FragColor = "
         "texture2D(firstTexture, uv) + texture2D(secondTexture, uv); }";
+    const char* varying_three_coordinate_source =
+        "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
+        "uniform sampler2D thirdTexture; varying vec2 firstUv; "
+        "varying vec2 secondUv; varying vec2 thirdUv; void main() { "
+        "gl_FragColor = texture2D(firstTexture, firstUv) + "
+        "texture2D(secondTexture, secondUv) + "
+        "texture2D(thirdTexture, thirdUv); }";
     const char* varying_tinted_texture_source =
         "uniform sampler2D colorTexture; varying vec2 uv; "
         "void main() { gl_FragColor = texture2D(colorTexture, uv) * "
@@ -1200,6 +1207,38 @@ int main(void)
         assert(call_coordinate->source0 == 70u + component / 2u);
         assert(first_sample->source0 == 74u && first_sample->source1 == 75u);
         assert(final_sample->source0 == 74u && final_sample->source1 == 75u);
+    }
+
+    /* Three independent perspective vec2 inputs stay distinct in RSH1. The
+     * third pair is loaded into the bounded native varying tail instead of
+     * being folded onto either earlier coordinate. */
+    ringl_shader_source(shader, varying_three_coordinate_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 31u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.instruction_count == 31u);
+    assert(header.register_count == 26u);
+    assert(header.input_count == 6u);
+    assert(header.output_count == 4u);
+    assert(header.resource_count == 6u);
+    for (component = 0u; component < 4u; ++component) {
+        const Instruction* first_sample =
+            (const Instruction*)(blob + sizeof(header)) + 6u + component;
+        const Instruction* second_sample =
+            (const Instruction*)(blob + sizeof(header)) + 10u + component;
+        const Instruction* third_sample =
+            (const Instruction*)(blob + sizeof(header)) + 14u + component;
+
+        assert(first_sample->opcode == RSH1_SAMPLE_IMAGE_2D_F32);
+        assert(first_sample->source0 == 0u && first_sample->source1 == 1u);
+        assert(second_sample->opcode == RSH1_SAMPLE_IMAGE_2D_F32);
+        assert(second_sample->source0 == 22u && second_sample->source1 == 23u);
+        assert(third_sample->opcode == RSH1_SAMPLE_IMAGE_2D_F32);
+        assert(third_sample->source0 == 24u && third_sample->source1 == 25u);
     }
 
     ringl_context_destroy(context);

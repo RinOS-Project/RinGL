@@ -278,6 +278,36 @@ static void copy_to_native_texture(RinGLContext* context,
            memcmp(object->shadow_bytes, expected, (size_t)expected_size) == 0);
 }
 
+static void copy_to_packed_mip_definition(RinGLContext* context,
+                                          uint32_t base_internal_format,
+                                          uint32_t format, uint32_t type,
+                                          uint32_t copy_internal_format,
+                                          uint16_t first_expected,
+                                          uint16_t second_expected)
+{
+    uint32_t texture = 0u;
+    uint16_t base_pixels[8] = {0u};
+    RinGLTextureObject* object;
+    RinGLTextureMipStorage* level;
+    uint16_t copied[2] = {0u};
+
+    ringl_gen_textures(1, &texture);
+    ringl_bind_texture(RINGL_TEXTURE_2D, texture);
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, base_internal_format, 4, 2, 0,
+                       format, type, base_pixels);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_copy_tex_image_2d(RINGL_TEXTURE_2D, 1, copy_internal_format, 1, 2,
+                            2, 1, 0);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+
+    object = &context->textures[ringl_object_slot_index(texture)];
+    level = &object->mip_storage[0];
+    assert(level->defined == RINGL_TRUE && level->generated == RINGL_FALSE &&
+           level->width == 2u && level->height == 1u);
+    memcpy(copied, level->shadow_bytes, sizeof(copied));
+    assert(copied[0] == first_expected && copied[1] == second_expected);
+}
+
 int main(void)
 {
     FakeBackend backend = {0};
@@ -490,6 +520,25 @@ int main(void)
     assert(backend.submits == 12u && backend.waits == 12u);
     assert(backend.readbacks == 10u);
 
+    /* A nonzero copy definition creates an explicit same-format mip only
+     * after its fenced snapshot succeeds. It must not fall back to base-level
+     * storage or normalize the native packed bytes. */
+    copy_to_packed_mip_definition(context, RINGL_RGB, RINGL_RGB,
+                                  RINGL_UNSIGNED_SHORT_5_6_5,
+                                  RINGL_RGB565,
+                                  UINT16_C(0xf800), UINT16_C(0x07e0));
+    copy_to_packed_mip_definition(context, RINGL_RGBA, RINGL_RGBA,
+                                  RINGL_UNSIGNED_SHORT_4_4_4_4,
+                                  RINGL_RGBA4,
+                                  UINT16_C(0xf00f), UINT16_C(0x0f08));
+    copy_to_packed_mip_definition(context, RINGL_RGBA, RINGL_RGBA,
+                                  RINGL_UNSIGNED_SHORT_5_5_5_1,
+                                  RINGL_RGB5_A1,
+                                  UINT16_C(0xf801), UINT16_C(0x07c1));
+    assert(backend.transitions == 5u);
+    assert(backend.submits == 15u && backend.waits == 15u);
+    assert(backend.readbacks == 13u);
+
     /* The current source FBO is native RGBA4. Each destination is an explicit
      * level-one packed image, so this also exercises canonical readback before
      * direct native-precision conversion. */
@@ -503,8 +552,8 @@ int main(void)
                                RINGL_UNSIGNED_SHORT_5_5_5_1, UINT16_C(0xf801),
                                UINT16_C(0x07c1));
     assert(backend.transitions == 5u);
-    assert(backend.submits == 15u && backend.waits == 15u);
-    assert(backend.readbacks == 13u);
+    assert(backend.submits == 18u && backend.waits == 18u);
+    assert(backend.readbacks == 16u);
 
     ringl_gen_renderbuffers(1, &depth_renderbuffer);
     ringl_bind_renderbuffer(RINGL_RENDERBUFFER, depth_renderbuffer);
@@ -516,7 +565,7 @@ int main(void)
            RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT);
     ringl_copy_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 1, 2, 2, 1);
     assert(ringl_get_error() == RINGL_INVALID_OPERATION);
-    assert(backend.transitions == 5u && backend.readbacks == 13u);
+    assert(backend.transitions == 5u && backend.readbacks == 16u);
     assert(memcmp(context->textures[ringl_object_slot_index(copied_texture)].shadow_bytes,
                   expected_packed_rgba, sizeof(expected_packed_rgba)) == 0);
 

@@ -1308,9 +1308,10 @@ void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
                                  int32_t x, int32_t y,
                                  int32_t width, int32_t height);
 /* Bounded definition path: snapshot the current complete color target into a
- * new level-zero RGBA/RGB or native RGB565/RGBA4/RGB5_A1 texture definition.
- * RGB retains its implicit alpha one; packed forms quantize canonical source
- * components into their native shadow storage. */
+ * RGBA/RGB or native RGB565/RGBA4/RGB5_A1 texture definition. Level zero
+ * replaces the base and its mip chain; a nonzero level requires a defined
+ * same-format base with exact mip dimensions. RGB retains implicit alpha one;
+ * packed forms quantize canonical source components into native shadow storage. */
 void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
                              uint32_t internal_format, int32_t x, int32_t y,
                              int32_t width, int32_t height, int32_t border);

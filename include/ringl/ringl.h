@@ -289,6 +289,9 @@ extern "C" {
 #define RINGL_RIN_GPU_IMAGE_USAGE_DEPTH_STENCIL    0x10u
 #define RINGL_RIN_GPU_SAMPLER_NEAREST      1u
 #define RINGL_RIN_GPU_SAMPLER_LINEAR       2u
+/* `mip_filter` alone accepts NONE.  Minification and magnification filters
+ * always use one of the two values above. */
+#define RINGL_RIN_GPU_SAMPLER_MIP_NONE     0u
 #define RINGL_RIN_GPU_ADDRESS_CLAMP        1u
 #define RINGL_RIN_GPU_ADDRESS_REPEAT       2u
 #define RINGL_RIN_GPU_ADDRESS_MIRRORED     3u
@@ -486,6 +489,17 @@ typedef struct RinGLRinGpuGraphicsBindingV1 {
     uint32_t mip_level;
     uint32_t array_layer;
 } RinGLRinGpuGraphicsBindingV1;
+
+/* Opt-in sampled-image view extension.  A backend must only receive this
+ * record through the V7 callback below; V1 remains byte-for-byte stable.
+ * With SAMPLED_MIP_CHAIN, the view begins at base.mip_level and exposes every
+ * remaining level of that image to implicit-LOD sampling. */
+#define RINGL_RIN_GPU_GRAPHICS_BINDING_SAMPLED_MIP_CHAIN 0x1u
+typedef struct RinGLRinGpuGraphicsBindingV2 {
+    RinGLRinGpuGraphicsBindingV1 base;
+    uint32_t flags;
+    uint32_t reserved0;
+} RinGLRinGpuGraphicsBindingV2;
 
 /* Clear regions use the WebGL lower-left pixel origin. A disabled region has
  * canonical zero coordinates and clears the complete attachment; an enabled
@@ -838,6 +852,10 @@ typedef int (*RinGLRinGpuCreateGraphicsBindGroupFn)(
     void* session, uint64_t pipeline,
     const RinGLRinGpuGraphicsBindingV1* bindings,
     uint32_t binding_count, uint64_t* bind_group_out);
+typedef int (*RinGLRinGpuCreateGraphicsBindGroupV2Fn)(
+    void* session, uint64_t pipeline,
+    const RinGLRinGpuGraphicsBindingV2* bindings,
+    uint32_t binding_count, uint64_t* bind_group_out);
 typedef int (*RinGLRinGpuBindGraphicsResourcesFn)(
     void* session, uint64_t command_list, uint64_t bind_group);
 typedef int (*RinGLRinGpuDrawVerticesFn)(
@@ -952,6 +970,8 @@ typedef struct RinGLRinGpuOpsV1 {
     RinGLRinGpuBeginRenderPassDepthMipV2Fn begin_render_pass_depth_mip_v2;
     RinGLRinGpuBeginRenderPassDepthStencilMipV2Fn
         begin_render_pass_depth_stencil_mip_v2;
+    /* Optional V7 tail: implicit-LOD sampled-image mip chains. */
+    RinGLRinGpuCreateGraphicsBindGroupV2Fn create_graphics_bind_group_v2;
 } RinGLRinGpuOpsV1;
 
 typedef struct RinGLRinGpuBindingV1 {

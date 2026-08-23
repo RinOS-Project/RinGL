@@ -460,6 +460,10 @@ int ringl_backend_create_graphics_bind_group(
     RinGLContext* context, uint64_t pipeline,
     const RinGLRinGpuGraphicsBindingV1* bindings,
     uint32_t binding_count, uint64_t* bind_group_out);
+int ringl_backend_create_graphics_bind_group_v2(
+    RinGLContext* context, uint64_t pipeline,
+    const RinGLRinGpuGraphicsBindingV2* bindings,
+    uint32_t binding_count, uint64_t* bind_group_out);
 int ringl_backend_bind_graphics_resources(RinGLContext* context,
                                           uint64_t command_list,
                                           uint64_t bind_group);
@@ -535,6 +539,7 @@ int ringl_texture_realize_depth_target(RinGLContext* context,
                                        uint32_t* height_out);
 int ringl_texture_realize_unit(RinGLContext* context, uint32_t unit,
                                uint64_t* image_out, uint64_t* sampler_out);
+uint32_t ringl_texture_sampled_mip_count(const RinGLTextureObject* texture);
 void ringl_shader_objects_destroy_all(RinGLContext* context);
 int ringl_shader_is_delete_pending(RinGLContext* context, uint32_t shader);
 void ringl_shader_release_if_delete_pending(RinGLContext* context,

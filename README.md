@@ -483,16 +483,20 @@ RGBA8-normalized color storage, while explicit nonzero-level `texImage2D` and
 them into level zero. Both paths realize each contiguous level through the
 optional V2 RinGPU image/upload callbacks. A base-level sub-image update drops
 only generated levels, preserving explicitly supplied level data. The executor
-still has no derivatives or automatic LOD selection: it samples the explicitly
-bound base level, so it does not claim mip-filtered rendering. Packed color
+uses the optional V7 bind-group callback for a minification sampler: it
+transitions every contiguous sampled level to shader-read, binds the complete
+chain, and never silently substitutes level zero for a backend that lacks that
+tail. The RinGPU/Aquamarine executor calculates implicit perspective-correct
+fragment gradients, applies sampler bias/min/max LOD, then performs nearest or
+linear mip selection and the independent min/mag texel filter. Packed-color
 mip render targets remain rejected. Exactly defined unpacked RGBA8 color mips
 execute clear, direct/multi-buffer draws, and readback through optional V5
 callbacks. Exact-dimension manual D32/D24S8 levels use V6 pass records for
 color/depth/stencil subresources; without the required tail the FBO reports
 `FRAMEBUFFER_UNSUPPORTED`. The strict C11 RinGL tests cover format
 normalization, tightly-packed RGB image/sub-image data, padded D32 source rows,
-generated/manual mip upload, and the actual RinGPU bridge image descriptor plus
-level-one color/D24S8 FBO execution.
+generated/manual mip upload, and the actual RinGPU bridge verifies a
+three-level texture selects its distinct level-one colour while rendering.
 
 Embeddings handling browser-facing byte uploads must use
 `ringl_tex_image_2d_from_bytes()` and `ringl_tex_sub_image_2d_from_bytes()`.

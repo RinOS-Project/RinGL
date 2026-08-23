@@ -138,7 +138,9 @@ static int fake_create_sampler(void* session,
     assert(desc != NULL && sampler_out != NULL);
     assert(desc->min_filter == RINGL_RIN_GPU_SAMPLER_LINEAR);
     assert(desc->mag_filter == RINGL_RIN_GPU_SAMPLER_LINEAR);
-    assert(desc->mip_filter == RINGL_RIN_GPU_SAMPLER_NEAREST);
+    assert(desc->mip_filter == RINGL_RIN_GPU_SAMPLER_MIP_NONE ||
+           desc->mip_filter == RINGL_RIN_GPU_SAMPLER_NEAREST ||
+           desc->mip_filter == RINGL_RIN_GPU_SAMPLER_LINEAR);
     assert(desc->address_u == RINGL_RIN_GPU_ADDRESS_REPEAT ||
            desc->address_u == RINGL_RIN_GPU_ADDRESS_CLAMP);
     assert(desc->address_v == RINGL_RIN_GPU_ADDRESS_REPEAT);

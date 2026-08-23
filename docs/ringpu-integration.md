@@ -128,13 +128,19 @@ D24S8 levels use the same exact-dimension storage rule but are manually
 defined only. The optional V5 tail selects a color mip for transition, render
 pass, direct and multi-buffer draw, and readback. The V6 tail supplies the
 color/depth/stencil mip selections for depth passes, including combined D24S8.
-RinGL reports `FRAMEBUFFER_UNSUPPORTED` if an embedding lacks the required
-tail; it does not add automatic LOD selection or packed-color generation. The
-OS-Core adapter maps each V2 descriptor directly to
-`RinGpuImageDescV1.mip_levels`, each upload to
-`RinGpuImageUploadV1.mip_level`, and each V6 pass to the three validated
-RinGPU subresources; focused fake and real bridge tests inspect the level bytes
-and resulting RinGPU image descriptor.
+The appended V7 `create_graphics_bind_group_v2` callback identifies a sampled
+mip-chain without changing the V1 binding layout. For a mipmap minification
+filter RinGL transitions every contiguous level to `SHADER_READ` and requires
+V7; it neither binds only level zero nor submits an ambiguous draw to an older
+backend. The OS-Core adapter maps the flag to the public RinGPU typed binding,
+whose core validates every exposed subresource and rejects render-target alias
+or a non-shader-read level. Aquamarine snapshots the complete chain and the
+software executor derives perspective-correct implicit gradients, applies
+sampler bias/min/max LOD, and executes nearest/linear mip selection with the
+independent min/mag texel filters. Packed-color mip generation remains outside
+this profile. Focused fake and real bridge tests inspect level bytes, the
+RinGPU descriptor, and the distinct level-one colour selected from a
+three-level texture.
 
 ## Shader module validation path
 

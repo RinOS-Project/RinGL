@@ -295,11 +295,16 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   V6 carries every color/depth/stencil mip selection for a depth pass. D32 and
   D24S8 exact-dimension manual levels use the same CPU-visible image chain;
   absent required callbacks yield `FRAMEBUFFER_UNSUPPORTED`, never level-zero
-  output. Packed color, automatic derivative/LOD selection, and mip-filtered
-  rendering remain unsupported rather than being reported as completed. Strict
-  C11 fake-backend and actual RinGPU bridge tests verify level dimensions,
-  bytes, the native two-level descriptor, and level-one color plus combined
-  D24S8 FBO clear/depth-tested draw/readback.
+  output. The optional V7 bind-group tail carries the complete contiguous
+  sampled chain only for mipmap minification filters, transitions every level
+  to shader-read, and requires the backend to accept it rather than falling
+  back to level zero. RinGPU/Aquamarine uses implicit fragment gradients plus
+  sampler bias/min/max LOD for nearest/linear mip selection and independent
+  min/mag texel filtering. Packed-color mip render targets remain unsupported.
+  Strict C11 fake-backend and actual RinGPU bridge tests verify level
+  dimensions, bytes, the native two-level descriptor, level-one color plus
+  combined D24S8 FBO clear/depth-tested draw/readback, and distinct level-one
+  sampled output from a three-level texture.
 - [ ] Decide the boundary for OpenGL ES 3.x features.
 - [ ] Add VAOs, instancing, additional texture formats, MRT, and other GLES 3.x features only after the underlying RinGPU contracts are ready.
 

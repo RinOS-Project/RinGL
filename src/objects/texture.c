@@ -141,7 +141,7 @@ static uint32_t texture_expected_mip_height(const RinGLTextureObject* texture,
     return height;
 }
 
-static uint32_t texture_defined_mip_count(const RinGLTextureObject* texture)
+uint32_t ringl_texture_sampled_mip_count(const RinGLTextureObject* texture)
 {
     uint32_t level;
     uint32_t count = 1u;
@@ -475,7 +475,11 @@ static uint32_t sampler_mip_filter(uint32_t value)
         value == RINGL_LINEAR_MIPMAP_LINEAR) {
         return RINGL_RIN_GPU_SAMPLER_LINEAR;
     }
-    return RINGL_RIN_GPU_SAMPLER_NEAREST;
+    if (value == RINGL_NEAREST_MIPMAP_NEAREST ||
+        value == RINGL_LINEAR_MIPMAP_NEAREST) {
+        return RINGL_RIN_GPU_SAMPLER_NEAREST;
+    }
+    return RINGL_RIN_GPU_SAMPLER_MIP_NONE;
 }
 
 static uint32_t sampler_address(uint32_t value)
@@ -523,7 +527,7 @@ static int texture_realize_image(RinGLContext* context,
                  texture->format == RINGL_DEPTH_COMPONENT32F ||
                  texture->format == RINGL_DEPTH24_STENCIL8)
         ? texture_highest_defined_mip_count(texture)
-        : texture_defined_mip_count(texture);
+        : ringl_texture_sampled_mip_count(texture);
     if (mip_count == 0u)
         return -1;
 

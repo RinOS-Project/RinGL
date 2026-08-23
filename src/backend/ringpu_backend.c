@@ -454,6 +454,23 @@ int ringl_backend_create_graphics_bind_group(
                      bind_group_out));
 }
 
+int ringl_backend_create_graphics_bind_group_v2(
+    RinGLContext* context, uint64_t pipeline,
+    const RinGLRinGpuGraphicsBindingV2* bindings,
+    uint32_t binding_count, uint64_t* bind_group_out)
+{
+    if (context == NULL || pipeline == 0u || bind_group_out == NULL ||
+        (binding_count != 0u && bindings == NULL) ||
+        !context->has_ringpu_ops ||
+        context->ringpu_ops.create_graphics_bind_group_v2 == NULL)
+        return -1;
+    *bind_group_out = 0u;
+    return ringl_backend_result(
+        context, context->ringpu_ops.create_graphics_bind_group_v2(
+                     context->ringpu.session, pipeline, bindings, binding_count,
+                     bind_group_out));
+}
+
 int ringl_backend_bind_graphics_resources(RinGLContext* context,
                                           uint64_t command_list,
                                           uint64_t bind_group)

@@ -817,6 +817,7 @@ static int program_sampler_index_for_name(const RinGLProgramObject* program,
 
 typedef struct RinGLTextureTransitionSet {
     uint32_t texture_indices[RINGL_MAX_SAMPLER_UNIFORMS];
+    uint32_t mip_counts[RINGL_MAX_SAMPLER_UNIFORMS];
     uint32_t count;
 } RinGLTextureTransitionSet;
 
@@ -835,11 +836,15 @@ static int texture_transition_set_contains(
 }
 
 static int texture_transition_set_add(RinGLTextureTransitionSet* set,
-                                      uint32_t texture_index)
+                                      uint32_t texture_index,
+                                      uint32_t mip_count)
 {
-    if (set == NULL || set->count >= RINGL_MAX_SAMPLER_UNIFORMS)
+    if (set == NULL || mip_count == 0u ||
+        mip_count > RINGL_MAX_TEXTURE_MIP_LEVELS ||
+        set->count >= RINGL_MAX_SAMPLER_UNIFORMS)
         return -1;
-    set->texture_indices[set->count++] = texture_index;
+    set->texture_indices[set->count] = texture_index;
+    set->mip_counts[set->count++] = mip_count;
     return 0;
 }
 
@@ -856,12 +861,15 @@ static int prepare_graphics_resources(RinGLContext* context,
     RinGLShaderObject* fragment;
     RinGLRinGpuGraphicsBindingV1
         bindings[RINGL_MAX_SAMPLER_UNIFORMS * 2u];
+    RinGLRinGpuGraphicsBindingV2
+        mip_bindings[RINGL_MAX_SAMPLER_UNIFORMS * 2u];
     uint64_t image;
     uint64_t sampler;
     uint32_t texture_name;
     uint32_t texture_index;
     uint32_t sampler_binding_index;
     uint32_t binding_count;
+    uint32_t requires_mip_chain = 0u;
     RinGLTextureTransitionSet transitioned = {0};
     int32_t unit;
 
@@ -883,6 +891,7 @@ static int prepare_graphics_resources(RinGLContext* context,
         return -1;
 
     memset(bindings, 0, sizeof(bindings));
+    memset(mip_bindings, 0, sizeof(mip_bindings));
     binding_count = fragment->rsh1_sampler_binding_count * 2u;
     for (sampler_binding_index = 0u;
          sampler_binding_index < fragment->rsh1_sampler_binding_count;
@@ -917,15 +926,40 @@ static int prepare_graphics_resources(RinGLContext* context,
             image == depth_target || image == stencil_target) {
             return -1;
         }
-        if (texture->ringpu_image_state[0] != RINGL_RIN_GPU_IMAGE_SHADER_READ &&
-            !texture_transition_set_contains(&transitioned, texture_index)) {
-            if (ringl_backend_transition_image(
-                    context, command_list, image,
-                    texture->ringpu_image_state[0],
-                    RINGL_RIN_GPU_IMAGE_SHADER_READ) != 0) {
+        if (!texture_transition_set_contains(&transitioned, texture_index)) {
+            uint32_t mip_count = ringl_texture_sampled_mip_count(texture);
+
+            if (mip_count == 0u)
                 return -1;
+            for (uint32_t mip = 0u; mip < mip_count; ++mip) {
+                if (texture->ringpu_image_state[mip] ==
+                    RINGL_RIN_GPU_IMAGE_SHADER_READ) {
+                    continue;
+                }
+                if (mip == 0u) {
+                    if (ringl_backend_transition_image(
+                            context, command_list, image,
+                            texture->ringpu_image_state[mip],
+                            RINGL_RIN_GPU_IMAGE_SHADER_READ) != 0) {
+                        return -1;
+                    }
+                } else {
+                    RinGLRinGpuImageTransition2DMipV2 transition = {0};
+
+                    if (context->ringpu_ops.transition_image_2d_mip_v2 == NULL)
+                        return -1;
+                    transition.image = image;
+                    transition.mip_level = mip;
+                    transition.old_state = texture->ringpu_image_state[mip];
+                    transition.new_state = RINGL_RIN_GPU_IMAGE_SHADER_READ;
+                    if (ringl_backend_transition_image_2d_mip_v2(
+                            context, command_list, &transition) != 0) {
+                        return -1;
+                    }
+                }
             }
-            if (texture_transition_set_add(&transitioned, texture_index) != 0)
+            if (texture_transition_set_add(&transitioned, texture_index,
+                                           mip_count) != 0)
                 return -1;
         }
         bindings[sampler_binding_index * 2u].binding =
@@ -940,11 +974,27 @@ static int prepare_graphics_resources(RinGLContext* context,
         bindings[sampler_binding_index * 2u + 1u].kind =
             RINGL_RIN_GPU_RESOURCE_SAMPLER;
         bindings[sampler_binding_index * 2u + 1u].resource = sampler;
+        memcpy(&mip_bindings[sampler_binding_index * 2u],
+               &bindings[sampler_binding_index * 2u],
+               sizeof(bindings[sampler_binding_index * 2u]));
+        memcpy(&mip_bindings[sampler_binding_index * 2u + 1u],
+               &bindings[sampler_binding_index * 2u + 1u],
+               sizeof(bindings[sampler_binding_index * 2u + 1u]));
+        if (texture->min_filter != RINGL_NEAREST &&
+            texture->min_filter != RINGL_LINEAR) {
+            mip_bindings[sampler_binding_index * 2u].flags =
+                RINGL_RIN_GPU_GRAPHICS_BINDING_SAMPLED_MIP_CHAIN;
+            requires_mip_chain = 1u;
+        }
     }
 
-    if (ringl_backend_create_graphics_bind_group(
-            context, pipeline, bindings, binding_count,
-            &context->graphics_bind_group) != 0 ||
+    if ((requires_mip_chain != 0u
+             ? ringl_backend_create_graphics_bind_group_v2(
+                   context, pipeline, mip_bindings, binding_count,
+                   &context->graphics_bind_group)
+             : ringl_backend_create_graphics_bind_group(
+                   context, pipeline, bindings, binding_count,
+                   &context->graphics_bind_group)) != 0 ||
         context->graphics_bind_group == 0u)
         return -1;
 
@@ -978,8 +1028,10 @@ static void publish_texture_transitions(RinGLContext* context,
     for (index = 0u; index < transitioned->count; ++index) {
         uint32_t texture_index = transitioned->texture_indices[index];
 
-        context->textures[texture_index].ringpu_image_state[0] =
-            RINGL_RIN_GPU_IMAGE_SHADER_READ;
+        for (uint32_t mip = 0u; mip < transitioned->mip_counts[index]; ++mip) {
+            context->textures[texture_index].ringpu_image_state[mip] =
+                RINGL_RIN_GPU_IMAGE_SHADER_READ;
+        }
     }
 }
 

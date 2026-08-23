@@ -143,13 +143,13 @@ before its real RinGPU sample; it is not folded into a host-side shortcut.
 The bounded two-UV profile also maps `firstUv` and `secondUv` to their own
 RSH1 perspective input pairs, so each call can choose either interpolated
 coordinate without reusing the first pair.
-One fragment-local `vec2 localUv = uv;` alias, or
-`vec2 localUv = uv +/- vec2(finite, finite);`, is also accepted. Its affine
-initializer is lowered once before the samples, and each sample reads the
-resulting live perspective-coordinate RSH1 registers. This remains a
-deliberately narrow GLSL ES subset: other local vector expressions, multiple
-locals, more than two UV varyings, and more than eight calls are still
-unsupported.
+One or two fragment-local aliases/finite affine values may be chained from the
+shared UV, for example `vec2 baseUv = uv + vec2(...);` followed by
+`vec2 localUv = baseUv - vec2(...);`. Each affine initializer is lowered in
+source order before samples, and every sample reads the resulting live
+perspective-coordinate RSH1 registers. This remains a deliberately narrow
+GLSL ES subset: other local vector expressions, more than two locals, more
+than two UV varyings, and more than eight calls are still unsupported.
 
 See [TODO.md](TODO.md) for the implementation roadmap.
 

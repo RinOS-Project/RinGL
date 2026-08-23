@@ -540,9 +540,11 @@ static int lower_fragment_texture_chain(const char* source,
     uint32_t sampled_final_base;
     uint32_t padding_base;
     uint32_t coordinate_temp_base;
+    uint32_t tint_instruction_base = 0u;
     uint32_t tint_constant_base = 0u;
     uint32_t tint_result_base = 0u;
     uint32_t has_call_offset = 0u;
+    uint32_t parenthesized_tint = 0u;
     uint32_t tint_enabled = 0u;
     uint32_t local_temporary_register_count = 0u;
     uint32_t temporary_register_count = 0u;
@@ -658,6 +660,10 @@ static int lower_fragment_texture_chain(const char* source,
     }
     if (!consume_text(&cursor, "gl_FragColor="))
         return 1;
+    if (*cursor == '(') {
+        ++cursor;
+        parenthesized_tint = 1u;
+    }
     for (;;) {
         if (call_count == RINGL_VARYING_TEXTURE_MAX_CALLS ||
             !parse_varying_texture_call(&cursor, sampler_names, sampler_count,
@@ -672,7 +678,13 @@ static int lower_fragment_texture_chain(const char* source,
             break;
         ++cursor;
     }
-    if (*cursor == '*') {
+    if (parenthesized_tint) {
+        if (!consume_text(&cursor, ")") ||
+            !parse_varying_texture_tint(&cursor, tint)) {
+            return 1;
+        }
+        tint_enabled = 1u;
+    } else if (*cursor == '*') {
         if (call_count != 1u || !parse_varying_texture_tint(&cursor, tint))
             return 1;
         tint_enabled = 1u;
@@ -725,6 +737,12 @@ static int lower_fragment_texture_chain(const char* source,
     if (has_call_offset)
         temporary_register_count += 4u;
     if (tint_enabled) {
+        if (store_base + 13u > RINGL_RSH1_MAX_INSTRUCTIONS ||
+            8u * call_count + temporary_register_count + 8u >
+                RINGL_RSH1_MAX_REGISTERS) {
+            return 1;
+        }
+        tint_instruction_base = store_base;
         tint_constant_base = 8u * call_count + temporary_register_count;
         tint_result_base = tint_constant_base + 4u;
         store_base += 8u;
@@ -867,9 +885,9 @@ static int lower_fragment_texture_chain(const char* source,
         for (component = 0u; component < 4u; ++component) {
             uint32_t tint_bits;
             RinGLRsh1InstructionV1* constant =
-                &ins[add_base + component];
+                &ins[tint_instruction_base + component];
             RinGLRsh1InstructionV1* multiply =
-                &ins[add_base + 4u + component];
+                &ins[tint_instruction_base + 4u + component];
 
             memcpy(&tint_bits, &tint[component], sizeof(tint_bits));
             init_instruction(constant, RINGL_RSH1_OP_CONST_F32);

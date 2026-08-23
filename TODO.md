@@ -104,14 +104,13 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   the RinGL pipeline-cache key, so a point draw cannot reuse a triangle
   pipeline.
 - [x] Execute bounded `GL_LINES` direct and indexed draws through a distinct
-  native RinGPU line-list pipeline. An incomplete pair is a successful no-op;
-  triangle strips and fans remain unsupported.
+  native RinGPU line-list pipeline. An incomplete pair is a successful no-op.
 - [x] Execute bounded `GL_LINE_STRIP` direct and indexed draws through a
   distinct native RinGPU line-strip pipeline. Fewer than two vertices is a
-  successful no-op; triangle strips and fans remain unsupported.
+  successful no-op.
 - [x] Execute bounded `GL_LINE_LOOP` direct and indexed draws through a
   distinct native RinGPU line-loop pipeline. Fewer than two vertices is a
-  successful no-op; triangle fans remain unsupported.
+  successful no-op.
 - [x] Execute bounded `GL_TRIANGLE_STRIP` direct and indexed draws through a
   distinct native RinGPU triangle-strip pipeline. Fewer than three vertices is
   a successful no-op.

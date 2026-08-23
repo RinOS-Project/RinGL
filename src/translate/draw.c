@@ -118,6 +118,8 @@ int ringl_resolve_depth_target(RinGLContext* context, RinGLDepthTarget* target)
         } else {
             return -1;
         }
+        target->has_depth = framebuffer->depth_attachment_has_depth;
+        target->has_stencil = framebuffer->depth_attachment_has_stencil;
         return target->image != 0u && target->state != NULL && width != 0u &&
                        height != 0u
             ? 0
@@ -128,6 +130,9 @@ int ringl_resolve_depth_target(RinGLContext* context, RinGLDepthTarget* target)
         return 1;
     target->image = context->default_framebuffer.depth_target;
     target->format = context->default_framebuffer.depth_format;
+    target->has_depth = RINGL_TRUE;
+    target->has_stencil =
+        target->format == RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT;
     target->state = &context->default_depth_framebuffer_state;
     return (target->format == RINGL_RIN_GPU_FORMAT_D32_FLOAT ||
             target->format == RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) &&
@@ -150,33 +155,36 @@ static int command_ops_ready(const RinGLContext* context)
         context->ringpu_ops.queue_submit != NULL;
 }
 
-static int legacy_pipeline_state_supported(const RinGLContext* context)
+static int legacy_pipeline_state_supported(const RinGLContext* context,
+                                           uint32_t stencil_test_enabled)
 {
     return context != NULL && !context->blend_enabled &&
         !context->cull_face_enabled && context->front_face == RINGL_CCW &&
         context->color_write_mask == RINGL_RIN_GPU_COLOR_WRITE_ALL &&
-        !context->stencil_test_enabled;
+        stencil_test_enabled == 0u;
 }
 
 static int draw_state_supported(const RinGLContext* context,
                                 const RinGLColorTarget* target,
-                                const RinGLDepthTarget* depth_target)
+                                const RinGLDepthTarget* depth_target,
+                                uint32_t depth_test_enabled,
+                                uint32_t stencil_test_enabled)
 {
     if (context == NULL || target == NULL || target->image == 0u ||
         target->width == 0u || target->height == 0u)
         return 0;
-    if ((context->depth_test_enabled || context->stencil_test_enabled) &&
+    if ((depth_test_enabled != 0u || stencil_test_enabled != 0u) &&
         (depth_target == NULL || depth_target->image == 0u ||
          (depth_target->format != RINGL_RIN_GPU_FORMAT_D32_FLOAT &&
           depth_target->format != RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) ||
-         (context->stencil_test_enabled &&
+         (stencil_test_enabled != 0u &&
           depth_target->format != RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) ||
          depth_target->state == NULL ||
          context->ringpu_ops.begin_render_pass_depth == NULL ||
          context->ringpu_ops.create_graphics_pipeline_native == NULL))
         return 0;
     if (context->ringpu_ops.create_graphics_pipeline_native == NULL &&
-        !legacy_pipeline_state_supported(context))
+        !legacy_pipeline_state_supported(context, stencil_test_enabled))
         return 0;
     if (context->ringpu_ops.set_raster_state == NULL) {
         if (context->scissor_enabled)
@@ -750,12 +758,13 @@ static uint32_t ringl_submit_clear(RinGLContext* context, uint32_t mask)
     color_load_op = (mask & RINGL_COLOR_BUFFER_BIT) != 0u
         ? RINGL_RIN_GPU_RENDER_CLEAR
         : RINGL_RIN_GPU_RENDER_LOAD;
-    depth_load_op = (depth_status == 0 &&
+    depth_load_op = (depth_status == 0 && depth_target.has_depth != 0u &&
                      (mask & RINGL_DEPTH_BUFFER_BIT) != 0u &&
                      context->depth_write_mask != 0u)
         ? RINGL_RIN_GPU_RENDER_CLEAR
         : RINGL_RIN_GPU_RENDER_LOAD;
-    stencil_load_op = depth_status == 0 && depth_target.format ==
+    stencil_load_op = depth_status == 0 && depth_target.has_stencil != 0u &&
+            depth_target.format ==
             RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT
         ? ((mask & RINGL_STENCIL_BUFFER_BIT) != 0u
                ? RINGL_RIN_GPU_RENDER_CLEAR
@@ -936,6 +945,9 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
     uint32_t buffer_index;
     uint32_t primitive_topology;
     RinGLTextureTransitionSet texture_transitions = {0};
+    uint32_t effective_depth_test;
+    uint32_t effective_stencil_test;
+    uint32_t use_depth_target;
     int depth_status;
     int use_multi_buffer;
     int draw_result;
@@ -954,13 +966,23 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
     if (count == 0 || draw_is_noop(context))
         return;
     depth_status = ringl_resolve_depth_target(context, &depth_target);
+    effective_depth_test =
+        depth_status == 0 && depth_target.has_depth != 0u
+        ? context->depth_test_enabled
+        : RINGL_FALSE;
+    effective_stencil_test =
+        depth_status == 0 && depth_target.has_stencil != 0u
+        ? context->stencil_test_enabled
+        : RINGL_FALSE;
+    use_depth_target =
+        effective_depth_test != 0u || effective_stencil_test != 0u;
     if (!command_ops_ready(context) ||
         ringl_resolve_color_target(context, &target) != 0 ||
         depth_status < 0 ||
-        ((context->depth_test_enabled || context->stencil_test_enabled) &&
-         depth_status != 0) ||
         !draw_state_supported(context, &target,
-                              depth_status == 0 ? &depth_target : NULL)) {
+                              use_depth_target != 0u ? &depth_target : NULL,
+                              effective_depth_test,
+                              effective_stencil_test)) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
@@ -1010,19 +1032,18 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
     if (begin_commands(context, &command_list) != 0 ||
         ringl_get_or_create_graphics_pipeline(
             context, target.format,
-            (context->depth_test_enabled || context->stencil_test_enabled)
-                ? depth_target.format
-                : 0u,
+            use_depth_target != 0u ? depth_target.format : 0u,
             primitive_topology,
+            effective_depth_test, effective_stencil_test,
             &pipeline) != 0 ||
         pipeline == 0u ||
         prepare_graphics_resources(context, command_list, pipeline, target.image,
-                                   depth_status == 0 ? depth_target.image : 0u,
+                                   use_depth_target != 0u ? depth_target.image : 0u,
                                    &texture_transitions) != 0 ||
         transition_to_color_target(context, command_list, &target) != 0 ||
-        ((context->depth_test_enabled || context->stencil_test_enabled) &&
+        (use_depth_target != 0u &&
          transition_to_depth_target(context, command_list, &depth_target) != 0) ||
-        ((context->depth_test_enabled || context->stencil_test_enabled)
+        (use_depth_target != 0u
              ? begin_depth_pass(context, command_list, &target, &depth_target,
                                 RINGL_RIN_GPU_RENDER_LOAD,
                                 RINGL_RIN_GPU_RENDER_LOAD,
@@ -1070,7 +1091,7 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
     }
     publish_texture_transitions(context, &texture_transitions);
     *target.state = RINGL_RIN_GPU_IMAGE_COLOR_TARGET;
-    if (context->depth_test_enabled || context->stencil_test_enabled)
+    if (use_depth_target != 0u)
         *depth_target.state = RINGL_RIN_GPU_IMAGE_DEPTH_TARGET;
     ringl_context_clear_dirty(context, RINGL_DIRTY_PIPELINE |
                                        RINGL_DIRTY_BINDINGS |
@@ -1099,6 +1120,9 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
     uint32_t index_buffer_index;
     uint32_t primitive_topology;
     RinGLTextureTransitionSet texture_transitions = {0};
+    uint32_t effective_depth_test;
+    uint32_t effective_stencil_test;
+    uint32_t use_depth_target;
     int depth_status;
     int use_multi_buffer;
     int draw_result;
@@ -1122,13 +1146,23 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
     if (count == 0 || draw_is_noop(context))
         return;
     depth_status = ringl_resolve_depth_target(context, &depth_target);
+    effective_depth_test =
+        depth_status == 0 && depth_target.has_depth != 0u
+        ? context->depth_test_enabled
+        : RINGL_FALSE;
+    effective_stencil_test =
+        depth_status == 0 && depth_target.has_stencil != 0u
+        ? context->stencil_test_enabled
+        : RINGL_FALSE;
+    use_depth_target =
+        effective_depth_test != 0u || effective_stencil_test != 0u;
     if (!command_ops_ready(context) ||
         ringl_resolve_color_target(context, &target) != 0 ||
         depth_status < 0 ||
-        ((context->depth_test_enabled || context->stencil_test_enabled) &&
-         depth_status != 0) ||
         !draw_state_supported(context, &target,
-                              depth_status == 0 ? &depth_target : NULL)) {
+                              use_depth_target != 0u ? &depth_target : NULL,
+                              effective_depth_test,
+                              effective_stencil_test)) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
@@ -1194,19 +1228,18 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
     if (begin_commands(context, &command_list) != 0 ||
         ringl_get_or_create_graphics_pipeline(
             context, target.format,
-            (context->depth_test_enabled || context->stencil_test_enabled)
-                ? depth_target.format
-                : 0u,
+            use_depth_target != 0u ? depth_target.format : 0u,
             primitive_topology,
+            effective_depth_test, effective_stencil_test,
             &pipeline) != 0 ||
         pipeline == 0u ||
         prepare_graphics_resources(context, command_list, pipeline, target.image,
-                                   depth_status == 0 ? depth_target.image : 0u,
+                                   use_depth_target != 0u ? depth_target.image : 0u,
                                    &texture_transitions) != 0 ||
         transition_to_color_target(context, command_list, &target) != 0 ||
-        ((context->depth_test_enabled || context->stencil_test_enabled) &&
+        (use_depth_target != 0u &&
          transition_to_depth_target(context, command_list, &depth_target) != 0) ||
-        ((context->depth_test_enabled || context->stencil_test_enabled)
+        (use_depth_target != 0u
              ? begin_depth_pass(context, command_list, &target, &depth_target,
                                 RINGL_RIN_GPU_RENDER_LOAD,
                                 RINGL_RIN_GPU_RENDER_LOAD,
@@ -1271,7 +1304,7 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
 
     publish_texture_transitions(context, &texture_transitions);
     *target.state = RINGL_RIN_GPU_IMAGE_COLOR_TARGET;
-    if (context->depth_test_enabled || context->stencil_test_enabled)
+    if (use_depth_target != 0u)
         *depth_target.state = RINGL_RIN_GPU_IMAGE_DEPTH_TARGET;
     ringl_context_clear_dirty(context, RINGL_DIRTY_PIPELINE |
                                        RINGL_DIRTY_BINDINGS |

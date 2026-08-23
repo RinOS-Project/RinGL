@@ -341,16 +341,23 @@ WebGL binding and presentation remain unsupported.
 Custom RGBA8 renderbuffer FBOs may additionally attach a matching
 `DEPTH24_STENCIL8` renderbuffer or level-zero
 `DEPTH24_STENCIL8`/`DEPTH_STENCIL`/`UNSIGNED_INT_24_8` texture through
-`DEPTH_STENCIL_ATTACHMENT`. RinGL converts the packed 24/8 texture input into
+`DEPTH_STENCIL_ATTACHMENT`, or attach that D24S8 storage through
+`STENCIL_ATTACHMENT` alone. RinGL converts the packed 24/8 texture input into
 RinGPU's F32 depth/S8 stencil storage and executes independent front/back
 stencil tests, reference/read/write masks, all eight stencil operations, and
-stencil clear before the depth test. The common `ringl_stencil_*` calls update
-both faces, while the `*_separate` forms set one face or both explicitly. This
-is tested through the RinOS RinGL-to-RinGPU surface path, including stencil
+stencil clear before the depth test. A stencil-only attachment still uses its
+D32S8 image for the native render pass, but it suppresses logical depth test,
+depth write, and depth clear; a physical depth plane never becomes an
+accidental depth attachment. The common `ringl_stencil_*` calls update both
+faces, while the `*_separate` forms set one face or both explicitly. This is
+tested through the RinOS RinGL-to-RinGPU surface path, including stencil
 rejection, replacement, write masking, depth-fail behavior, reversed winding,
-and back-face culling. `ringl_clear(RINGL_STENCIL_BUFFER_BIT)` also forwards
-the front stencil write mask through the native render pass, so it preserves
-masked-off stencil bits rather than overwriting the complete S8 plane.
+back-face culling, and an enabled `DEPTH_TEST` with `NEVER` on a stencil-only
+FBO. `ringl_clear(RINGL_STENCIL_BUFFER_BIT)` also forwards the front stencil
+write mask through the native render pass, so it preserves masked-off stencil
+bits rather than overwriting the complete S8 plane. Separate depth and stencil
+images, depth-only D24S8 attachment, multisample storage, and resolve remain
+outside this bounded profile.
 
 `ringl_clear()` also carries a bounded lower-left clear region and an RGBA
 write mask to RinGPU. An enabled WebGL scissor clips color, depth, and stencil

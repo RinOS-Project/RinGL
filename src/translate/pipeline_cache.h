@@ -67,6 +67,8 @@ typedef struct RinGLPipelineKey {
 int ringl_build_pipeline_key(RinGLContext* context,
                              uint32_t color_format, uint32_t depth_format,
                              uint32_t primitive_topology,
+                             uint32_t depth_test_enabled,
+                             uint32_t stencil_test_enabled,
                              RinGLPipelineKey* key);
 uint64_t ringl_pipeline_key_hash(const RinGLPipelineKey* key);
 int ringl_pipeline_key_equal(const RinGLPipelineKey* left,
@@ -78,6 +80,8 @@ int ringl_get_or_create_graphics_pipeline(RinGLContext* context,
                                           uint32_t color_format,
                                           uint32_t depth_format,
                                           uint32_t primitive_topology,
+                                          uint32_t depth_test_enabled,
+                                          uint32_t stencil_test_enabled,
                                           uint64_t* pipeline_out);
 
 #endif /* RINGL_PIPELINE_CACHE_H */

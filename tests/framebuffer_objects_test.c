@@ -112,6 +112,12 @@ int main(void)
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
            RINGL_FRAMEBUFFER_COMPLETE);
+    ringl_framebuffer_texture_2d(RINGL_FRAMEBUFFER,
+                                 RINGL_STENCIL_ATTACHMENT,
+                                 RINGL_TEXTURE_2D, depth_stencil_texture, 0);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
+           RINGL_FRAMEBUFFER_COMPLETE);
     packed_depth_stencil = 0x3fffff5au;
     ringl_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 1, 1,
                            RINGL_DEPTH_STENCIL, RINGL_UNSIGNED_INT_24_8,

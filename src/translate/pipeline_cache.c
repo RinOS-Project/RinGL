@@ -208,6 +208,8 @@ static int native_primitive_topology_valid(uint32_t primitive_topology)
 int ringl_build_pipeline_key(RinGLContext* context,
                              uint32_t color_format, uint32_t depth_format,
                              uint32_t primitive_topology,
+                             uint32_t depth_test_enabled,
+                             uint32_t stencil_test_enabled,
                              RinGLPipelineKey* key)
 {
     RinGLProgramObject* program;
@@ -219,13 +221,14 @@ int ringl_build_pipeline_key(RinGLContext* context,
 
     if (context == NULL || key == NULL || color_format == 0u ||
         !native_primitive_topology_valid(primitive_topology) ||
+        depth_test_enabled > RINGL_TRUE || stencil_test_enabled > RINGL_TRUE ||
         (depth_format != 0u &&
          depth_format != RINGL_RIN_GPU_FORMAT_D32_FLOAT &&
          depth_format != RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) ||
-        (context->depth_test_enabled && depth_format == 0u) ||
-        (context->stencil_test_enabled &&
+        (depth_test_enabled != 0u && depth_format == 0u) ||
+        (stencil_test_enabled != 0u &&
          depth_format != RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) ||
-        (!context->depth_test_enabled && !context->stencil_test_enabled &&
+        (depth_test_enabled == 0u && stencil_test_enabled == 0u &&
          depth_format != 0u))
         return -1;
     program = current_program(context);
@@ -244,18 +247,18 @@ int ringl_build_pipeline_key(RinGLContext* context,
     result.fragment_shader_module = fragment->ringpu_module;
     result.color_format = color_format;
     result.depth_format = depth_format;
-    if (context->depth_test_enabled) {
+    if (depth_test_enabled != 0u) {
         result.depth_compare = native_depth_compare(context->depth_func);
         if (result.depth_compare == 0u)
             return -1;
         result.depth_write_enabled = context->depth_write_mask;
-    } else if (context->stencil_test_enabled) {
+    } else if (stencil_test_enabled != 0u) {
         /* Stencil-only GLES draws still use the combined attachment. The
          * native depth stage is made observationally inert. */
         result.depth_compare = RINGL_RIN_GPU_COMPARE_ALWAYS;
         result.depth_write_enabled = RINGL_FALSE;
     }
-    if (context->stencil_test_enabled) {
+    if (stencil_test_enabled != 0u) {
         result.stencil_test_enabled = RINGL_TRUE;
         result.stencil_compare = native_depth_compare(context->stencil_func);
         result.stencil_reference = context->stencil_reference;
@@ -639,12 +642,15 @@ int ringl_get_or_create_graphics_pipeline(RinGLContext* context,
                                           uint32_t color_format,
                                           uint32_t depth_format,
                                           uint32_t primitive_topology,
+                                          uint32_t depth_test_enabled,
+                                          uint32_t stencil_test_enabled,
                                           uint64_t* pipeline_out)
 {
     RinGLPipelineKey key;
 
     if (ringl_build_pipeline_key(context, color_format, depth_format,
-                                 primitive_topology, &key) != 0)
+                                 primitive_topology, depth_test_enabled,
+                                 stencil_test_enabled, &key) != 0)
         return -1;
     return ringl_pipeline_cache_get_or_create(context, &key, pipeline_out);
 }

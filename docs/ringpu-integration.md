@@ -83,13 +83,13 @@ OS-Core also contains `rin_webgl_ringl_bridge.{h,c}`. The bridge borrows the exi
 
 During the initial bridge lifetime RinGL is the exclusive command producer for the borrowed surface. The legacy `rin_webgl_ringpu_surface_clear()` / `present()` helpers must not be interleaved with RinGL commands until shared image-state synchronization is generalized.
 
-The bridge creates a WebGL-facing context with
-`RINGL_CONTEXT_FLAG_WEBGL1_FRAMEBUFFER_POLICY`. This deliberately does not
-remove RinGPU's native separate depth/stencil render-pass capability: it keeps
-that capability for native RinGL contexts, but reports distinct depth/stencil
-attachments as `FRAMEBUFFER_UNSUPPORTED` and rejects WebGL draw/read with
-`INVALID_FRAMEBUFFER_OPERATION`. A shared D24S8 attachment remains a complete
-RinGPU-backed WebGL framebuffer.
+The bridge creates an unflagged native RinGL context. WebGL 1 attachment policy
+lives in the Ladybird embedding: it queries the live depth and stencil
+attachments, reports a distinct pair as `FRAMEBUFFER_UNSUPPORTED`, and rejects
+draw/read/copy/clear before native submission. Query failure also closes that
+path. RinGL and RinGPU therefore retain their native separate depth/stencil
+render-pass capability, while an identical object and level (including shared
+D24S8) remains a complete RinGPU-backed WebGL framebuffer.
 
 The surface color image declares `COPY_SOURCE` and `CPU_READABLE` as well as
 its existing `COPY_DESTINATION`, `COLOR_TARGET`, and `PRESENT` uses. Its

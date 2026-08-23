@@ -359,10 +359,6 @@ extern "C" {
 
 typedef struct RinGLContext RinGLContext;
 
-/* Opt into WebGL 1 framebuffer completeness and operation-error policy while
- * retaining the richer native RinGL framebuffer profile for non-WebGL users. */
-#define RINGL_CONTEXT_FLAG_WEBGL1_FRAMEBUFFER_POLICY 0x00000001u
-
 typedef struct RinGLRinGpuVertexAttributeV1 {
     uint32_t location;
     uint32_t format;

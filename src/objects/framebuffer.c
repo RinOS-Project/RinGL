@@ -615,29 +615,9 @@ int ringl_get_framebuffer_color_attachment(
                                             attachment);
 }
 
-static int webgl1_has_distinct_depth_stencil_attachments(
-    const RinGLFramebufferObject* framebuffer)
-{
-    if (framebuffer == NULL ||
-        framebuffer->depth_attachment_kind ==
-            RINGL_FRAMEBUFFER_ATTACHMENT_NONE ||
-        framebuffer->stencil_attachment_kind ==
-            RINGL_FRAMEBUFFER_ATTACHMENT_NONE) {
-        return 0;
-    }
-    return framebuffer->depth_attachment_kind !=
-                   framebuffer->stencil_attachment_kind ||
-           framebuffer->depth_attachment_object !=
-                   framebuffer->stencil_attachment_object ||
-           framebuffer->depth_attachment_level !=
-                   framebuffer->stencil_attachment_level;
-}
-
 uint32_t ringl_framebuffer_operation_error(const RinGLContext* context)
 {
     if (context != NULL &&
-        (context->flags & RINGL_CONTEXT_FLAG_WEBGL1_FRAMEBUFFER_POLICY) !=
-            0u &&
         context->framebuffer_binding != 0u &&
         ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) !=
             RINGL_FRAMEBUFFER_COMPLETE) {
@@ -689,11 +669,6 @@ uint32_t ringl_check_framebuffer_status(uint32_t target)
                                        &stencil_height) != 0 ||
          color_width != stencil_width || color_height != stencil_height))
         return RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
-    if ((context->flags & RINGL_CONTEXT_FLAG_WEBGL1_FRAMEBUFFER_POLICY) !=
-            0u &&
-        webgl1_has_distinct_depth_stencil_attachments(framebuffer)) {
-        return RINGL_FRAMEBUFFER_UNSUPPORTED;
-    }
     if (framebuffer->color_attachment_kind ==
             RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D &&
         framebuffer->color_attachment_level != 0 &&

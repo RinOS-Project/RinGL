@@ -322,13 +322,12 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 
 ## Phase 9 — WebGL-facing readiness
 
-- [ ] Keep WebGL validation/security policy outside the raw RinGL GL implementation.
-  - [x] Before exposing a WebGL 1 context, apply its framebuffer-attachment
-    compatibility policy through the explicit
-    `RINGL_CONTEXT_FLAG_WEBGL1_FRAMEBUFFER_POLICY` profile. Native RinGL keeps
-    distinct depth/stencil attachments, while the WebGL profile reports
-    `FRAMEBUFFER_UNSUPPORTED` and stops draw/read with
-    `INVALID_FRAMEBUFFER_OPERATION`; a shared D24S8 attachment remains valid.
+- [x] Keep WebGL validation/security policy outside the raw RinGL GL implementation.
+  - [x] Raw RinGL accepts no WebGL-specific context flags and retains its
+    complete native distinct depth/stencil profile. The Ladybird embedding
+    queries the live raw attachments at its boundary, reports a distinct pair
+    as `FRAMEBUFFER_UNSUPPORTED`, and rejects draw/read/copy/clear before
+    native submission; an identical object and level remains valid.
 - [ ] Define a clean embedding API for browser contexts and surfaces.
 - [ ] Ensure robust buffer/texture access independent of backend behavior.
   - [x] Add a capacity-checked `readPixels` import/export boundary for

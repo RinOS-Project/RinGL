@@ -250,7 +250,6 @@ struct RinGLContext {
     uint32_t lost;
     uint32_t loss_reported;
     uint32_t dirty_bits;
-    uint32_t flags;
     RinGLRinGpuBindingV1 ringpu;
     RinGLRinGpuOpsV1 ringpu_ops;
     RinGLRinGpuSyncOpsV1 sync_ops;

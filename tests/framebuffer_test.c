@@ -15,25 +15,30 @@ static RinGLFramebufferAttachmentInfoV1 attachment_info(void)
     return info;
 }
 
-static void test_webgl1_framebuffer_policy(void)
+static void test_native_separate_depth_stencil_profile(void)
 {
     RinGLContext* context = NULL;
     RinGLContext* invalid_context = (RinGLContext*)UINTPTR_MAX;
     RinGLContextDescV1 desc = {
         .struct_size = sizeof(desc),
         .api_version = RINGL_API_VERSION,
-        .flags = RINGL_CONTEXT_FLAG_WEBGL1_FRAMEBUFFER_POLICY,
     };
     uint32_t framebuffers[1] = { 0u };
     uint32_t renderbuffers[3] = { 0u, 0u, 0u };
     uint8_t readback[4] = { 0xa5u, 0xa5u, 0xa5u, 0xa5u };
 
-    desc.flags = 0x80000000u;
+    desc.flags = 1u;
     assert(ringl_context_create(&desc, &invalid_context) != 0);
     assert(invalid_context == NULL);
-    desc.flags = RINGL_CONTEXT_FLAG_WEBGL1_FRAMEBUFFER_POLICY;
+    desc.flags = 0u;
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
+    ringl_gen_framebuffers(1, framebuffers);
+    ringl_bind_framebuffer(RINGL_FRAMEBUFFER, framebuffers[0]);
+    ringl_read_pixels(0, 0, 1, 1, RINGL_RGBA, RINGL_UNSIGNED_BYTE, readback);
+    assert(ringl_get_error() == RINGL_INVALID_FRAMEBUFFER_OPERATION);
+    assert(readback[0] == 0xa5u && readback[1] == 0xa5u &&
+           readback[2] == 0xa5u && readback[3] == 0xa5u);
     ringl_gen_renderbuffers(3, renderbuffers);
     ringl_bind_renderbuffer(RINGL_RENDERBUFFER, renderbuffers[0]);
     ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_RGBA8, 2, 2);
@@ -43,8 +48,6 @@ static void test_webgl1_framebuffer_policy(void)
     ringl_bind_renderbuffer(RINGL_RENDERBUFFER, renderbuffers[2]);
     ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_STENCIL_INDEX8,
                                2, 2);
-    ringl_gen_framebuffers(1, framebuffers);
-    ringl_bind_framebuffer(RINGL_FRAMEBUFFER, framebuffers[0]);
     ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT0,
                                    RINGL_RENDERBUFFER, renderbuffers[0]);
     ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER, RINGL_DEPTH_ATTACHMENT,
@@ -52,13 +55,7 @@ static void test_webgl1_framebuffer_policy(void)
     ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER, RINGL_STENCIL_ATTACHMENT,
                                    RINGL_RENDERBUFFER, renderbuffers[2]);
     assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
-           RINGL_FRAMEBUFFER_UNSUPPORTED);
-    ringl_read_pixels(0, 0, 1, 1, RINGL_RGBA, RINGL_UNSIGNED_BYTE, readback);
-    assert(ringl_get_error() == RINGL_INVALID_FRAMEBUFFER_OPERATION);
-    assert(readback[0] == 0xa5u && readback[1] == 0xa5u &&
-           readback[2] == 0xa5u && readback[3] == 0xa5u);
-    ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);
-    assert(ringl_get_error() == RINGL_INVALID_FRAMEBUFFER_OPERATION);
+           RINGL_FRAMEBUFFER_COMPLETE);
 
     ringl_bind_renderbuffer(RINGL_RENDERBUFFER, renderbuffers[1]);
     ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_DEPTH24_STENCIL8,
@@ -290,6 +287,6 @@ int main(void)
     ringl_bind_framebuffer(RINGL_FRAMEBUFFER, 0u);
 
     ringl_context_destroy(context);
-    test_webgl1_framebuffer_policy();
+    test_native_separate_depth_stencil_profile();
     return 0;
 }

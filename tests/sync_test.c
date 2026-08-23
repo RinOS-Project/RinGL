@@ -784,7 +784,7 @@ int main(void)
     assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
            RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT);
     ringl_copy_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 1, 2, 2, 1);
-    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    assert(ringl_get_error() == RINGL_INVALID_FRAMEBUFFER_OPERATION);
     assert(backend.transitions == 5u && backend.readbacks == 20u);
     assert(memcmp(context->textures[ringl_object_slot_index(copied_texture)].shadow_bytes,
                   expected_packed_rgba, sizeof(expected_packed_rgba)) == 0);

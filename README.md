@@ -464,12 +464,12 @@ attachment-point query. Texture cube faces, separate attachments outside the
 verified D32/D24S8 depth and native S8/D24S8 stencil matrix, and multisample
 attachments remain outside the profile.
 
-`RINGL_CONTEXT_FLAG_WEBGL1_FRAMEBUFFER_POLICY` creates the compatibility
-boundary required before a WebGL 1 embedding is exposed: native RinGL keeps
-its real distinct depth/stencil RinGPU pass, while a flagged context reports
-that pair as `FRAMEBUFFER_UNSUPPORTED` and stops draw/read with
-`INVALID_FRAMEBUFFER_OPERATION`. A shared D24S8 attachment is still complete
-and remains on the normal RinGPU path.
+RinGL exposes its native distinct depth/stencil RinGPU pass without a
+WebGL-specific context mode. The Ladybird embedding owns the WebGL 1
+compatibility boundary: it queries the live attachments, reports only a
+distinct pair as `FRAMEBUFFER_UNSUPPORTED`, and stops draw/read/copy/clear
+before native submission. An identical object and level, including shared
+D24S8, remains valid.
 
 `ringl_clear()` also carries a bounded lower-left clear region and an RGBA
 write mask to RinGPU. An enabled WebGL scissor clips color, depth, and stencil

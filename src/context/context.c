@@ -75,8 +75,7 @@ int ringl_context_create(const RinGLContextDescV1* desc,
         if (desc->struct_size < sizeof(*desc) ||
             desc->api_version != RINGL_API_VERSION ||
             desc->reserved0 != 0u ||
-            (desc->flags & ~RINGL_CONTEXT_FLAG_WEBGL1_FRAMEBUFFER_POLICY) !=
-                0u ||
+            desc->flags != 0u ||
             !ringl_validate_ringpu_binding(desc->ringpu)) {
             return -1;
         }
@@ -122,7 +121,6 @@ int ringl_context_create(const RinGLContextDescV1* desc,
         context->vertex_attribs[index].current_value[3] = 1.0f;
 
     if (desc != NULL) {
-        context->flags = desc->flags;
         if (desc->ringpu != NULL) {
             memcpy(&context->ringpu, desc->ringpu, sizeof(context->ringpu));
             context->has_ringpu = 1;

@@ -651,6 +651,14 @@ static int ringl_program_prepare_gpu_shader(RinGLContext* context,
     return object->ringpu_module != 0u;
 }
 
+static int ringl_shader_has_numeric_uniforms(const RinGLShaderObject* shader)
+{
+    return shader != NULL &&
+        (shader->float_uniform_count != 0u || shader->vec2_uniform_count != 0u ||
+         shader->vec3_uniform_count != 0u || shader->vec4_uniform_count != 0u ||
+         shader->mat4_uniform_count != 0u);
+}
+
 static int ringl_program_lower_uniform_shader(
     RinGLContext* context, const RinGLShaderObject* shader,
     const RinGLGlslUniformValue* uniforms, uint32_t uniform_count,
@@ -706,6 +714,8 @@ static int ringl_program_rebuild_uniform_artifacts(
     uint32_t fragment_rsh1_size = 0u;
     uint64_t vertex_module = 0u;
     uint64_t fragment_module = 0u;
+    int vertex_has_numeric_uniforms;
+    int fragment_has_numeric_uniforms;
     uint32_t index;
 
     if (context == NULL || program == NULL || vertex == NULL ||
@@ -718,6 +728,10 @@ static int ringl_program_rebuild_uniform_artifacts(
         program->vec3_uniform_count > RINGL_MAX_VEC3_UNIFORMS ||
         program->vec4_uniform_count > RINGL_MAX_VEC4_UNIFORMS ||
         program->mat4_uniform_count > RINGL_MAX_MAT4_UNIFORMS)
+        return 0;
+    vertex_has_numeric_uniforms = ringl_shader_has_numeric_uniforms(vertex);
+    fragment_has_numeric_uniforms = ringl_shader_has_numeric_uniforms(fragment);
+    if (!vertex_has_numeric_uniforms && !fragment_has_numeric_uniforms)
         return 0;
     memset(uniforms, 0, sizeof(uniforms));
     for (index = 0u; index < program->float_uniform_count; ++index) {
@@ -767,18 +781,20 @@ static int ringl_program_rebuild_uniform_artifacts(
                program->mat4_uniforms[index].values,
                sizeof(program->mat4_uniforms[index].values));
     }
-    if (!ringl_program_lower_uniform_shader(
-            context, vertex, uniforms,
-            program->float_uniform_count + program->vec2_uniform_count +
-                program->vec3_uniform_count + program->vec4_uniform_count +
-                program->mat4_uniform_count,
-            &vertex_rsh1, &vertex_rsh1_size, &vertex_module) ||
-        !ringl_program_lower_uniform_shader(
-            context, fragment, uniforms,
-            program->float_uniform_count + program->vec2_uniform_count +
-                program->vec3_uniform_count + program->vec4_uniform_count +
-                program->mat4_uniform_count,
-            &fragment_rsh1, &fragment_rsh1_size, &fragment_module)) {
+    if ((vertex_has_numeric_uniforms &&
+         !ringl_program_lower_uniform_shader(
+             context, vertex, uniforms,
+             program->float_uniform_count + program->vec2_uniform_count +
+                 program->vec3_uniform_count + program->vec4_uniform_count +
+                 program->mat4_uniform_count,
+             &vertex_rsh1, &vertex_rsh1_size, &vertex_module)) ||
+        (fragment_has_numeric_uniforms &&
+         !ringl_program_lower_uniform_shader(
+             context, fragment, uniforms,
+             program->float_uniform_count + program->vec2_uniform_count +
+                 program->vec3_uniform_count + program->vec4_uniform_count +
+                 program->mat4_uniform_count,
+             &fragment_rsh1, &fragment_rsh1_size, &fragment_module))) {
         if (vertex_module != 0u)
             ringl_backend_destroy_object(context, vertex_module);
         if (fragment_module != 0u)
@@ -890,16 +906,19 @@ void ringl_link_program(uint32_t program)
         ringl_program_set_log(object, "vertex/fragment varying interface mismatch");
         return;
     }
-    if (object->float_uniform_count == 0u && object->vec2_uniform_count == 0u &&
-        object->vec3_uniform_count == 0u && object->vec4_uniform_count == 0u &&
-        object->mat4_uniform_count == 0u &&
-        context->has_ringpu_ops &&
+    if (context->has_ringpu_ops &&
         context->ringpu_ops.create_shader_module != NULL) {
-        if (!ringl_program_prepare_gpu_shader(context, object->vertex_shader, vertex)) {
+        /* A program-owned module is required only for the stage that reads a
+         * mutable numeric uniform. Keep the opposite stage on its normal
+         * shader object so a sampler/varying lowering profile is not
+         * incorrectly re-parsed by the scalar uniform lowerer. */
+        if (!ringl_shader_has_numeric_uniforms(vertex) &&
+            !ringl_program_prepare_gpu_shader(context, object->vertex_shader, vertex)) {
             ringl_program_set_log(object, "vertex shader failed RinGPU validation");
             return;
         }
-        if (!ringl_program_prepare_gpu_shader(context, object->fragment_shader, fragment)) {
+        if (!ringl_shader_has_numeric_uniforms(fragment) &&
+            !ringl_program_prepare_gpu_shader(context, object->fragment_shader, fragment)) {
             ringl_program_set_log(object, "fragment shader failed RinGPU validation");
             return;
         }

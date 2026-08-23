@@ -323,6 +323,13 @@ its derived executable unchanged. This lets embeddings preserve atomic
 WebGL-visible uniform state while the bounded RSH1 lowering path has no
 non-finite literal representation.
 
+Program-owned uniform artifacts are stage-selective. A mutable vertex `mat4`
+does not force an unrelated fragment `sampler2D` shader back through the
+scalar/vector lowerer: RinGL retains the fragment's validated texture RSH1
+module and atomically replaces only the vertex module on a matrix update. The
+focused RinGPU-module test verifies the fragment module retains its two typed
+image/sampler resources across the update.
+
 The no-varying RSH1 profile also lowers local `vec2`, `vec3`, and `vec4`
 values and component-wise vector arithmetic directly to scalar RSH1
 instructions. Same-width `+`/`-`, unary `-`, and vector/scalar `*` and `/`

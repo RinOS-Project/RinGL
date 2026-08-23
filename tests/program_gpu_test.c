@@ -1,12 +1,34 @@
 /* SPDX-License-Identifier: MIT */
 #include <assert.h>
 #include <stdint.h>
+#include <string.h>
 
 #include <ringl/ringl.h>
+
+typedef struct __attribute__((packed)) Rsh1Header {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t header_size;
+    uint32_t total_size;
+    uint32_t stage;
+    uint32_t flags;
+    uint32_t instruction_count;
+    uint32_t register_count;
+    uint32_t input_count;
+    uint32_t output_count;
+    uint32_t resource_count;
+    uint32_t workgroup_x;
+    uint32_t workgroup_y;
+    uint32_t workgroup_z;
+    uint32_t entry_instruction;
+    uint32_t reserved0;
+    uint32_t reserved1;
+} Rsh1Header;
 
 typedef struct FakeBackend {
     uint64_t next_handle;
     uint32_t shader_creates;
+    uint32_t texture_fragment_modules;
     uint32_t reject_create;
 } FakeBackend;
 
@@ -37,8 +59,13 @@ static int fake_create_shader_module(void* session, const void* rsh1,
                                      uint64_t* shader_module_out)
 {
     FakeBackend* backend = session;
-    (void)rsh1;
-    assert(size_bytes > 0u);
+    Rsh1Header header;
+
+    assert(rsh1 != NULL && size_bytes >= sizeof(header));
+    memcpy(&header, rsh1, sizeof(header));
+    assert(header.magic == UINT32_C(0x31485352) && header.total_size == size_bytes);
+    if (header.stage == 2u && header.resource_count == 2u)
+        backend->texture_fragment_modules++;
     backend->shader_creates++;
     if (backend->reject_create)
         return -1;
@@ -121,7 +148,9 @@ int main(void)
         "void main() { gl_Position = transform * position "
         "+ vec4(0.0, 0.0, 0.0, 0.0); }", -1);
     ringl_shader_source(matrix_fragment,
-        "void main() { gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0); }", -1);
+        "precision mediump float; uniform sampler2D texture; "
+        "void main() { gl_FragColor = texture2D(texture, vec2(0.5, 0.5)); }",
+        -1);
     ringl_compile_shader(matrix_vertex);
     ringl_compile_shader(matrix_fragment);
     assert(ringl_get_shader_compile_status(matrix_vertex) == RINGL_TRUE);
@@ -131,6 +160,7 @@ int main(void)
     ringl_link_program(matrix_program);
     assert(ringl_get_program_link_status(matrix_program) == RINGL_TRUE);
     assert(backend.shader_creates == 5u);
+    assert(backend.texture_fragment_modules == 2u);
     {
         float identity[16] = {
             1.0f, 0.0f, 0.0f, 0.0f,
@@ -141,16 +171,20 @@ int main(void)
         float values[16];
         int32_t location = ringl_get_uniform_location(matrix_program, "transform");
 
-        assert(location == 0);
+        /* `texture` occupies sampler location zero. The vertex mat4 remains
+         * independently mutable while the fragment uses its ordinary
+         * texture-lowering module. */
+        assert(location == 1);
         ringl_use_program(matrix_program);
         ringl_uniform_matrix4fv(location, 0u, identity);
         assert(ringl_get_error() == RINGL_NO_ERROR);
-        assert(backend.shader_creates == 7u);
+        assert(backend.shader_creates == 6u);
+        assert(backend.texture_fragment_modules == 2u);
         backend.reject_create = 1u;
         identity[0] = 2.0f;
         ringl_uniform_matrix4fv(location, 0u, identity);
         assert(ringl_get_error() == RINGL_INVALID_OPERATION);
-        assert(backend.shader_creates == 8u);
+        assert(backend.shader_creates == 7u);
         assert(ringl_get_uniform_matrix4f(matrix_program, location, values) == 0);
         assert(values[0] == 1.0f);
         backend.reject_create = 0u;
@@ -163,7 +197,7 @@ int main(void)
     backend.reject_create = 1u;
     ringl_link_program(program);
     assert(ringl_get_program_link_status(program) == RINGL_FALSE);
-    assert(backend.shader_creates == 9u);
+    assert(backend.shader_creates == 8u);
 
     ringl_context_destroy(context);
     return 0;

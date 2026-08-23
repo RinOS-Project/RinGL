@@ -694,10 +694,7 @@ static int lower_fragment_texture_chain(const char* source,
         return 1;
     if (strncmp(cursor, "vec4(", strlen("vec4(")) == 0) {
         if (!parse_varying_texture_color_literal(&cursor, color) ||
-            !parse_varying_texture_color_operator(&cursor, &color_operation) ||
-            /* A texture-dependent divisor cannot be proven nonzero during
-             * lowering, so do not submit it to a later execution failure. */
-            color_operation == RINGL_RSH1_OP_DIV_F32) {
+            !parse_varying_texture_color_operator(&cursor, &color_operation)) {
             return 1;
         }
         color_operation_enabled = 1u;

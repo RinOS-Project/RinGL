@@ -197,9 +197,9 @@ public RinGPU arithmetic execution path; unparenthesized multi-sample precedence
 is deliberately not inferred and zero division components are rejected early.
 For `+`, `-`, and `*`, the finite literal may also lead one sample or an
 explicitly parenthesized additive chain; its RSH1 register is then source0, so
-subtraction retains GLSL operand order. A leading division is rejected before
-submission because the texture result is not a statically provable nonzero
-divisor.
+subtraction retains GLSL operand order. Leading division uses the same operand
+order. RinGPU preflights every covered fragment, so a sampled zero divisor
+rejects the complete draw before a color/depth/stencil target is modified.
 
 Before cache eviction during a draw, RinGL resets its reusable command list. This releases references retained by the previous recorded submission before an old pipeline is destroyed.
 

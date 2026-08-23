@@ -264,6 +264,7 @@ int main(void)
     const float tint_values[4] = {0.5f, 1.0f, 0.25f, 1.0f};
     const float bias_values[4] = {0.1f, 0.2f, 0.1f, 0.0f};
     const float left_color_values[4] = {0.5f, 0.75f, 1.0f, 1.0f};
+    const float unit_color_values[4] = {1.0f, 1.0f, 1.0f, 1.0f};
     const float divisor_values[4] = {2.0f, 2.0f, 2.0f, 1.0f};
 
     assert(ringl_context_create(&desc, &context) == 0);
@@ -633,12 +634,32 @@ int main(void)
         assert(subtract->source1 == 2u + component);
     }
 
-    /* A sampled divisor cannot be proven nonzero while lowering. Reject this
-     * form instead of deferring a potential partial draw to the executor. */
+    /* The live texture result is a legal divisor. RinGPU's fragment preflight
+     * rejects any zero component before a target write, while the IR retains
+     * the literal as the left operand. */
     ringl_shader_source(shader, varying_left_divided_texture_source, -1);
     ringl_compile_shader(shader);
     assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
-    assert(ringl_lower_shader_rsh1(shader) != 0);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 21u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    for (component = 0u; component < 4u; ++component) {
+        uint32_t unit_color_bits;
+        const Instruction* constant =
+            (const Instruction*)(blob + sizeof(header)) + 8u + component;
+        const Instruction* divide =
+            (const Instruction*)(blob + sizeof(header)) + 12u + component;
+
+        memcpy(&unit_color_bits, &unit_color_values[component],
+               sizeof(unit_color_bits));
+        assert(constant->opcode == RSH1_CONST_F32);
+        assert(constant->immediate == unit_color_bits);
+        assert(divide->opcode == RSH1_DIV_F32);
+        assert(divide->source0 == 8u + component);
+        assert(divide->source1 == 2u + component);
+    }
 
     ringl_shader_source(shader, varying_divided_texture_source, -1);
     ringl_compile_shader(shader);

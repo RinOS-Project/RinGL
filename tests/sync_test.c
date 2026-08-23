@@ -258,6 +258,26 @@ static void copy_to_packed_mip_texture(RinGLContext* context,
     assert(copied[0] == first_expected && copied[1] == second_expected);
 }
 
+static void copy_to_native_texture(RinGLContext* context,
+                                   uint32_t internal_format,
+                                   const void* expected,
+                                   uint64_t expected_size)
+{
+    uint32_t texture = 0u;
+    RinGLTextureObject* object;
+
+    ringl_gen_textures(1, &texture);
+    ringl_bind_texture(RINGL_TEXTURE_2D, texture);
+    ringl_copy_tex_image_2d(RINGL_TEXTURE_2D, 0, internal_format, 1, 2,
+                            2, 1, 0);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    object = &context->textures[ringl_object_slot_index(texture)];
+    assert(object->defined == RINGL_TRUE &&
+           object->format == internal_format &&
+           object->shadow_size == expected_size &&
+           memcmp(object->shadow_bytes, expected, (size_t)expected_size) == 0);
+}
+
 int main(void)
 {
     FakeBackend backend = {0};
@@ -439,6 +459,37 @@ int main(void)
     assert(memcmp(context->textures[ringl_object_slot_index(copied_texture)].shadow_bytes,
                   expected_packed_rgba, sizeof(expected_packed_rgba)) == 0);
 
+    {
+        const uint8_t expected_rgb[8] = {
+            255u, 0u, 0u, 255u,
+            0u, 255u, 0u, 255u,
+        };
+        const uint16_t expected_rgb565[2] = {
+            UINT16_C(0xf800), UINT16_C(0x07e0),
+        };
+        const uint16_t expected_rgba4[2] = {
+            UINT16_C(0xf00f), UINT16_C(0x0f08),
+        };
+        const uint16_t expected_rgb5_a1[2] = {
+            UINT16_C(0xf801), UINT16_C(0x07c1),
+        };
+
+        /* copyTexImage2D defines native storage only after the RGBA snapshot
+         * succeeds. RGB canonicalizes alpha to one; packed formats quantize
+         * the same snapshot directly rather than round-tripping through RGBA. */
+        copy_to_native_texture(context, RINGL_RGB, expected_rgb,
+                               sizeof(expected_rgb));
+        copy_to_native_texture(context, RINGL_RGB565, expected_rgb565,
+                               sizeof(expected_rgb565));
+        copy_to_native_texture(context, RINGL_RGBA4, expected_rgba4,
+                               sizeof(expected_rgba4));
+        copy_to_native_texture(context, RINGL_RGB5_A1, expected_rgb5_a1,
+                               sizeof(expected_rgb5_a1));
+    }
+    assert(backend.transitions == 5u);
+    assert(backend.submits == 12u && backend.waits == 12u);
+    assert(backend.readbacks == 10u);
+
     /* The current source FBO is native RGBA4. Each destination is an explicit
      * level-one packed image, so this also exercises canonical readback before
      * direct native-precision conversion. */
@@ -452,8 +503,8 @@ int main(void)
                                RINGL_UNSIGNED_SHORT_5_5_5_1, UINT16_C(0xf801),
                                UINT16_C(0x07c1));
     assert(backend.transitions == 5u);
-    assert(backend.submits == 11u && backend.waits == 11u);
-    assert(backend.readbacks == 9u);
+    assert(backend.submits == 15u && backend.waits == 15u);
+    assert(backend.readbacks == 13u);
 
     ringl_gen_renderbuffers(1, &depth_renderbuffer);
     ringl_bind_renderbuffer(RINGL_RENDERBUFFER, depth_renderbuffer);
@@ -465,7 +516,7 @@ int main(void)
            RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT);
     ringl_copy_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 1, 2, 2, 1);
     assert(ringl_get_error() == RINGL_INVALID_OPERATION);
-    assert(backend.transitions == 5u && backend.readbacks == 9u);
+    assert(backend.transitions == 5u && backend.readbacks == 13u);
     assert(memcmp(context->textures[ringl_object_slot_index(copied_texture)].shadow_bytes,
                   expected_packed_rgba, sizeof(expected_packed_rgba)) == 0);
 

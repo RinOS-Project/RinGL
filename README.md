@@ -524,12 +524,13 @@ depth/stencil readback, multisample, and other unrepresented copy semantics
 remain outside the current profile.
 
 `copyTexImage2D` uses the same fenced snapshot from those complete color targets
-to replace a bound texture with a new level-zero `RGBA` definition. Its full
-source rectangle, FBO completeness,
-and destination limits are validated before readback; the previous texture
-definition and realized RinGPU image remain intact unless snapshot completion
-succeeds. This profile does not yet define zero-sized, non-RGBA, depth/stencil,
-or multisample copy definitions.
+to replace a bound texture with a new level-zero `RGBA`, `RGB`, or native
+RGB565/RGBA4/RGB5_A1 definition. RGB snapshots retain implicit alpha one, while
+packed definitions quantize canonical RGBA directly into two-byte storage. Its
+full source rectangle, FBO completeness, and destination limits are validated
+before readback; the previous texture definition and realized RinGPU image
+remain intact unless snapshot completion succeeds. This profile does not yet
+define zero-sized, depth/stencil, or multisample copy definitions.
 
 The one-sampler constant texture profile accepts both `vec2(u, v)` and the
 GLSL scalar-splat form `vec2(value)`. The latter requires a finite literal and

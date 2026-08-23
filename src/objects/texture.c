@@ -508,6 +508,24 @@ static void texture_copy_rgba_to_color_storage_texels(
     }
 }
 
+/* copyTexImage2D snapshots canonical RGBA from its source color target. RGB
+ * uses the ordinary four-byte shadow layout but preserves its implicit alpha
+ * one, while packed destinations use the same direct quantization path as
+ * copyTexSubImage2D. */
+static void texture_copy_rgba_to_copy_image_storage(
+    uint8_t* destination, const uint8_t* source, uint32_t storage_format,
+    uint32_t texel_count)
+{
+    uint32_t index;
+
+    texture_copy_rgba_to_color_storage_texels(destination, source,
+                                               storage_format, texel_count);
+    if (storage_format != RINGL_RGB)
+        return;
+    for (index = 0u; index < texel_count; ++index)
+        destination[(uint64_t)index * 4u + 3u] = UINT8_MAX;
+}
+
 static uint32_t texture_ringpu_format(uint32_t format)
 {
     if (format == RINGL_RGB565)
@@ -1680,12 +1698,16 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
     RinGLContext* context = ringl_get_current_context();
     RinGLTextureObject* texture;
     RinGLColorTarget source;
-    uint64_t size;
+    uint64_t snapshot_size;
+    uint64_t replacement_size;
+    uint8_t* snapshot;
     uint8_t* replacement;
 
     if (context == NULL)
         return;
-    if (!texture_target_valid(target) || internal_format != RINGL_RGBA) {
+    if (!texture_target_valid(target) ||
+        (internal_format != RINGL_RGBA && internal_format != RINGL_RGB &&
+         !texture_packed_color_format(internal_format))) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
@@ -1715,31 +1737,44 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
-    size = (uint64_t)(uint32_t)width * (uint64_t)(uint32_t)height * 4u;
-    if (size > SIZE_MAX) {
+    snapshot_size = (uint64_t)(uint32_t)width * (uint64_t)(uint32_t)height *
+                    4u;
+    replacement_size = (uint64_t)(uint32_t)width * (uint64_t)(uint32_t)height *
+                       texture_storage_texel_bytes(internal_format);
+    if (snapshot_size > SIZE_MAX || replacement_size > SIZE_MAX) {
         ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
         return;
     }
-    replacement = malloc((size_t)size);
-    if (replacement == NULL) {
+    snapshot = malloc((size_t)snapshot_size);
+    if (snapshot == NULL) {
         ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
         return;
     }
     if (ringl_read_color_target_rgba(context, x, y, width, height,
-                                     replacement) != 0) {
-        free(replacement);
+                                     snapshot) != 0) {
+        free(snapshot);
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
+    replacement = malloc((size_t)replacement_size);
+    if (replacement == NULL) {
+        free(snapshot);
+        ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+        return;
+    }
+    texture_copy_rgba_to_copy_image_storage(
+        replacement, snapshot, internal_format,
+        (uint32_t)width * (uint32_t)height);
+    free(snapshot);
 
     texture_discard_image(context, texture);
     texture_drop_mip_storage_from(texture, 1u);
     free(texture->shadow_bytes);
     texture->shadow_bytes = replacement;
-    texture->shadow_size = size;
+    texture->shadow_size = replacement_size;
     texture->width = (uint32_t)width;
     texture->height = (uint32_t)height;
-    texture->format = RINGL_RGBA;
+    texture->format = internal_format;
     texture->defined = RINGL_TRUE;
     ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
 }

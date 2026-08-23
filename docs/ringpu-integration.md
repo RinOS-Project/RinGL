@@ -95,10 +95,12 @@ texture levels, including explicit nonzero mips; packed destinations are
 quantized from the canonical snapshot only after readback succeeds. FBO
 completeness and source/destination rectangles are checked before temporary
 allocation. `copyTexImage2D` retains a prior texture definition/image until the
-replacement snapshot completes. The focused OS-Core
-`rin_webgl_ringl_bridge_test` covers clear, readback, and present through this
-borrowed surface. Depth/stencil, multisample, and other FBO copy semantics remain
-outside this slice.
+replacement snapshot completes, then defines RGBA/RGB or native
+RGB565/RGBA4/RGB5_A1 storage; RGB writes implicit alpha one and packed output
+is quantized directly from the canonical snapshot. The focused OS-Core
+`rin_webgl_ringl_bridge_test` covers clear, readback, and packed copy
+definitions through this borrowed surface. Depth/stencil, multisample, and
+other FBO copy semantics remain outside this slice.
 
 The same level-zero sampled-image path accepts WebGL 1 packed texture input:
 `RGB`/`UNSIGNED_SHORT_5_6_5`, `RGBA`/`UNSIGNED_SHORT_4_4_4_4`, and

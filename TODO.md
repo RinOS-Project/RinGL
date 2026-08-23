@@ -251,11 +251,12 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     other destination formats and unrepresented FBO copy semantics remain
     rejected.
   - [x] Add a bounded `copyTexImage2D` definition path from the same complete
-    color targets. The new RGBA storage is snapshotted before the bound
-    texture's old shadow/image is discarded, so invalid source rectangles,
-    incomplete FBOs, and readback failure leave that texture definition intact.
-    Zero-sized, non-RGBA, depth/stencil, and multisample definitions remain
-    unsupported.
+    color targets. RGBA/RGB and native RGB565/RGBA4/RGB5_A1 storage is defined
+    only after its canonical RGBA snapshot completes; RGB retains implicit
+    alpha one and packed output quantizes directly into two-byte storage. The
+    bound texture's old shadow/image remains intact for invalid source
+    rectangles, incomplete FBOs, allocation failure, or readback failure.
+    Zero-sized, depth/stencil, and multisample definitions remain unsupported.
 - [x] Implement current immediate-submit `glFlush` semantics.
 - [x] Implement `glFinish` using an optional versioned sync extension, RinGPU fences, fenced queue submission, and `ringpu_wait_fence()`.
 - [x] Implement bounded current-color-framebuffer `RGBA/UNSIGNED_BYTE` `glReadPixels` logic through COPY_SOURCE transition, completion wait, RinGPU image readback, and BGRA-to-RGBA swizzle where required.

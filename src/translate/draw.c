@@ -525,6 +525,7 @@ static int prepare_graphics_resources(RinGLContext* context,
                                       uint64_t command_list,
                                       uint64_t pipeline,
                                       uint64_t color_target,
+                                      uint64_t depth_target,
                                       RinGLTextureTransitionSet*
                                           transitioned_out)
 {
@@ -589,7 +590,8 @@ static int prepare_graphics_resources(RinGLContext* context,
         texture = &context->textures[texture_index];
         if (ringl_texture_realize_unit(context, (uint32_t)unit, &image,
                                        &sampler) != 0 ||
-            image == 0u || sampler == 0u || image == color_target) {
+            image == 0u || sampler == 0u || image == color_target ||
+            image == depth_target) {
             return -1;
         }
         if (texture->ringpu_image_state != RINGL_RIN_GPU_IMAGE_SHADER_READ &&
@@ -1008,6 +1010,7 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
             &pipeline) != 0 ||
         pipeline == 0u ||
         prepare_graphics_resources(context, command_list, pipeline, target.image,
+                                   depth_status == 0 ? depth_target.image : 0u,
                                    &texture_transitions) != 0 ||
         transition_to_color_target(context, command_list, &target) != 0 ||
         ((context->depth_test_enabled || context->stencil_test_enabled) &&
@@ -1191,6 +1194,7 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
             &pipeline) != 0 ||
         pipeline == 0u ||
         prepare_graphics_resources(context, command_list, pipeline, target.image,
+                                   depth_status == 0 ? depth_target.image : 0u,
                                    &texture_transitions) != 0 ||
         transition_to_color_target(context, command_list, &target) != 0 ||
         ((context->depth_test_enabled || context->stencil_test_enabled) &&

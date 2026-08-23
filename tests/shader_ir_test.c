@@ -216,6 +216,14 @@ int main(void)
         "firstUv = firstTexCoord; secondUv = secondTexCoord; "
         "thirdUv = thirdTexCoord; fourthUv = fourthTexCoord; "
         "fifthUv = fifthTexCoord; }";
+    const char* transformed_vertex_color_texture_source =
+        "attribute vec2 position; attribute vec2 texCoord; attribute vec4 color; "
+        "uniform mat4 transform; varying vec2 uv; varying vec4 vertexColor; "
+        "void main() { gl_Position = transform * vec4(position, 0.0, 1.0); "
+        "uv = texCoord; vertexColor = color; }";
+    const char* vertex_color_texture_fragment_source =
+        "uniform sampler2D colorTexture; varying vec2 uv; varying vec4 vertexColor; "
+        "void main() { gl_FragColor = texture2D(colorTexture, uv) * vertexColor; }";
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -376,6 +384,26 @@ int main(void)
     assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
     assert(ringl_lower_shader_rsh1(vertex) != 0);
     assert(ringl_get_shader_rsh1_size(vertex) == 0u);
+
+    /* A texture sample can be modulated by an interpolated vertex RGBA value
+     * on the six-scalar native interface. Both the matrix/attribute route and
+     * the fragment multiply are executable RSH1, not a browser-side tint. */
+    header = lower_and_read_header(vertex,
+                                   transformed_vertex_color_texture_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 8u);
+    assert(header.output_count == 10u);
+    assert(header.resource_count == 0u);
+    assert(header.instruction_count == 65u);
+
+    header = lower_and_read_header(fragment, vertex_color_texture_fragment_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 6u);
+    assert(header.output_count == 4u);
+    assert(header.resource_count == 2u);
+    assert(header.instruction_count == 19u);
 
     ringl_shader_source(vertex, "void main() { gl_Position = 0.0; }", -1);
     assert(ringl_get_shader_compile_status(vertex) == RINGL_FALSE);

@@ -692,9 +692,12 @@ static int lower_vertex(const char* source, RinGLGlslLowerResult* result)
  * UV pairs follow in declaration order. A single UV pair reserves the final
  * two scalar slots to retain the fixed eight-output RinGPU interface; two,
  * three, and four pairs occupy 8, 10, and 12 outputs respectively. The
- * matrix values are materialized as RSH1 constants at link time and on
- * uniform updates, exactly as the no-varying mat4 lowerer does; RinGPU
- * executes the multiply rather than the embedding pre-transforming geometry.
+ * profile may instead append one `attribute vec4`/`varying vec4` color after
+ * one or two UV pairs, so the complete interpolation interface remains at
+ * most eight scalars. The matrix values are materialized as RSH1 constants at
+ * link time and on uniform updates, exactly as the no-varying mat4 lowerer
+ * does; RinGPU executes the multiply rather than the embedding
+ * pre-transforming geometry.
  * Both common position spellings are accepted:
  *
  *   vec4 position; vec2 texCoord0..3; transform * position
@@ -708,19 +711,24 @@ static int lower_vertex_transformed_texture(
     RinGLRsh1InstructionV1 ins[RINGL_RSH1_MAX_INSTRUCTIONS];
     char position[64];
     char texcoords[4][64];
+    char color_attribute[64];
     char transform[64];
     char varyings[4][64];
+    char color_varying[64];
     char expected[2048];
     uint16_t position_regs[4];
     uint16_t transformed_position_regs[4];
     uint16_t texcoord_regs[8];
+    uint16_t color_regs[4];
     uint16_t matrix_regs[16];
     uint16_t zero_reg;
     uint16_t one_reg;
     uint16_t next_reg = 0u;
     uint32_t position_width;
     uint32_t texcoord_count = 0u;
+    uint32_t has_vertex_color = 0u;
     uint32_t input_count;
+    uint32_t varying_scalar_count;
     uint32_t output_count;
     uint32_t instruction_cursor = 0u;
     uint32_t matrix_index;
@@ -733,7 +741,8 @@ static int lower_vertex_transformed_texture(
         (uniform_count != 0u && uniforms == NULL)) {
         return 1;
     }
-    if (read_decl_name(source, "attributevec4", 0u, position,
+    if (strncmp(source, "attributevec4", strlen("attributevec4")) == 0 &&
+        read_decl_name(source, "attributevec4", 0u, position,
                        sizeof(position))) {
         position_width = 4u;
     } else {
@@ -753,6 +762,16 @@ static int lower_vertex_transformed_texture(
     }
     if (texcoord_count == 0u)
         return 1;
+    if (read_decl_name(source, "attributevec4",
+                       position_width == 4u ? 1u : 0u, color_attribute,
+                       sizeof(color_attribute))) {
+        if (texcoord_count > 2u ||
+            !read_decl_name(source, "varyingvec4", 0u, color_varying,
+                            sizeof(color_varying))) {
+            return 1;
+        }
+        has_vertex_color = 1u;
+    }
     if (!read_decl_name(source, "uniformmat4", 0u, transform,
                         sizeof(transform))) {
         return 1;
@@ -777,6 +796,11 @@ static int lower_vertex_transformed_texture(
             return 1;
         }
     }
+    if (has_vertex_color &&
+        !append_compact_source(expected, sizeof(expected), &expected_length,
+                               "attributevec4%s;", color_attribute)) {
+        return 1;
+    }
     if (!append_compact_source(expected, sizeof(expected), &expected_length,
                                "uniformmat4%s;", transform)) {
         return 1;
@@ -787,6 +811,11 @@ static int lower_vertex_transformed_texture(
                                    varyings[matrix_index])) {
             return 1;
         }
+    }
+    if (has_vertex_color &&
+        !append_compact_source(expected, sizeof(expected), &expected_length,
+                               "varyingvec4%s;", color_varying)) {
+        return 1;
     }
     if (!append_compact_source(expected, sizeof(expected), &expected_length,
                                "voidmain(){gl_Position=%s*", transform) ||
@@ -802,6 +831,11 @@ static int lower_vertex_transformed_texture(
                                    texcoords[matrix_index])) {
             return 1;
         }
+    }
+    if (has_vertex_color &&
+        !append_compact_source(expected, sizeof(expected), &expected_length,
+                               "%s=%s;", color_varying, color_attribute)) {
+        return 1;
     }
     if (!append_compact_source(expected, sizeof(expected), &expected_length,
                                "}")) {
@@ -821,7 +855,8 @@ static int lower_vertex_transformed_texture(
     }
 
     memset(ins, 0, sizeof(ins));
-    input_count = position_width + texcoord_count * 2u;
+    input_count = position_width + texcoord_count * 2u +
+        (has_vertex_color ? 4u : 0u);
     if (position_width == 4u) {
         for (matrix_index = 0u; matrix_index < input_count; ++matrix_index) {
             init_instruction(&ins[instruction_cursor], RINGL_RSH1_OP_LOAD_INPUT_F32);
@@ -829,8 +864,11 @@ static int lower_vertex_transformed_texture(
             ins[instruction_cursor++].immediate = matrix_index;
             if (matrix_index < 4u)
                 position_regs[matrix_index] = next_reg;
-            else
+            else if (matrix_index < position_width + texcoord_count * 2u)
                 texcoord_regs[matrix_index - position_width] = next_reg;
+            else
+                color_regs[matrix_index - position_width -
+                           texcoord_count * 2u] = next_reg;
             ++next_reg;
         }
         zero_reg = RINGL_RSH1_UNUSED;
@@ -842,8 +880,11 @@ static int lower_vertex_transformed_texture(
             ins[instruction_cursor++].immediate = matrix_index;
             if (matrix_index < 2u)
                 position_regs[matrix_index] = next_reg;
-            else
+            else if (matrix_index < position_width + texcoord_count * 2u)
                 texcoord_regs[matrix_index - position_width] = next_reg;
+            else
+                color_regs[matrix_index - position_width -
+                           texcoord_count * 2u] = next_reg;
             ++next_reg;
         }
         zero_reg = next_reg++;
@@ -919,14 +960,25 @@ static int lower_vertex_transformed_texture(
         }
         ++instruction_cursor;
     }
-    output_count = 4u + texcoord_count * 2u;
-    if (texcoord_count == 1u)
+    varying_scalar_count = texcoord_count * 2u +
+        (has_vertex_color ? 4u : 0u);
+    if (varying_scalar_count > 8u)
+        return 1;
+    output_count = 4u + varying_scalar_count;
+    if (varying_scalar_count == 2u)
         output_count = 8u;
     for (row = 0u; row < output_count; ++row) {
-        uint16_t source_reg = row < 4u
-            ? transformed_position_regs[row]
-            : row < 4u + texcoord_count * 2u ? texcoord_regs[row - 4u]
-            : row == 6u ? zero_reg : one_reg;
+        uint16_t source_reg;
+
+        if (row < 4u) {
+            source_reg = transformed_position_regs[row];
+        } else if (row < 4u + texcoord_count * 2u) {
+            source_reg = texcoord_regs[row - 4u];
+        } else if (row < 4u + varying_scalar_count) {
+            source_reg = color_regs[row - 4u - texcoord_count * 2u];
+        } else {
+            source_reg = row == 6u ? zero_reg : one_reg;
+        }
 
         init_instruction(&ins[instruction_cursor], RINGL_RSH1_OP_STORE_OUTPUT_F32);
         ins[instruction_cursor].source0 = source_reg;
@@ -958,6 +1010,88 @@ static int lower_vertex_transformed_texture(
     result->input_count = header.input_count;
     result->output_count = header.output_count;
     result->byte_size = header.total_size;
+    return 0;
+}
+
+/* This profile accepts one perspective-interpolated UV pair followed by one
+ * perspective-interpolated RGBA vertex color. It is the common WebGL
+ * `texture2D(...) * vertexColor` route: all six interpolation inputs, image
+ * sample components, four component-wise products, and final stores are RSH1
+ * instructions. The source shape is exact so a later color/texture expression
+ * cannot be mistaken for this bounded native execution path. */
+static int lower_fragment_textured_vertex_color(
+    const char* source, RinGLGlslLowerResult* result)
+{
+    RinGLRsh1HeaderV1 header;
+    RinGLRsh1InstructionV1 ins[19];
+    char sampler[64];
+    char uv[64];
+    char color[64];
+    char expected[512];
+    uint32_t component;
+    size_t total;
+
+    if (source == NULL || result == NULL ||
+        !read_decl_name(source, "uniformsampler2D", 0u, sampler,
+                        sizeof(sampler)) ||
+        !read_decl_name(source, "varyingvec2", 0u, uv, sizeof(uv)) ||
+        !read_decl_name(source, "varyingvec4", 0u, color, sizeof(color))) {
+        return 1;
+    }
+    (void)snprintf(expected, sizeof(expected),
+                   "uniformsampler2D%s;varyingvec2%s;varyingvec4%s;"
+                   "voidmain(){gl_FragColor=texture2D(%s,%s)*%s;}",
+                   sampler, uv, color, sampler, uv, color);
+    if (strcmp(source, expected) != 0)
+        return 1;
+
+    memset(ins, 0, sizeof(ins));
+    for (component = 0u; component < 6u; ++component) {
+        init_instruction(&ins[component], RINGL_RSH1_OP_LOAD_INPUT_F32);
+        ins[component].destination = (uint16_t)component;
+        ins[component].immediate = component;
+    }
+    for (component = 0u; component < 4u; ++component) {
+        init_instruction(&ins[6u + component],
+                         RINGL_RSH1_OP_SAMPLE_IMAGE_2D_F32);
+        ins[6u + component].flags = (uint16_t)component;
+        ins[6u + component].destination = (uint16_t)(6u + component);
+        ins[6u + component].source0 = 0u;
+        ins[6u + component].source1 = 1u;
+        ins[6u + component].resource = 0u;
+        ins[6u + component].immediate = 1u;
+        init_instruction(&ins[10u + component], RINGL_RSH1_OP_MUL_F32);
+        ins[10u + component].destination = (uint16_t)(10u + component);
+        ins[10u + component].source0 = (uint16_t)(6u + component);
+        ins[10u + component].source1 = (uint16_t)(2u + component);
+        init_instruction(&ins[14u + component], RINGL_RSH1_OP_STORE_OUTPUT_F32);
+        ins[14u + component].source0 = (uint16_t)(10u + component);
+        ins[14u + component].immediate = component;
+    }
+    init_instruction(&ins[18], RINGL_RSH1_OP_RETURN);
+
+    memset(&header, 0, sizeof(header));
+    header.magic = RINGL_RSH1_MAGIC;
+    header.version = RINGL_RSH1_VERSION;
+    header.header_size = sizeof(header);
+    header.stage = RINGL_RSH1_STAGE_FRAGMENT;
+    header.instruction_count = 19u;
+    header.register_count = 14u;
+    header.input_count = 6u;
+    header.output_count = 4u;
+    header.resource_count = 2u;
+    total = sizeof(header) + sizeof(ins);
+    header.total_size = (uint32_t)total;
+    memcpy(result->bytes, &header, sizeof(header));
+    memcpy(result->bytes + sizeof(header), ins, sizeof(ins));
+    result->ok = 1u;
+    result->instruction_count = header.instruction_count;
+    result->register_count = header.register_count;
+    result->input_count = header.input_count;
+    result->output_count = header.output_count;
+    result->byte_size = header.total_size;
+    result->sampler_binding_count = 1u;
+    result->sampler_binding_indices[0] = 0u;
     return 0;
 }
 
@@ -2094,8 +2228,11 @@ int ringl_glsl_lower_varying_rsh1_with_uniforms(
         shader_type == RINGL_VERTEX_SHADER)
         rc = lower_vertex_color(compact, 4u, result);
     else if (strstr(compact, "varyingvec4") != NULL &&
-             shader_type == RINGL_FRAGMENT_SHADER)
+             shader_type == RINGL_FRAGMENT_SHADER) {
         rc = lower_fragment_color(compact, 4u, result);
+        if (rc != 0)
+            rc = lower_fragment_textured_vertex_color(compact, result);
+    }
     else if (strstr(compact, "varyingvec3") != NULL &&
              shader_type == RINGL_VERTEX_SHADER)
         rc = lower_vertex_color(compact, 3u, result);

@@ -15,6 +15,7 @@ typedef struct FakeBackend {
     char commands[32];
     uint32_t command_count;
     uint32_t shader_creates;
+    uint32_t pipeline_creates;
     uint32_t bind_group_creates;
 } FakeBackend;
 
@@ -66,34 +67,48 @@ static int fake_create_pipeline_native(
     uint32_t varying_count, uint64_t* pipeline_out)
 {
     FakeBackend* backend = session;
+    uint32_t index;
+
     assert(desc != NULL && pipeline_out != NULL);
     assert(desc->vertex_shader != 0u && desc->fragment_shader != 0u);
-    assert(desc->vertex_stride == 24u);
     assert(desc->position_output_location == 0u);
     assert(desc->blend_enabled == 0u);
     assert(desc->color_write_mask == RINGL_RIN_GPU_COLOR_WRITE_ALL);
     assert(desc->cull_mode == RINGL_RIN_GPU_CULL_NONE);
     assert(desc->front_face == RINGL_RIN_GPU_FRONT_FACE_CCW);
-    assert(attribute_count == 6u && attributes != NULL);
-    assert(attributes[0].location == 0u && attributes[0].offset == 0u);
-    assert(attributes[1].location == 1u && attributes[1].offset == 4u);
-    assert(attributes[2].location == 2u && attributes[2].offset == 8u);
-    assert(attributes[3].location == 3u && attributes[3].offset == 12u);
-    assert(attributes[4].location == 4u && attributes[4].offset == 16u);
-    assert(attributes[5].location == 5u && attributes[5].offset == 20u);
-    assert(varying_count == 4u && varyings != NULL);
-    assert(varyings[0].vertex_output_location == 4u);
-    assert(varyings[0].fragment_input_location == 0u);
-    assert(varyings[0].type == 1u && varyings[0].interpolation == 1u);
-    assert(varyings[1].vertex_output_location == 5u);
-    assert(varyings[1].fragment_input_location == 1u);
-    assert(varyings[1].type == 1u && varyings[1].interpolation == 1u);
-    assert(varyings[2].vertex_output_location == 6u);
-    assert(varyings[2].fragment_input_location == 2u);
-    assert(varyings[2].type == 1u && varyings[2].interpolation == 1u);
-    assert(varyings[3].vertex_output_location == 7u);
-    assert(varyings[3].fragment_input_location == 3u);
-    assert(varyings[3].type == 1u && varyings[3].interpolation == 1u);
+
+    if (backend->pipeline_creates == 0u) {
+        assert(desc->vertex_stride == 24u);
+        assert(attribute_count == 6u && attributes != NULL);
+        for (index = 0u; index < 6u; ++index) {
+            assert(attributes[index].location == index);
+            assert(attributes[index].offset == index * 4u);
+        }
+        assert(varying_count == 4u && varyings != NULL);
+        for (index = 0u; index < 4u; ++index) {
+            assert(varyings[index].vertex_output_location == 4u + index);
+            assert(varyings[index].fragment_input_location == index);
+            assert(varyings[index].type == 1u &&
+                   varyings[index].interpolation == 1u);
+        }
+    } else if (backend->pipeline_creates == 1u) {
+        assert(desc->vertex_stride == 32u);
+        assert(attribute_count == 8u && attributes != NULL);
+        for (index = 0u; index < 8u; ++index) {
+            assert(attributes[index].location == index);
+            assert(attributes[index].offset == index * 4u);
+        }
+        assert(varying_count == 6u && varyings != NULL);
+        for (index = 0u; index < 6u; ++index) {
+            assert(varyings[index].vertex_output_location == 4u + index);
+            assert(varyings[index].fragment_input_location == index);
+            assert(varyings[index].type == 1u &&
+                   varyings[index].interpolation == 1u);
+        }
+    } else {
+        assert(0);
+    }
+    ++backend->pipeline_creates;
     backend->pipeline = ++backend->next_handle;
     *pipeline_out = backend->pipeline;
     return 0;
@@ -204,23 +219,37 @@ static int fake_create_bind_group(
 {
     FakeBackend* backend = session;
     assert(pipeline == backend->pipeline && bindings != NULL);
-    assert(binding_count == 4u);
-    assert(bindings[0].binding == 0u);
-    assert(bindings[0].kind == RINGL_RIN_GPU_RESOURCE_SAMPLED_IMAGE);
-    assert(bindings[0].access == RINGL_RIN_GPU_RESOURCE_READ);
-    assert(bindings[0].resource == backend->texture_images[0]);
-    assert(bindings[1].binding == 1u);
-    assert(bindings[1].kind == RINGL_RIN_GPU_RESOURCE_SAMPLER);
-    assert(bindings[1].access == 0u);
-    assert(bindings[1].resource == backend->texture_samplers[0]);
-    assert(bindings[2].binding == 2u);
-    assert(bindings[2].kind == RINGL_RIN_GPU_RESOURCE_SAMPLED_IMAGE);
-    assert(bindings[2].access == RINGL_RIN_GPU_RESOURCE_READ);
-    assert(bindings[2].resource == backend->texture_images[1]);
-    assert(bindings[3].binding == 3u);
-    assert(bindings[3].kind == RINGL_RIN_GPU_RESOURCE_SAMPLER);
-    assert(bindings[3].access == 0u);
-    assert(bindings[3].resource == backend->texture_samplers[1]);
+    if (backend->pipeline_creates == 1u) {
+        assert(binding_count == 4u);
+        assert(bindings[0].binding == 0u);
+        assert(bindings[0].kind == RINGL_RIN_GPU_RESOURCE_SAMPLED_IMAGE);
+        assert(bindings[0].access == RINGL_RIN_GPU_RESOURCE_READ);
+        assert(bindings[0].resource == backend->texture_images[0]);
+        assert(bindings[1].binding == 1u);
+        assert(bindings[1].kind == RINGL_RIN_GPU_RESOURCE_SAMPLER);
+        assert(bindings[1].access == 0u);
+        assert(bindings[1].resource == backend->texture_samplers[0]);
+        assert(bindings[2].binding == 2u);
+        assert(bindings[2].kind == RINGL_RIN_GPU_RESOURCE_SAMPLED_IMAGE);
+        assert(bindings[2].access == RINGL_RIN_GPU_RESOURCE_READ);
+        assert(bindings[2].resource == backend->texture_images[1]);
+        assert(bindings[3].binding == 3u);
+        assert(bindings[3].kind == RINGL_RIN_GPU_RESOURCE_SAMPLER);
+        assert(bindings[3].access == 0u);
+        assert(bindings[3].resource == backend->texture_samplers[1]);
+    } else if (backend->pipeline_creates == 2u) {
+        assert(binding_count == 2u);
+        assert(bindings[0].binding == 0u);
+        assert(bindings[0].kind == RINGL_RIN_GPU_RESOURCE_SAMPLED_IMAGE);
+        assert(bindings[0].access == RINGL_RIN_GPU_RESOURCE_READ);
+        assert(bindings[0].resource == backend->texture_images[0]);
+        assert(bindings[1].binding == 1u);
+        assert(bindings[1].kind == RINGL_RIN_GPU_RESOURCE_SAMPLER);
+        assert(bindings[1].access == 0u);
+        assert(bindings[1].resource == backend->texture_samplers[0]);
+    } else {
+        assert(0);
+    }
     ++backend->bind_group_creates;
     *bind_group_out = ++backend->next_handle;
     return 0;
@@ -319,14 +348,20 @@ int main(void)
     };
     RinGLContext* context = NULL;
     uint32_t buffer;
+    uint32_t vertex_color_buffer;
     uint32_t textures[2];
     uint32_t vertex;
     uint32_t fragment;
     uint32_t program;
+    uint32_t vertex_color_vertex;
+    uint32_t vertex_color_fragment;
+    uint32_t vertex_color_program;
     int32_t first_sampler_location;
     int32_t second_sampler_location;
     int32_t tint_location;
     int32_t transform_location;
+    int32_t vertex_color_sampler_location;
+    int32_t vertex_color_transform_location;
     const float vertices[] = {
         -0.75f, -0.75f, 0.0f, 0.0f, 0.25f, 0.75f,
          0.75f, -0.75f, 1.0f, 0.0f, 0.75f, 0.25f,
@@ -343,6 +378,11 @@ int main(void)
         0.0f, 0.0f, 0.0f, 1.0f,
     };
     const float tint[4] = {0.5f, 1.0f, 0.25f, 1.0f};
+    const float vertex_color_vertices[] = {
+        -0.75f, -0.75f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,
+         0.75f, -0.75f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,
+         0.0f,   0.75f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f,
+    };
     char commands[33];
 
     assert(ringl_context_create(&desc, &context) == 0);
@@ -431,6 +471,62 @@ int main(void)
     memcpy(commands, backend.commands, backend.command_count);
     commands[backend.command_count] = '\0';
     assert(strcmp(commands, "ttTBRGDECS") == 0);
+
+    /* The common vertex-color texture route uses a distinct six-scalar
+     * varying interface. It must preserve the matrix transform and bind the
+     * real image/sampler pair instead of falling back to a pre-multiplied CPU
+     * color. */
+    ringl_gen_buffers(1, &vertex_color_buffer);
+    ringl_bind_buffer(RINGL_ARRAY_BUFFER, vertex_color_buffer);
+    ringl_buffer_data(RINGL_ARRAY_BUFFER, sizeof(vertex_color_vertices),
+                      vertex_color_vertices, RINGL_STATIC_DRAW);
+    ringl_vertex_attrib_pointer(0u, 2, RINGL_FLOAT, RINGL_FALSE, 32, 0u);
+    ringl_enable_vertex_attrib_array(0u);
+    ringl_vertex_attrib_pointer(1u, 2, RINGL_FLOAT, RINGL_FALSE, 32, 8u);
+    ringl_enable_vertex_attrib_array(1u);
+    ringl_vertex_attrib_pointer(2u, 4, RINGL_FLOAT, RINGL_FALSE, 32, 16u);
+    ringl_enable_vertex_attrib_array(2u);
+    vertex_color_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+    vertex_color_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+    vertex_color_program = ringl_create_program();
+    assert(vertex_color_vertex != 0u && vertex_color_fragment != 0u &&
+           vertex_color_program != 0u);
+    ringl_shader_source(
+        vertex_color_vertex,
+        "attribute vec2 position; attribute vec2 texCoord; attribute vec4 color; "
+        "uniform mat4 transform; varying vec2 uv; varying vec4 vertexColor; "
+        "void main() { gl_Position = transform * vec4(position, 0.0, 1.0); "
+        "uv = texCoord; vertexColor = color; }",
+        -1);
+    ringl_shader_source(
+        vertex_color_fragment,
+        "uniform sampler2D colorTexture; varying vec2 uv; varying vec4 vertexColor; "
+        "void main() { gl_FragColor = texture2D(colorTexture, uv) * vertexColor; }",
+        -1);
+    ringl_compile_shader(vertex_color_vertex);
+    ringl_compile_shader(vertex_color_fragment);
+    assert(ringl_get_shader_compile_status(vertex_color_vertex) == RINGL_TRUE);
+    assert(ringl_get_shader_compile_status(vertex_color_fragment) == RINGL_TRUE);
+    ringl_attach_shader(vertex_color_program, vertex_color_vertex);
+    ringl_attach_shader(vertex_color_program, vertex_color_fragment);
+    ringl_link_program(vertex_color_program);
+    assert(ringl_get_program_link_status(vertex_color_program) == RINGL_TRUE);
+    ringl_use_program(vertex_color_program);
+    vertex_color_sampler_location =
+        ringl_get_uniform_location(vertex_color_program, "colorTexture");
+    vertex_color_transform_location =
+        ringl_get_uniform_location(vertex_color_program, "transform");
+    assert(vertex_color_sampler_location == 0);
+    assert(vertex_color_transform_location == 1);
+    ringl_uniform_1i(vertex_color_sampler_location, 0);
+    ringl_uniform_matrix4fv(vertex_color_transform_location, RINGL_FALSE,
+                            transform);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(backend.shader_creates == 7u);
+    assert(backend.pipeline_creates == 2u);
+    assert(backend.bind_group_creates == 2u);
 
     ringl_context_destroy(context);
     return 0;

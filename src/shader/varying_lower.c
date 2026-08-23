@@ -82,10 +82,10 @@ enum VaryingTextureCoordinateKind {
     RINGL_VARYING_TEXTURE_COORD_SUB_OFFSET,
 };
 
-_Static_assert(8u * RINGL_VARYING_TEXTURE_MAX_CALLS + 4u <=
+_Static_assert(8u * RINGL_VARYING_TEXTURE_MAX_CALLS + 8u <=
                    RINGL_RSH1_MAX_REGISTERS,
                "varying texture profile exceeds the RSH1 register ceiling");
-_Static_assert(12u * RINGL_VARYING_TEXTURE_MAX_CALLS + 5u <=
+_Static_assert(12u * RINGL_VARYING_TEXTURE_MAX_CALLS + 9u <=
                    RINGL_RSH1_MAX_INSTRUCTIONS,
                "varying texture profile exceeds the RSH1 instruction ceiling");
 
@@ -164,6 +164,29 @@ static int parse_finite_float(const char** cursor, float* value)
     return 1;
 }
 
+static int parse_varying_texture_offset(const char** cursor,
+                                        uint32_t* coordinate_kind,
+                                        float* offset_u,
+                                        float* offset_v)
+{
+    if (cursor == NULL || *cursor == NULL || coordinate_kind == NULL ||
+        offset_u == NULL || offset_v == NULL) {
+        return 0;
+    }
+    *coordinate_kind = RINGL_VARYING_TEXTURE_COORD_DIRECT;
+    *offset_u = 0.0f;
+    *offset_v = 0.0f;
+    if (**cursor != '+' && **cursor != '-')
+        return 1;
+    *coordinate_kind = **cursor == '+'
+        ? RINGL_VARYING_TEXTURE_COORD_ADD_OFFSET
+        : RINGL_VARYING_TEXTURE_COORD_SUB_OFFSET;
+    ++*cursor;
+    return consume_text(cursor, "vec2(") &&
+        parse_finite_float(cursor, offset_u) && consume_text(cursor, ",") &&
+        parse_finite_float(cursor, offset_v) && consume_text(cursor, ")");
+}
+
 static int parse_varying_texture_call(const char** cursor,
                                       char sampler_names[][64],
                                       uint32_t sampler_count,
@@ -172,10 +195,6 @@ static int parse_varying_texture_call(const char** cursor,
 {
     char sampler[64];
     char coordinate[64];
-    uint32_t coordinate_kind = RINGL_VARYING_TEXTURE_COORD_DIRECT;
-    float offset_u = 0.0f;
-    float offset_v = 0.0f;
-
     if (cursor == NULL || sampler_names == NULL || varying == NULL ||
         call == NULL || !consume_text(cursor, "texture2D(") ||
         !read_identifier(cursor, sampler, sizeof(sampler)) ||
@@ -186,47 +205,70 @@ static int parse_varying_texture_call(const char** cursor,
                                 &call->sampler_index)) {
         return 0;
     }
-    if (**cursor == '+' || **cursor == '-') {
-        coordinate_kind = **cursor == '+'
-            ? RINGL_VARYING_TEXTURE_COORD_ADD_OFFSET
-            : RINGL_VARYING_TEXTURE_COORD_SUB_OFFSET;
-        ++*cursor;
-        if (!consume_text(cursor, "vec2(") ||
-            !parse_finite_float(cursor, &offset_u) ||
-            !consume_text(cursor, ",") ||
-            !parse_finite_float(cursor, &offset_v) ||
-            !consume_text(cursor, ")")) {
-            return 0;
-        }
-    }
-    if (!consume_text(cursor, ")"))
+    if (!parse_varying_texture_offset(cursor, &call->coordinate_kind,
+                                      &call->offset_u, &call->offset_v) ||
+        !consume_text(cursor, ")")) {
         return 0;
-    call->coordinate_kind = coordinate_kind;
-    call->offset_u = offset_u;
-    call->offset_v = offset_v;
+    }
     return 1;
 }
 
-/* The bounded texture profile accepts exactly one local vec2 alias. It is not
- * a host-side substitution: samples keep reading RSH1's interpolated inputs. */
-static int parse_varying_texture_local_alias(const char** cursor,
-                                             const char* varying,
-                                             char* coordinate,
-                                             size_t coordinate_capacity)
+/* The bounded texture profile accepts exactly one local vec2 derived from the
+ * shared varying by at most one finite affine offset. It is not a host-side
+ * substitution: samples keep reading RSH1's interpolated inputs. */
+static int parse_varying_texture_local_coordinate(
+    const char** cursor, const char* varying, char* coordinate,
+    size_t coordinate_capacity, uint32_t* coordinate_kind, float* offset_u,
+    float* offset_v)
 {
     char source[64];
 
     if (cursor == NULL || *cursor == NULL || varying == NULL ||
         coordinate == NULL || coordinate_capacity == 0u ||
+        coordinate_kind == NULL || offset_u == NULL || offset_v == NULL ||
         !consume_text(cursor, "vec2") ||
         !read_identifier(cursor, coordinate, coordinate_capacity) ||
         strcmp(coordinate, varying) == 0 ||
         !consume_text(cursor, "=") ||
         !read_identifier(cursor, source, sizeof(source)) ||
-        strcmp(source, varying) != 0 || !consume_text(cursor, ";")) {
+        strcmp(source, varying) != 0 ||
+        !parse_varying_texture_offset(cursor, coordinate_kind, offset_u,
+                                      offset_v) ||
+        !consume_text(cursor, ";")) {
         return 0;
     }
     return 1;
+}
+
+static void emit_varying_texture_offset(RinGLRsh1InstructionV1* ins,
+                                        uint32_t* instruction_cursor,
+                                        uint32_t temporary_base,
+                                        uint32_t source_u,
+                                        uint32_t source_v,
+                                        uint32_t coordinate_kind,
+                                        float offset_u, float offset_v)
+{
+    uint32_t offset_u_bits;
+    uint32_t offset_v_bits;
+    uint16_t opcode = coordinate_kind == RINGL_VARYING_TEXTURE_COORD_ADD_OFFSET
+        ? RINGL_RSH1_OP_ADD_F32 : RINGL_RSH1_OP_SUB_F32;
+
+    memcpy(&offset_u_bits, &offset_u, sizeof(offset_u_bits));
+    memcpy(&offset_v_bits, &offset_v, sizeof(offset_v_bits));
+    init_instruction(&ins[*instruction_cursor], RINGL_RSH1_OP_CONST_F32);
+    ins[*instruction_cursor].destination = (uint16_t)temporary_base;
+    ins[(*instruction_cursor)++].immediate = offset_u_bits;
+    init_instruction(&ins[*instruction_cursor], RINGL_RSH1_OP_CONST_F32);
+    ins[*instruction_cursor].destination = (uint16_t)(temporary_base + 1u);
+    ins[(*instruction_cursor)++].immediate = offset_v_bits;
+    init_instruction(&ins[*instruction_cursor], opcode);
+    ins[*instruction_cursor].destination = (uint16_t)(temporary_base + 2u);
+    ins[*instruction_cursor].source0 = (uint16_t)source_u;
+    ins[(*instruction_cursor)++].source1 = (uint16_t)temporary_base;
+    init_instruction(&ins[*instruction_cursor], opcode);
+    ins[*instruction_cursor].destination = (uint16_t)(temporary_base + 3u);
+    ins[*instruction_cursor].source0 = (uint16_t)source_v;
+    ins[(*instruction_cursor)++].source1 = (uint16_t)(temporary_base + 1u);
 }
 
 static int lower_vertex(const char* source, RinGLGlslLowerResult* result)
@@ -311,13 +353,13 @@ static int lower_vertex(const char* source, RinGLGlslLowerResult* result)
  * The emitted layout preserves the historic one- and two-call bytecode while
  * allowing bounded repeated and selectively active sampler chains:
  *
- *   [UV inputs][optional affine coordinate][RGBA samples]
+ *   [UV inputs][optional local affine coordinate][RGBA samples]
  *   [RGBA left-to-right sums][RGBA stores][return]
  *
- * An affine coordinate is deliberately bounded to one finite vec2 literal
- * added to or subtracted from the shared varying. The four temporary scalar
- * registers are overwritten for each call after its sample has consumed
- * them, so the eight-call profile stays below both RSH1 and RinGPU limits.
+ * A local affine coordinate is evaluated once before the samples. Each sample
+ * may additionally use one finite offset; its four temporary registers are
+ * overwritten only after that sample has consumed them. The eight-call
+ * profile stays below both RSH1 and RinGPU limits.
  */
 static int lower_fragment_texture_chain(const char* source,
                                         RinGLGlslLowerResult* result)
@@ -342,7 +384,11 @@ static int lower_fragment_texture_chain(const char* source,
     uint32_t final_base;
     uint32_t padding_base;
     uint32_t coordinate_temp_base;
-    uint32_t has_offset = 0u;
+    uint32_t local_coordinate_kind = RINGL_VARYING_TEXTURE_COORD_DIRECT;
+    float local_offset_u = 0.0f;
+    float local_offset_v = 0.0f;
+    uint32_t has_call_offset = 0u;
+    uint32_t temporary_register_count = 0u;
     uint32_t call_index;
     uint32_t sampler_index;
     uint32_t component;
@@ -376,8 +422,9 @@ static int lower_fragment_texture_chain(const char* source,
     }
     (void)snprintf(coordinate, sizeof(coordinate), "%s", varying);
     if (strncmp(cursor, "vec2", strlen("vec2")) == 0 &&
-        !parse_varying_texture_local_alias(&cursor, varying, coordinate,
-                                           sizeof(coordinate))) {
+        !parse_varying_texture_local_coordinate(
+            &cursor, varying, coordinate, sizeof(coordinate),
+            &local_coordinate_kind, &local_offset_u, &local_offset_v)) {
         return 1;
     }
     if (!consume_text(&cursor, "gl_FragColor="))
@@ -410,10 +457,14 @@ static int lower_fragment_texture_chain(const char* source,
 
     sample_base = 4u;
     instruction_cursor = sample_base;
+    if (local_coordinate_kind != RINGL_VARYING_TEXTURE_COORD_DIRECT) {
+        temporary_register_count += 4u;
+        instruction_cursor += 4u;
+    }
     for (call_index = 0u; call_index < call_count; ++call_index) {
         if (calls[call_index].coordinate_kind !=
             RINGL_VARYING_TEXTURE_COORD_DIRECT) {
-            has_offset = 1u;
+            has_call_offset = 1u;
             instruction_cursor += 4u;
         }
         instruction_cursor += 4u;
@@ -425,6 +476,8 @@ static int lower_fragment_texture_chain(const char* source,
         ? 2u : add_register_base + (call_count - 2u) * 4u;
     padding_base = final_base + 4u;
     coordinate_temp_base = padding_base + 2u;
+    if (has_call_offset)
+        temporary_register_count += 4u;
     instruction_cursor = sample_base;
     memset(ins, 0, sizeof(ins));
     for (component = 0u; component < 4u; ++component) {
@@ -434,47 +487,36 @@ static int lower_fragment_texture_chain(const char* source,
             : (uint16_t)(padding_base + component - 2u);
         ins[component].immediate = component;
     }
+    if (local_coordinate_kind != RINGL_VARYING_TEXTURE_COORD_DIRECT) {
+        emit_varying_texture_offset(ins, &instruction_cursor,
+                                    coordinate_temp_base, 0u, 1u,
+                                    local_coordinate_kind, local_offset_u,
+                                    local_offset_v);
+    }
     for (call_index = 0u; call_index < call_count; ++call_index) {
         uint32_t resource_pair =
             sampler_resource_indices[calls[call_index].sampler_index] * 2u;
-        uint32_t coordinate_u = 0u;
-        uint32_t coordinate_v = 1u;
+        uint32_t coordinate_u = local_coordinate_kind ==
+                RINGL_VARYING_TEXTURE_COORD_DIRECT
+            ? 0u : coordinate_temp_base + 2u;
+        uint32_t coordinate_v = local_coordinate_kind ==
+                RINGL_VARYING_TEXTURE_COORD_DIRECT
+            ? 1u : coordinate_temp_base + 3u;
 
         if (calls[call_index].coordinate_kind !=
             RINGL_VARYING_TEXTURE_COORD_DIRECT) {
-            uint32_t offset_u_bits;
-            uint32_t offset_v_bits;
-            uint16_t opcode = calls[call_index].coordinate_kind ==
-                    RINGL_VARYING_TEXTURE_COORD_ADD_OFFSET
-                ? RINGL_RSH1_OP_ADD_F32
-                : RINGL_RSH1_OP_SUB_F32;
+            uint32_t call_temp_base = coordinate_temp_base +
+                (local_coordinate_kind == RINGL_VARYING_TEXTURE_COORD_DIRECT
+                    ? 0u : 4u);
 
-            memcpy(&offset_u_bits, &calls[call_index].offset_u,
-                   sizeof(offset_u_bits));
-            memcpy(&offset_v_bits, &calls[call_index].offset_v,
-                   sizeof(offset_v_bits));
-            init_instruction(&ins[instruction_cursor], RINGL_RSH1_OP_CONST_F32);
-            ins[instruction_cursor].destination =
-                (uint16_t)coordinate_temp_base;
-            ins[instruction_cursor++].immediate = offset_u_bits;
-            init_instruction(&ins[instruction_cursor], RINGL_RSH1_OP_CONST_F32);
-            ins[instruction_cursor].destination =
-                (uint16_t)(coordinate_temp_base + 1u);
-            ins[instruction_cursor++].immediate = offset_v_bits;
-            init_instruction(&ins[instruction_cursor], opcode);
-            ins[instruction_cursor].destination =
-                (uint16_t)(coordinate_temp_base + 2u);
-            ins[instruction_cursor].source0 = 0u;
-            ins[instruction_cursor++].source1 =
-                (uint16_t)coordinate_temp_base;
-            init_instruction(&ins[instruction_cursor], opcode);
-            ins[instruction_cursor].destination =
-                (uint16_t)(coordinate_temp_base + 3u);
-            ins[instruction_cursor].source0 = 1u;
-            ins[instruction_cursor++].source1 =
-                (uint16_t)(coordinate_temp_base + 1u);
-            coordinate_u = coordinate_temp_base + 2u;
-            coordinate_v = coordinate_temp_base + 3u;
+            emit_varying_texture_offset(ins, &instruction_cursor,
+                                        call_temp_base, coordinate_u,
+                                        coordinate_v,
+                                        calls[call_index].coordinate_kind,
+                                        calls[call_index].offset_u,
+                                        calls[call_index].offset_v);
+            coordinate_u = call_temp_base + 2u;
+            coordinate_v = call_temp_base + 3u;
         }
 
         for (component = 0u; component < 4u; ++component) {
@@ -522,7 +564,7 @@ static int lower_fragment_texture_chain(const char* source,
     header.header_size = sizeof(header);
     header.stage = RINGL_RSH1_STAGE_FRAGMENT;
     header.instruction_count = store_base + 5u;
-    header.register_count = 8u * call_count + has_offset * 4u;
+    header.register_count = 8u * call_count + temporary_register_count;
     header.input_count = 4u;
     header.output_count = 4u;
     header.resource_count = sampler_binding_count * 2u;

@@ -117,10 +117,19 @@ int main(void)
         "varying vec2 uv; void main() { vec2 sampleUv = uv; gl_FragColor = "
         "texture2D(firstTexture, sampleUv) + "
         "texture2D(secondTexture, sampleUv); }";
-    const char* varying_unsupported_local_expression_source =
+    const char* varying_local_affine_source =
+        "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
+        "varying vec2 uv; void main() { vec2 sampleUv = uv + vec2(0.5, 0.0); "
+        "gl_FragColor = texture2D(firstTexture, sampleUv) + "
+        "texture2D(secondTexture, sampleUv); }";
+    const char* varying_local_affine_call_offset_source =
         "uniform sampler2D colorTexture; varying vec2 uv; "
-        "void main() { vec2 sampleUv = uv + vec2(0.5, 0.0); "
-        "gl_FragColor = texture2D(colorTexture, sampleUv); }";
+        "void main() { vec2 sampleUv = uv + vec2(0.5, -0.5); "
+        "gl_FragColor = texture2D(colorTexture, sampleUv - vec2(0.25, 0.125)); }";
+    const char* varying_unsupported_multiple_local_source =
+        "uniform sampler2D colorTexture; varying vec2 uv; "
+        "void main() { vec2 sampleUv = uv; vec2 otherUv = sampleUv; "
+        "gl_FragColor = texture2D(colorTexture, otherUv); }";
     const char* varying_affine_offsets_source =
         "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
         "varying vec2 uv; void main() { gl_FragColor = "
@@ -140,6 +149,20 @@ int main(void)
         "texture2D(s6, uv) + texture2D(s5, uv) + texture2D(s4, uv) + "
         "texture2D(s3, uv) + texture2D(s2, uv) + texture2D(s1, uv) + "
         "texture2D(s0, uv); }";
+    const char* varying_local_affine_eight_sampler_source =
+        "uniform sampler2D s0; uniform sampler2D s1; "
+        "uniform sampler2D s2; uniform sampler2D s3; "
+        "uniform sampler2D s4; uniform sampler2D s5; "
+        "uniform sampler2D s6; uniform sampler2D s7; varying vec2 uv; "
+        "void main() { vec2 sampleUv = uv + vec2(0.125, -0.125); "
+        "gl_FragColor = texture2D(s7, sampleUv + vec2(0.0, 0.0)) + "
+        "texture2D(s6, sampleUv + vec2(0.0, 0.0)) + "
+        "texture2D(s5, sampleUv + vec2(0.0, 0.0)) + "
+        "texture2D(s4, sampleUv + vec2(0.0, 0.0)) + "
+        "texture2D(s3, sampleUv + vec2(0.0, 0.0)) + "
+        "texture2D(s2, sampleUv + vec2(0.0, 0.0)) + "
+        "texture2D(s1, sampleUv + vec2(0.0, 0.0)) + "
+        "texture2D(s0, sampleUv + vec2(0.0, 0.0)); }";
     float scalar_splat = 0.75f;
 
     assert(ringl_context_create(&desc, &context) == 0);
@@ -380,9 +403,72 @@ int main(void)
         assert(second_sample->resource == 2u && second_sample->immediate == 3u);
     }
 
-    /* Local affine expressions remain closed until their exact RSH1 lowering
-     * is implemented; parser acceptance cannot make them executable. */
-    ringl_shader_source(shader, varying_unsupported_local_expression_source,
+    /* A local finite affine coordinate is evaluated once before all samples,
+     * which keeps the bounded eight-call instruction profile below RSH1's
+     * ceiling while still using live interpolated inputs. */
+    ringl_shader_source(shader, varying_local_affine_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 25u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.instruction_count == 25u);
+    assert(header.register_count == 20u);
+    assert(header.resource_count == 4u);
+    for (component = 0u; component < 4u; ++component) {
+        const Instruction* local_constant =
+            (const Instruction*)(blob + sizeof(header)) + 4u + component / 2u;
+        const Instruction* local_coordinate =
+            (const Instruction*)(blob + sizeof(header)) + 6u + component / 2u;
+        const Instruction* first_sample =
+            (const Instruction*)(blob + sizeof(header)) + 8u + component;
+        const Instruction* second_sample =
+            (const Instruction*)(blob + sizeof(header)) + 12u + component;
+
+        assert(local_constant->opcode == RSH1_CONST_F32);
+        assert(local_constant->destination == 16u + component / 2u);
+        assert(local_coordinate->opcode == RSH1_ADD_F32);
+        assert(local_coordinate->destination == 18u + component / 2u);
+        assert(local_coordinate->source0 == component / 2u);
+        assert(local_coordinate->source1 == 16u + component / 2u);
+        assert(first_sample->source0 == 18u && first_sample->source1 == 19u);
+        assert(second_sample->source0 == 18u && second_sample->source1 == 19u);
+    }
+
+    /* A local affine coordinate and a call-local affine offset are executed
+     * sequentially through separate temporary registers, preserving GLSL's
+     * Float32 evaluation order rather than algebraically folding them. */
+    ringl_shader_source(shader, varying_local_affine_call_offset_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 21u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.instruction_count == 21u);
+    assert(header.register_count == 16u);
+    assert(header.resource_count == 2u);
+    for (component = 0u; component < 4u; ++component) {
+        const Instruction* local_coordinate =
+            (const Instruction*)(blob + sizeof(header)) + 6u + component / 2u;
+        const Instruction* call_coordinate =
+            (const Instruction*)(blob + sizeof(header)) + 10u + component / 2u;
+        const Instruction* sample =
+            (const Instruction*)(blob + sizeof(header)) + 12u + component;
+
+        assert(local_coordinate->destination == 10u + component / 2u);
+        assert(local_coordinate->source0 == component / 2u);
+        assert(call_coordinate->destination == 14u + component / 2u);
+        assert(call_coordinate->source0 == 10u + component / 2u);
+        assert(sample->source0 == 14u && sample->source1 == 15u);
+    }
+
+    /* Further local values remain closed until their RSH1 execution is
+     * implemented; parser acceptance cannot make them executable. */
+    ringl_shader_source(shader, varying_unsupported_multiple_local_source,
                         -1);
     ringl_compile_shader(shader);
     assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
@@ -517,6 +603,39 @@ int main(void)
 
         assert(first_sample->resource == 14u && first_sample->immediate == 15u);
         assert(final_sample->resource == 0u && final_sample->immediate == 1u);
+    }
+
+    /* The local affine and per-call affine forms may coexist at the eight
+     * call ceiling. The local coordinate is hoisted once, while the second
+     * register quartet is reused only after each sample has consumed it. */
+    ringl_shader_source(shader, varying_local_affine_eight_sampler_source,
+                        -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 105u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.instruction_count == 105u);
+    assert(header.register_count == 72u);
+    assert(header.resource_count == 16u);
+    for (component = 0u; component < 4u; ++component) {
+        const Instruction* local_coordinate =
+            (const Instruction*)(blob + sizeof(header)) + 6u + component / 2u;
+        const Instruction* call_coordinate =
+            (const Instruction*)(blob + sizeof(header)) + 10u + component / 2u;
+        const Instruction* first_sample =
+            (const Instruction*)(blob + sizeof(header)) + 12u + component;
+        const Instruction* final_sample =
+            (const Instruction*)(blob + sizeof(header)) + 68u + component;
+
+        assert(local_coordinate->destination == 66u + component / 2u);
+        assert(local_coordinate->source0 == component / 2u);
+        assert(call_coordinate->destination == 70u + component / 2u);
+        assert(call_coordinate->source0 == 66u + component / 2u);
+        assert(first_sample->source0 == 70u && first_sample->source1 == 71u);
+        assert(final_sample->source0 == 70u && final_sample->source1 == 71u);
     }
 
     ringl_context_destroy(context);

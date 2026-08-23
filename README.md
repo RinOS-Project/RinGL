@@ -140,10 +140,12 @@ left-to-right `texture2D()` calls with a coordinate of `uv`,
 `uv + vec2(finite, finite)`, or `uv - vec2(finite, finite)`. Every offset is
 lowered directly to public RSH1 `CONST_F32` and `ADD_F32`/`SUB_F32` operations
 before its real RinGPU sample; it is not folded into a host-side shortcut.
-One fragment-local `vec2 localUv = uv;` alias is also accepted and lowers to
-the same live perspective-coordinate input registers. This remains a
-deliberately narrow GLSL ES subset: local vector expressions, multiple locals
-or UV varyings, and more than eight calls are still unsupported.
+One fragment-local `vec2 localUv = uv;` alias, or
+`vec2 localUv = uv +/- vec2(finite, finite);`, is also accepted. Its affine
+initializer is lowered once before the samples, and each sample reads the
+resulting live perspective-coordinate RSH1 registers. This remains a
+deliberately narrow GLSL ES subset: other local vector expressions, multiple
+locals or UV varyings, and more than eight calls are still unsupported.
 
 See [TODO.md](TODO.md) for the implementation roadmap.
 

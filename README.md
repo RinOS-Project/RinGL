@@ -339,19 +339,22 @@ the last linked executable and resource layout.
 
 That path now executes a bounded transformed textured-quad profile end to
 end: a vertex shader may transform an `attribute vec4` position (or construct
-one from `attribute vec2` position) with a `uniform mat4`, copy one
-`attribute vec2` into one `varying vec2`, and feed that varying to the paired
-fragment `texture2D` lowering profile. Both the matrix product and varying
-stores are RSH1 instructions consumed by RinGPU; no embedding-side geometry
-transform or sampled-color fallback is involved. Coordinate arithmetic,
-multiple transformed varyings, and other matrix expressions remain outside
-this deliberately bounded shape. The focused `textured-draw` test binds the
-two attributes, uploads a matrix through the public uniform API, and verifies
-the resulting RinGPU-native texture pipeline and resource bindings. That
-fragment shape may additionally multiply its sampled RGBA by one linked
-`uniform vec4`; RinGL materializes the finite four-component value in the
-program-owned fragment RSH1 module and retains the sampler-resource metadata
-needed to bind the native image/sampler pair.
+one from `attribute vec2` position) with a `uniform mat4`, then copy one to
+four declared `attribute vec2` values into matching `varying vec2` pairs.
+One pair retains the fixed eight-scalar interface; two, three, and four pairs
+publish four, six, and eight interpolated scalars. Both the matrix product and
+varying stores are RSH1 instructions consumed by RinGPU; no embedding-side
+geometry transform or sampled-color fallback is involved. The focused
+`textured-draw` test binds two coordinate attributes and two texture units,
+uploads a matrix through the public uniform API, and verifies the resulting
+RinGPU-native two-sampler pipeline and typed resource bindings. The paired
+fragment profile may combine the matching bounded texture calls and multiply
+their RGBA result by one linked `uniform vec4`; RinGL materializes the finite
+four-component value in the program-owned fragment RSH1 module and retains
+the sampler-resource metadata needed to bind every native image/sampler pair.
+Coordinate arithmetic and other matrix expressions remain outside this
+deliberately bounded shape. A fifth UV pair is outside the RSH1 interface and
+fails lowering without publishing a truncated module.
 
 The no-varying RSH1 profile also lowers local `vec2`, `vec3`, and `vec4`
 values and component-wise vector arithmetic directly to scalar RSH1

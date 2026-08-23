@@ -7,8 +7,10 @@
 
 typedef struct FakeBackend {
     uint64_t next_handle;
-    uint64_t texture_image;
-    uint64_t texture_sampler;
+    uint64_t texture_images[2];
+    uint64_t texture_samplers[2];
+    uint32_t texture_image_count;
+    uint32_t texture_sampler_count;
     uint64_t pipeline;
     char commands[32];
     uint32_t command_count;
@@ -66,17 +68,19 @@ static int fake_create_pipeline_native(
     FakeBackend* backend = session;
     assert(desc != NULL && pipeline_out != NULL);
     assert(desc->vertex_shader != 0u && desc->fragment_shader != 0u);
-    assert(desc->vertex_stride == 16u);
+    assert(desc->vertex_stride == 24u);
     assert(desc->position_output_location == 0u);
     assert(desc->blend_enabled == 0u);
     assert(desc->color_write_mask == RINGL_RIN_GPU_COLOR_WRITE_ALL);
     assert(desc->cull_mode == RINGL_RIN_GPU_CULL_NONE);
     assert(desc->front_face == RINGL_RIN_GPU_FRONT_FACE_CCW);
-    assert(attribute_count == 4u && attributes != NULL);
+    assert(attribute_count == 6u && attributes != NULL);
     assert(attributes[0].location == 0u && attributes[0].offset == 0u);
     assert(attributes[1].location == 1u && attributes[1].offset == 4u);
     assert(attributes[2].location == 2u && attributes[2].offset == 8u);
     assert(attributes[3].location == 3u && attributes[3].offset == 12u);
+    assert(attributes[4].location == 4u && attributes[4].offset == 16u);
+    assert(attributes[5].location == 5u && attributes[5].offset == 20u);
     assert(varying_count == 4u && varyings != NULL);
     assert(varyings[0].vertex_output_location == 4u);
     assert(varyings[0].fragment_input_location == 0u);
@@ -117,7 +121,8 @@ static int fake_transition_image(void* session, uint64_t command_list,
 {
     FakeBackend* backend = session;
     assert(command_list != 0u);
-    if (image == backend->texture_image) {
+    if (image == backend->texture_images[0] ||
+        image == backend->texture_images[1]) {
         assert(old_state == RINGL_RIN_GPU_IMAGE_COPY_DESTINATION);
         assert(new_state == RINGL_RIN_GPU_IMAGE_SHADER_READ);
         record(backend, 't');
@@ -161,8 +166,9 @@ static int fake_create_image(void* session,
 {
     FakeBackend* backend = session;
     assert(desc != NULL && desc->width == 2u && desc->height == 2u);
-    backend->texture_image = ++backend->next_handle;
-    *image_out = backend->texture_image;
+    assert(backend->texture_image_count < 2u);
+    *image_out = ++backend->next_handle;
+    backend->texture_images[backend->texture_image_count++] = *image_out;
     return 0;
 }
 
@@ -171,7 +177,9 @@ static int fake_upload_image(void* session, uint64_t image,
                              const void* data, uint64_t size_bytes)
 {
     FakeBackend* backend = session;
-    assert(image == backend->texture_image && upload != NULL && data != NULL);
+    assert((image == backend->texture_images[0] ||
+            image == backend->texture_images[1]) &&
+           upload != NULL && data != NULL);
     assert(upload->width == 2u && upload->height == 2u);
     assert(size_bytes == 16u);
     return 0;
@@ -183,8 +191,9 @@ static int fake_create_sampler(void* session,
 {
     FakeBackend* backend = session;
     assert(desc != NULL);
-    backend->texture_sampler = ++backend->next_handle;
-    *sampler_out = backend->texture_sampler;
+    assert(backend->texture_sampler_count < 2u);
+    *sampler_out = ++backend->next_handle;
+    backend->texture_samplers[backend->texture_sampler_count++] = *sampler_out;
     return 0;
 }
 
@@ -195,15 +204,23 @@ static int fake_create_bind_group(
 {
     FakeBackend* backend = session;
     assert(pipeline == backend->pipeline && bindings != NULL);
-    assert(binding_count == 2u);
+    assert(binding_count == 4u);
     assert(bindings[0].binding == 0u);
     assert(bindings[0].kind == RINGL_RIN_GPU_RESOURCE_SAMPLED_IMAGE);
     assert(bindings[0].access == RINGL_RIN_GPU_RESOURCE_READ);
-    assert(bindings[0].resource == backend->texture_image);
+    assert(bindings[0].resource == backend->texture_images[0]);
     assert(bindings[1].binding == 1u);
     assert(bindings[1].kind == RINGL_RIN_GPU_RESOURCE_SAMPLER);
     assert(bindings[1].access == 0u);
-    assert(bindings[1].resource == backend->texture_sampler);
+    assert(bindings[1].resource == backend->texture_samplers[0]);
+    assert(bindings[2].binding == 2u);
+    assert(bindings[2].kind == RINGL_RIN_GPU_RESOURCE_SAMPLED_IMAGE);
+    assert(bindings[2].access == RINGL_RIN_GPU_RESOURCE_READ);
+    assert(bindings[2].resource == backend->texture_images[1]);
+    assert(bindings[3].binding == 3u);
+    assert(bindings[3].kind == RINGL_RIN_GPU_RESOURCE_SAMPLER);
+    assert(bindings[3].access == 0u);
+    assert(bindings[3].resource == backend->texture_samplers[1]);
     ++backend->bind_group_creates;
     *bind_group_out = ++backend->next_handle;
     return 0;
@@ -302,17 +319,18 @@ int main(void)
     };
     RinGLContext* context = NULL;
     uint32_t buffer;
-    uint32_t texture;
+    uint32_t textures[2];
     uint32_t vertex;
     uint32_t fragment;
     uint32_t program;
-    int32_t sampler_location;
+    int32_t first_sampler_location;
+    int32_t second_sampler_location;
     int32_t tint_location;
     int32_t transform_location;
     const float vertices[] = {
-        -0.75f, -0.75f, 0.0f, 0.0f,
-         0.75f, -0.75f, 1.0f, 0.0f,
-         0.0f,   0.75f, 0.5f, 1.0f,
+        -0.75f, -0.75f, 0.0f, 0.0f, 0.25f, 0.75f,
+         0.75f, -0.75f, 1.0f, 0.0f, 0.75f, 0.25f,
+         0.0f,   0.75f, 0.5f, 1.0f, 0.50f, 0.50f,
     };
     const uint8_t pixels[16] = {
         255u, 0u, 0u, 255u, 0u, 255u, 0u, 255u,
@@ -335,14 +353,22 @@ int main(void)
     ringl_bind_buffer(RINGL_ARRAY_BUFFER, buffer);
     ringl_buffer_data(RINGL_ARRAY_BUFFER, sizeof(vertices), vertices,
                       RINGL_STATIC_DRAW);
-    ringl_vertex_attrib_pointer(0u, 2, RINGL_FLOAT, RINGL_FALSE, 16, 0u);
+    ringl_vertex_attrib_pointer(0u, 2, RINGL_FLOAT, RINGL_FALSE, 24, 0u);
     ringl_enable_vertex_attrib_array(0u);
-    ringl_vertex_attrib_pointer(1u, 2, RINGL_FLOAT, RINGL_FALSE, 16, 8u);
+    ringl_vertex_attrib_pointer(1u, 2, RINGL_FLOAT, RINGL_FALSE, 24, 8u);
     ringl_enable_vertex_attrib_array(1u);
+    ringl_vertex_attrib_pointer(2u, 2, RINGL_FLOAT, RINGL_FALSE, 24, 16u);
+    ringl_enable_vertex_attrib_array(2u);
 
-    ringl_gen_textures(1, &texture);
+    ringl_gen_textures(2, textures);
     ringl_active_texture(RINGL_TEXTURE0);
-    ringl_bind_texture(RINGL_TEXTURE_2D, texture);
+    ringl_bind_texture(RINGL_TEXTURE_2D, textures[0]);
+    ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MIN_FILTER,
+                         RINGL_LINEAR);
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 2, 2, 0,
+                       RINGL_RGBA, RINGL_UNSIGNED_BYTE, pixels);
+    ringl_active_texture(RINGL_TEXTURE0 + 1u);
+    ringl_bind_texture(RINGL_TEXTURE_2D, textures[1]);
     ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MIN_FILTER,
                          RINGL_LINEAR);
     ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 2, 2, 0,
@@ -353,14 +379,18 @@ int main(void)
     program = ringl_create_program();
     ringl_shader_source(
         vertex,
-        "attribute vec2 position; attribute vec2 texCoord; uniform mat4 transform; "
-        "varying vec2 uv; void main() { gl_Position = transform * "
-        "vec4(position, 0.0, 1.0); uv = texCoord; }",
+        "attribute vec2 position; attribute vec2 firstTexCoord; "
+        "attribute vec2 secondTexCoord; uniform mat4 transform; "
+        "varying vec2 firstUv; varying vec2 secondUv; void main() { "
+        "gl_Position = transform * vec4(position, 0.0, 1.0); "
+        "firstUv = firstTexCoord; secondUv = secondTexCoord; }",
         -1);
     ringl_shader_source(
         fragment,
-        "uniform sampler2D colorTexture; uniform vec4 tint; varying vec2 uv; "
-        "void main() { gl_FragColor = texture2D(colorTexture, uv) * tint; }",
+        "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
+        "uniform vec4 tint; varying vec2 firstUv; varying vec2 secondUv; "
+        "void main() { gl_FragColor = (texture2D(firstTexture, firstUv) + "
+        "texture2D(secondTexture, secondUv)) * tint; }",
         -1);
     ringl_compile_shader(vertex);
     ringl_compile_shader(fragment);
@@ -371,13 +401,16 @@ int main(void)
     ringl_link_program(program);
     assert(ringl_get_program_link_status(program) == RINGL_TRUE);
     ringl_use_program(program);
-    sampler_location = ringl_get_uniform_location(program, "colorTexture");
+    first_sampler_location = ringl_get_uniform_location(program, "firstTexture");
+    second_sampler_location = ringl_get_uniform_location(program, "secondTexture");
     tint_location = ringl_get_uniform_location(program, "tint");
     transform_location = ringl_get_uniform_location(program, "transform");
-    assert(sampler_location == 0);
-    assert(tint_location == 1);
-    assert(transform_location == 2);
-    ringl_uniform_1i(sampler_location, 0);
+    assert(first_sampler_location == 0);
+    assert(second_sampler_location == 1);
+    assert(tint_location == 2);
+    assert(transform_location == 3);
+    ringl_uniform_1i(first_sampler_location, 0);
+    ringl_uniform_1i(second_sampler_location, 1);
     ringl_uniform_matrix4fv(transform_location, RINGL_FALSE, transform);
     ringl_uniform_4f(tint_location, tint[0], tint[1], tint[2], tint[3]);
     assert(ringl_get_error() == RINGL_NO_ERROR);
@@ -390,14 +423,14 @@ int main(void)
     assert(ringl_get_error() == RINGL_NO_ERROR);
 
     /* Link builds program-owned vertex and fragment modules. The matrix
-     * setter replaces only the vertex executable; the tint setter replaces
-     * only the fragment executable before the textured draw builds its
-     * native pipeline. */
+     * setter replaces only the transformed two-UV vertex executable; the
+     * tint setter replaces only the two-sampler fragment executable before
+     * the textured draw builds its native RinGPU pipeline. */
     assert(backend.shader_creates == 4u);
     assert(backend.bind_group_creates == 1u);
     memcpy(commands, backend.commands, backend.command_count);
     commands[backend.command_count] = '\0';
-    assert(strcmp(commands, "tTBRGDECS") == 0);
+    assert(strcmp(commands, "ttTBRGDECS") == 0);
 
     ringl_context_destroy(context);
     return 0;

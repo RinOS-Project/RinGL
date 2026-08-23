@@ -184,6 +184,38 @@ int main(void)
     const char* two_vec2_varying_fragment_source =
         "varying vec2 vertexRG; varying vec2 vertexBA; "
         "void main() { gl_FragColor = vec4(vertexRG, vertexBA); }";
+    const char* transformed_two_uv_vertex_source =
+        "attribute vec2 position; attribute vec2 firstTexCoord; "
+        "attribute vec2 secondTexCoord; uniform mat4 transform; "
+        "varying vec2 firstUv; varying vec2 secondUv; "
+        "void main() { gl_Position = transform * vec4(position, 0.0, 1.0); "
+        "firstUv = firstTexCoord; secondUv = secondTexCoord; }";
+    const char* transformed_three_uv_vertex_source =
+        "attribute vec2 position; attribute vec2 firstTexCoord; "
+        "attribute vec2 secondTexCoord; attribute vec2 thirdTexCoord; "
+        "uniform mat4 transform; varying vec2 firstUv; varying vec2 secondUv; "
+        "varying vec2 thirdUv; void main() { gl_Position = transform * "
+        "vec4(position, 0.0, 1.0); firstUv = firstTexCoord; "
+        "secondUv = secondTexCoord; thirdUv = thirdTexCoord; }";
+    const char* transformed_four_uv_vertex_source =
+        "attribute vec2 position; attribute vec2 firstTexCoord; "
+        "attribute vec2 secondTexCoord; attribute vec2 thirdTexCoord; "
+        "attribute vec2 fourthTexCoord; uniform mat4 transform; "
+        "varying vec2 firstUv; varying vec2 secondUv; varying vec2 thirdUv; "
+        "varying vec2 fourthUv; void main() { gl_Position = transform * "
+        "vec4(position, 0.0, 1.0); firstUv = firstTexCoord; "
+        "secondUv = secondTexCoord; thirdUv = thirdTexCoord; "
+        "fourthUv = fourthTexCoord; }";
+    const char* transformed_five_uv_vertex_source =
+        "attribute vec2 position; attribute vec2 firstTexCoord; "
+        "attribute vec2 secondTexCoord; attribute vec2 thirdTexCoord; "
+        "attribute vec2 fourthTexCoord; attribute vec2 fifthTexCoord; "
+        "uniform mat4 transform; varying vec2 firstUv; varying vec2 secondUv; "
+        "varying vec2 thirdUv; varying vec2 fourthUv; varying vec2 fifthUv; "
+        "void main() { gl_Position = transform * vec4(position, 0.0, 1.0); "
+        "firstUv = firstTexCoord; secondUv = secondTexCoord; "
+        "thirdUv = thirdTexCoord; fourthUv = fourthTexCoord; "
+        "fifthUv = fifthTexCoord; }";
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -306,6 +338,44 @@ int main(void)
     assert(header.output_count == 4u);
     assert(header.resource_count == 0u);
     assert(header.instruction_count == 9u);
+
+    /* The transformed texture route emits every scalar UV interface that the
+     * native pipeline accepts: one and two pairs use eight vertex outputs,
+     * while the third and fourth pairs extend the interface to ten and
+     * twelve. These are executable matrix/RSH1 modules, not CPU-expanded
+     * texture coordinates. */
+    header = lower_and_read_header(vertex, transformed_two_uv_vertex_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 6u);
+    assert(header.output_count == 8u);
+    assert(header.resource_count == 0u);
+    assert(header.instruction_count == 61u);
+
+    header = lower_and_read_header(vertex, transformed_three_uv_vertex_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 8u);
+    assert(header.output_count == 10u);
+    assert(header.resource_count == 0u);
+    assert(header.instruction_count == 65u);
+
+    header = lower_and_read_header(vertex, transformed_four_uv_vertex_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 10u);
+    assert(header.output_count == 12u);
+    assert(header.resource_count == 0u);
+    assert(header.instruction_count == 69u);
+
+    /* The RSH1 native varying interface stops at eight interpolated scalars.
+     * A source outside that exact profile must not accidentally publish a
+     * truncated module. */
+    ringl_shader_source(vertex, transformed_five_uv_vertex_source, -1);
+    ringl_compile_shader(vertex);
+    assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(vertex) != 0);
+    assert(ringl_get_shader_rsh1_size(vertex) == 0u);
 
     ringl_shader_source(vertex, "void main() { gl_Position = 0.0; }", -1);
     assert(ringl_get_shader_compile_status(vertex) == RINGL_FALSE);

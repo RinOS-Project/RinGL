@@ -4,6 +4,7 @@
 
 #include <ctype.h>
 #include <math.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -109,6 +110,26 @@ static int read_decl_name(const char* source, const char* prefix,
     if (*p != ';' || index == 0u)
         return 0;
     name[index] = '\0';
+    return 1;
+}
+
+static int append_compact_source(char* output, size_t capacity,
+                                 size_t* length, const char* format, ...)
+{
+    va_list arguments;
+    int written;
+
+    if (output == NULL || length == NULL || format == NULL ||
+        *length >= capacity) {
+        return 0;
+    }
+    va_start(arguments, format);
+    written = vsnprintf(output + *length, capacity - *length, format,
+                        arguments);
+    va_end(arguments);
+    if (written < 0 || (size_t)written >= capacity - *length)
+        return 0;
+    *length += (size_t)written;
     return 1;
 }
 
@@ -665,39 +686,46 @@ static int lower_vertex(const char* source, RinGLGlslLowerResult* result)
     return 0;
 }
 
-/* This is the WebGL textured-quad vertex route with a program-owned matrix.
- * It deliberately keeps the attribute/varying ABI used by the texture
- * fragment lowerer: clip position occupies outputs 0..3 and the UV pair
- * occupies outputs 4..5. The matrix values are materialized as RSH1
- * constants at link time and on uniform updates, exactly as the no-varying
- * mat4 lowerer does; RinGPU executes the multiply rather than the embedding
- * pre-transforming geometry. Both common attribute spellings are accepted:
+/* This is the WebGL transformed-texture vertex route with a program-owned
+ * matrix. It keeps the scalar attribute/varying ABI used by the texture
+ * fragment lowerer: clip position occupies outputs 0..3 and one through four
+ * UV pairs follow in declaration order. A single UV pair reserves the final
+ * two scalar slots to retain the fixed eight-output RinGPU interface; two,
+ * three, and four pairs occupy 8, 10, and 12 outputs respectively. The
+ * matrix values are materialized as RSH1 constants at link time and on
+ * uniform updates, exactly as the no-varying mat4 lowerer does; RinGPU
+ * executes the multiply rather than the embedding pre-transforming geometry.
+ * Both common position spellings are accepted:
  *
- *   vec4 position; vec2 texCoord; transform * position
- *   vec2 position; vec2 texCoord; transform * vec4(position, 0, 1)
+ *   vec4 position; vec2 texCoord0..3; transform * position
+ *   vec2 position; vec2 texCoord0..3; transform * vec4(position, 0, 1)
  */
 static int lower_vertex_transformed_texture(
     const char* source, const RinGLGlslUniformValue* uniforms,
     uint32_t uniform_count, RinGLGlslLowerResult* result)
 {
     RinGLRsh1HeaderV1 header;
-    RinGLRsh1InstructionV1 ins[64];
+    RinGLRsh1InstructionV1 ins[RINGL_RSH1_MAX_INSTRUCTIONS];
     char position[64];
-    char texcoord[64];
+    char texcoords[4][64];
     char transform[64];
-    char varying[64];
-    char expected[640];
+    char varyings[4][64];
+    char expected[2048];
     uint16_t position_regs[4];
     uint16_t transformed_position_regs[4];
-    uint16_t texcoord_regs[2];
+    uint16_t texcoord_regs[8];
     uint16_t matrix_regs[16];
     uint16_t zero_reg;
     uint16_t one_reg;
     uint16_t next_reg = 0u;
     uint32_t position_width;
+    uint32_t texcoord_count = 0u;
+    uint32_t input_count;
+    uint32_t output_count;
     uint32_t instruction_cursor = 0u;
     uint32_t matrix_index;
     uint32_t row;
+    size_t expected_length = 0u;
     float values[16] = {0.0f};
     size_t total;
 
@@ -708,38 +736,76 @@ static int lower_vertex_transformed_texture(
     if (read_decl_name(source, "attributevec4", 0u, position,
                        sizeof(position))) {
         position_width = 4u;
-        if (!read_decl_name(source, "attributevec2", 0u, texcoord,
-                            sizeof(texcoord))) {
-            return 1;
-        }
     } else {
         position_width = 2u;
         if (!read_decl_name(source, "attributevec2", 0u, position,
-                            sizeof(position)) ||
-            !read_decl_name(source, "attributevec2", 1u, texcoord,
-                            sizeof(texcoord))) {
+                            sizeof(position))) {
             return 1;
         }
     }
+    while (texcoord_count < 4u &&
+           read_decl_name(source, "attributevec2",
+                          texcoord_count +
+                              (position_width == 2u ? 1u : 0u),
+                          texcoords[texcoord_count],
+                          sizeof(texcoords[texcoord_count]))) {
+        ++texcoord_count;
+    }
+    if (texcoord_count == 0u)
+        return 1;
     if (!read_decl_name(source, "uniformmat4", 0u, transform,
-                        sizeof(transform)) ||
-        !read_decl_name(source, "varyingvec2", 0u, varying,
-                        sizeof(varying))) {
+                        sizeof(transform))) {
         return 1;
     }
-    if (position_width == 4u) {
-        (void)snprintf(expected, sizeof(expected),
-                       "attributevec4%s;attributevec2%s;uniformmat4%s;"
-                       "varyingvec2%s;voidmain(){gl_Position=%s*%s;%s=%s;}",
-                       position, texcoord, transform, varying, transform,
-                       position, varying, texcoord);
-    } else {
-        (void)snprintf(expected, sizeof(expected),
-                       "attributevec2%s;attributevec2%s;uniformmat4%s;"
-                       "varyingvec2%s;voidmain(){gl_Position=%s*vec4(%s,0.0,1.0);"
-                       "%s=%s;}",
-                       position, texcoord, transform, varying, transform,
-                       position, varying, texcoord);
+    for (matrix_index = 0u; matrix_index < texcoord_count; ++matrix_index) {
+        if (!read_decl_name(source, "varyingvec2", matrix_index,
+                            varyings[matrix_index],
+                            sizeof(varyings[matrix_index]))) {
+            return 1;
+        }
+    }
+    if (!append_compact_source(expected, sizeof(expected), &expected_length,
+                               position_width == 4u ? "attributevec4%s;"
+                                                    : "attributevec2%s;",
+                               position)) {
+        return 1;
+    }
+    for (matrix_index = 0u; matrix_index < texcoord_count; ++matrix_index) {
+        if (!append_compact_source(expected, sizeof(expected),
+                                   &expected_length, "attributevec2%s;",
+                                   texcoords[matrix_index])) {
+            return 1;
+        }
+    }
+    if (!append_compact_source(expected, sizeof(expected), &expected_length,
+                               "uniformmat4%s;", transform)) {
+        return 1;
+    }
+    for (matrix_index = 0u; matrix_index < texcoord_count; ++matrix_index) {
+        if (!append_compact_source(expected, sizeof(expected),
+                                   &expected_length, "varyingvec2%s;",
+                                   varyings[matrix_index])) {
+            return 1;
+        }
+    }
+    if (!append_compact_source(expected, sizeof(expected), &expected_length,
+                               "voidmain(){gl_Position=%s*", transform) ||
+        !append_compact_source(expected, sizeof(expected), &expected_length,
+                               position_width == 4u ? "%s;" : "vec4(%s,0.0,1.0);",
+                               position)) {
+        return 1;
+    }
+    for (matrix_index = 0u; matrix_index < texcoord_count; ++matrix_index) {
+        if (!append_compact_source(expected, sizeof(expected),
+                                   &expected_length, "%s=%s;",
+                                   varyings[matrix_index],
+                                   texcoords[matrix_index])) {
+            return 1;
+        }
+    }
+    if (!append_compact_source(expected, sizeof(expected), &expected_length,
+                               "}")) {
+        return 1;
     }
     if (strcmp(source, expected) != 0)
         return 1;
@@ -755,28 +821,29 @@ static int lower_vertex_transformed_texture(
     }
 
     memset(ins, 0, sizeof(ins));
+    input_count = position_width + texcoord_count * 2u;
     if (position_width == 4u) {
-        for (matrix_index = 0u; matrix_index < 6u; ++matrix_index) {
+        for (matrix_index = 0u; matrix_index < input_count; ++matrix_index) {
             init_instruction(&ins[instruction_cursor], RINGL_RSH1_OP_LOAD_INPUT_F32);
             ins[instruction_cursor].destination = next_reg;
             ins[instruction_cursor++].immediate = matrix_index;
             if (matrix_index < 4u)
                 position_regs[matrix_index] = next_reg;
             else
-                texcoord_regs[matrix_index - 4u] = next_reg;
+                texcoord_regs[matrix_index - position_width] = next_reg;
             ++next_reg;
         }
         zero_reg = RINGL_RSH1_UNUSED;
         one_reg = RINGL_RSH1_UNUSED;
     } else {
-        for (matrix_index = 0u; matrix_index < 4u; ++matrix_index) {
+        for (matrix_index = 0u; matrix_index < input_count; ++matrix_index) {
             init_instruction(&ins[instruction_cursor], RINGL_RSH1_OP_LOAD_INPUT_F32);
             ins[instruction_cursor].destination = next_reg;
             ins[instruction_cursor++].immediate = matrix_index;
             if (matrix_index < 2u)
                 position_regs[matrix_index] = next_reg;
             else
-                texcoord_regs[matrix_index - 2u] = next_reg;
+                texcoord_regs[matrix_index - position_width] = next_reg;
             ++next_reg;
         }
         zero_reg = next_reg++;
@@ -852,10 +919,13 @@ static int lower_vertex_transformed_texture(
         }
         ++instruction_cursor;
     }
-    for (row = 0u; row < 8u; ++row) {
+    output_count = 4u + texcoord_count * 2u;
+    if (texcoord_count == 1u)
+        output_count = 8u;
+    for (row = 0u; row < output_count; ++row) {
         uint16_t source_reg = row < 4u
             ? transformed_position_regs[row]
-            : row < 6u ? texcoord_regs[row - 4u]
+            : row < 4u + texcoord_count * 2u ? texcoord_regs[row - 4u]
             : row == 6u ? zero_reg : one_reg;
 
         init_instruction(&ins[instruction_cursor], RINGL_RSH1_OP_STORE_OUTPUT_F32);
@@ -875,8 +945,8 @@ static int lower_vertex_transformed_texture(
     header.stage = RINGL_RSH1_STAGE_VERTEX;
     header.instruction_count = instruction_cursor;
     header.register_count = next_reg;
-    header.input_count = position_width + 2u;
-    header.output_count = 8u;
+    header.input_count = input_count;
+    header.output_count = output_count;
     total = sizeof(header) + (size_t)instruction_cursor * sizeof(ins[0]);
     header.total_size = (uint32_t)total;
     memcpy(result->bytes, &header, sizeof(header));

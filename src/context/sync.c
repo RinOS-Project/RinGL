@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define RINGL_RIN_GPU_FORMAT_BGRA8_UNORM 3u
@@ -153,6 +154,23 @@ static void swizzle_bgra_to_rgba(uint8_t* bytes, uint64_t pixel_count)
     }
 }
 
+static void unpack_rgb565_to_rgba(const uint8_t* source, uint8_t* destination,
+                                  uint64_t pixel_count)
+{
+    uint64_t index;
+
+    for (index = 0u; index < pixel_count; ++index) {
+        uint16_t packed;
+        uint8_t* pixel = destination + index * 4u;
+
+        memcpy(&packed, source + index * sizeof(packed), sizeof(packed));
+        pixel[0] = (uint8_t)((((packed >> 11u) & 0x1fu) * 255u + 15u) / 31u);
+        pixel[1] = (uint8_t)((((packed >> 5u) & 0x3fu) * 255u + 31u) / 63u);
+        pixel[2] = (uint8_t)(((packed & 0x1fu) * 255u + 15u) / 31u);
+        pixel[3] = UINT8_MAX;
+    }
+}
+
 int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
                                  int32_t width, int32_t height, void* pixels)
 {
@@ -160,6 +178,9 @@ int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
     uint64_t command_list;
     uint64_t row_bytes;
     uint64_t total_bytes;
+    uint64_t native_row_bytes;
+    uint64_t native_total_bytes;
+    uint8_t* native_pixels = NULL;
     RinGLColorTarget target;
     uint32_t old_state;
     int result;
@@ -186,6 +207,23 @@ int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
     }
     row_bytes = (uint64_t)(uint32_t)width * 4u;
     total_bytes = row_bytes * (uint64_t)(uint32_t)height;
+    if (target.format == RINGL_RIN_GPU_FORMAT_RGB565_UNORM) {
+        native_row_bytes = (uint64_t)(uint32_t)width * sizeof(uint16_t);
+        if ((uint64_t)(uint32_t)height > UINT64_MAX / native_row_bytes)
+            return -1;
+        native_total_bytes = native_row_bytes * (uint64_t)(uint32_t)height;
+        if (native_total_bytes > SIZE_MAX)
+            return -1;
+        native_pixels = malloc((size_t)native_total_bytes);
+        if (native_pixels == NULL)
+            return -1;
+    } else if (target.format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM ||
+               target.format == RINGL_RIN_GPU_FORMAT_BGRA8_UNORM) {
+        native_row_bytes = row_bytes;
+        native_total_bytes = total_bytes;
+    } else {
+        return -1;
+    }
 
     old_state = *target.state;
     if (old_state == 0u ||
@@ -195,6 +233,7 @@ int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
                                         old_state,
                                         RINGL_RIN_GPU_IMAGE_COPY_SOURCE) != 0) ||
         submit_and_wait(context, command_list) != 0) {
+        free(native_pixels);
         return -1;
     }
     *target.state = RINGL_RIN_GPU_IMAGE_COPY_SOURCE;
@@ -204,23 +243,28 @@ int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
     readback.y = (uint32_t)y;
     readback.width = (uint32_t)width;
     readback.height = (uint32_t)height;
-    readback.destination_row_pitch_bytes = row_bytes;
+    readback.destination_row_pitch_bytes = native_row_bytes;
     result = context->sync_ops.readback_image_2d(
-        context->ringpu.session, target.image, &readback, pixels, total_bytes);
+        context->ringpu.session, target.image, &readback,
+        native_pixels != NULL ? native_pixels : pixels, native_total_bytes);
     if (result == RINGL_RIN_GPU_ERROR_DEVICE_LOST) {
         ringl_context_mark_lost(context);
+        free(native_pixels);
         return -1;
     }
     if (result != 0) {
+        free(native_pixels);
         return -1;
     }
 
     if (target.format == RINGL_RIN_GPU_FORMAT_BGRA8_UNORM) {
         swizzle_bgra_to_rgba((uint8_t*)pixels,
                              (uint64_t)(uint32_t)width * (uint32_t)height);
-    } else if (target.format != RINGL_RIN_GPU_FORMAT_RGBA8_UNORM) {
-        return -1;
+    } else if (target.format == RINGL_RIN_GPU_FORMAT_RGB565_UNORM) {
+        unpack_rgb565_to_rgba(native_pixels, pixels,
+                              (uint64_t)(uint32_t)width * (uint32_t)height);
     }
+    free(native_pixels);
     return 0;
 }
 

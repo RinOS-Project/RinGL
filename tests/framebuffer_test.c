@@ -32,7 +32,7 @@ int main(void)
     RinGLDefaultFramebufferV1 copy;
     uint32_t framebuffer_state = 0xfeedfaceu;
     uint32_t framebuffers[1] = { 0u };
-    uint32_t renderbuffers[2] = { 0u, 0u };
+    uint32_t renderbuffers[3] = { 0u, 0u, 0u };
     RinGLFramebufferAttachmentInfoV1 attachment;
     RinGLRenderbufferInfoV1 renderbuffer_info = {
         .struct_size = sizeof(renderbuffer_info),
@@ -104,7 +104,7 @@ int main(void)
     assert(ringl_get_default_framebuffer(&copy) == 1);
     assert(copy.color_target == 0u);
 
-    ringl_gen_renderbuffers(2, renderbuffers);
+    ringl_gen_renderbuffers(3, renderbuffers);
     ringl_bind_renderbuffer(RINGL_RENDERBUFFER, renderbuffers[0]);
     ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_RGBA8, 4, 4);
     ringl_bind_renderbuffer(RINGL_RENDERBUFFER, renderbuffers[1]);
@@ -185,6 +185,19 @@ int main(void)
     ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER,
                                    RINGL_STENCIL_ATTACHMENT,
                                    RINGL_RENDERBUFFER, 0u);
+    assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
+           RINGL_FRAMEBUFFER_COMPLETE);
+    ringl_bind_renderbuffer(RINGL_RENDERBUFFER, renderbuffers[2]);
+    ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_RGB565, 4, 4);
+    assert(ringl_get_renderbuffer_info(RINGL_RENDERBUFFER,
+                                       &renderbuffer_info) == 0);
+    assert(renderbuffer_info.internal_format == RINGL_RGB565);
+    assert(renderbuffer_info.red_size == 5u);
+    assert(renderbuffer_info.green_size == 6u);
+    assert(renderbuffer_info.blue_size == 5u);
+    assert(renderbuffer_info.alpha_size == 0u);
+    ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT0,
+                                   RINGL_RENDERBUFFER, renderbuffers[2]);
     assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
            RINGL_FRAMEBUFFER_COMPLETE);
     ringl_bind_framebuffer(RINGL_FRAMEBUFFER, 0u);

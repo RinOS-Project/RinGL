@@ -133,6 +133,16 @@ create context
 
 After that vertical slice is stable, indexed drawing, textures, framebuffer objects, blending/depth/stencil, synchronization, readback, and broader GLES compatibility can be added incrementally.
 
+## Current RGB565 framebuffer slice
+
+`RINGL_RGB565` renderbuffers realize as native two-byte
+`RIN_GPU_FORMAT_RGB565_UNORM` color images, not RGBA8 substitutes. RinGL reports
+the logical 5/6/5/0 component sizes, uses the format in its pipeline key, and
+returns packed WebGL RGBA/UNSIGNED_BYTE readback through private native staging.
+The RinGPU software and Aquamarine-surface backends preserve 16-bit storage for
+upload, clear, draw, sampling, and readback. `RGBA4` and `RGB5_A1` renderbuffer
+formats are intentionally still unsupported.
+
 ## Current bounded texture-coordinate extension
 
 The shared perspective-UV texture profile now executes one through eight

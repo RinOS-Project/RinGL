@@ -18,6 +18,11 @@ static int color_attachment_valid(uint32_t attachment)
     return attachment == RINGL_COLOR_ATTACHMENT0;
 }
 
+static int color_attachment_format_valid(uint32_t format)
+{
+    return format == RINGL_RGBA8 || format == RINGL_RGB565;
+}
+
 static int depth_attachment_valid(uint32_t attachment)
 {
     return attachment == RINGL_DEPTH_ATTACHMENT ||
@@ -129,7 +134,7 @@ static int color_attachment_dimensions(RinGLContext* context,
             return -1;
         renderbuffer = &context->renderbuffers[index];
         if (!renderbuffer->defined ||
-            renderbuffer->internal_format != RINGL_RGBA8 ||
+            !color_attachment_format_valid(renderbuffer->internal_format) ||
             renderbuffer->width == 0u || renderbuffer->height == 0u)
             return -1;
         *width_out = renderbuffer->width;
@@ -623,6 +628,10 @@ int ringl_get_renderbuffer_info(uint32_t target, RinGLRenderbufferInfoV1* info)
             result.green_size = 8u;
             result.blue_size = 8u;
             result.alpha_size = 8u;
+        } else if (renderbuffer->internal_format == RINGL_RGB565) {
+            result.red_size = 5u;
+            result.green_size = 6u;
+            result.blue_size = 5u;
         } else if (renderbuffer->internal_format == RINGL_DEPTH_COMPONENT16) {
             result.depth_size = 16u;
         } else if (renderbuffer->internal_format == RINGL_DEPTH_COMPONENT32F) {
@@ -650,7 +659,7 @@ void ringl_renderbuffer_storage(uint32_t target, uint32_t internal_format,
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
-    if (internal_format != RINGL_RGBA8 &&
+    if (internal_format != RINGL_RGBA8 && internal_format != RINGL_RGB565 &&
         internal_format != RINGL_DEPTH_COMPONENT16 &&
         internal_format != RINGL_DEPTH_COMPONENT32F &&
         internal_format != RINGL_STENCIL_INDEX8 &&
@@ -700,14 +709,17 @@ int ringl_renderbuffer_realize_color_target(RinGLContext* context,
     if (index >= RINGL_OBJECT_SLOT_COUNT)
         return -1;
     object = &context->renderbuffers[index];
-    if (!object->defined || object->internal_format != RINGL_RGBA8 ||
+    if (!object->defined ||
+        !color_attachment_format_valid(object->internal_format) ||
         object->width == 0u || object->height == 0u)
         return -1;
     if (object->ringpu_image == 0u) {
         memset(&desc, 0, sizeof(desc));
         desc.width = object->width;
         desc.height = object->height;
-        desc.format = RINGL_RIN_GPU_FORMAT_RGBA8_UNORM;
+        desc.format = object->internal_format == RINGL_RGB565
+            ? RINGL_RIN_GPU_FORMAT_RGB565_UNORM
+            : RINGL_RIN_GPU_FORMAT_RGBA8_UNORM;
         desc.usage = RINGL_RIN_GPU_IMAGE_USAGE_COLOR_TARGET |
                      RINGL_RIN_GPU_IMAGE_USAGE_COPY_SOURCE;
         if (ringl_backend_create_image_2d(context, &desc, &image) != 0 ||

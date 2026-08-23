@@ -41,12 +41,16 @@ trusted native callers only.
 ## Bounded color-readback path
 
 `ringl_read_pixels_to_bytes()` accepts a destination capacity for the current
-complete color target's tightly packed RGBA8 readback. It rejects a short
-destination with `RINGL_INVALID_OPERATION` before a RinGPU command list is
-created, the target transitions to `COPY_SOURCE`, or destination memory is
-written. Browser embeddings must use this API; `ringl_read_pixels()` remains a
-trusted native-only compatibility form because it cannot determine destination
-capacity from a raw pointer.
+complete color target's tightly packed RGBA output. For an RGBA8/BGRA8 target it
+reads directly into that output; for a native `RGB565_UNORM` target it first
+reads two-byte native texels into private staging and expands them to RGBA with
+opaque alpha. It rejects a short destination with `RINGL_INVALID_OPERATION`
+before a RinGPU command list is created, the target transitions to
+`COPY_SOURCE`, or destination memory is written. A staging-allocation or
+readback failure likewise leaves the caller output untouched. Browser embeddings
+must use this API; `ringl_read_pixels()` remains a trusted native-only
+compatibility form because it cannot determine destination capacity from a raw
+pointer.
 
 The callback boundary remains useful because RinGL is a standalone repository and should not hard-wire an OS-Core internal session type into its portable context ABI.
 

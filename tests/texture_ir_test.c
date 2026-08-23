@@ -141,8 +141,7 @@ int main(void)
         "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
         "uniform sampler2D thirdTexture; varying vec2 firstUv; "
         "varying vec2 secondUv; varying vec2 thirdUv; void main() { "
-        "vec2 mixedUv = secondUv - thirdUv; "
-        "vec2 sampleUv = mixedUv + firstUv; gl_FragColor = "
+        "vec2 sampleUv = secondUv - thirdUv + firstUv; gl_FragColor = "
         "texture2D(firstTexture, firstUv) + "
         "texture2D(secondTexture, sampleUv) + "
         "texture2D(thirdTexture, sampleUv); }";

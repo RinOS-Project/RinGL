@@ -896,6 +896,8 @@ static uint32_t ringl_native_primitive_topology(uint32_t mode)
         return RINGL_NATIVE_PRIMITIVE_POINT_LIST;
     case RINGL_LINES:
         return RINGL_NATIVE_PRIMITIVE_LINE_LIST;
+    case RINGL_LINE_LOOP:
+        return RINGL_NATIVE_PRIMITIVE_LINE_LOOP;
     case RINGL_LINE_STRIP:
         return RINGL_NATIVE_PRIMITIVE_LINE_STRIP;
     case RINGL_TRIANGLES:

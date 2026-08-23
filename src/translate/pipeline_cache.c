@@ -66,7 +66,8 @@ static int fixed_raster_interface(const RinGLShaderObject* vertex,
         fragment_header.output_count != 4u)
         return 0;
     if ((vertex_header.output_count == 8u && fragment_header.input_count == 4u) ||
-        (vertex_header.output_count == 10u && fragment_header.input_count == 6u)) {
+        (vertex_header.output_count == 10u && fragment_header.input_count == 6u) ||
+        (vertex_header.output_count == 12u && fragment_header.input_count == 8u)) {
         *scalar_varying_count = fragment_header.input_count;
         return 1;
     }

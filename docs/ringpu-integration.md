@@ -246,21 +246,24 @@ the preceding result rather than a host-side folded coordinate. The lowerer
 counts all locals, calls, optional call-local offsets, combines, stores, and
 color operations before it publishes the RSH1 blob.
 
-The next bounded native interface is three independent `varying vec2` texture
-coordinates. RinGL emits six scalar fragment inputs and a 10-scalar vertex
-output (clip `xyzw` plus those pairs), and the RinGPU surface keeps the extra
-two components in a private native clip/raster form while preserving the
-public compact RGBA clip-vertex V1 ABI. Six-plane clipping and perspective
-interpolation operate on every pair before the resource-aware fragment
-preflight and submission. This route is deliberately limited to direct/indexed
-points, lines, line strips/loops, and triangle lists, strips, and fans. One
+The bounded native interface supports three independent `varying vec2` texture
+coordinates with six scalar fragment inputs and a 10-scalar vertex output
+(clip `xyzw` plus those pairs). It also supports a direct four-`varying vec2`
+shape with eight scalar fragment inputs and a 12-scalar vertex output. The
+RinGPU surface keeps up to eight varying components in a private native
+clip/raster form while preserving the public compact RGBA clip-vertex V1 ABI.
+Six-plane clipping and perspective interpolation operate on every carried pair
+before resource-aware fragment preflight and submission. This route is
+deliberately limited to direct/indexed points, lines, line strips/loops, and
+triangle lists, strips, and fans. One
 `firstUv +/- secondUv`,
 `firstUv +/- thirdUv`, or `secondUv +/- thirdUv` local may feed following
 direct/finite-affine local declarations in source order when the complete RSH1
 shape fits its instruction/register budget, while direct samples may use every
 declared pair. It does not claim general varying transport, expressions that
 combine all three pairs in one local, or broader three-input local expressions.
-For one sampled texture result, or an explicitly parenthesized additive sample
+The four-UV shape permits only independent direct samples; four-UV local
+expressions are not inferred. For one sampled texture result, or an explicitly parenthesized additive sample
 chain, a finite `vec4` color literal is emitted as four RSH1 constants followed
 by component-wise `ADD_F32`, `SUB_F32`, `MUL_F32`, or nonzero `DIV_F32`
 instructions before the fragment stores its output. This uses the existing

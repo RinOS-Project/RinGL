@@ -186,8 +186,9 @@ Up to eight fragment-local values may be chained from the shared UV; each
 initializer is lowered in source order before samples and the complete shape is
 rejected before IR publication when it exceeds an RSH1 limit. This remains a
 deliberately narrow GLSL ES subset: other local vector expressions, more than
-eight locals, more than three UV varyings, broader local expressions spanning
-three UV inputs, and more than eight calls are still
+eight locals, more than four UV varyings, local expressions spanning four UV
+inputs, broader local expressions spanning three UV inputs, and more than
+eight calls are still
 unsupported.
 
 The bounded three-UV texture profile similarly permits one local `vec2`
@@ -199,6 +200,14 @@ perspective inputs and executes every stage in RSH1, rather than selecting or
 folding a coordinate on the host. One combine result may additionally combine
 once with the remaining declared pair; other general three-UV local expressions
 remain unsupported.
+
+A bounded four-UV texture profile additionally maps `firstUv` through
+`fourthUv` to eight distinct scalar fragment inputs. Its matching vertex RSH1
+stage emits 12 outputs (`xyzw` plus all four pairs), and the native
+RinGPU/Aquamarine transport clips and perspective-interpolates every scalar
+without changing the public compact clip-vertex V1 ABI. Direct samples may use
+each pair independently; four-UV local expressions remain deliberately
+outside this profile.
 
 See [TODO.md](TODO.md) for the implementation roadmap.
 

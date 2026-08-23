@@ -1414,7 +1414,7 @@ void ringl_link_program(uint32_t program);
 uint32_t ringl_get_program_link_status(uint32_t program);
 void ringl_validate_program(uint32_t program);
 int ringl_get_program_info(uint32_t program, RinGLProgramInfoV1* info);
-/* Return one active linked attribute or sampler uniform into a versioned,
+/* Return one active linked attribute or sampler/vec4 uniform into a versioned,
  * caller-owned record. Failures leave the record unchanged. */
 int ringl_get_active_attrib(uint32_t program, uint32_t index,
                             RinGLActiveInfoV1* info);
@@ -1439,6 +1439,16 @@ void ringl_uniform_1i(int32_t location, int32_t value);
  * program/location inputs leave value_out unchanged and record an error. */
 int ringl_get_uniform_1i(uint32_t program, int32_t location,
                           int32_t* value_out);
+/* Bounded native GLSL lowering supports active `uniform vec4` values. The
+ * setter applies only to the currently used program. It realizes a fresh
+ * program-owned RinGPU shader module before replacing the prior executable,
+ * so modules are never shared between programs with different values. */
+void ringl_uniform_4f(int32_t location, float x, float y, float z, float w);
+/* Reads an active vec4 uniform into exactly four caller-owned floats.
+ * Invalid program/location/type inputs leave values_out unchanged and record
+ * an error. */
+int ringl_get_uniform_4f(uint32_t program, int32_t location,
+                          float values_out[4]);
 
 #ifdef __cplusplus
 }

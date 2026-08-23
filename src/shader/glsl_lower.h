@@ -22,9 +22,20 @@ typedef struct RinGLGlslLowerResult {
     uint8_t bytes[RINGL_GLSL_RSH1_MAX_BYTES];
 } RinGLGlslLowerResult;
 
+/* Program values passed to the bounded vec4-uniform lowering path. A missing
+ * name uses WebGL's successful-link default `(0, 0, 0, 0)`. */
+typedef struct RinGLGlslVec4UniformValue {
+    const char* name;
+    float values[4];
+} RinGLGlslVec4UniformValue;
+
 int ringl_glsl_lower_rsh1(uint32_t shader_type,
                           const char* source,
                           size_t source_length,
                           RinGLGlslLowerResult* result);
+int ringl_glsl_lower_rsh1_with_vec4_uniforms(
+    uint32_t shader_type, const char* source, size_t source_length,
+    const RinGLGlslVec4UniformValue* uniforms, uint32_t uniform_count,
+    RinGLGlslLowerResult* result);
 
 #endif

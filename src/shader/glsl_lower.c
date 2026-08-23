@@ -18,6 +18,7 @@ typedef enum Tok {
     T_VEC2,
     T_VEC4,
     T_ATTRIBUTE,
+    T_UNIFORM,
     T_LPAREN,
     T_RPAREN,
     T_LBRACE,
@@ -49,6 +50,7 @@ typedef struct Symbol {
     uint16_t input;
     uint8_t width;
     uint8_t attribute;
+    uint8_t uniform;
     uint8_t initialized;
 } Symbol;
 
@@ -65,8 +67,14 @@ typedef struct Lower {
     uint16_t output_count;
     RinGLRsh1InstructionV1 ins[RINGL_RSH1_MAX_INSTRUCTIONS];
     uint32_t ins_count;
+    const RinGLGlslVec4UniformValue* uniforms;
+    uint32_t uniform_count;
     RinGLGlslLowerResult* result;
 } Lower;
+
+static uint16_t new_reg(Lower* lower);
+static int emit(Lower* lower, uint16_t opcode, uint16_t dst,
+                uint16_t source0, uint16_t source1, uint32_t immediate);
 
 static Value invalid_value(void)
 {
@@ -123,6 +131,8 @@ static Tok keyword(const char* begin, size_t length)
         return T_VEC4;
     if (length == 9u && memcmp(begin, "attribute", 9u) == 0)
         return T_ATTRIBUTE;
+    if (length == 7u && memcmp(begin, "uniform", 7u) == 0)
+        return T_UNIFORM;
     return T_IDENT;
 }
 
@@ -250,6 +260,58 @@ static Symbol* add_symbol(Lower* lower, const Token* token,
         symbol->regs[index] = RINGL_RSH1_UNUSED;
     symbol->initialized = (uint8_t)attribute;
     return symbol;
+}
+
+static const RinGLGlslVec4UniformValue* find_uniform_value(
+    const Lower* lower, const Token* name)
+{
+    uint32_t index;
+
+    if (lower == NULL || name == NULL)
+        return NULL;
+    for (index = 0u; index < lower->uniform_count; ++index) {
+        const RinGLGlslVec4UniformValue* uniform = &lower->uniforms[index];
+        size_t length;
+
+        if (uniform->name == NULL)
+            continue;
+        length = strlen(uniform->name);
+        if (length == name->length &&
+            memcmp(uniform->name, name->begin, length) == 0) {
+            return uniform;
+        }
+    }
+    return NULL;
+}
+
+static int initialize_vec4_uniform(Lower* lower, Symbol* symbol,
+                                   const Token* name)
+{
+    const RinGLGlslVec4UniformValue* uniform;
+    float zero_values[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    const float* values = zero_values;
+    uint32_t index;
+
+    if (lower == NULL || symbol == NULL || name == NULL)
+        return 0;
+    uniform = find_uniform_value(lower, name);
+    if (uniform != NULL)
+        values = uniform->values;
+    symbol->uniform = 1u;
+    for (index = 0u; index < 4u; ++index) {
+        uint16_t reg = new_reg(lower);
+        uint32_t bits;
+
+        memcpy(&bits, &values[index], sizeof(bits));
+        if (reg == RINGL_RSH1_UNUSED ||
+            !emit(lower, RINGL_RSH1_OP_CONST_F32, reg,
+                  RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED, bits)) {
+            return 0;
+        }
+        symbol->regs[index] = reg;
+    }
+    symbol->initialized = 1u;
+    return 1;
 }
 
 static uint16_t new_reg(Lower* lower)
@@ -566,8 +628,8 @@ static int assignment(Lower* lower)
         }
         return store_output(lower, &value);
     }
-    if (symbol->attribute) {
-        fail(lower, "attribute is read-only");
+    if (symbol->attribute || symbol->uniform) {
+        fail(lower, "attribute or uniform is read-only");
         return 0;
     }
     if (symbol->width != value.width) {
@@ -613,6 +675,31 @@ static int parse_all(Lower* lower)
             }
             next(lower);
             if (!need(lower, T_SEMI, "expected ';' after attribute"))
+                return 0;
+            continue;
+        }
+        if (lower->token.kind == T_UNIFORM) {
+            Token name;
+            Symbol* symbol;
+
+            next(lower);
+            if (lower->token.kind != T_VEC4) {
+                fail(lower, "only uniform vec4 lowering is supported");
+                return 0;
+            }
+            next(lower);
+            if (lower->token.kind != T_IDENT) {
+                fail(lower, "expected uniform name");
+                return 0;
+            }
+            name = lower->token;
+            if (find_symbol(lower, &name) != NULL ||
+                (symbol = add_symbol(lower, &name, 0, 4u)) == NULL ||
+                !initialize_vec4_uniform(lower, symbol, &name)) {
+                return 0;
+            }
+            next(lower);
+            if (!need(lower, T_SEMI, "expected ';' after uniform"))
                 return 0;
             continue;
         }
@@ -718,21 +805,26 @@ static int append_fragment_interpolant_inputs(Lower* lower)
     return 1;
 }
 
-int ringl_glsl_lower_rsh1(uint32_t shader_type, const char* source,
-                          size_t source_length,
-                          RinGLGlslLowerResult* result)
+int ringl_glsl_lower_rsh1_with_vec4_uniforms(
+    uint32_t shader_type, const char* source, size_t source_length,
+    const RinGLGlslVec4UniformValue* uniforms, uint32_t uniform_count,
+    RinGLGlslLowerResult* result)
 {
     Lower lower;
     RinGLRsh1HeaderV1 header;
     size_t total;
 
-    if (source == NULL || result == NULL)
+    if (source == NULL || result == NULL ||
+        uniform_count > RINGL_GLSL_MAX_VEC4_UNIFORMS ||
+        (uniform_count != 0u && uniforms == NULL))
         return -1;
     memset(result, 0, sizeof(*result));
     memset(&lower, 0, sizeof(lower));
     lower.source = source;
     lower.length = source_length;
     lower.shader_type = shader_type;
+    lower.uniforms = uniforms;
+    lower.uniform_count = uniform_count;
     lower.result = result;
     if (!parse_all(&lower))
         return 1;
@@ -771,4 +863,12 @@ int ringl_glsl_lower_rsh1(uint32_t shader_type, const char* source,
     result->output_count = lower.output_count;
     result->byte_size = (uint32_t)total;
     return 0;
+}
+
+int ringl_glsl_lower_rsh1(uint32_t shader_type, const char* source,
+                          size_t source_length,
+                          RinGLGlslLowerResult* result)
+{
+    return ringl_glsl_lower_rsh1_with_vec4_uniforms(
+        shader_type, source, source_length, NULL, 0u, result);
 }

@@ -328,7 +328,10 @@ The selected `RinWebGLRingPUSurfaceContext` backend executes generic
 `RIN_GPU_BACKEND_COMMAND_DRAW_VERTICES` into the caller-owned BGRA surface;
 the OS-Core surface test covers that native command path. RinGL's current
 vector position and initial texture/varying profiles lower through the same
-public RinGPU adapter. The browser-facing GLES/WebGL object and command bridge,
+public RinGPU adapter. The bounded direct `uniform vec4` profile also creates
+program-owned RSH1 modules and has the same adapter create/validate them before
+the previous graphics pipeline is retired; the focused surface test changes
+the tint twice and reads both real colors back. The browser-facing GLES/WebGL object and command bridge,
 front-buffer presentation contract, context-loss policy, and product/QEMU
 evidence remain separate unfinished work; no WebGL feature claim follows from
 this integration slice.

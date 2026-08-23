@@ -47,20 +47,22 @@ static RinGLShaderObject* shader_object(RinGLContext* context,
     return &context->shaders[index];
 }
 
-static int fixed_raster_interface(const RinGLShaderObject* vertex,
-                                  const RinGLShaderObject* fragment,
+static int fixed_raster_interface(const uint8_t* vertex_rsh1,
+                                  uint32_t vertex_rsh1_size,
+                                  const uint8_t* fragment_rsh1,
+                                  uint32_t fragment_rsh1_size,
                                   uint32_t* scalar_varying_count)
 {
     RinGLRsh1HeaderV1 vertex_header;
     RinGLRsh1HeaderV1 fragment_header;
 
-    if (scalar_varying_count == NULL || vertex == NULL || fragment == NULL || vertex->rsh1 == NULL ||
-        fragment->rsh1 == NULL || vertex->rsh1_size < sizeof(vertex_header) ||
-        fragment->rsh1_size < sizeof(fragment_header)) {
+    if (scalar_varying_count == NULL || vertex_rsh1 == NULL ||
+        fragment_rsh1 == NULL || vertex_rsh1_size < sizeof(vertex_header) ||
+        fragment_rsh1_size < sizeof(fragment_header)) {
         return 0;
     }
-    memcpy(&vertex_header, vertex->rsh1, sizeof(vertex_header));
-    memcpy(&fragment_header, fragment->rsh1, sizeof(fragment_header));
+    memcpy(&vertex_header, vertex_rsh1, sizeof(vertex_header));
+    memcpy(&fragment_header, fragment_rsh1, sizeof(fragment_header));
     if (vertex_header.stage != RINGL_RSH1_STAGE_VERTEX ||
         fragment_header.stage != RINGL_RSH1_STAGE_FRAGMENT ||
         fragment_header.output_count != 4u)
@@ -224,6 +226,12 @@ int ringl_build_pipeline_key(RinGLContext* context,
     RinGLShaderObject* fragment;
     RinGLResolvedVertexLayout layout;
     RinGLPipelineKey result;
+    const uint8_t* vertex_rsh1;
+    const uint8_t* fragment_rsh1;
+    uint32_t vertex_rsh1_size;
+    uint32_t fragment_rsh1_size;
+    uint64_t vertex_module;
+    uint64_t fragment_module;
     uint32_t index;
     uint32_t fixed_scalar_varying_count;
 
@@ -248,15 +256,28 @@ int ringl_build_pipeline_key(RinGLContext* context,
         return -1;
     vertex = shader_object(context, program->linked_vertex_shader);
     fragment = shader_object(context, program->linked_fragment_shader);
-    if (vertex == NULL || fragment == NULL ||
-        vertex->ringpu_module == 0u || fragment->ringpu_module == 0u)
+    if (vertex == NULL || fragment == NULL)
+        return -1;
+    vertex_rsh1 = program->vertex_uniform_rsh1 != NULL
+        ? program->vertex_uniform_rsh1 : vertex->rsh1;
+    fragment_rsh1 = program->fragment_uniform_rsh1 != NULL
+        ? program->fragment_uniform_rsh1 : fragment->rsh1;
+    vertex_rsh1_size = program->vertex_uniform_rsh1 != NULL
+        ? program->vertex_uniform_rsh1_size : vertex->rsh1_size;
+    fragment_rsh1_size = program->fragment_uniform_rsh1 != NULL
+        ? program->fragment_uniform_rsh1_size : fragment->rsh1_size;
+    vertex_module = program->vertex_uniform_rsh1 != NULL
+        ? program->vertex_uniform_module : vertex->ringpu_module;
+    fragment_module = program->fragment_uniform_rsh1 != NULL
+        ? program->fragment_uniform_module : fragment->ringpu_module;
+    if (vertex_module == 0u || fragment_module == 0u)
         return -1;
     if (ringl_resolve_vertex_layout(context, &layout) != 0)
         return -1;
 
     memset(&result, 0, sizeof(result));
-    result.vertex_shader_module = vertex->ringpu_module;
-    result.fragment_shader_module = fragment->ringpu_module;
+    result.vertex_shader_module = vertex_module;
+    result.fragment_shader_module = fragment_module;
     result.color_format = color_format;
     result.depth_format = depth_format;
     if (depth_test_enabled != 0u) {
@@ -374,7 +395,9 @@ int ringl_build_pipeline_key(RinGLContext* context,
         (layout.binding_count <= 1u ||
          context->ringpu_ops.create_graphics_pipeline_native_vertex_bindings !=
              NULL) &&
-        fixed_raster_interface(vertex, fragment, &fixed_scalar_varying_count)) {
+        fixed_raster_interface(vertex_rsh1, vertex_rsh1_size,
+                               fragment_rsh1, fragment_rsh1_size,
+                               &fixed_scalar_varying_count)) {
         if (result.varying_count > fixed_scalar_varying_count)
             return -1;
         while (result.varying_count < fixed_scalar_varying_count) {

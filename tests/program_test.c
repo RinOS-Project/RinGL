@@ -19,6 +19,10 @@ int main(void)
     uint32_t retained_vertex;
     uint32_t retained_fragment;
     uint32_t retained_program;
+    uint32_t vec4_vertex;
+    uint32_t vec4_fragment;
+    uint32_t vec4_program;
+    uint32_t vec4_peer_program;
     int32_t location;
     int32_t uniform_value = -1;
     char log[160];
@@ -126,6 +130,62 @@ int main(void)
     assert(ringl_get_uniform_1i(program, 99, &uniform_value) == -1);
     assert(ringl_get_error() == RINGL_INVALID_OPERATION);
     assert(uniform_value == -1);
+
+    /* Vec4 uniforms are linked program state, not shader-object state. A
+     * second program sharing the same shader pair keeps WebGL's zero default
+     * after the first program changes its own RinGPU executable. */
+    vec4_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+    vec4_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+    vec4_program = ringl_create_program();
+    vec4_peer_program = ringl_create_program();
+    assert(vec4_vertex != 0u && vec4_fragment != 0u && vec4_program != 0u &&
+           vec4_peer_program != 0u);
+    ringl_shader_source(vec4_vertex,
+                        "void main() { gl_Position = vec4(-1.0, -1.0, 0.0, 1.0); }",
+                        -1);
+    ringl_shader_source(vec4_fragment,
+                        "uniform vec4 tint; void main() { gl_FragColor = tint; }",
+                        -1);
+    ringl_compile_shader(vec4_vertex);
+    ringl_compile_shader(vec4_fragment);
+    assert(ringl_get_shader_compile_status(vec4_vertex) == RINGL_TRUE);
+    assert(ringl_get_shader_compile_status(vec4_fragment) == RINGL_TRUE);
+    ringl_attach_shader(vec4_program, vec4_vertex);
+    ringl_attach_shader(vec4_program, vec4_fragment);
+    ringl_attach_shader(vec4_peer_program, vec4_vertex);
+    ringl_attach_shader(vec4_peer_program, vec4_fragment);
+    ringl_link_program(vec4_program);
+    ringl_link_program(vec4_peer_program);
+    assert(ringl_get_program_link_status(vec4_program) == RINGL_TRUE);
+    assert(ringl_get_program_link_status(vec4_peer_program) == RINGL_TRUE);
+    assert(ringl_get_program_info(vec4_program, &info) == 0);
+    assert(info.active_uniform_count == 1u);
+    location = ringl_get_uniform_location(vec4_program, "tint");
+    assert(location == 0);
+    assert(ringl_get_active_uniform(vec4_program, 0u, &active_info) == 0);
+    assert(active_info.type == RINGL_FLOAT_VEC4 &&
+           strcmp(active_info.name, "tint") == 0);
+    {
+        float values[4] = { -1.0f, -1.0f, -1.0f, -1.0f };
+
+        assert(ringl_get_uniform_4f(vec4_program, location, values) == 0);
+        assert(values[0] == 0.0f && values[1] == 0.0f &&
+               values[2] == 0.0f && values[3] == 0.0f);
+        ringl_use_program(vec4_program);
+        ringl_uniform_4f(location, 1.0f, 0.25f, 0.0f, 1.0f);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_4f(vec4_program, location, values) == 0);
+        assert(values[0] == 1.0f && values[1] == 0.25f &&
+               values[2] == 0.0f && values[3] == 1.0f);
+        memset(values, 0xff, sizeof(values));
+        assert(ringl_get_uniform_4f(vec4_peer_program, location, values) == 0);
+        assert(values[0] == 0.0f && values[1] == 0.0f &&
+               values[2] == 0.0f && values[3] == 0.0f);
+    }
+    ringl_uniform_1i(location, 0);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    ringl_delete_program(vec4_peer_program);
+    ringl_delete_program(vec4_program);
 
     multi_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
     multi_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);

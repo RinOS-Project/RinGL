@@ -41,6 +41,7 @@ typedef enum SymbolKind {
     SYMBOL_ATTRIBUTE = 1,
     SYMBOL_SAMPLER2D = 2,
     SYMBOL_VARYING = 3,
+    SYMBOL_UNIFORM_VEC4 = 4,
 } SymbolKind;
 
 typedef struct Token {
@@ -514,8 +515,9 @@ static int assignment(Parser* parser)
             fail(parser, "assignment to undeclared identifier");
             return 0;
         }
-        if (symbol->kind == SYMBOL_SAMPLER2D) {
-            fail(parser, "sampler uniforms are read-only");
+        if (symbol->kind == SYMBOL_SAMPLER2D ||
+            symbol->kind == SYMBOL_UNIFORM_VEC4) {
+            fail(parser, "uniforms are read-only");
             return 0;
         }
         if (symbol->kind == SYMBOL_VARYING &&
@@ -654,30 +656,52 @@ static int uniform_declaration(Parser* parser)
     uint32_t index;
 
     next_token(parser);
-    if (parser->token.kind != TOK_SAMPLER2D) {
-        fail(parser, "only 'uniform sampler2D' is supported");
+    if (parser->token.kind != TOK_SAMPLER2D &&
+        parser->token.kind != TOK_VEC4) {
+        fail(parser, "only 'uniform sampler2D' and 'uniform vec4' are supported");
         return 0;
     }
+    {
+        TokenKind type = parser->token.kind;
+
     next_token(parser);
     if (parser->token.kind != TOK_IDENT) {
         fail(parser, "expected uniform identifier");
         return 0;
     }
     name = parser->token;
-    if (!add_symbol(parser, &name, SYMBOL_SAMPLER2D, 0u))
+    if (!add_symbol(parser, &name,
+                    type == TOK_SAMPLER2D ? SYMBOL_SAMPLER2D
+                                          : SYMBOL_UNIFORM_VEC4,
+                    type == TOK_SAMPLER2D ? 0u : 4u))
         return 0;
-    if (parser->result->sampler_uniform_count >= RINGL_GLSL_MAX_SAMPLER_UNIFORMS) {
-        fail(parser, "too many sampler uniforms");
-        return 0;
+    if (type == TOK_SAMPLER2D) {
+        if (parser->result->sampler_uniform_count >=
+            RINGL_GLSL_MAX_SAMPLER_UNIFORMS) {
+            fail(parser, "too many sampler uniforms");
+            return 0;
+        }
+        index = parser->result->sampler_uniform_count++;
+        memcpy(parser->result->sampler_uniform_names[index], name.begin,
+               name.length);
+        parser->result->sampler_uniform_names[index][name.length] = '\0';
+    } else {
+        if (parser->result->vec4_uniform_count >=
+            RINGL_GLSL_MAX_VEC4_UNIFORMS) {
+            fail(parser, "too many vec4 uniforms");
+            return 0;
+        }
+        index = parser->result->vec4_uniform_count++;
+        memcpy(parser->result->vec4_uniform_names[index], name.begin,
+               name.length);
+        parser->result->vec4_uniform_names[index][name.length] = '\0';
     }
-    index = parser->result->sampler_uniform_count++;
-    memcpy(parser->result->sampler_uniform_names[index], name.begin, name.length);
-    parser->result->sampler_uniform_names[index][name.length] = '\0';
     next_token(parser);
     if (!expect(parser, TOK_SEMI, "expected ';' after uniform"))
         return 0;
     parser->result->declaration_count++;
     return 1;
+    }
 }
 
 static int varying_declaration(Parser* parser)

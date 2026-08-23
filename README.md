@@ -657,3 +657,15 @@ entry points stop observing it, `ringl_get_error()` returns
 `CONTEXT_LOST_WEBGL` once, and subsequent calls cannot mutate its GL state.
 Browser `webglcontextlost` dispatch, restoration, and broader shader expressions
 remain unfinished. No API or ABI stability guarantee is made yet.
+
+The raw shader path now has a bounded `uniform vec4` execution profile. A
+linked program retains values independently from the shader objects it shares
+with other programs. `ringl_uniform_4f()` first lowers a new program-owned
+RSH1 pair containing those Float32 `CONST_F32` instructions, asks RinGPU to
+validate/create both replacement modules, then invalidates the old pipeline
+and publishes the new executable. Thus an update affects the actual RinGPU
+draw without textual source replacement or a CPU color fallback. The accepted
+shape is currently a direct `uniform vec4` read in the generic no-varying
+lowering profile (for example `gl_FragColor = tint`); arrays, scalar/other
+vector/matrix uniforms, and vec4 combined with the specialized varying/texture
+profiles remain unavailable rather than being reported as successful GLES.

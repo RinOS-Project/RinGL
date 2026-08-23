@@ -22,6 +22,7 @@
 #define RINGL_SHADER_LOG_MAX 160u
 #define RINGL_PROGRAM_LOG_MAX 160u
 #define RINGL_MAX_SAMPLER_UNIFORMS 8u
+#define RINGL_MAX_VEC4_UNIFORMS 8u
 #define RINGL_MAX_VARYINGS 8u
 #define RINGL_UNIFORM_NAME_MAX RINGL_ACTIVE_INFO_NAME_MAX
 /* RINGL_MAX_TEXTURE_SIZE is 4096, so a 2D texture has at most levels 0..12.
@@ -108,10 +109,12 @@ typedef struct RinGLShaderObject {
     uint32_t statement_count;
     uint32_t attribute_count;
     uint32_t sampler_uniform_count;
+    uint32_t vec4_uniform_count;
     uint32_t rsh1_sampler_binding_count;
     uint32_t varying_count;
     uint32_t delete_pending;
     char sampler_uniform_names[RINGL_MAX_SAMPLER_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
+    char vec4_uniform_names[RINGL_MAX_VEC4_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     uint32_t rsh1_sampler_binding_indices[RINGL_MAX_SAMPLER_UNIFORMS];
     char varying_names[RINGL_MAX_VARYINGS][RINGL_UNIFORM_NAME_MAX];
     uint32_t varying_widths[RINGL_MAX_VARYINGS];
@@ -122,6 +125,15 @@ typedef struct RinGLProgramSamplerUniform {
     char name[RINGL_UNIFORM_NAME_MAX];
     int32_t texture_unit;
 } RinGLProgramSamplerUniform;
+
+/* Scalar RSH1 has no mutable uniform resource yet. Vec4 values therefore
+ * live on the linked program and are lowered to program-owned CONST_F32
+ * instructions.  Program ownership is required: one compiled shader may be
+ * attached to multiple programs with different WebGL uniform state. */
+typedef struct RinGLProgramVec4Uniform {
+    char name[RINGL_UNIFORM_NAME_MAX];
+    float values[4];
+} RinGLProgramVec4Uniform;
 
 typedef struct RinGLProgramAttribute {
     char name[RINGL_UNIFORM_NAME_MAX];
@@ -151,6 +163,7 @@ typedef struct RinGLProgramObject {
     uint32_t validate_status;
     uint32_t attribute_count;
     uint32_t sampler_uniform_count;
+    uint32_t vec4_uniform_count;
     uint32_t varying_count;
     RinGLProgramAttribute attributes[RINGL_MAX_VERTEX_ATTRIBS];
     /* Pending bindAttribLocation requests deliberately live outside the
@@ -159,6 +172,13 @@ typedef struct RinGLProgramObject {
     RinGLProgramAttributeBinding
         attribute_bindings[RINGL_MAX_VERTEX_ATTRIBS];
     RinGLProgramSamplerUniform sampler_uniforms[RINGL_MAX_SAMPLER_UNIFORMS];
+    RinGLProgramVec4Uniform vec4_uniforms[RINGL_MAX_VEC4_UNIFORMS];
+    uint8_t* vertex_uniform_rsh1;
+    uint8_t* fragment_uniform_rsh1;
+    uint64_t vertex_uniform_module;
+    uint64_t fragment_uniform_module;
+    uint32_t vertex_uniform_rsh1_size;
+    uint32_t fragment_uniform_rsh1_size;
     RinGLProgramVarying varyings[RINGL_MAX_VARYINGS];
     char info_log[RINGL_PROGRAM_LOG_MAX];
 } RinGLProgramObject;

@@ -32,20 +32,19 @@ static RinGLShaderObject* shader_object(RinGLContext* context,
     return &context->shaders[index];
 }
 
-static int shader_header(const RinGLShaderObject* shader,
+static int shader_header(const uint8_t* rsh1, uint32_t rsh1_size,
                          uint32_t expected_stage,
                          RinGLRsh1HeaderV1* header)
 {
-    if (shader == NULL || shader->rsh1 == NULL ||
-        shader->rsh1_size < sizeof(*header)) {
+    if (rsh1 == NULL || rsh1_size < sizeof(*header)) {
         return 0;
     }
-    memcpy(header, shader->rsh1, sizeof(*header));
+    memcpy(header, rsh1, sizeof(*header));
     return header->magic == RINGL_RSH1_MAGIC &&
            header->version == RINGL_RSH1_VERSION &&
            header->header_size == sizeof(*header) &&
            header->stage == expected_stage &&
-           header->total_size == shader->rsh1_size;
+           header->total_size == rsh1_size;
 }
 
 int ringl_get_program_reflection(uint32_t program,
@@ -58,6 +57,10 @@ int ringl_get_program_reflection(uint32_t program,
     RinGLRsh1HeaderV1 vertex_header;
     RinGLRsh1HeaderV1 fragment_header;
     RinGLProgramReflectionV1 result;
+    const uint8_t* vertex_rsh1;
+    const uint8_t* fragment_rsh1;
+    uint32_t vertex_rsh1_size;
+    uint32_t fragment_rsh1_size;
 
     if (context == NULL || reflection == NULL)
         return -1;
@@ -82,17 +85,28 @@ int ringl_get_program_reflection(uint32_t program,
     if (vertex == NULL || fragment == NULL)
         return -1;
 
-    if (vertex->rsh1_size == 0u &&
+    if (object->vec4_uniform_count == 0u && vertex->rsh1_size == 0u &&
         ringl_lower_shader_rsh1(object->linked_vertex_shader) != 0) {
         return -1;
     }
-    if (fragment->rsh1_size == 0u &&
+    if (object->vec4_uniform_count == 0u && fragment->rsh1_size == 0u &&
         ringl_lower_shader_rsh1(object->linked_fragment_shader) != 0) {
         return -1;
     }
 
-    if (!shader_header(vertex, RINGL_RSH1_STAGE_VERTEX, &vertex_header) ||
-        !shader_header(fragment, RINGL_RSH1_STAGE_FRAGMENT,
+    vertex_rsh1 = object->vertex_uniform_rsh1 != NULL
+        ? object->vertex_uniform_rsh1 : vertex->rsh1;
+    fragment_rsh1 = object->fragment_uniform_rsh1 != NULL
+        ? object->fragment_uniform_rsh1 : fragment->rsh1;
+    vertex_rsh1_size = object->vertex_uniform_rsh1 != NULL
+        ? object->vertex_uniform_rsh1_size : vertex->rsh1_size;
+    fragment_rsh1_size = object->fragment_uniform_rsh1 != NULL
+        ? object->fragment_uniform_rsh1_size : fragment->rsh1_size;
+
+    if (!shader_header(vertex_rsh1, vertex_rsh1_size,
+                       RINGL_RSH1_STAGE_VERTEX, &vertex_header) ||
+        !shader_header(fragment_rsh1, fragment_rsh1_size,
+                       RINGL_RSH1_STAGE_FRAGMENT,
                        &fragment_header)) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return -1;
@@ -105,9 +119,12 @@ int ringl_get_program_reflection(uint32_t program,
     result.vertex_output_count = vertex_header.output_count;
     result.fragment_input_count = fragment_header.input_count;
     result.fragment_output_count = fragment_header.output_count;
-    result.active_uniform_count = object->sampler_uniform_count;
-    result.vertex_shader_module = vertex->ringpu_module;
-    result.fragment_shader_module = fragment->ringpu_module;
+    result.active_uniform_count = object->sampler_uniform_count +
+                                  object->vec4_uniform_count;
+    result.vertex_shader_module = object->vertex_uniform_rsh1 != NULL
+        ? object->vertex_uniform_module : vertex->ringpu_module;
+    result.fragment_shader_module = object->fragment_uniform_rsh1 != NULL
+        ? object->fragment_uniform_module : fragment->ringpu_module;
 
     *reflection = result;
     return 0;

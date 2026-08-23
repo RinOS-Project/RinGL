@@ -60,10 +60,20 @@ int ringl_resolve_color_target(RinGLContext* context,
         index = ringl_object_slot_index(framebuffer->color_attachment_object);
         if (index >= RINGL_OBJECT_SLOT_COUNT)
             return -1;
-        target->format = context->renderbuffers[index].internal_format ==
-                RINGL_RGB565
-            ? RINGL_RIN_GPU_FORMAT_RGB565_UNORM
-            : RINGL_RIN_GPU_FORMAT_RGBA8_UNORM;
+        switch (context->renderbuffers[index].internal_format) {
+        case RINGL_RGB565:
+            target->format = RINGL_RIN_GPU_FORMAT_RGB565_UNORM;
+            break;
+        case RINGL_RGBA4:
+            target->format = RINGL_RIN_GPU_FORMAT_RGBA4_UNORM;
+            break;
+        case RINGL_RGB5_A1:
+            target->format = RINGL_RIN_GPU_FORMAT_RGB5_A1_UNORM;
+            break;
+        default:
+            target->format = RINGL_RIN_GPU_FORMAT_RGBA8_UNORM;
+            break;
+        }
     } else {
         return -1;
     }

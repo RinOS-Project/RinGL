@@ -171,6 +171,47 @@ static void unpack_rgb565_to_rgba(const uint8_t* source, uint8_t* destination,
     }
 }
 
+static void unpack_rgba4_to_rgba(const uint8_t* source, uint8_t* destination,
+                                 uint64_t pixel_count)
+{
+    uint64_t index;
+
+    for (index = 0u; index < pixel_count; ++index) {
+        uint16_t packed;
+        uint8_t* pixel = destination + index * 4u;
+
+        memcpy(&packed, source + index * sizeof(packed), sizeof(packed));
+        pixel[0] = (uint8_t)((((packed >> 12u) & 0xfu) * 255u + 7u) / 15u);
+        pixel[1] = (uint8_t)((((packed >> 8u) & 0xfu) * 255u + 7u) / 15u);
+        pixel[2] = (uint8_t)((((packed >> 4u) & 0xfu) * 255u + 7u) / 15u);
+        pixel[3] = (uint8_t)(((packed & 0xfu) * 255u + 7u) / 15u);
+    }
+}
+
+static void unpack_rgb5_a1_to_rgba(const uint8_t* source, uint8_t* destination,
+                                   uint64_t pixel_count)
+{
+    uint64_t index;
+
+    for (index = 0u; index < pixel_count; ++index) {
+        uint16_t packed;
+        uint8_t* pixel = destination + index * 4u;
+
+        memcpy(&packed, source + index * sizeof(packed), sizeof(packed));
+        pixel[0] = (uint8_t)((((packed >> 11u) & 0x1fu) * 255u + 15u) / 31u);
+        pixel[1] = (uint8_t)((((packed >> 6u) & 0x1fu) * 255u + 15u) / 31u);
+        pixel[2] = (uint8_t)((((packed >> 1u) & 0x1fu) * 255u + 15u) / 31u);
+        pixel[3] = (packed & 1u) != 0u ? UINT8_MAX : 0u;
+    }
+}
+
+static int packed_color_format(uint32_t format)
+{
+    return format == RINGL_RIN_GPU_FORMAT_RGB565_UNORM ||
+           format == RINGL_RIN_GPU_FORMAT_RGBA4_UNORM ||
+           format == RINGL_RIN_GPU_FORMAT_RGB5_A1_UNORM;
+}
+
 int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
                                  int32_t width, int32_t height, void* pixels)
 {
@@ -207,7 +248,7 @@ int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
     }
     row_bytes = (uint64_t)(uint32_t)width * 4u;
     total_bytes = row_bytes * (uint64_t)(uint32_t)height;
-    if (target.format == RINGL_RIN_GPU_FORMAT_RGB565_UNORM) {
+    if (packed_color_format(target.format)) {
         native_row_bytes = (uint64_t)(uint32_t)width * sizeof(uint16_t);
         if ((uint64_t)(uint32_t)height > UINT64_MAX / native_row_bytes)
             return -1;
@@ -263,6 +304,12 @@ int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
     } else if (target.format == RINGL_RIN_GPU_FORMAT_RGB565_UNORM) {
         unpack_rgb565_to_rgba(native_pixels, pixels,
                               (uint64_t)(uint32_t)width * (uint32_t)height);
+    } else if (target.format == RINGL_RIN_GPU_FORMAT_RGBA4_UNORM) {
+        unpack_rgba4_to_rgba(native_pixels, pixels,
+                             (uint64_t)(uint32_t)width * (uint32_t)height);
+    } else if (target.format == RINGL_RIN_GPU_FORMAT_RGB5_A1_UNORM) {
+        unpack_rgb5_a1_to_rgba(native_pixels, pixels,
+                               (uint64_t)(uint32_t)width * (uint32_t)height);
     }
     free(native_pixels);
     return 0;

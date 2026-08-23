@@ -42,9 +42,10 @@ trusted native callers only.
 
 `ringl_read_pixels_to_bytes()` accepts a destination capacity for the current
 complete color target's tightly packed RGBA output. For an RGBA8/BGRA8 target it
-reads directly into that output; for a native `RGB565_UNORM` target it first
-reads two-byte native texels into private staging and expands them to RGBA with
-opaque alpha. It rejects a short destination with `RINGL_INVALID_OPERATION`
+reads directly into that output; for native `RGB565_UNORM`, `RGBA4_UNORM`, or
+`RGB5_A1_UNORM` targets it first reads two-byte native texels into private
+staging and expands them to RGBA (opaque alpha only for RGB565). It rejects a
+short destination with `RINGL_INVALID_OPERATION`
 before a RinGPU command list is created, the target transitions to
 `COPY_SOURCE`, or destination memory is written. A staging-allocation or
 readback failure likewise leaves the caller output untouched. Browser embeddings

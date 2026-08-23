@@ -184,8 +184,11 @@ does not materialize coordinates on the host or collapse either varying pair;
 the normal RinGPU sampled-image binding and surface executor consume the live
 arithmetic result. Other local vector expressions remain outside this profile.
 The combined local may feed the same direct/finite-affine local chain as the
-single-UV profile, subject to the common six-local bound; each subsequent RSH1
-stage reads the preceding result rather than a host-side folded coordinate.
+single-UV profile, up to eight declared locals when the complete shape remains
+inside the RSH1 instruction/register limits; each subsequent RSH1 stage reads
+the preceding result rather than a host-side folded coordinate. The lowerer
+counts all locals, calls, optional call-local offsets, combines, stores, and
+color operations before it publishes the RSH1 blob.
 For one sampled texture result, or an explicitly parenthesized additive sample
 chain, a finite `vec4` color literal is emitted as four RSH1 constants followed
 by component-wise `ADD_F32`, `SUB_F32`, `MUL_F32`, or nonzero `DIV_F32`

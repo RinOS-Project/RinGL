@@ -68,7 +68,9 @@ static int read_decl_name(const char* source, const char* prefix,
 
 #define RINGL_VARYING_TEXTURE_MAX_SAMPLERS RINGL_GLSL_MAX_SAMPLER_UNIFORMS
 #define RINGL_VARYING_TEXTURE_MAX_CALLS RINGL_GLSL_MAX_SAMPLER_UNIFORMS
-#define RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES 6u
+/* This is a parsing ceiling, not a guaranteed executable shape. The exact
+ * RSH1 instruction/register budgets are checked after the calls are known. */
+#define RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES 8u
 
 typedef struct VaryingTextureCall {
     uint32_t sampler_index;
@@ -88,15 +90,6 @@ enum VaryingTextureCoordinateKind {
     RINGL_VARYING_TEXTURE_COORD_ADD_COORDINATE,
     RINGL_VARYING_TEXTURE_COORD_SUB_COORDINATE,
 };
-
-_Static_assert(8u * RINGL_VARYING_TEXTURE_MAX_CALLS +
-                   4u * RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES + 4u <=
-                   RINGL_RSH1_MAX_REGISTERS,
-               "varying texture profile exceeds the RSH1 register ceiling");
-_Static_assert(12u * RINGL_VARYING_TEXTURE_MAX_CALLS +
-                   4u * RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES + 5u <=
-                   RINGL_RSH1_MAX_INSTRUCTIONS,
-               "varying texture profile exceeds the RSH1 instruction ceiling");
 
 static int consume_text(const char** cursor, const char* text)
 {
@@ -762,6 +755,11 @@ static int lower_fragment_texture_chain(const char* source,
     coordinate_temp_base = padding_base + 2u;
     if (has_call_offset)
         temporary_register_count += 4u;
+    if (store_base + 5u > RINGL_RSH1_MAX_INSTRUCTIONS ||
+        8u * call_count + temporary_register_count >
+            RINGL_RSH1_MAX_REGISTERS) {
+        return 1;
+    }
     if (color_operation_enabled) {
         if (store_base + 13u > RINGL_RSH1_MAX_INSTRUCTIONS ||
             8u * call_count + temporary_register_count + 8u >

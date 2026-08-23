@@ -166,8 +166,11 @@ it is not folded into a host-side shortcut. The bounded two-UV profile maps
 supports `firstUv + secondUv` and `firstUv - secondUv` as sampler coordinates.
 The same bounded two-UV operation may be named first as
 `vec2 mixedUv = firstUv +/- secondUv;` and then passed to `texture2D()`.
-That result can also feed the existing direct/finite-affine local chain, up to
-the shared six-local ceiling, while preserving the source-order RSH1 arithmetic.
+That result can also feed a direct/finite-affine local chain of up to eight
+declared values, while preserving source-order RSH1 arithmetic. RinGL admits a
+shape only after its actual instruction and register use is within the public
+RSH1 limits; eight locals are not a promise that every eight-call/offset form
+will fit.
 One sampled RGBA result may additionally use a finite `vec4` literal with
 component-wise `+`, `-`, `*`, or nonzero `/` before `gl_FragColor` is stored.
 An additive multi-sample chain is also supported when explicitly parenthesized
@@ -175,10 +178,11 @@ before that color operation; unparenthesized multi-sample precedence is rejected
 rather than guessed. RinGL emits RSH1 constants and arithmetic instructions,
 checks the normal RSH1 limits and literal zero divisors, and does not claim
 general fragment-expression support.
-Up to six fragment-local values may be chained from the shared UV; each
-initializer is lowered in source order before samples. This remains a
+Up to eight fragment-local values may be chained from the shared UV; each
+initializer is lowered in source order before samples and the complete shape is
+rejected before IR publication when it exceeds an RSH1 limit. This remains a
 deliberately narrow GLSL ES subset: other local vector expressions, more than
-six locals, more than two UV varyings, and more than eight calls are still
+eight locals, more than two UV varyings, and more than eight calls are still
 unsupported.
 
 See [TODO.md](TODO.md) for the implementation roadmap.

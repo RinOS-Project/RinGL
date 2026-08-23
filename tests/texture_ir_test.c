@@ -189,6 +189,35 @@ int main(void)
         "vec2 fifthUv = fourthUv - vec2(0.0, 0.25); "
         "vec2 sixthUv = fifthUv - vec2(0.0, 0.25); "
         "gl_FragColor = texture2D(colorTexture, sixthUv); }";
+    const char* varying_eight_local_affine_chain_source =
+        "uniform sampler2D colorTexture; varying vec2 uv; "
+        "void main() { vec2 firstUv = uv * vec2(1.0, 1.0); "
+        "vec2 secondUv = firstUv / vec2(1.0, 1.0); "
+        "vec2 thirdUv = secondUv + vec2(0.25, 0.0); "
+        "vec2 fourthUv = thirdUv + vec2(0.25, 0.0); "
+        "vec2 fifthUv = fourthUv - vec2(0.0, 0.25); "
+        "vec2 sixthUv = fifthUv - vec2(0.0, 0.25); "
+        "vec2 seventhUv = sixthUv * vec2(1.0, 1.0); "
+        "vec2 eighthUv = seventhUv / vec2(1.0, 1.0); "
+        "gl_FragColor = texture2D(colorTexture, eighthUv); }";
+    const char* varying_capacity_rejected_source =
+        "uniform sampler2D colorTexture; varying vec2 uv; "
+        "void main() { vec2 firstUv = uv + vec2(0.0, 0.0); "
+        "vec2 secondUv = firstUv + vec2(0.0, 0.0); "
+        "vec2 thirdUv = secondUv + vec2(0.0, 0.0); "
+        "vec2 fourthUv = thirdUv + vec2(0.0, 0.0); "
+        "vec2 fifthUv = fourthUv + vec2(0.0, 0.0); "
+        "vec2 sixthUv = fifthUv + vec2(0.0, 0.0); "
+        "vec2 seventhUv = sixthUv + vec2(0.0, 0.0); "
+        "vec2 eighthUv = seventhUv + vec2(0.0, 0.0); "
+        "gl_FragColor = texture2D(colorTexture, eighthUv + vec2(0.0, 0.0)) + "
+        "texture2D(colorTexture, eighthUv + vec2(0.0, 0.0)) + "
+        "texture2D(colorTexture, eighthUv + vec2(0.0, 0.0)) + "
+        "texture2D(colorTexture, eighthUv + vec2(0.0, 0.0)) + "
+        "texture2D(colorTexture, eighthUv + vec2(0.0, 0.0)) + "
+        "texture2D(colorTexture, eighthUv + vec2(0.0, 0.0)) + "
+        "texture2D(colorTexture, eighthUv + vec2(0.0, 0.0)) + "
+        "texture2D(colorTexture, eighthUv + vec2(0.0, 0.0)); }";
     const char* varying_affine_offsets_source =
         "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
         "varying vec2 uv; void main() { gl_FragColor = "
@@ -899,6 +928,47 @@ int main(void)
            RSH1_MUL_F32);
     assert(((const Instruction*)(blob + sizeof(header)) + 10u)->opcode ==
            RSH1_DIV_F32);
+
+    /* Eight locals are accepted when the final one-call program still fits
+     * RSH1, rather than being rejected by the former fixed six-local limit. */
+    ringl_shader_source(shader, varying_eight_local_affine_chain_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 45u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.instruction_count == 45u);
+    assert(header.register_count == 40u);
+    assert(header.resource_count == 2u);
+    for (uint32_t local_index = 0u; local_index < 8u; ++local_index) {
+        for (component = 0u; component < 2u; ++component) {
+            const Instruction* coordinate =
+                (const Instruction*)(blob + sizeof(header)) +
+                6u + local_index * 4u + component;
+            uint32_t expected_source = local_index == 0u
+                ? component : 10u + (local_index - 1u) * 4u + component;
+
+            assert(coordinate->destination ==
+                   10u + local_index * 4u + component);
+            assert(coordinate->source0 == expected_source);
+        }
+    }
+    for (component = 0u; component < 4u; ++component) {
+        const Instruction* sample =
+            (const Instruction*)(blob + sizeof(header)) + 36u + component;
+
+        assert(sample->source0 == 38u && sample->source1 == 39u);
+    }
+
+    /* The parser ceiling never bypasses the executable RSH1 limits. Eight
+     * locals plus eight call-local offsets must fail before an IR blob is
+     * published. */
+    ringl_shader_source(shader, varying_capacity_rejected_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) != 0);
 
     /* Each sample may apply one finite vec2 offset to the interpolated
      * coordinate. The temporary coordinate registers are deliberately

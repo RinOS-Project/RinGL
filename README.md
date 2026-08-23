@@ -177,7 +177,10 @@ An additive multi-sample chain is also supported when explicitly parenthesized
 before that color operation; unparenthesized multi-sample precedence is rejected
 rather than guessed. RinGL emits RSH1 constants and arithmetic instructions,
 checks the normal RSH1 limits and literal zero divisors, and does not claim
-general fragment-expression support.
+general fragment-expression support. A finite literal may lead one sample or a
+parenthesized additive chain for `+`, `-`, or `*`, retaining the literal as the
+left RSH1 operand for subtraction. Leading division is rejected: a sampled
+divisor cannot be proven nonzero before submission.
 Up to eight fragment-local values may be chained from the shared UV; each
 initializer is lowered in source order before samples and the complete shape is
 rejected before IR publication when it exceeds an RSH1 limit. This remains a

@@ -131,6 +131,14 @@ int main(void)
         "uniform sampler2D colorTexture; varying vec2 uv; "
         "void main() { gl_FragColor = texture2D(colorTexture, uv) - "
         "vec4(0.1, 0.2, 0.1, 0.0); }";
+    const char* varying_left_subtracted_texture_source =
+        "uniform sampler2D colorTexture; varying vec2 uv; "
+        "void main() { gl_FragColor = vec4(0.5, 0.75, 1.0, 1.0) - "
+        "texture2D(colorTexture, uv); }";
+    const char* varying_left_divided_texture_source =
+        "uniform sampler2D colorTexture; varying vec2 uv; "
+        "void main() { gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0) / "
+        "texture2D(colorTexture, uv); }";
     const char* varying_divided_texture_source =
         "uniform sampler2D colorTexture; varying vec2 uv; "
         "void main() { gl_FragColor = texture2D(colorTexture, uv) / "
@@ -255,6 +263,7 @@ int main(void)
     float scalar_splat = 0.75f;
     const float tint_values[4] = {0.5f, 1.0f, 0.25f, 1.0f};
     const float bias_values[4] = {0.1f, 0.2f, 0.1f, 0.0f};
+    const float left_color_values[4] = {0.5f, 0.75f, 1.0f, 1.0f};
     const float divisor_values[4] = {2.0f, 2.0f, 2.0f, 1.0f};
 
     assert(ringl_context_create(&desc, &context) == 0);
@@ -596,6 +605,40 @@ int main(void)
         assert(subtract->source0 == 2u + component);
         assert(subtract->source1 == 8u + component);
     }
+
+    /* A finite color literal on the left keeps noncommutative subtraction in
+     * RSH1 operand order, rather than being rewritten as sampled-color minus
+     * literal. */
+    ringl_shader_source(shader, varying_left_subtracted_texture_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 21u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    for (component = 0u; component < 4u; ++component) {
+        uint32_t left_color_bits;
+        const Instruction* constant =
+            (const Instruction*)(blob + sizeof(header)) + 8u + component;
+        const Instruction* subtract =
+            (const Instruction*)(blob + sizeof(header)) + 12u + component;
+
+        memcpy(&left_color_bits, &left_color_values[component],
+               sizeof(left_color_bits));
+        assert(constant->opcode == RSH1_CONST_F32);
+        assert(constant->immediate == left_color_bits);
+        assert(subtract->opcode == RSH1_SUB_F32);
+        assert(subtract->source0 == 8u + component);
+        assert(subtract->source1 == 2u + component);
+    }
+
+    /* A sampled divisor cannot be proven nonzero while lowering. Reject this
+     * form instead of deferring a potential partial draw to the executor. */
+    ringl_shader_source(shader, varying_left_divided_texture_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) != 0);
 
     ringl_shader_source(shader, varying_divided_texture_source, -1);
     ringl_compile_shader(shader);

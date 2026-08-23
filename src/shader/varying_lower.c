@@ -337,13 +337,10 @@ static int parse_varying_texture_two_coordinate_local(
     return *primary_input_location != *secondary_input_location;
 }
 
-static int parse_varying_texture_color_operation(const char** cursor,
-                                                 uint16_t* opcode,
-                                                 float color[4])
+static int parse_varying_texture_color_operator(const char** cursor,
+                                                uint16_t* opcode)
 {
-    uint32_t component;
-
-    if (cursor == NULL || *cursor == NULL || opcode == NULL || color == NULL ||
+    if (cursor == NULL || *cursor == NULL || opcode == NULL ||
         (**cursor != '*' && **cursor != '+' && **cursor != '-' &&
          **cursor != '/')) {
         return 0;
@@ -355,14 +352,37 @@ static int parse_varying_texture_color_operation(const char** cursor,
         : **cursor == '-'
         ? RINGL_RSH1_OP_SUB_F32 : RINGL_RSH1_OP_DIV_F32;
     ++*cursor;
-    if (!consume_text(cursor, "vec4(")) return 0;
+    return 1;
+}
+
+static int parse_varying_texture_color_literal(const char** cursor,
+                                               float color[4])
+{
+    uint32_t component;
+
+    if (cursor == NULL || *cursor == NULL || color == NULL ||
+        !consume_text(cursor, "vec4(")) {
+        return 0;
+    }
     for (component = 0u; component < 4u; ++component) {
         if (!parse_finite_float(cursor, &color[component]) ||
             (component + 1u < 4u && !consume_text(cursor, ","))) {
             return 0;
         }
     }
-    if (!consume_text(cursor, ")")) return 0;
+    return consume_text(cursor, ")");
+}
+
+static int parse_varying_texture_color_operation(const char** cursor,
+                                                 uint16_t* opcode,
+                                                 float color[4])
+{
+    uint32_t component;
+
+    if (!parse_varying_texture_color_operator(cursor, opcode) ||
+        !parse_varying_texture_color_literal(cursor, color)) {
+        return 0;
+    }
     if (*opcode == RINGL_RSH1_OP_DIV_F32) {
         for (component = 0u; component < 4u; ++component) {
             if (color[component] == 0.0f) return 0;
@@ -556,6 +576,7 @@ static int lower_fragment_texture_chain(const char* source,
     uint32_t has_call_offset = 0u;
     uint32_t parenthesized_color_operation = 0u;
     uint32_t color_operation_enabled = 0u;
+    uint32_t color_operation_on_left = 0u;
     uint16_t color_operation = RINGL_RSH1_OP_MUL_F32;
     uint32_t local_temporary_register_count = 0u;
     uint32_t temporary_register_count = 0u;
@@ -671,45 +692,77 @@ static int lower_fragment_texture_chain(const char* source,
     }
     if (!consume_text(&cursor, "gl_FragColor="))
         return 1;
-    if (*cursor == '(') {
-        ++cursor;
-        parenthesized_color_operation = 1u;
-    }
-    for (;;) {
-        if (call_count == RINGL_VARYING_TEXTURE_MAX_CALLS ||
-            !parse_varying_texture_call(&cursor, sampler_names, sampler_count,
-                                        coordinate_names,
-                                        coordinate_input_locations,
-                                        coordinate_name_count,
-                                        &calls[call_count])) {
-            return 1;
-        }
-        ++call_count;
-        if (*cursor != '+' ||
-            (!parenthesized_color_operation &&
-             strncmp(cursor + 1u, "vec4(", strlen("vec4(")) == 0)) {
-            break;
-        }
-        ++cursor;
-    }
-    if (parenthesized_color_operation) {
-        if (!consume_text(&cursor, ")") ||
-            !parse_varying_texture_color_operation(&cursor, &color_operation,
-                                                    color)) {
+    if (strncmp(cursor, "vec4(", strlen("vec4(")) == 0) {
+        if (!parse_varying_texture_color_literal(&cursor, color) ||
+            !parse_varying_texture_color_operator(&cursor, &color_operation) ||
+            /* A texture-dependent divisor cannot be proven nonzero during
+             * lowering, so do not submit it to a later execution failure. */
+            color_operation == RINGL_RSH1_OP_DIV_F32) {
             return 1;
         }
         color_operation_enabled = 1u;
-    } else if (*cursor == '*' || *cursor == '+' || *cursor == '-' ||
-               *cursor == '/') {
-        if (call_count != 1u ||
-            !parse_varying_texture_color_operation(&cursor, &color_operation,
-                                                    color)) {
+        color_operation_on_left = 1u;
+        if (*cursor == '(') {
+            ++cursor;
+            parenthesized_color_operation = 1u;
+        }
+        for (;;) {
+            if (call_count == RINGL_VARYING_TEXTURE_MAX_CALLS ||
+                !parse_varying_texture_call(
+                    &cursor, sampler_names, sampler_count, coordinate_names,
+                    coordinate_input_locations, coordinate_name_count,
+                    &calls[call_count])) {
+                return 1;
+            }
+            ++call_count;
+            if (*cursor != '+' || !parenthesized_color_operation)
+                break;
+            ++cursor;
+        }
+        if ((parenthesized_color_operation && !consume_text(&cursor, ")")) ||
+            strcmp(cursor, ";}") != 0) {
             return 1;
         }
-        color_operation_enabled = 1u;
+    } else {
+        if (*cursor == '(') {
+            ++cursor;
+            parenthesized_color_operation = 1u;
+        }
+        for (;;) {
+            if (call_count == RINGL_VARYING_TEXTURE_MAX_CALLS ||
+                !parse_varying_texture_call(
+                    &cursor, sampler_names, sampler_count, coordinate_names,
+                    coordinate_input_locations, coordinate_name_count,
+                    &calls[call_count])) {
+                return 1;
+            }
+            ++call_count;
+            if (*cursor != '+' ||
+                (!parenthesized_color_operation &&
+                 strncmp(cursor + 1u, "vec4(", strlen("vec4(")) == 0)) {
+                break;
+            }
+            ++cursor;
+        }
+        if (parenthesized_color_operation) {
+            if (!consume_text(&cursor, ")") ||
+                !parse_varying_texture_color_operation(
+                    &cursor, &color_operation, color)) {
+                return 1;
+            }
+            color_operation_enabled = 1u;
+        } else if (*cursor == '*' || *cursor == '+' || *cursor == '-' ||
+                   *cursor == '/') {
+            if (call_count != 1u ||
+                !parse_varying_texture_color_operation(
+                    &cursor, &color_operation, color)) {
+                return 1;
+            }
+            color_operation_enabled = 1u;
+        }
+        if (strcmp(cursor, ";}") != 0)
+            return 1;
     }
-    if (strcmp(cursor, ";}") != 0)
-        return 1;
 
     for (sampler_index = 0u; sampler_index < sampler_count; ++sampler_index) {
         for (call_index = 0u; call_index < call_count; ++call_index) {
@@ -919,8 +972,12 @@ static int lower_fragment_texture_chain(const char* source,
             constant->immediate = color_bits;
             init_instruction(operation, color_operation);
             operation->destination = (uint16_t)(color_result_base + component);
-            operation->source0 = (uint16_t)(sampled_final_base + component);
-            operation->source1 = (uint16_t)(color_constant_base + component);
+            operation->source0 = color_operation_on_left
+                ? (uint16_t)(color_constant_base + component)
+                : (uint16_t)(sampled_final_base + component);
+            operation->source1 = color_operation_on_left
+                ? (uint16_t)(sampled_final_base + component)
+                : (uint16_t)(color_constant_base + component);
         }
     }
     for (component = 0u; component < 4u; ++component) {

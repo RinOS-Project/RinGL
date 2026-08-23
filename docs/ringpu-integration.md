@@ -195,6 +195,11 @@ by component-wise `ADD_F32`, `SUB_F32`, `MUL_F32`, or nonzero `DIV_F32`
 instructions before the fragment stores its output. This uses the existing
 public RinGPU arithmetic execution path; unparenthesized multi-sample precedence
 is deliberately not inferred and zero division components are rejected early.
+For `+`, `-`, and `*`, the finite literal may also lead one sample or an
+explicitly parenthesized additive chain; its RSH1 register is then source0, so
+subtraction retains GLSL operand order. A leading division is rejected before
+submission because the texture result is not a statically provable nonzero
+divisor.
 
 Before cache eviction during a draw, RinGL resets its reusable command list. This releases references retained by the previous recorded submission before an old pipeline is destroyed.
 

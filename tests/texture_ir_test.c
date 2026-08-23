@@ -121,6 +121,14 @@ int main(void)
         "gl_FragColor = texture2D(firstTexture, firstUv) + "
         "texture2D(secondTexture, secondUv) + "
         "texture2D(thirdTexture, thirdUv); }";
+    const char* varying_three_coordinate_local_source =
+        "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
+        "uniform sampler2D thirdTexture; varying vec2 firstUv; "
+        "varying vec2 secondUv; varying vec2 thirdUv; void main() { "
+        "vec2 mixedUv = firstUv + secondUv; gl_FragColor = "
+        "texture2D(firstTexture, mixedUv) + "
+        "texture2D(secondTexture, mixedUv) + "
+        "texture2D(thirdTexture, thirdUv); }";
     const char* varying_tinted_texture_source =
         "uniform sampler2D colorTexture; varying vec2 uv; "
         "void main() { gl_FragColor = texture2D(colorTexture, uv) * "
@@ -1238,6 +1246,30 @@ int main(void)
         assert(second_sample->opcode == RSH1_SAMPLE_IMAGE_2D_F32);
         assert(second_sample->source0 == 22u && second_sample->source1 == 23u);
         assert(third_sample->opcode == RSH1_SAMPLE_IMAGE_2D_F32);
+        assert(third_sample->source0 == 24u && third_sample->source1 == 25u);
+    }
+
+    ringl_shader_source(shader, varying_three_coordinate_local_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 33u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.instruction_count == 33u);
+    assert(header.register_count == 30u);
+    assert(header.input_count == 6u);
+    for (component = 0u; component < 4u; ++component) {
+        const Instruction* first_sample =
+            (const Instruction*)(blob + sizeof(header)) + 8u + component;
+        const Instruction* second_sample =
+            (const Instruction*)(blob + sizeof(header)) + 12u + component;
+        const Instruction* third_sample =
+            (const Instruction*)(blob + sizeof(header)) + 16u + component;
+
+        assert(first_sample->source0 == 28u && first_sample->source1 == 29u);
+        assert(second_sample->source0 == 28u && second_sample->source1 == 29u);
         assert(third_sample->source0 == 24u && third_sample->source1 == 25u);
     }
 

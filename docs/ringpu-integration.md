@@ -197,8 +197,9 @@ two components in a private native clip/raster form while preserving the
 public compact RGBA clip-vertex V1 ABI. Six-plane clipping and perspective
 interpolation operate on every pair before the resource-aware fragment
 preflight and submission. This route is deliberately limited to triangle
-lists and direct coordinates; it does not claim general varying transport or
-three-input local expressions.
+lists and direct coordinates, plus one `firstUv +/- secondUv` local that may
+coexist with direct `thirdUv` samples; it does not claim general varying
+transport or broader three-input local expressions.
 For one sampled texture result, or an explicitly parenthesized additive sample
 chain, a finite `vec4` color literal is emitted as four RSH1 constants followed
 by component-wise `ADD_F32`, `SUB_F32`, `MUL_F32`, or nonzero `DIV_F32`

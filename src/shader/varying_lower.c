@@ -226,8 +226,9 @@ static int parse_varying_texture_call(const char** cursor,
     }
     call->coordinate_input_location =
         coordinate_input_locations[coordinate_index];
-    if (call->coordinate_input_location > 4u ||
-        (call->coordinate_input_location & 1u) != 0u) {
+    if (call->coordinate_input_location != UINT32_MAX &&
+        (call->coordinate_input_location > 4u ||
+         (call->coordinate_input_location & 1u) != 0u)) {
         return 0;
     }
     call->secondary_coordinate_input_location = UINT32_MAX;
@@ -246,7 +247,9 @@ static int parse_varying_texture_call(const char** cursor,
         }
         call->secondary_coordinate_input_location =
             coordinate_input_locations[secondary_index];
-        if (call->secondary_coordinate_input_location > 4u ||
+        if (call->coordinate_input_location == UINT32_MAX ||
+            call->secondary_coordinate_input_location == UINT32_MAX ||
+            call->secondary_coordinate_input_location > 4u ||
             (call->secondary_coordinate_input_location & 1u) != 0u)
             return 0;
         call->coordinate_kind = subtract
@@ -542,9 +545,9 @@ static int lower_fragment_texture_chain(const char* source,
     RinGLRsh1InstructionV1 ins[RINGL_RSH1_MAX_INSTRUCTIONS];
     char sampler_names[RINGL_VARYING_TEXTURE_MAX_SAMPLERS][64];
     char varying_names[3][64];
-    char coordinate_names[3][64];
+    char coordinate_names[4][64];
     char local_coordinate_names[RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES][64];
-    uint32_t coordinate_input_locations[3] = {0u, 2u, 4u};
+    uint32_t coordinate_input_locations[4] = {0u, 2u, 4u, UINT32_MAX};
     uint32_t local_coordinate_kinds[RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES] = {0u};
     float local_offset_u[RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES] = {0.0f};
     float local_offset_v[RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES] = {0.0f};
@@ -658,7 +661,7 @@ static int lower_fragment_texture_chain(const char* source,
                            "%s", local_coordinate_names[
                                local_coordinate_count - 1u]);
         }
-    } else if (varying_count == 2u &&
+    } else if ((varying_count == 2u || varying_count == 3u) &&
                strncmp(cursor, "vec2", strlen("vec2")) == 0) {
         const char* local_source;
 
@@ -670,9 +673,15 @@ static int lower_fragment_texture_chain(const char* source,
             return 1;
         }
         local_source = local_coordinate_names[0];
-        coordinate_name_count = 1u;
+        coordinate_name_count = varying_count == 2u ? 1u : 4u;
         local_coordinate_count = 1u;
         two_coordinate_local = 1u;
+        if (varying_count == 3u) {
+            (void)snprintf(coordinate_names[3], sizeof(coordinate_names[3]),
+                           "%s", local_coordinate_names[0]);
+        }
+        if (varying_count == 3u)
+            goto finish_local_coordinates;
         while (strncmp(cursor, "vec2", strlen("vec2")) == 0) {
             if (local_coordinate_count ==
                     RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES ||
@@ -691,6 +700,7 @@ static int lower_fragment_texture_chain(const char* source,
                        "%s", local_coordinate_names[
                            local_coordinate_count - 1u]);
     }
+finish_local_coordinates:
     if (!consume_text(&cursor, "gl_FragColor="))
         return 1;
     if (strncmp(cursor, "vec4(", strlen("vec4(")) == 0) {
@@ -891,7 +901,8 @@ static int lower_fragment_texture_chain(const char* source,
         uint32_t coordinate_u;
         uint32_t coordinate_v;
 
-        if (local_coordinate_count != 0u) {
+        if (calls[call_index].coordinate_input_location == UINT32_MAX ||
+            (varying_count != 3u && local_coordinate_count != 0u)) {
             coordinate_u = local_coordinate_u;
             coordinate_v = local_coordinate_v;
         } else {

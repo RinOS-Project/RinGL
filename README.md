@@ -296,11 +296,13 @@ header. The current profile reports scalar/`vec2`/`vec3`/`vec4` float
 attributes and `sampler2D` uniforms; unlinked programs or out-of-range indices
 record the appropriate error and leave caller storage unchanged.
 
-`RINGL_POINTS` maps to RinGPU's native point-list topology. The primitive is
-part of RinGL's pipeline-cache key, so a point draw cannot reuse a triangle
-pipeline. Both direct and indexed point draws use the existing vertex and
-index validation paths before they reach the embedding. Lines, strips, loops,
-and fans remain unsupported in this bounded primitive slice.
+`RINGL_POINTS` and `RINGL_LINES` map to RinGPU's native point-list and
+line-list topologies. The primitive is part of RinGL's pipeline-cache key, so
+point or line draws cannot reuse a triangle pipeline. Both direct and indexed
+draws use the existing vertex and index validation paths before they reach the
+embedding; an incomplete line-list pair is a successful no-op. Line strips,
+loops, triangle strips, and fans remain unsupported in this bounded primitive
+slice.
 
 Custom RGBA8 renderbuffer FBOs may additionally attach a matching
 `DEPTH24_STENCIL8` renderbuffer or level-zero

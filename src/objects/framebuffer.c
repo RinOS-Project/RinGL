@@ -34,6 +34,8 @@ static int depth_attachment_format_valid(uint32_t format,
     if (format == RINGL_DEPTH_COMPONENT16 ||
         format == RINGL_DEPTH_COMPONENT32F)
         return has_depth != 0u && has_stencil == 0u;
+    if (format == RINGL_STENCIL_INDEX8)
+        return has_depth == 0u && has_stencil != 0u;
     return format == RINGL_DEPTH24_STENCIL8 && has_stencil != 0u;
 }
 
@@ -625,6 +627,8 @@ int ringl_get_renderbuffer_info(uint32_t target, RinGLRenderbufferInfoV1* info)
             result.depth_size = 16u;
         } else if (renderbuffer->internal_format == RINGL_DEPTH_COMPONENT32F) {
             result.depth_size = 32u;
+        } else if (renderbuffer->internal_format == RINGL_STENCIL_INDEX8) {
+            result.stencil_size = 8u;
         } else if (renderbuffer->internal_format == RINGL_DEPTH24_STENCIL8) {
             result.depth_size = 24u;
             result.stencil_size = 8u;
@@ -649,6 +653,7 @@ void ringl_renderbuffer_storage(uint32_t target, uint32_t internal_format,
     if (internal_format != RINGL_RGBA8 &&
         internal_format != RINGL_DEPTH_COMPONENT16 &&
         internal_format != RINGL_DEPTH_COMPONENT32F &&
+        internal_format != RINGL_STENCIL_INDEX8 &&
         internal_format != RINGL_DEPTH24_STENCIL8) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
@@ -744,6 +749,7 @@ int ringl_renderbuffer_realize_depth_target(RinGLContext* context,
     if (!object->defined ||
         (object->internal_format != RINGL_DEPTH_COMPONENT16 &&
          object->internal_format != RINGL_DEPTH_COMPONENT32F &&
+         object->internal_format != RINGL_STENCIL_INDEX8 &&
          object->internal_format != RINGL_DEPTH24_STENCIL8) ||
         object->width == 0u || object->height == 0u) {
         return -1;
@@ -752,7 +758,8 @@ int ringl_renderbuffer_realize_depth_target(RinGLContext* context,
         memset(&desc, 0, sizeof(desc));
         desc.width = object->width;
         desc.height = object->height;
-        desc.format = object->internal_format == RINGL_DEPTH24_STENCIL8
+        desc.format = (object->internal_format == RINGL_STENCIL_INDEX8 ||
+                       object->internal_format == RINGL_DEPTH24_STENCIL8)
             ? RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT
             : RINGL_RIN_GPU_FORMAT_D32_FLOAT;
         desc.usage = RINGL_RIN_GPU_IMAGE_USAGE_DEPTH_STENCIL;

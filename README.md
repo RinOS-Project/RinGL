@@ -343,9 +343,11 @@ WebGL binding and presentation remain unsupported.
 Custom RGBA8 renderbuffer FBOs may additionally attach a matching
 `DEPTH24_STENCIL8` renderbuffer or level-zero
 `DEPTH24_STENCIL8`/`DEPTH_STENCIL`/`UNSIGNED_INT_24_8` texture through
-`DEPTH_STENCIL_ATTACHMENT`, or attach that D24S8 storage through
-`STENCIL_ATTACHMENT` alone. RinGL converts the packed 24/8 texture input into
-RinGPU's F32 depth/S8 stencil storage and executes independent front/back
+`DEPTH_STENCIL_ATTACHMENT`, or attach a D24S8 or WebGL 1 `STENCIL_INDEX8`
+renderbuffer through `STENCIL_ATTACHMENT` alone. `STENCIL_INDEX8` retains its
+logical stencil-only format and realizes a D32S8 RinGPU target whose depth
+plane stays logically inaccessible. RinGL converts the packed 24/8 texture
+input into RinGPU's F32 depth/S8 stencil storage and executes independent front/back
 stencil tests, reference/read/write masks, all eight stencil operations, and
 stencil clear before the depth test. A stencil-only attachment still uses its
 D32S8 image for the native render pass, but it suppresses logical depth test,

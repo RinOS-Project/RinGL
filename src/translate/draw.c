@@ -98,8 +98,11 @@ int ringl_resolve_depth_target(RinGLContext* context, RinGLDepthTarget* target)
                 framebuffer->depth_attachment_object);
             if (index >= RINGL_OBJECT_SLOT_COUNT)
                 return -1;
-            target->format = context->renderbuffers[index].internal_format ==
-                    RINGL_DEPTH24_STENCIL8
+            target->format =
+                (context->renderbuffers[index].internal_format ==
+                     RINGL_STENCIL_INDEX8 ||
+                 context->renderbuffers[index].internal_format ==
+                     RINGL_DEPTH24_STENCIL8)
                 ? RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT
                 : RINGL_RIN_GPU_FORMAT_D32_FLOAT;
         } else if (framebuffer->depth_attachment_kind ==

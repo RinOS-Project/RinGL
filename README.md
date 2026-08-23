@@ -416,8 +416,18 @@ native S8 stencil renderbuffers are supported through a versioned three-target
 RinGPU pass. RinGL preserves the two attachment owners and only reports a
 combined attachment when they are identical; the surface backend passes their
 Float32 depth and byte stencil planes independently to the software rasterizer.
-Separate texture attachment, depth-only D24S8 attachment, multisample storage,
-and resolve remain outside this bounded profile.
+That pass accepts a D32 plane from either D32 or D24S8 and an S8 plane from
+either native S8 or D24S8, while still requiring distinct physical images.
+Consequently a D24S8 renderbuffer is also valid as a logical depth-only
+attachment, and either physical aspect can be paired with the other format in
+separate depth/stencil renderbuffer FBOs. A depth-only D24S8 pass preserves its
+unbound physical stencil plane with native LOAD/STORE rather than exposing it
+to logical stencil state. The offscreen D24S8 surface allocation keeps F32
+depth and byte stencil in separate checked planes, so its eight-byte transfer
+format is never used as the in-memory depth pitch. Strict FBO tests and the
+actual RinGL-to-RinGPU-to-Aquamarine test cover these combinations. Texture
+cube faces, mip levels beyond zero, multisample storage, and resolve remain
+outside this bounded profile.
 
 `ringl_get_framebuffer_attachment()` is the versioned, caller-owned query for
 the bounded custom-FBO model. It reports the actual current
@@ -427,8 +437,8 @@ realizing a RinGPU image for observation. A combined query returns no object
 unless both logical aspects share one attachment. The older color-only helper
 is retained as a compatibility shorthand; new embeddings should use the
 attachment-point query. Texture cube faces, mip levels beyond zero, separate
-depth/stencil texture attachments, and multisample attachments remain outside
-the profile.
+depth/stencil texture execution certification, and multisample attachments
+remain outside the profile.
 
 `ringl_clear()` also carries a bounded lower-left clear region and an RGBA
 write mask to RinGPU. An enabled WebGL scissor clips color, depth, and stencil

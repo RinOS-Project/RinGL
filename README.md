@@ -196,8 +196,9 @@ live RSH1 result may then feed the same direct/finite-affine local chain as the
 two-UV profile, subject to the complete instruction/register budget; samples
 may also use every declared pair directly. The lowerer retains all six scalar
 perspective inputs and executes every stage in RSH1, rather than selecting or
-folding a coordinate on the host. Expressions combining all three pairs in one
-local, and other general three-UV local expressions, remain unsupported.
+folding a coordinate on the host. One combine result may additionally combine
+once with the remaining declared pair; other general three-UV local expressions
+remain unsupported.
 
 See [TODO.md](TODO.md) for the implementation roadmap.
 

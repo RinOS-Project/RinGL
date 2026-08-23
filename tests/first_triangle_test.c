@@ -10,9 +10,13 @@ typedef struct FakeBackend {
     uint32_t command_count;
     uint32_t shader_creates;
     uint32_t pipeline_creates;
+    uint32_t pipeline_topologies[2];
     uint32_t submissions;
     uint32_t indexed_draws;
-    uint32_t indexed_formats[2];
+    uint32_t indexed_formats[3];
+    uint32_t indexed_counts[3];
+    uint32_t vertex_draws;
+    uint32_t vertex_counts[2];
     float clear[4];
 } FakeBackend;
 
@@ -68,7 +72,9 @@ static int fake_create_graphics_pipeline(
     FakeBackend* backend = session;
     assert(desc != NULL && pipeline_out != NULL);
     assert(desc->vertex_shader != 0u && desc->fragment_shader != 0u);
-    assert(desc->primitive_topology == 1u);
+    assert(backend->pipeline_creates < 2u);
+    backend->pipeline_topologies[backend->pipeline_creates] =
+        desc->primitive_topology;
     assert(desc->vertex_stride == 16u);
     assert(attribute_count == 2u && attributes != NULL);
     assert(attributes[0].location == 0u);
@@ -137,7 +143,9 @@ static int fake_draw_vertices(void* session, uint64_t command_list,
     assert(command_list != 0u && draw != NULL);
     assert(draw->pipeline != 0u && draw->vertex_buffer != 0u);
     assert(draw->color_target == 700u);
-    assert(draw->vertex_count == 3u && draw->first_vertex == 0u);
+    assert(backend->vertex_draws < 2u);
+    backend->vertex_counts[backend->vertex_draws++] = draw->vertex_count;
+    assert(draw->first_vertex == 0u);
     assert(draw->instance_count == 1u);
     record(backend, 'D');
     return 0;
@@ -150,10 +158,12 @@ static int fake_draw_indexed(void* session, uint64_t command_list,
     assert(command_list != 0u && draw != NULL);
     assert(draw->pipeline != 0u && draw->vertex_buffer != 0u);
     assert(draw->index_buffer != 0u && draw->color_target == 700u);
-    assert(backend->indexed_draws < 2u);
+    assert(backend->indexed_draws < 3u);
     backend->indexed_formats[backend->indexed_draws++] = draw->index_format;
+    backend->indexed_counts[backend->indexed_draws - 1u] = draw->index_count;
     assert(draw->index_offset == 0u && draw->first_index == 0u);
-    assert(draw->index_count == 3u && draw->vertex_count == 3u);
+    assert((draw->index_count == 1u && draw->vertex_count == 1u) ||
+           (draw->index_count == 3u && draw->vertex_count == 3u));
     assert(draw->instance_count == 1u);
     record(backend, 'I');
     return 0;
@@ -309,6 +319,11 @@ int main(void)
     ringl_draw_elements(RINGL_TRIANGLES, 3, RINGL_UNSIGNED_BYTE, 0u);
     assert(ringl_get_error() == RINGL_NO_ERROR);
 
+    ringl_draw_arrays(RINGL_POINTS, 0, 1);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_draw_elements(RINGL_POINTS, 1, RINGL_UNSIGNED_BYTE, 0u);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+
     ringl_enable(RINGL_BLEND);
     ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);
     assert(ringl_get_error() == RINGL_INVALID_OPERATION);
@@ -323,11 +338,18 @@ int main(void)
     assert(ringl_get_error() == RINGL_NO_ERROR);
 
     assert(backend.shader_creates == 2u);
-    assert(backend.pipeline_creates == 1u);
-    assert(backend.submissions == 5u);
-    assert(backend.indexed_draws == 2u);
+    assert(backend.pipeline_creates == 2u);
+    assert(backend.pipeline_topologies[0] == 1u);
+    assert(backend.pipeline_topologies[1] == 2u);
+    assert(backend.submissions == 7u);
+    assert(backend.vertex_draws == 2u);
+    assert(backend.vertex_counts[0] == 3u && backend.vertex_counts[1] == 1u);
+    assert(backend.indexed_draws == 3u);
     assert(backend.indexed_formats[0] == RINGL_RIN_GPU_INDEX_UINT16);
     assert(backend.indexed_formats[1] == RINGL_RIN_GPU_INDEX_UINT8);
+    assert(backend.indexed_formats[2] == RINGL_RIN_GPU_INDEX_UINT8);
+    assert(backend.indexed_counts[0] == 3u && backend.indexed_counts[1] == 3u &&
+           backend.indexed_counts[2] == 1u);
     assert(backend.clear[0] == 0.0f);
     assert(backend.clear[1] == 0.25f);
     assert(backend.clear[2] == 1.0f);
@@ -335,7 +357,8 @@ int main(void)
     assert(backend.command_count < sizeof(commands));
     memcpy(commands, backend.commands, backend.command_count);
     commands[backend.command_count] = '\0';
-    assert(strcmp(commands, "NTBECSRBDECSRBIECSRBIECSRTPCS") == 0);
+    assert(strcmp(commands,
+                  "NTBECSRBDECSRBIECSRBIECSRBDECSRBIECSRTPCS") == 0);
 
     ringl_context_destroy(context);
     return 0;

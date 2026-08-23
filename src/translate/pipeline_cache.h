@@ -7,6 +7,7 @@
 #include "../ringl_internal.h"
 
 #define RINGL_NATIVE_PRIMITIVE_TRIANGLE_LIST 1u
+#define RINGL_NATIVE_PRIMITIVE_POINT_LIST    2u
 #define RINGL_PIPELINE_CACHE_CAPACITY 32u
 #define RINGL_PIPELINE_MAX_SCALAR_VARYINGS (RINGL_MAX_VARYINGS * 2u)
 
@@ -60,6 +61,7 @@ typedef struct RinGLPipelineKey {
 
 int ringl_build_pipeline_key(RinGLContext* context,
                              uint32_t color_format, uint32_t depth_format,
+                             uint32_t primitive_topology,
                              RinGLPipelineKey* key);
 uint64_t ringl_pipeline_key_hash(const RinGLPipelineKey* key);
 int ringl_pipeline_key_equal(const RinGLPipelineKey* left,
@@ -70,6 +72,7 @@ int ringl_pipeline_cache_get_or_create(RinGLContext* context,
 int ringl_get_or_create_graphics_pipeline(RinGLContext* context,
                                           uint32_t color_format,
                                           uint32_t depth_format,
+                                          uint32_t primitive_topology,
                                           uint64_t* pipeline_out);
 
 #endif /* RINGL_PIPELINE_CACHE_H */

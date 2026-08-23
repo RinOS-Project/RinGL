@@ -194,8 +194,15 @@ static uint32_t native_stencil_operation(uint32_t operation)
     }
 }
 
+static int native_primitive_topology_valid(uint32_t primitive_topology)
+{
+    return primitive_topology == RINGL_NATIVE_PRIMITIVE_TRIANGLE_LIST ||
+           primitive_topology == RINGL_NATIVE_PRIMITIVE_POINT_LIST;
+}
+
 int ringl_build_pipeline_key(RinGLContext* context,
                              uint32_t color_format, uint32_t depth_format,
+                             uint32_t primitive_topology,
                              RinGLPipelineKey* key)
 {
     RinGLProgramObject* program;
@@ -206,6 +213,7 @@ int ringl_build_pipeline_key(RinGLContext* context,
     uint32_t index;
 
     if (context == NULL || key == NULL || color_format == 0u ||
+        !native_primitive_topology_valid(primitive_topology) ||
         (depth_format != 0u &&
          depth_format != RINGL_RIN_GPU_FORMAT_D32_FLOAT &&
          depth_format != RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) ||
@@ -297,7 +305,7 @@ int ringl_build_pipeline_key(RinGLContext* context,
             result.separate_stencil_enabled = RINGL_TRUE;
         }
     }
-    result.primitive_topology = RINGL_NATIVE_PRIMITIVE_TRIANGLE_LIST;
+    result.primitive_topology = primitive_topology;
     result.vertex_stride = layout.stride;
     result.vertex_binding_count = layout.binding_count;
     result.attribute_count = layout.attribute_count;
@@ -625,11 +633,13 @@ int ringl_pipeline_cache_get_or_create(RinGLContext* context,
 int ringl_get_or_create_graphics_pipeline(RinGLContext* context,
                                           uint32_t color_format,
                                           uint32_t depth_format,
+                                          uint32_t primitive_topology,
                                           uint64_t* pipeline_out)
 {
     RinGLPipelineKey key;
 
-    if (ringl_build_pipeline_key(context, color_format, depth_format, &key) != 0)
+    if (ringl_build_pipeline_key(context, color_format, depth_format,
+                                 primitive_topology, &key) != 0)
         return -1;
     return ringl_pipeline_cache_get_or_create(context, &key, pipeline_out);
 }

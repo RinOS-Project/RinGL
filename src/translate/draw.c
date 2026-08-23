@@ -889,6 +889,18 @@ static int ringl_resolve_vertex_buffer_bindings(
     return 0;
 }
 
+static uint32_t ringl_native_primitive_topology(uint32_t mode)
+{
+    switch (mode) {
+    case RINGL_POINTS:
+        return RINGL_NATIVE_PRIMITIVE_POINT_LIST;
+    case RINGL_TRIANGLES:
+        return RINGL_NATIVE_PRIMITIVE_TRIANGLE_LIST;
+    default:
+        return 0u;
+    }
+}
+
 void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
 {
     RinGLContext* context = ringl_get_current_context();
@@ -903,6 +915,7 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
     uint64_t command_list;
     uint64_t pipeline;
     uint32_t buffer_index;
+    uint32_t primitive_topology;
     RinGLTextureTransitionSet texture_transitions = {0};
     int depth_status;
     int use_multi_buffer;
@@ -910,7 +923,8 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
 
     if (context == NULL)
         return;
-    if (mode != RINGL_TRIANGLES) {
+    primitive_topology = ringl_native_primitive_topology(mode);
+    if (primitive_topology == 0u) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
@@ -980,6 +994,7 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
             (context->depth_test_enabled || context->stencil_test_enabled)
                 ? depth_target.format
                 : 0u,
+            primitive_topology,
             &pipeline) != 0 ||
         pipeline == 0u ||
         prepare_graphics_resources(context, command_list, pipeline, target.image,
@@ -1062,6 +1077,7 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
     uint32_t vertex_count;
     uint32_t vertex_buffer_index;
     uint32_t index_buffer_index;
+    uint32_t primitive_topology;
     RinGLTextureTransitionSet texture_transitions = {0};
     int depth_status;
     int use_multi_buffer;
@@ -1069,7 +1085,8 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
 
     if (context == NULL)
         return;
-    if (mode != RINGL_TRIANGLES) {
+    primitive_topology = ringl_native_primitive_topology(mode);
+    if (primitive_topology == 0u) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
@@ -1160,6 +1177,7 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
             (context->depth_test_enabled || context->stencil_test_enabled)
                 ? depth_target.format
                 : 0u,
+            primitive_topology,
             &pipeline) != 0 ||
         pipeline == 0u ||
         prepare_graphics_resources(context, command_list, pipeline, target.image,

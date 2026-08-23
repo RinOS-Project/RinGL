@@ -99,6 +99,10 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Lazily create/cache RinGPU graphics pipelines with bounded eviction and lifetime cleanup.
 - [x] Begin/end RinGPU render passes for the first clear and draw operations.
 - [x] Implement first-slice `glDrawArrays(GL_TRIANGLES, ...)` translation.
+- [x] Execute bounded `GL_POINTS` direct and indexed draws through a distinct
+  native RinGPU point-list pipeline. The primitive topology participates in
+  the RinGL pipeline-cache key, so a point draw cannot reuse a triangle
+  pipeline. Lines, strips, loops, and fans remain unsupported.
 - [x] Track the default color image between UNDEFINED, PRESENT, and COLOR_TARGET states and emit required transitions.
 - [x] Expose the post-submit default color-image state to trusted embeddings so a caller-owned presentation surface can remain synchronized across RinGL presentation and reuse.
 - [x] Add the OS-Core adapter that maps the RinGL operation table to public RinGPU buffer, shader, pipeline, command, submit, and present APIs.

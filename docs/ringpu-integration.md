@@ -197,7 +197,8 @@ two components in a private native clip/raster form while preserving the
 public compact RGBA clip-vertex V1 ABI. Six-plane clipping and perspective
 interpolation operate on every pair before the resource-aware fragment
 preflight and submission. This route is deliberately limited to direct/indexed
-triangle lists and direct coordinates, plus one `firstUv +/- secondUv` local that may
+triangle lists, strips, and fans with direct coordinates, plus one
+`firstUv +/- secondUv` local that may
 coexist with direct `thirdUv` samples; it does not claim general varying
 transport or broader three-input local expressions.
 For one sampled texture result, or an explicitly parenthesized additive sample

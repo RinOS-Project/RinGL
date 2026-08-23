@@ -166,6 +166,8 @@ it is not folded into a host-side shortcut. The bounded two-UV profile maps
 supports `firstUv + secondUv` and `firstUv - secondUv` as sampler coordinates.
 The same bounded two-UV operation may be named first as
 `vec2 mixedUv = firstUv +/- secondUv;` and then passed to `texture2D()`.
+That result can also feed the existing direct/finite-affine local chain, up to
+the shared six-local ceiling, while preserving the source-order RSH1 arithmetic.
 Up to six fragment-local values may be chained from the shared UV; each
 initializer is lowered in source order before samples. This remains a
 deliberately narrow GLSL ES subset: other local vector expressions, more than

@@ -603,6 +603,8 @@ static int lower_fragment_texture_chain(const char* source,
                                local_coordinate_count - 1u]);
         }
     } else if (strncmp(cursor, "vec2", strlen("vec2")) == 0) {
+        const char* local_source;
+
         if (!parse_varying_texture_two_coordinate_local(
                 &cursor, varying_names, local_coordinate_names[0],
                 sizeof(local_coordinate_names[0]),
@@ -610,11 +612,27 @@ static int lower_fragment_texture_chain(const char* source,
                 &local_secondary_input_location)) {
             return 1;
         }
-        (void)snprintf(coordinate_names[0], sizeof(coordinate_names[0]),
-                       "%s", local_coordinate_names[0]);
+        local_source = local_coordinate_names[0];
         coordinate_name_count = 1u;
         local_coordinate_count = 1u;
         two_coordinate_local = 1u;
+        while (strncmp(cursor, "vec2", strlen("vec2")) == 0) {
+            if (local_coordinate_count ==
+                    RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES ||
+                !parse_varying_texture_local_coordinate(
+                    &cursor, local_source,
+                    local_coordinate_names[local_coordinate_count],
+                    sizeof(local_coordinate_names[local_coordinate_count]),
+                    &local_coordinate_kinds[local_coordinate_count],
+                    &local_offset_u[local_coordinate_count],
+                    &local_offset_v[local_coordinate_count])) {
+                return 1;
+            }
+            local_source = local_coordinate_names[local_coordinate_count++];
+        }
+        (void)snprintf(coordinate_names[0], sizeof(coordinate_names[0]),
+                       "%s", local_coordinate_names[
+                           local_coordinate_count - 1u]);
     }
     if (!consume_text(&cursor, "gl_FragColor="))
         return 1;
@@ -653,7 +671,8 @@ static int lower_fragment_texture_chain(const char* source,
         if (local_coordinate_kinds[call_index] !=
             RINGL_VARYING_TEXTURE_COORD_DIRECT) {
             local_temporary_register_count += 4u;
-            instruction_cursor += two_coordinate_local ? 2u : 4u;
+            instruction_cursor += two_coordinate_local && call_index == 0u
+                ? 2u : 4u;
         }
     }
     temporary_register_count = local_temporary_register_count;
@@ -701,6 +720,22 @@ static int lower_fragment_texture_chain(const char* source,
                 local_coordinate_kinds[0]);
             local_coordinate_u = local_temporary_base + 2u;
             local_coordinate_v = local_temporary_base + 3u;
+            local_temporary_base += 4u;
+            for (call_index = 1u; call_index < local_coordinate_count;
+                 ++call_index) {
+                if (local_coordinate_kinds[call_index] ==
+                    RINGL_VARYING_TEXTURE_COORD_DIRECT) {
+                    continue;
+                }
+                emit_varying_texture_offset(
+                    ins, &instruction_cursor, local_temporary_base,
+                    local_coordinate_u, local_coordinate_v,
+                    local_coordinate_kinds[call_index],
+                    local_offset_u[call_index], local_offset_v[call_index]);
+                local_coordinate_u = local_temporary_base + 2u;
+                local_coordinate_v = local_temporary_base + 3u;
+                local_temporary_base += 4u;
+            }
         } else {
             for (call_index = 0u; call_index < local_coordinate_count;
                  ++call_index) {

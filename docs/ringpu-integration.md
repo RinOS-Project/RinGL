@@ -183,6 +183,9 @@ operations over the distinct interpolated input pairs before its sample. It
 does not materialize coordinates on the host or collapse either varying pair;
 the normal RinGPU sampled-image binding and surface executor consume the live
 arithmetic result. Other local vector expressions remain outside this profile.
+The combined local may feed the same direct/finite-affine local chain as the
+single-UV profile, subject to the common six-local bound; each subsequent RSH1
+stage reads the preceding result rather than a host-side folded coordinate.
 
 Before cache eviction during a draw, RinGL resets its reusable command list. This releases references retained by the previous recorded submission before an old pipeline is destroyed.
 

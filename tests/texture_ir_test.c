@@ -131,6 +131,11 @@ int main(void)
         "uniform sampler2D colorTexture; varying vec2 firstUv; "
         "varying vec2 secondUv; void main() { vec2 mixedUv = "
         "secondUv - firstUv; gl_FragColor = texture2D(colorTexture, mixedUv); }";
+    const char* varying_local_coordinate_affine_chain_source =
+        "uniform sampler2D colorTexture; varying vec2 firstUv; "
+        "varying vec2 secondUv; void main() { vec2 mixedUv = "
+        "firstUv + secondUv; vec2 sampleUv = mixedUv - vec2(0.25, 0.5); "
+        "gl_FragColor = texture2D(colorTexture, sampleUv); }";
     const char* varying_local_alias_source =
         "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
         "varying vec2 uv; void main() { vec2 sampleUv = uv; gl_FragColor = "
@@ -511,6 +516,45 @@ int main(void)
         assert(combine->opcode == RSH1_SUB_F32);
         assert(combine->source0 == 6u + component);
         assert(combine->source1 == component);
+    }
+
+    /* A two-varying local result may feed the existing finite affine local
+     * chain.  The second operation consumes the first RSH1 result in source
+     * order instead of folding the expressions on the host. */
+    ringl_shader_source(shader, varying_local_coordinate_affine_chain_source,
+                        -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 19u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.instruction_count == 19u);
+    assert(header.register_count == 16u);
+    assert(header.resource_count == 2u);
+    for (component = 0u; component < 2u; ++component) {
+        const Instruction* combine =
+            (const Instruction*)(blob + sizeof(header)) + 4u + component;
+        const Instruction* constant =
+            (const Instruction*)(blob + sizeof(header)) + 6u + component;
+        const Instruction* affine =
+            (const Instruction*)(blob + sizeof(header)) + 8u + component;
+        const Instruction* sample =
+            (const Instruction*)(blob + sizeof(header)) + 10u + component;
+
+        assert(combine->opcode == RSH1_ADD_F32);
+        assert(combine->destination == 10u + component);
+        assert(combine->source0 == component);
+        assert(combine->source1 == 6u + component);
+        assert(constant->opcode == RSH1_CONST_F32);
+        assert(constant->destination == 12u + component);
+        assert(affine->opcode == RSH1_SUB_F32);
+        assert(affine->destination == 14u + component);
+        assert(affine->source0 == 10u + component);
+        assert(affine->source1 == 12u + component);
+        assert(sample->opcode == RSH1_SAMPLE_IMAGE_2D_F32);
+        assert(sample->source0 == 14u && sample->source1 == 15u);
     }
 
     /* A directly initialized local vec2 remains an interpolated coordinate

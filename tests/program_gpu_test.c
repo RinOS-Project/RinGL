@@ -72,6 +72,9 @@ int main(void)
     uint32_t vertex;
     uint32_t fragment;
     uint32_t program;
+    uint32_t matrix_vertex;
+    uint32_t matrix_fragment;
+    uint32_t matrix_program;
     char log[192];
 
     assert(ringl_context_create(&desc, &context) == 0);
@@ -106,13 +109,60 @@ int main(void)
     assert(ringl_get_shader_module(fragment) != 0u);
     assert(backend.shader_creates == 3u);
 
+    /* A matrix uniform must create program-owned RinGPU modules at link and
+     * after an update. A rejected replacement must preserve the former
+     * matrix state rather than publishing a partly updated executable. */
+    matrix_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+    matrix_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+    matrix_program = ringl_create_program();
+    assert(matrix_vertex != 0u && matrix_fragment != 0u && matrix_program != 0u);
+    ringl_shader_source(matrix_vertex,
+        "attribute vec4 position; uniform mat4 transform; "
+        "void main() { gl_Position = transform * position; }", -1);
+    ringl_shader_source(matrix_fragment,
+        "void main() { gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0); }", -1);
+    ringl_compile_shader(matrix_vertex);
+    ringl_compile_shader(matrix_fragment);
+    assert(ringl_get_shader_compile_status(matrix_vertex) == RINGL_TRUE);
+    assert(ringl_get_shader_compile_status(matrix_fragment) == RINGL_TRUE);
+    ringl_attach_shader(matrix_program, matrix_vertex);
+    ringl_attach_shader(matrix_program, matrix_fragment);
+    ringl_link_program(matrix_program);
+    assert(ringl_get_program_link_status(matrix_program) == RINGL_TRUE);
+    assert(backend.shader_creates == 5u);
+    {
+        float identity[16] = {
+            1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f, 0.0f,
+            0.0f, 0.0f, 0.0f, 1.0f,
+        };
+        float values[16];
+        int32_t location = ringl_get_uniform_location(matrix_program, "transform");
+
+        assert(location == 0);
+        ringl_use_program(matrix_program);
+        ringl_uniform_matrix4fv(location, 0u, identity);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(backend.shader_creates == 7u);
+        backend.reject_create = 1u;
+        identity[0] = 2.0f;
+        ringl_uniform_matrix4fv(location, 0u, identity);
+        assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+        assert(backend.shader_creates == 8u);
+        assert(ringl_get_uniform_matrix4f(matrix_program, location, values) == 0);
+        assert(values[0] == 1.0f);
+        backend.reject_create = 0u;
+    }
+    ringl_delete_program(matrix_program);
+
     ringl_shader_source(fragment,
         "void main() { gl_FragColor = 0.5; }", -1);
     ringl_compile_shader(fragment);
     backend.reject_create = 1u;
     ringl_link_program(program);
     assert(ringl_get_program_link_status(program) == RINGL_FALSE);
-    assert(backend.shader_creates == 4u);
+    assert(backend.shader_creates == 9u);
 
     ringl_context_destroy(context);
     return 0;

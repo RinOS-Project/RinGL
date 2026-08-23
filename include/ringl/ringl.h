@@ -632,6 +632,18 @@ typedef struct RinGLRinGpuImage2DV1 {
     uint32_t usage;
 } RinGLRinGpuImage2DV1;
 
+/* Optional multi-mip image ABI.  This is deliberately a distinct record from
+ * the V1 descriptor: existing backends can continue to accept V1 records
+ * without depending on an extended struct layout. */
+typedef struct RinGLRinGpuImage2DMipV2 {
+    uint32_t width;
+    uint32_t height;
+    uint32_t format;
+    uint32_t usage;
+    uint32_t mip_levels;
+    uint32_t reserved0;
+} RinGLRinGpuImage2DMipV2;
+
 typedef struct RinGLRinGpuImageUpload2DV1 {
     uint32_t x;
     uint32_t y;
@@ -639,6 +651,18 @@ typedef struct RinGLRinGpuImageUpload2DV1 {
     uint32_t height;
     uint64_t source_row_pitch_bytes;
 } RinGLRinGpuImageUpload2DV1;
+
+/* Uploads one explicitly selected 2D mip level.  The source covers only the
+ * declared level rectangle, never the image's packed mip chain. */
+typedef struct RinGLRinGpuImageUpload2DMipV2 {
+    uint32_t mip_level;
+    uint32_t x;
+    uint32_t y;
+    uint32_t width;
+    uint32_t height;
+    uint32_t reserved0;
+    uint64_t source_row_pitch_bytes;
+} RinGLRinGpuImageUpload2DMipV2;
 
 typedef struct RinGLRinGpuSamplerV1 {
     uint32_t min_filter;
@@ -772,6 +796,13 @@ typedef int (*RinGLRinGpuCreateImage2DFn)(
 typedef int (*RinGLRinGpuUploadImage2DFn)(
     void* session, uint64_t image, const RinGLRinGpuImageUpload2DV1* upload,
     const void* data, uint64_t size_bytes);
+typedef int (*RinGLRinGpuCreateImage2DMipV2Fn)(
+    void* session, const RinGLRinGpuImage2DMipV2* desc,
+    uint64_t* image_out);
+typedef int (*RinGLRinGpuUploadImage2DMipV2Fn)(
+    void* session, uint64_t image,
+    const RinGLRinGpuImageUpload2DMipV2* upload,
+    const void* data, uint64_t size_bytes);
 typedef int (*RinGLRinGpuCreateSamplerFn)(
     void* session, const RinGLRinGpuSamplerV1* desc, uint64_t* sampler_out);
 
@@ -815,6 +846,11 @@ typedef struct RinGLRinGpuOpsV1 {
         create_graphics_pipeline_native_vertex_bindings_v2;
     /* Optional V3 tail: distinct D32 and S8 framebuffer attachments. */
     RinGLRinGpuBeginRenderPassDepthStencilFn begin_render_pass_depth_stencil;
+    /* Optional V4 tail: a CPU-uploaded 2D image with multiple explicit mip
+     * levels.  Both callbacks must be present before RinGL realizes a
+     * generated chain; older backends remain usable for level-zero textures. */
+    RinGLRinGpuCreateImage2DMipV2Fn create_image_2d_mip_v2;
+    RinGLRinGpuUploadImage2DMipV2Fn upload_image_2d_mip_v2;
 } RinGLRinGpuOpsV1;
 
 typedef struct RinGLRinGpuBindingV1 {
@@ -1015,9 +1051,9 @@ void ringl_sample_coverage(float value, uint32_t invert);
 /* Returns the exact enabled/value/invert state only for a complete v1 output
  * header; invalid output leaves caller storage unchanged. */
 int ringl_get_sample_coverage(RinGLSampleCoverageV1* coverage);
-/* The bounded renderer currently has no generated mip chain, so the only
- * accepted GLES hint is GENERATE_MIPMAP_HINT and its valid modes are advisory
- * no-ops. Unsupported hint targets are never reported as implemented. */
+/* GENERATE_MIPMAP_HINT is advisory.  The bounded renderer does not use it to
+ * choose a sampler LOD; generated mip levels are created only by
+ * ringl_generate_mipmap(). */
 void ringl_hint(uint32_t target, uint32_t mode);
 /* Applies GLES polygon offset to filled primitives. Both finite values are
  * carried in the dynamic RinGPU raster state; points and lines are unchanged. */
@@ -1121,6 +1157,11 @@ void ringl_tex_image_2d_from_bytes(uint32_t target, int32_t level,
                                    int32_t height, int32_t border,
                                    uint32_t format, uint32_t type,
                                    const void* pixels, uint64_t pixels_size);
+/* Generates a complete 2D color mip chain from level zero using a
+ * deterministic clamped 2x2 box filter.  It is failure-atomic: allocation or
+ * a missing multi-mip backend leaves an existing generated chain unchanged.
+ * Depth/stencil and packed color storage remain rejected. */
+void ringl_generate_mipmap(uint32_t target);
 void ringl_tex_sub_image_2d(uint32_t target, int32_t level,
                             int32_t xoffset, int32_t yoffset,
                             int32_t width, int32_t height,

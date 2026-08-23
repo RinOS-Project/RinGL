@@ -106,6 +106,26 @@ storage and create their matching RinGPU image format. The surface sample table
 expands texels only at execution time, with opaque RGB565 alpha and preserved
 RGBA4/RGB5_A1 alpha.
 
+## Optional multi-mip image path
+
+`RinGLRinGpuOpsV1` has an optional V4 tail with paired
+`create_image_2d_mip_v2` and `upload_image_2d_mip_v2` callbacks.  It uses
+separate V2 descriptor records rather than extending the old unversioned image
+records, so a V1-only backend remains ABI-safe and continues to handle
+level-zero textures.  When both callbacks are present,
+`ringl_generate_mipmap()` creates a CPU-visible sampled image with its exact
+number of 2D levels and uploads each level with an explicit `mip_level`.
+
+The generated source is presently the bounded unpacked color profile whose
+shadow representation is normalized RGBA8.  RinGL computes a deterministic
+clamped 2x2 box level on the CPU before replacing prior generated storage; a
+missing V2 callback or allocation failure leaves that prior chain untouched.
+This does not add automatic LOD selection, manual nonzero-level `texImage2D`,
+packed-color generation, or nonzero-mip FBO rendering.  The OS-Core adapter
+maps each V2 descriptor directly to `RinGpuImageDescV1.mip_levels` and each
+upload to `RinGpuImageUploadV1.mip_level`; the focused bridge test inspects the
+resulting real RinGPU image descriptor.
+
 ## Shader module validation path
 
 RinGL lowers its current scalar GLSL ES subset to RinShader RSH1 before asking the embedding adapter to create a GPU shader module. The `create_shader_module` adapter maps directly to public `ringpu_create_shader_module()`.

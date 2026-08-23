@@ -57,15 +57,123 @@ static RinGLTextureObject* bound_texture_2d(RinGLContext* context)
     return &context->textures[slot_index];
 }
 
+static RinGLTextureMipStorage* texture_mip_storage(RinGLTextureObject* texture,
+                                                    uint32_t level)
+{
+    if (texture == NULL || level == 0u ||
+        level >= RINGL_MAX_TEXTURE_MIP_LEVELS) {
+        return NULL;
+    }
+    return &texture->mip_storage[level - 1u];
+}
+
+static const RinGLTextureMipStorage* texture_mip_storage_const(
+    const RinGLTextureObject* texture, uint32_t level)
+{
+    if (texture == NULL || level == 0u ||
+        level >= RINGL_MAX_TEXTURE_MIP_LEVELS) {
+        return NULL;
+    }
+    return &texture->mip_storage[level - 1u];
+}
+
+static int texture_level_storage_defined(const RinGLTextureObject* texture,
+                                         uint32_t level)
+{
+    const RinGLTextureMipStorage* storage;
+
+    if (texture == NULL)
+        return 0;
+    if (level == 0u) {
+        return texture->defined != 0u && texture->width != 0u &&
+               texture->height != 0u && texture->shadow_bytes != NULL &&
+               texture->shadow_size != 0u;
+    }
+    storage = texture_mip_storage_const(texture, level);
+    return storage != NULL && storage->defined != 0u && storage->width != 0u &&
+           storage->height != 0u && storage->shadow_bytes != NULL &&
+           storage->shadow_size != 0u;
+}
+
+static uint32_t texture_mip_level_count(uint32_t width, uint32_t height)
+{
+    uint32_t count = 1u;
+
+    while ((width > 1u || height > 1u) &&
+           count < RINGL_MAX_TEXTURE_MIP_LEVELS) {
+        if (width > 1u)
+            width >>= 1u;
+        if (height > 1u)
+            height >>= 1u;
+        ++count;
+    }
+    return count;
+}
+
+static uint32_t texture_expected_mip_width(const RinGLTextureObject* texture,
+                                           uint32_t level)
+{
+    uint32_t width;
+
+    if (texture == NULL || level >= RINGL_MAX_TEXTURE_MIP_LEVELS)
+        return 0u;
+    width = texture->width;
+    while (level != 0u && width > 1u) {
+        width >>= 1u;
+        --level;
+    }
+    return width;
+}
+
+static uint32_t texture_expected_mip_height(const RinGLTextureObject* texture,
+                                            uint32_t level)
+{
+    uint32_t height;
+
+    if (texture == NULL || level >= RINGL_MAX_TEXTURE_MIP_LEVELS)
+        return 0u;
+    height = texture->height;
+    while (level != 0u && height > 1u) {
+        height >>= 1u;
+        --level;
+    }
+    return height;
+}
+
+static uint32_t texture_defined_mip_count(const RinGLTextureObject* texture)
+{
+    uint32_t level;
+    uint32_t count = 1u;
+
+    if (!texture_level_storage_defined(texture, 0u))
+        return 0u;
+    for (level = 1u; level < RINGL_MAX_TEXTURE_MIP_LEVELS; ++level) {
+        if (texture_level_storage_defined(texture, level))
+            count = level + 1u;
+    }
+    return count;
+}
+
+static void texture_drop_mip_storage_from(RinGLTextureObject* texture,
+                                          uint32_t first_level)
+{
+    uint32_t level;
+
+    if (texture == NULL || first_level == 0u)
+        return;
+    for (level = first_level; level < RINGL_MAX_TEXTURE_MIP_LEVELS; ++level) {
+        RinGLTextureMipStorage* storage = texture_mip_storage(texture, level);
+
+        if (storage == NULL)
+            continue;
+        free(storage->shadow_bytes);
+        memset(storage, 0, sizeof(*storage));
+    }
+}
+
 static int texture_level0_storage_defined(const RinGLTextureObject* texture)
 {
-    if (texture == NULL || !texture->defined || texture->width == 0u ||
-        texture->height == 0u || texture->shadow_bytes == NULL ||
-        texture->shadow_size == 0u) {
-        return 0;
-    }
-
-    return 1;
+    return texture_level_storage_defined(texture, 0u);
 }
 
 static int texture_level0_complete(const RinGLTextureObject* texture)
@@ -78,9 +186,24 @@ static int texture_level0_complete(const RinGLTextureObject* texture)
         return 1;
     }
 
-    /* The current profile only stores mip level zero. A mipmapped min filter
-     * is therefore complete only for a 1x1 base level. */
-    return texture->width == 1u && texture->height == 1u;
+    {
+        uint32_t level_count = texture_mip_level_count(texture->width,
+                                                        texture->height);
+        uint32_t level;
+
+        for (level = 1u; level < level_count; ++level) {
+            const RinGLTextureMipStorage* storage =
+                texture_mip_storage_const(texture, level);
+
+            if (!texture_level_storage_defined(texture, level) ||
+                storage == NULL ||
+                storage->width != texture_expected_mip_width(texture, level) ||
+                storage->height != texture_expected_mip_height(texture, level)) {
+                return 0;
+            }
+        }
+    }
+    return 1;
 }
 
 static int texture_color_format(uint32_t format)
@@ -321,8 +444,12 @@ static int texture_realize_image(RinGLContext* context,
 {
     RinGLRinGpuSampledImage2DV1 desc;
     RinGLRinGpuImage2DV1 color_target_desc;
+    RinGLRinGpuImage2DMipV2 mip_desc;
     RinGLRinGpuImageUpload2DV1 upload;
+    RinGLRinGpuImageUpload2DMipV2 mip_upload;
     uint64_t image = 0u;
+    uint32_t mip_count;
+    uint32_t level;
 
     if (texture->ringpu_image != 0u)
         return 0;
@@ -333,8 +460,36 @@ static int texture_realize_image(RinGLContext* context,
             : !texture_level0_complete(texture))
         return -1;
 
-    if (texture->format == RINGL_DEPTH_COMPONENT32F ||
-        texture->format == RINGL_DEPTH24_STENCIL8) {
+    mip_count = texture_defined_mip_count(texture);
+    if (mip_count == 0u)
+        return -1;
+
+    if (mip_count > 1u) {
+        if (texture->format == RINGL_DEPTH_COMPONENT32F ||
+            texture->format == RINGL_DEPTH24_STENCIL8 ||
+            !texture_color_format(texture->format) ||
+            (texture->requires_color_target != 0u &&
+             texture->format != RINGL_RGBA)) {
+            return -1;
+        }
+        memset(&mip_desc, 0, sizeof(mip_desc));
+        mip_desc.width = texture->width;
+        mip_desc.height = texture->height;
+        mip_desc.format = texture_ringpu_format(texture->format);
+        mip_desc.mip_levels = mip_count;
+        mip_desc.usage = RINGL_RIN_GPU_IMAGE_USAGE_COPY_DESTINATION |
+                         RINGL_RIN_GPU_IMAGE_USAGE_SAMPLED;
+        if (texture->requires_color_target != 0u) {
+            mip_desc.usage |= RINGL_RIN_GPU_IMAGE_USAGE_COLOR_TARGET |
+                              RINGL_RIN_GPU_IMAGE_USAGE_COPY_SOURCE;
+        }
+        if (ringl_backend_create_image_2d_mip_v2(context, &mip_desc,
+                                                 &image) != 0 ||
+            image == 0u) {
+            return -1;
+        }
+    } else if (texture->format == RINGL_DEPTH_COMPONENT32F ||
+               texture->format == RINGL_DEPTH24_STENCIL8) {
         memset(&color_target_desc, 0, sizeof(color_target_desc));
         color_target_desc.width = texture->width;
         color_target_desc.height = texture->height;
@@ -343,10 +498,8 @@ static int texture_realize_image(RinGLContext* context,
             : RINGL_RIN_GPU_FORMAT_D32_FLOAT;
         color_target_desc.usage =
             RINGL_RIN_GPU_IMAGE_USAGE_COPY_DESTINATION |
-            RINGL_RIN_GPU_IMAGE_USAGE_DEPTH_STENCIL;
-        if (texture->format == RINGL_DEPTH_COMPONENT32F ||
-            texture->format == RINGL_DEPTH24_STENCIL8)
-            color_target_desc.usage |= RINGL_RIN_GPU_IMAGE_USAGE_SAMPLED;
+            RINGL_RIN_GPU_IMAGE_USAGE_DEPTH_STENCIL |
+            RINGL_RIN_GPU_IMAGE_USAGE_SAMPLED;
         if (ringl_backend_create_image_2d(context, &color_target_desc,
                                           &image) != 0 || image == 0u) {
             return -1;
@@ -377,16 +530,54 @@ static int texture_realize_image(RinGLContext* context,
         return -1;
     }
 
-    memset(&upload, 0, sizeof(upload));
-    upload.width = texture->width;
-    upload.height = texture->height;
-    upload.source_row_pitch_bytes = (uint64_t)texture->width *
-                                    texture_storage_texel_bytes(texture->format);
-    if (ringl_backend_upload_image_2d(context, image, &upload,
-                                      texture->shadow_bytes,
-                                      texture->shadow_size) != 0) {
-        ringl_backend_destroy_object(context, image);
-        return -1;
+    if (mip_count == 1u) {
+        memset(&upload, 0, sizeof(upload));
+        upload.width = texture->width;
+        upload.height = texture->height;
+        upload.source_row_pitch_bytes = (uint64_t)texture->width *
+            texture_storage_texel_bytes(texture->format);
+        if (ringl_backend_upload_image_2d(context, image, &upload,
+                                          texture->shadow_bytes,
+                                          texture->shadow_size) != 0) {
+            ringl_backend_destroy_object(context, image);
+            return -1;
+        }
+    } else {
+        for (level = 0u; level < mip_count; ++level) {
+            const uint8_t* bytes;
+            uint64_t size;
+            uint32_t width;
+            uint32_t height;
+
+            if (level == 0u) {
+                bytes = texture->shadow_bytes;
+                size = texture->shadow_size;
+                width = texture->width;
+                height = texture->height;
+            } else {
+                const RinGLTextureMipStorage* storage =
+                    texture_mip_storage_const(texture, level);
+
+                if (storage == NULL || !texture_level_storage_defined(texture, level))
+                    continue;
+                bytes = storage->shadow_bytes;
+                size = storage->shadow_size;
+                width = storage->width;
+                height = storage->height;
+            }
+            memset(&mip_upload, 0, sizeof(mip_upload));
+            mip_upload.mip_level = level;
+            mip_upload.width = width;
+            mip_upload.height = height;
+            mip_upload.source_row_pitch_bytes = (uint64_t)width *
+                texture_storage_texel_bytes(texture->format);
+            if (ringl_backend_upload_image_2d_mip_v2(context, image,
+                                                      &mip_upload, bytes,
+                                                      size) != 0) {
+                ringl_backend_destroy_object(context, image);
+                return -1;
+            }
+        }
     }
 
     texture->ringpu_image = image;
@@ -526,6 +717,7 @@ void ringl_delete_textures(int32_t count, const uint32_t* textures)
             ringl_backend_destroy_object(context,
                                          context->textures[slot_index].ringpu_sampler);
             texture_discard_image(context, &context->textures[slot_index]);
+            texture_drop_mip_storage_from(&context->textures[slot_index], 1u);
             free(context->textures[slot_index].shadow_bytes);
             memset(&context->textures[slot_index], 0,
                    sizeof(context->textures[slot_index]));
@@ -714,6 +906,129 @@ int32_t ringl_get_tex_parameteri(uint32_t target, uint32_t pname)
     return 0;
 }
 
+static void texture_free_generated_mips(
+    RinGLTextureMipStorage generated[RINGL_MAX_TEXTURE_MIP_LEVELS - 1u])
+{
+    uint32_t index;
+
+    for (index = 0u; index < RINGL_MAX_TEXTURE_MIP_LEVELS - 1u; ++index) {
+        free(generated[index].shadow_bytes);
+        memset(&generated[index], 0, sizeof(generated[index]));
+    }
+}
+
+static int texture_generate_color_mips(
+    const RinGLTextureObject* texture,
+    RinGLTextureMipStorage generated[RINGL_MAX_TEXTURE_MIP_LEVELS - 1u])
+{
+    const uint8_t* source = texture->shadow_bytes;
+    uint32_t source_width = texture->width;
+    uint32_t source_height = texture->height;
+    uint32_t level_count = texture_mip_level_count(texture->width,
+                                                    texture->height);
+    uint32_t level;
+
+    memset(generated, 0, sizeof(RinGLTextureMipStorage) *
+                         (RINGL_MAX_TEXTURE_MIP_LEVELS - 1u));
+    for (level = 1u; level < level_count; ++level) {
+        RinGLTextureMipStorage* destination = &generated[level - 1u];
+        uint32_t x;
+        uint32_t y;
+        uint64_t size;
+
+        destination->width = source_width > 1u ? source_width >> 1u : 1u;
+        destination->height = source_height > 1u ? source_height >> 1u : 1u;
+        size = (uint64_t)destination->width * destination->height * 4u;
+        if (size > SIZE_MAX) {
+            texture_free_generated_mips(generated);
+            return -1;
+        }
+        destination->shadow_bytes = malloc((size_t)size);
+        if (destination->shadow_bytes == NULL) {
+            texture_free_generated_mips(generated);
+            return -1;
+        }
+        destination->shadow_size = size;
+        destination->defined = RINGL_TRUE;
+        for (y = 0u; y < destination->height; ++y) {
+            uint32_t source_y0 = y * 2u;
+            uint32_t source_y1 = source_y0 + 1u < source_height
+                ? source_y0 + 1u : source_y0;
+
+            for (x = 0u; x < destination->width; ++x) {
+                uint32_t source_x0 = x * 2u;
+                uint32_t source_x1 = source_x0 + 1u < source_width
+                    ? source_x0 + 1u : source_x0;
+                const uint8_t* a = source +
+                    ((uint64_t)source_y0 * source_width + source_x0) * 4u;
+                const uint8_t* b = source +
+                    ((uint64_t)source_y0 * source_width + source_x1) * 4u;
+                const uint8_t* c = source +
+                    ((uint64_t)source_y1 * source_width + source_x0) * 4u;
+                const uint8_t* d = source +
+                    ((uint64_t)source_y1 * source_width + source_x1) * 4u;
+                uint8_t* output = destination->shadow_bytes +
+                    ((uint64_t)y * destination->width + x) * 4u;
+                uint32_t component;
+
+                for (component = 0u; component < 4u; ++component) {
+                    output[component] = (uint8_t)(
+                        ((uint32_t)a[component] + b[component] + c[component] +
+                         d[component] + 2u) / 4u);
+                }
+            }
+        }
+        source = destination->shadow_bytes;
+        source_width = destination->width;
+        source_height = destination->height;
+    }
+    return 0;
+}
+
+void ringl_generate_mipmap(uint32_t target)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLTextureObject* texture;
+    RinGLTextureMipStorage generated[RINGL_MAX_TEXTURE_MIP_LEVELS - 1u];
+    uint32_t level_count;
+    uint32_t level;
+
+    if (context == NULL)
+        return;
+    if (!texture_target_valid(target)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return;
+    }
+    texture = bound_texture_2d(context);
+    if (texture == NULL || !texture_level0_storage_defined(texture) ||
+        !texture_color_format(texture->format) ||
+        texture_packed_color_format(texture->format)) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    level_count = texture_mip_level_count(texture->width, texture->height);
+    if (level_count > 1u &&
+        (!context->has_ringpu_ops ||
+         context->ringpu_ops.create_image_2d_mip_v2 == NULL ||
+         context->ringpu_ops.upload_image_2d_mip_v2 == NULL)) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    if (texture_generate_color_mips(texture, generated) != 0) {
+        ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+        return;
+    }
+
+    texture_discard_image(context, texture);
+    texture_drop_mip_storage_from(texture, 1u);
+    for (level = 1u; level < level_count; ++level) {
+        texture->mip_storage[level - 1u] = generated[level - 1u];
+        memset(&generated[level - 1u], 0, sizeof(generated[level - 1u]));
+    }
+    texture_free_generated_mips(generated);
+    ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
+}
+
 static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
                                     uint32_t internal_format, int32_t width,
                                     int32_t height, int32_t border,
@@ -765,6 +1080,10 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
     size = (uint64_t)(uint32_t)width * (uint64_t)(uint32_t)height *
            texture_storage_texel_bytes(storage_format != 0u ? storage_format
                                                              : internal_format);
+    if (size > SIZE_MAX) {
+        ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+        return;
+    }
     if (size != 0u) {
         replacement = malloc((size_t)size);
         if (replacement == NULL) {
@@ -815,6 +1134,9 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
     }
 
     texture_discard_image(context, texture);
+    /* A new base definition invalidates any generated chain.  Drop it only
+     * after the replacement allocation and source conversion succeeded. */
+    texture_drop_mip_storage_from(texture, 1u);
     free(texture->shadow_bytes);
     texture->shadow_bytes = replacement;
     texture->shadow_size = size;
@@ -929,8 +1251,10 @@ static void ringl_tex_sub_image_2d_impl(uint32_t target, int32_t level,
 
     /* Drop the realized image and rebuild the complete level lazily. This
      * avoids depending on immediate-image-upload availability while an image
-     * may still be retained by a recorded command list. */
+     * may still be retained by a recorded command list.  Any generated levels
+     * were derived from the old base texels and must not remain sampleable. */
     texture_discard_image(context, texture);
+    texture_drop_mip_storage_from(texture, 1u);
     ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
 }
 
@@ -1014,6 +1338,7 @@ void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
     }
     free(replacement);
     texture_discard_image(context, texture);
+    texture_drop_mip_storage_from(texture, 1u);
     ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
 }
 
@@ -1098,6 +1423,7 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
     }
 
     texture_discard_image(context, texture);
+    texture_drop_mip_storage_from(texture, 1u);
     free(texture->shadow_bytes);
     texture->shadow_bytes = replacement;
     texture->shadow_size = size;
@@ -1121,6 +1447,7 @@ void ringl_texture_objects_destroy_all(RinGLContext* context)
         ringl_backend_destroy_object(context, context->textures[index].ringpu_sampler);
         texture_discard_image(context, &context->textures[index]);
         context->textures[index].ringpu_sampler = 0u;
+        texture_drop_mip_storage_from(&context->textures[index], 1u);
         free(context->textures[index].shadow_bytes);
         context->textures[index].shadow_bytes = NULL;
         context->textures[index].shadow_size = 0u;

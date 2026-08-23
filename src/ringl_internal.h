@@ -24,6 +24,10 @@
 #define RINGL_MAX_SAMPLER_UNIFORMS 8u
 #define RINGL_MAX_VARYINGS 8u
 #define RINGL_UNIFORM_NAME_MAX RINGL_ACTIVE_INFO_NAME_MAX
+/* RINGL_MAX_TEXTURE_SIZE is 4096, so a 2D texture has at most levels 0..12.
+ * Keep the storage bound explicit rather than deriving an unchecked array
+ * index from application-controlled level values. */
+#define RINGL_MAX_TEXTURE_MIP_LEVELS 13u
 /* RSH1 and the public RinGPU adapter both admit 32 scalar vertex inputs. The
  * public GL limit remains 16 generic vertex-array indices. */
 #define RINGL_MAX_VERTEX_INPUT_COMPONENTS 32u
@@ -35,6 +39,14 @@ typedef struct RinGLBufferObject {
     uint32_t usage;
     uint32_t reserved0;
 } RinGLBufferObject;
+
+typedef struct RinGLTextureMipStorage {
+    uint8_t* shadow_bytes;
+    uint64_t shadow_size;
+    uint32_t width;
+    uint32_t height;
+    uint32_t defined;
+} RinGLTextureMipStorage;
 
 typedef struct RinGLTextureObject {
     uint64_t ringpu_image;
@@ -51,6 +63,11 @@ typedef struct RinGLTextureObject {
     uint32_t wrap_t;
     uint32_t ringpu_image_state;
     uint32_t requires_color_target;
+    /* Level zero remains in the fields above for ABI-local compatibility with
+     * the existing framebuffer and query paths.  Higher levels are separate,
+     * individually-owned CPU snapshots. */
+    RinGLTextureMipStorage
+        mip_storage[RINGL_MAX_TEXTURE_MIP_LEVELS - 1u];
 } RinGLTextureObject;
 
 typedef struct RinGLFramebufferObject {
@@ -332,9 +349,16 @@ int ringl_backend_create_sampled_image_2d(
 int ringl_backend_create_image_2d(
     RinGLContext* context, const RinGLRinGpuImage2DV1* desc,
     uint64_t* image_out);
+int ringl_backend_create_image_2d_mip_v2(
+    RinGLContext* context, const RinGLRinGpuImage2DMipV2* desc,
+    uint64_t* image_out);
 int ringl_backend_upload_image_2d(
     RinGLContext* context, uint64_t image,
     const RinGLRinGpuImageUpload2DV1* upload,
+    const void* data, uint64_t size_bytes);
+int ringl_backend_upload_image_2d_mip_v2(
+    RinGLContext* context, uint64_t image,
+    const RinGLRinGpuImageUpload2DMipV2* upload,
     const void* data, uint64_t size_bytes);
 int ringl_backend_create_sampler(RinGLContext* context,
                                  const RinGLRinGpuSamplerV1* desc,

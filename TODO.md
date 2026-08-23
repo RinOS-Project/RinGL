@@ -283,6 +283,15 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   the capability and callbacks. Single-stream and all-constant layouts retain
   the V1 ABI. Layout and RinGPU/Aquamarine bridge tests cover distinct x/y
   buffers, a disabled generic value, and both draw forms.
+- [x] Add a bounded generated 2D mip-chain path for unpacked
+  RGBA8-normalized color textures. `ringl_generate_mipmap()` creates a full
+  deterministic clamped-2x2 chain atomically, and the optional V2 RinGPU
+  callback tail creates one CPU-visible image and uploads every explicit mip
+  subresource. A V1-only backend, packed color, depth/stencil, manual
+  nonzero-level definition, automatic derivative/LOD selection, and
+  nonzero-mip framebuffer rendering remain unsupported rather than being
+  reported as completed. Strict C11 fake-backend and actual RinGPU bridge
+  tests verify level dimensions, bytes, and the native two-level descriptor.
 - [ ] Decide the boundary for OpenGL ES 3.x features.
 - [ ] Add VAOs, instancing, additional texture formats, MRT, and other GLES 3.x features only after the underlying RinGPU contracts are ready.
 

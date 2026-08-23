@@ -23,6 +23,9 @@ as blockers:
 - native `UINT8` index format;
 - CPU-visible image upload, sampled images, samplers and typed graphics
   bindings;
+- optional CPU-visible multi-mip 2D image creation and per-level upload via
+  the RinGL V2 callback tail, mapped directly to `mip_levels` and `mip_level`
+  in the public RinGPU image ABI;
 - fence completion waits through `ringpu_wait_fence()`;
 - CPU-readable images and bounded image readback through
   `ringpu_readback_image()`.

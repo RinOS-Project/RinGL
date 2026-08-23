@@ -370,9 +370,11 @@ Aquamarine target owns one storage sample, so enabled zero coverage suppresses
 that sample's color/depth/stencil fragment operation and inverted zero coverage
 retains it. `RinGLSampleCoverageV1` provides a versioned, failure-atomic
 snapshot for browser queries. `ringl_hint()` accepts only
-`GENERATE_MIPMAP_HINT` with standard hint modes as an advisory no-op because
-this bounded profile has no generated mip chain; derivative hints are not
-claimed as supported.
+`GENERATE_MIPMAP_HINT` with standard hint modes as an advisory no-op.
+`ringl_generate_mipmap()` is the separate, explicit operation that builds a
+complete RGBA8-normalized 2D chain through a deterministic clamped 2x2 box
+filter; hints do not select a LOD, and derivative hints are not claimed as
+supported.
 
 Linked program reflection is also exposed without borrowing RinGL storage.
 `ringl_get_active_attrib()` and `ringl_get_active_uniform()` copy one bounded
@@ -429,9 +431,10 @@ actual RinGL-to-RinGPU-to-Aquamarine test cover these combinations. Texture
 attachments are not merely query-only: the same actual test covers every
 supported distinct pair of D32/D24S8 depth renderbuffer or level-zero texture
 and native S8/D24S8 stencil renderbuffer or level-zero D24S8 texture through
-clear, depth-fail stencil update, and RGBA readback. Texture cube faces, mip
-levels beyond zero, multisample storage, and resolve remain outside this
-bounded profile.
+clear, depth-fail stencil update, and RGBA readback. Texture cube faces,
+nonzero-mip framebuffer attachments, multisample storage, and resolve remain
+outside this bounded profile. Generated color mips are sampled resources, not
+render targets.
 
 `ringl_get_framebuffer_attachment()` is the versioned, caller-owned query for
 the bounded custom-FBO model. It reports the actual current
@@ -440,7 +443,7 @@ the bounded custom-FBO model. It reports the actual current
 realizing a RinGPU image for observation. A combined query returns no object
 unless both logical aspects share one attachment. The older color-only helper
 is retained as a compatibility shorthand; new embeddings should use the
-attachment-point query. Texture cube faces, mip levels beyond zero, separate
+attachment-point query. Texture cube faces, nonzero-mip attachments, separate
 attachments outside the verified D32/D24S8 level-zero depth and native
 S8/D24S8 level-zero stencil matrix, and multisample attachments remain outside
 the profile.
@@ -473,12 +476,15 @@ RinOS surface backend now executes the matching typed sampled-image
 and sampler bind group instead of treating it as a placeholder: it snapshots
 the bounded RGBA8 image into the resource-aware software executor and applies
 nearest or linear filtering with clamp-to-edge, repeat, or mirrored-repeat
-addressing. The level-zero executor has no derivatives or mip levels, so a
-texture larger than 1x1 requires matching minification and magnification
-filters; it rejects ambiguous min/mag selection rather than silently choosing
-one. The strict C11 RinGL tests cover format normalization, tightly-packed RGB
-image/sub-image data, and padded D32 source rows; the surface integration test
-renders a normalized RGB texture through the real RinGPU resource binding.
+addressing. `ringl_generate_mipmap()` builds a complete chain for unpacked
+RGBA8-normalized color storage and realizes each level through the optional
+V2 RinGPU image/upload callbacks. The executor still has no derivatives or
+automatic LOD selection: it samples the explicitly bound base level, so it
+does not claim mip-filtered rendering. Packed color, depth/stencil, manual
+nonzero-level definitions, and nonzero-mip render targets remain rejected.
+The strict C11 RinGL tests cover format normalization, tightly-packed RGB
+image/sub-image data, padded D32 source rows, generated mip upload, and the
+actual RinGPU bridge image descriptor.
 
 Embeddings handling browser-facing byte uploads must use
 `ringl_tex_image_2d_from_bytes()` and `ringl_tex_sub_image_2d_from_bytes()`.

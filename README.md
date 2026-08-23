@@ -330,6 +330,16 @@ module and atomically replaces only the vertex module on a matrix update. The
 focused RinGPU-module test verifies the fragment module retains its two typed
 image/sampler resources across the update.
 
+That path now executes a bounded transformed textured-quad profile end to
+end: a vertex shader may transform an `attribute vec4` position (or construct
+one from `attribute vec2` position) with a `uniform mat4`, copy one
+`attribute vec2` into one `varying vec2`, and feed that varying to the paired
+fragment `texture2D` lowering profile. Both the matrix product and varying
+stores are RSH1 instructions consumed by RinGPU; no embedding-side geometry
+transform or sampled-color fallback is involved. Coordinate arithmetic,
+multiple transformed varyings, and other matrix expressions remain outside
+this deliberately bounded shape.
+
 The no-varying RSH1 profile also lowers local `vec2`, `vec3`, and `vec4`
 values and component-wise vector arithmetic directly to scalar RSH1
 instructions. Same-width `+`/`-`, unary `-`, and vector/scalar `*` and `/`

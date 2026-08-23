@@ -25,10 +25,23 @@ typedef struct __attribute__((packed)) Rsh1Header {
     uint32_t reserved1;
 } Rsh1Header;
 
+typedef struct __attribute__((packed)) Rsh1Instruction {
+    uint16_t opcode;
+    uint16_t flags;
+    uint16_t destination;
+    uint16_t source0;
+    uint16_t source1;
+    uint16_t resource;
+    uint32_t immediate;
+} Rsh1Instruction;
+
 typedef struct FakeBackend {
     uint64_t next_handle;
     uint32_t shader_creates;
     uint32_t texture_fragment_modules;
+    uint32_t transformed_texture_vertex_modules;
+    float expected_transform[16];
+    uint32_t validate_expected_transform;
     uint32_t reject_create;
 } FakeBackend;
 
@@ -66,6 +79,42 @@ static int fake_create_shader_module(void* session, const void* rsh1,
     assert(header.magic == UINT32_C(0x31485352) && header.total_size == size_bytes);
     if (header.stage == 2u && header.resource_count == 2u)
         backend->texture_fragment_modules++;
+    if (header.stage == 1u && header.input_count == 6u &&
+        header.output_count == 8u && header.resource_count == 0u &&
+        header.instruction_count == 61u) {
+        const Rsh1Instruction* instructions =
+            (const Rsh1Instruction*)((const uint8_t*)rsh1 + sizeof(header));
+        uint32_t row;
+
+        assert(size_bytes == sizeof(header) +
+                                 header.instruction_count * sizeof(*instructions));
+        /* Every row must still read the original xyzw attribute registers.
+         * In particular, a prior row's result cannot become the x input for
+         * a later row when the transform is non-diagonal. */
+        for (row = 0u; row < 4u; ++row) {
+            uint32_t column;
+
+            for (column = 0u; column < 4u; ++column) {
+                const Rsh1Instruction* multiply =
+                    &instructions[22u + row * 7u + column];
+
+                assert(multiply->opcode == 22u && multiply->source1 == column);
+            }
+        }
+        if (backend->validate_expected_transform && !backend->reject_create) {
+            uint32_t index;
+
+            for (index = 0u; index < 16u; ++index) {
+                uint32_t expected_bits;
+
+                memcpy(&expected_bits, &backend->expected_transform[index],
+                       sizeof(expected_bits));
+                assert(instructions[6u + index].opcode == 16u &&
+                       instructions[6u + index].immediate == expected_bits);
+            }
+        }
+        backend->transformed_texture_vertex_modules++;
+    }
     backend->shader_creates++;
     if (backend->reject_create)
         return -1;
@@ -137,16 +186,20 @@ int main(void)
     assert(backend.shader_creates == 3u);
 
     /* A matrix uniform must create program-owned RinGPU modules at link and
-     * after an update. A rejected replacement must preserve the former
-     * matrix state rather than publishing a partly updated executable. */
+     * after an update. This is the real transformed-texture WebGL route: the
+     * vertex module transforms a vec4 position and forwards a UV varying into
+     * the independently lowered texture fragment module. A rejected
+     * replacement must preserve the former matrix state rather than
+     * publishing a partly updated executable. */
     matrix_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
     matrix_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
     matrix_program = ringl_create_program();
     assert(matrix_vertex != 0u && matrix_fragment != 0u && matrix_program != 0u);
     ringl_shader_source(matrix_vertex,
-        "attribute vec4 position; uniform mat4 transform; "
-        "void main() { gl_Position = transform * position "
-        "+ vec4(0.0, 0.0, 0.0, 0.0); }", -1);
+        "attribute vec4 position; attribute vec2 texCoord; "
+        "uniform mat4 transform; varying vec2 uv; "
+        "void main() { gl_Position = transform * position; uv = texCoord; }",
+        -1);
     ringl_shader_source(matrix_fragment,
         "precision mediump float; uniform sampler2D texture; "
         "void main() { gl_FragColor = texture2D(texture, vec2(0.5, 0.5)); }",
@@ -161,12 +214,13 @@ int main(void)
     assert(ringl_get_program_link_status(matrix_program) == RINGL_TRUE);
     assert(backend.shader_creates == 5u);
     assert(backend.texture_fragment_modules == 2u);
+    assert(backend.transformed_texture_vertex_modules == 1u);
     {
-        float identity[16] = {
-            1.0f, 0.0f, 0.0f, 0.0f,
-            0.0f, 1.0f, 0.0f, 0.0f,
+        float transform[16] = {
+            2.0f, 3.0f, 0.0f, 0.0f,
+            1.0f, 4.0f, 0.0f, 0.0f,
             0.0f, 0.0f, 1.0f, 0.0f,
-            0.0f, 0.0f, 0.0f, 1.0f,
+            5.0f, 6.0f, 0.0f, 1.0f,
         };
         float values[16];
         int32_t location = ringl_get_uniform_location(matrix_program, "transform");
@@ -176,17 +230,20 @@ int main(void)
          * texture-lowering module. */
         assert(location == 1);
         ringl_use_program(matrix_program);
-        ringl_uniform_matrix4fv(location, 0u, identity);
+        memcpy(backend.expected_transform, transform, sizeof(transform));
+        backend.validate_expected_transform = 1u;
+        ringl_uniform_matrix4fv(location, 0u, transform);
         assert(ringl_get_error() == RINGL_NO_ERROR);
         assert(backend.shader_creates == 6u);
         assert(backend.texture_fragment_modules == 2u);
+        assert(backend.transformed_texture_vertex_modules == 2u);
         backend.reject_create = 1u;
-        identity[0] = 2.0f;
-        ringl_uniform_matrix4fv(location, 0u, identity);
+        transform[0] = 7.0f;
+        ringl_uniform_matrix4fv(location, 0u, transform);
         assert(ringl_get_error() == RINGL_INVALID_OPERATION);
         assert(backend.shader_creates == 7u);
         assert(ringl_get_uniform_matrix4f(matrix_program, location, values) == 0);
-        assert(values[0] == 1.0f);
+        assert(values[0] == 2.0f);
         backend.reject_create = 0u;
     }
     ringl_delete_program(matrix_program);

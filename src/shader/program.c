@@ -2,6 +2,7 @@
 #include "ringl_internal.h"
 #include "glsl_parser.h"
 #include "glsl_lower.h"
+#include "varying_lower.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -674,10 +675,16 @@ static int ringl_program_lower_uniform_shader(
     *rsh1_out = NULL;
     *rsh1_size_out = 0u;
     *module_out = 0u;
-    if (ringl_glsl_lower_rsh1_with_uniforms(
-            shader->shader_type, shader->source,
-            (size_t)shader->source_length, uniforms, uniform_count,
-            &lowered) != 0 || !lowered.ok || lowered.byte_size == 0u) {
+    if ((strstr(shader->source, "varying") != NULL
+             ? ringl_glsl_lower_varying_rsh1_with_uniforms(
+                   shader->shader_type, shader->source,
+                   (size_t)shader->source_length, uniforms, uniform_count,
+                   &lowered)
+             : ringl_glsl_lower_rsh1_with_uniforms(
+                   shader->shader_type, shader->source,
+                   (size_t)shader->source_length, uniforms, uniform_count,
+                   &lowered)) != 0 ||
+        !lowered.ok || lowered.byte_size == 0u) {
         return 0;
     }
     copy = malloc(lowered.byte_size);

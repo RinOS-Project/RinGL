@@ -338,7 +338,9 @@ fragment `texture2D` lowering profile. Both the matrix product and varying
 stores are RSH1 instructions consumed by RinGPU; no embedding-side geometry
 transform or sampled-color fallback is involved. Coordinate arithmetic,
 multiple transformed varyings, and other matrix expressions remain outside
-this deliberately bounded shape.
+this deliberately bounded shape. The focused `textured-draw` test binds the
+two attributes, uploads a matrix through the public uniform API, and verifies
+the resulting RinGPU-native texture pipeline and resource bindings.
 
 The no-varying RSH1 profile also lowers local `vec2`, `vec3`, and `vec4`
 values and component-wise vector arithmetic directly to scalar RSH1

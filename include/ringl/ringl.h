@@ -661,6 +661,27 @@ typedef struct RinGLRinGpuDrawIndexedBindingsMipV3 {
     uint32_t color_array_layer;
 } RinGLRinGpuDrawIndexedBindingsMipV3;
 
+/* Optional depth/stencil mip-target records. These are separate from V5's
+ * color-mip records: an embedding must receive every attachment subresource
+ * explicitly, never infer a depth/stencil level from the color target. */
+typedef struct RinGLRinGpuRenderPassDepthMipV2 {
+    RinGLRinGpuRenderPassDepthV1 base;
+    uint32_t color_mip_level;
+    uint32_t color_array_layer;
+    uint32_t depth_mip_level;
+    uint32_t depth_array_layer;
+} RinGLRinGpuRenderPassDepthMipV2;
+
+typedef struct RinGLRinGpuRenderPassDepthStencilMipV2 {
+    RinGLRinGpuRenderPassDepthStencilV1 base;
+    uint32_t color_mip_level;
+    uint32_t color_array_layer;
+    uint32_t depth_mip_level;
+    uint32_t depth_array_layer;
+    uint32_t stencil_mip_level;
+    uint32_t stencil_array_layer;
+} RinGLRinGpuRenderPassDepthStencilMipV2;
+
 typedef struct RinGLRinGpuSampledImage2DV1 {
     uint32_t width;
     uint32_t height;
@@ -804,6 +825,12 @@ typedef int (*RinGLRinGpuBeginRenderPassDepthFn)(
 typedef int (*RinGLRinGpuBeginRenderPassDepthStencilFn)(
     void* session, uint64_t command_list,
     const RinGLRinGpuRenderPassDepthStencilV1* render_pass);
+typedef int (*RinGLRinGpuBeginRenderPassDepthMipV2Fn)(
+    void* session, uint64_t command_list,
+    const RinGLRinGpuRenderPassDepthMipV2* render_pass);
+typedef int (*RinGLRinGpuBeginRenderPassDepthStencilMipV2Fn)(
+    void* session, uint64_t command_list,
+    const RinGLRinGpuRenderPassDepthStencilMipV2* render_pass);
 typedef int (*RinGLRinGpuSetRasterStateFn)(
     void* session, uint64_t command_list,
     const RinGLRinGpuRasterStateV1* state);
@@ -920,6 +947,11 @@ typedef struct RinGLRinGpuOpsV1 {
     RinGLRinGpuDrawVerticesBindingsMipV3Fn draw_vertices_bindings_mip_v3;
     RinGLRinGpuDrawIndexedMipV3Fn draw_indexed_mip_v3;
     RinGLRinGpuDrawIndexedBindingsMipV3Fn draw_indexed_bindings_mip_v3;
+    /* Optional V6 tail: explicit depth/stencil attachment mips. A V6
+     * callback is used only when at least one attachment level is nonzero. */
+    RinGLRinGpuBeginRenderPassDepthMipV2Fn begin_render_pass_depth_mip_v2;
+    RinGLRinGpuBeginRenderPassDepthStencilMipV2Fn
+        begin_render_pass_depth_stencil_mip_v2;
 } RinGLRinGpuOpsV1;
 
 typedef struct RinGLRinGpuBindingV1 {

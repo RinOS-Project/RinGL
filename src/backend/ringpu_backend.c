@@ -521,6 +521,37 @@ int ringl_backend_draw_indexed_v2(RinGLContext* context,
                                                      command_list, draw));
 }
 
+int ringl_backend_begin_render_pass_depth_mip_v2(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuRenderPassDepthMipV2* render_pass)
+{
+    if (context == NULL || command_list == 0u || render_pass == NULL ||
+        render_pass->base.color_target == 0u ||
+        render_pass->base.depth_target == 0u || !context->has_ringpu_ops ||
+        context->ringpu_ops.begin_render_pass_depth_mip_v2 == NULL) {
+        return -1;
+    }
+    return ringl_backend_result(
+        context, context->ringpu_ops.begin_render_pass_depth_mip_v2(
+                     context->ringpu.session, command_list, render_pass));
+}
+
+int ringl_backend_begin_render_pass_depth_stencil_mip_v2(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuRenderPassDepthStencilMipV2* render_pass)
+{
+    if (context == NULL || command_list == 0u || render_pass == NULL ||
+        render_pass->base.color_target == 0u ||
+        render_pass->base.depth_target == 0u ||
+        render_pass->base.stencil_target == 0u || !context->has_ringpu_ops ||
+        context->ringpu_ops.begin_render_pass_depth_stencil_mip_v2 == NULL) {
+        return -1;
+    }
+    return ringl_backend_result(
+        context, context->ringpu_ops.begin_render_pass_depth_stencil_mip_v2(
+                     context->ringpu.session, command_list, render_pass));
+}
+
 int ringl_backend_draw_vertices_mip_v3(
     RinGLContext* context, uint64_t command_list,
     const RinGLRinGpuDrawVerticesMipV3* draw)

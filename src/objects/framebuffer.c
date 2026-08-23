@@ -153,6 +153,37 @@ static int nonzero_color_mip_backend_supported(const RinGLContext* context)
         context->ringpu_ops.draw_indexed_bindings_mip_v3 != NULL;
 }
 
+static int nonzero_depth_stencil_mip_backend_supported(
+    const RinGLContext* context, const RinGLFramebufferObject* framebuffer)
+{
+    int combined;
+
+    if (context == NULL || framebuffer == NULL ||
+        context->ringpu_ops.create_image_2d_mip_v2 == NULL ||
+        context->ringpu_ops.upload_image_2d_mip_v2 == NULL ||
+        context->ringpu_ops.transition_image_2d_mip_v2 == NULL)
+        return 0;
+    combined = framebuffer->depth_attachment_kind !=
+                    RINGL_FRAMEBUFFER_ATTACHMENT_NONE &&
+        framebuffer->stencil_attachment_kind !=
+                    RINGL_FRAMEBUFFER_ATTACHMENT_NONE &&
+        framebuffer->depth_attachment_kind ==
+            framebuffer->stencil_attachment_kind &&
+        framebuffer->depth_attachment_object ==
+            framebuffer->stencil_attachment_object &&
+        framebuffer->depth_attachment_level ==
+            framebuffer->stencil_attachment_level;
+    return combined
+        ? context->ringpu_ops.begin_render_pass_depth_mip_v2 != NULL
+        : (framebuffer->depth_attachment_kind ==
+                   RINGL_FRAMEBUFFER_ATTACHMENT_NONE ||
+           framebuffer->stencil_attachment_kind ==
+                   RINGL_FRAMEBUFFER_ATTACHMENT_NONE)
+            ? context->ringpu_ops.begin_render_pass_depth_mip_v2 != NULL
+            : context->ringpu_ops.begin_render_pass_depth_stencil_mip_v2 !=
+                NULL;
+}
+
 static int color_attachment_dimensions(RinGLContext* context,
                                        const RinGLFramebufferObject* framebuffer,
                                        uint32_t* width_out, uint32_t* height_out)
@@ -226,7 +257,6 @@ static int depth_attachment_dimensions(RinGLContext* context,
             !depth_attachment_format_valid(
                 texture->format, framebuffer->depth_attachment_has_depth,
                 framebuffer->depth_attachment_has_stencil) ||
-             framebuffer->depth_attachment_level != 0 ||
              texture_attachment_dimensions(texture,
                                            framebuffer->depth_attachment_level,
                                            width_out, height_out) != 0)
@@ -281,7 +311,6 @@ static int stencil_attachment_dimensions(
         if (!texture->defined ||
             !depth_attachment_format_valid(texture->format, RINGL_FALSE,
                                            RINGL_TRUE) ||
-            framebuffer->stencil_attachment_level != 0 ||
             texture_attachment_dimensions(texture,
                                           framebuffer->stencil_attachment_level,
                                           width_out, height_out) != 0)
@@ -630,14 +659,24 @@ uint32_t ringl_check_framebuffer_status(uint32_t target)
         return RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
     if (framebuffer->color_attachment_kind ==
             RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D &&
-        framebuffer->color_attachment_level != 0) {
-        if (framebuffer->depth_attachment_kind !=
-                RINGL_FRAMEBUFFER_ATTACHMENT_NONE ||
-            framebuffer->stencil_attachment_kind !=
-                RINGL_FRAMEBUFFER_ATTACHMENT_NONE ||
-            !nonzero_color_mip_backend_supported(context)) {
+        framebuffer->color_attachment_level != 0 &&
+        !nonzero_color_mip_backend_supported(context))
+        return RINGL_FRAMEBUFFER_UNSUPPORTED;
+    if ((framebuffer->depth_attachment_kind ==
+             RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D &&
+         framebuffer->depth_attachment_level != 0) ||
+        (framebuffer->stencil_attachment_kind ==
+             RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D &&
+         framebuffer->stencil_attachment_level != 0) ||
+        ((framebuffer->depth_attachment_kind !=
+              RINGL_FRAMEBUFFER_ATTACHMENT_NONE ||
+          framebuffer->stencil_attachment_kind !=
+              RINGL_FRAMEBUFFER_ATTACHMENT_NONE) &&
+         framebuffer->color_attachment_kind ==
+              RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D &&
+         framebuffer->color_attachment_level != 0)) {
+        if (!nonzero_depth_stencil_mip_backend_supported(context, framebuffer))
             return RINGL_FRAMEBUFFER_UNSUPPORTED;
-        }
     }
     return RINGL_FRAMEBUFFER_COMPLETE;
 }

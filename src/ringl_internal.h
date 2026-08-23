@@ -447,6 +447,12 @@ int ringl_backend_begin_render_pass_depth(
 int ringl_backend_begin_render_pass_depth_stencil(
     RinGLContext* context, uint64_t command_list,
     const RinGLRinGpuRenderPassDepthStencilV1* render_pass);
+int ringl_backend_begin_render_pass_depth_mip_v2(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuRenderPassDepthMipV2* render_pass);
+int ringl_backend_begin_render_pass_depth_stencil_mip_v2(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuRenderPassDepthStencilMipV2* render_pass);
 int ringl_backend_set_raster_state(RinGLContext* context,
                                    uint64_t command_list,
                                    const RinGLRinGpuRasterStateV1* state);
@@ -522,6 +528,7 @@ int ringl_texture_realize_color_target(RinGLContext* context,
                                        uint32_t* height_out);
 int ringl_texture_realize_depth_target(RinGLContext* context,
                                        uint32_t texture,
+                                       uint32_t mip_level,
                                        uint64_t* image_out,
                                        uint32_t** image_state_out,
                                        uint32_t* width_out,

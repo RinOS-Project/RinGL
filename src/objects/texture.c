@@ -519,16 +519,18 @@ static int texture_realize_image(RinGLContext* context,
             : !texture_level0_complete(texture))
         return -1;
 
-    mip_count = texture->requires_color_target != 0u
+    mip_count = (texture->requires_color_target != 0u ||
+                 texture->format == RINGL_DEPTH_COMPONENT32F ||
+                 texture->format == RINGL_DEPTH24_STENCIL8)
         ? texture_highest_defined_mip_count(texture)
         : texture_defined_mip_count(texture);
     if (mip_count == 0u)
         return -1;
 
     if (mip_count > 1u) {
-        if (texture->format == RINGL_DEPTH_COMPONENT32F ||
-            texture->format == RINGL_DEPTH24_STENCIL8 ||
-            !texture_color_format(texture->format) ||
+        if ((!texture_color_format(texture->format) &&
+             texture->format != RINGL_DEPTH_COMPONENT32F &&
+             texture->format != RINGL_DEPTH24_STENCIL8) ||
             (texture->requires_color_target != 0u &&
              texture->format != RINGL_RGBA)) {
             return -1;
@@ -536,13 +538,21 @@ static int texture_realize_image(RinGLContext* context,
         memset(&mip_desc, 0, sizeof(mip_desc));
         mip_desc.width = texture->width;
         mip_desc.height = texture->height;
-        mip_desc.format = texture_ringpu_format(texture->format);
+        mip_desc.format = texture->format == RINGL_DEPTH24_STENCIL8
+            ? RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT
+            : texture->format == RINGL_DEPTH_COMPONENT32F
+                ? RINGL_RIN_GPU_FORMAT_D32_FLOAT
+                : texture_ringpu_format(texture->format);
         mip_desc.mip_levels = mip_count;
         mip_desc.usage = RINGL_RIN_GPU_IMAGE_USAGE_COPY_DESTINATION |
                          RINGL_RIN_GPU_IMAGE_USAGE_SAMPLED;
         if (texture->requires_color_target != 0u) {
             mip_desc.usage |= RINGL_RIN_GPU_IMAGE_USAGE_COLOR_TARGET |
                               RINGL_RIN_GPU_IMAGE_USAGE_COPY_SOURCE;
+        }
+        if (texture->format == RINGL_DEPTH_COMPONENT32F ||
+            texture->format == RINGL_DEPTH24_STENCIL8) {
+            mip_desc.usage |= RINGL_RIN_GPU_IMAGE_USAGE_DEPTH_STENCIL;
         }
         if (ringl_backend_create_image_2d_mip_v2(context, &mip_desc,
                                                  &image) != 0 ||
@@ -1132,11 +1142,15 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
     }
     if (level != 0) {
         uint32_t mip_level = (uint32_t)level;
+        uint32_t requested_format = storage_format != 0u
+            ? storage_format : internal_format;
 
-        if (!texture_level0_storage_defined(texture) || storage_format == 0u ||
-            !texture_color_format(storage_format) ||
-            texture_packed_color_format(storage_format) ||
-            texture->format != storage_format) {
+        if (!texture_level0_storage_defined(texture) ||
+            !((storage_format != 0u && texture_color_format(storage_format) &&
+               !texture_packed_color_format(storage_format)) ||
+              requested_format == RINGL_DEPTH_COMPONENT32F ||
+              requested_format == RINGL_DEPTH24_STENCIL8) ||
+            texture->format != requested_format) {
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return;
         }
@@ -1636,6 +1650,7 @@ int ringl_texture_realize_color_target(RinGLContext* context, uint32_t texture,
 }
 
 int ringl_texture_realize_depth_target(RinGLContext* context, uint32_t texture,
+                                       uint32_t mip_level,
                                        uint64_t* image_out,
                                        uint32_t** image_state_out,
                                        uint32_t* width_out,
@@ -1644,7 +1659,8 @@ int ringl_texture_realize_depth_target(RinGLContext* context, uint32_t texture,
     uint32_t index;
     RinGLTextureObject* object;
 
-    if (context == NULL || texture == 0u || image_out == NULL ||
+    if (context == NULL || texture == 0u ||
+        mip_level >= RINGL_MAX_TEXTURE_MIP_LEVELS || image_out == NULL ||
         image_state_out == NULL || width_out == NULL || height_out == NULL ||
         ringl_object_lookup(context, texture, RINGL_OBJECT_TEXTURE) == NULL)
         return -1;
@@ -1652,7 +1668,7 @@ int ringl_texture_realize_depth_target(RinGLContext* context, uint32_t texture,
     if (index >= RINGL_OBJECT_SLOT_COUNT)
         return -1;
     object = &context->textures[index];
-    if (!texture_level0_storage_defined(object) ||
+    if (!texture_level_storage_defined(object, mip_level) ||
         (object->format != RINGL_DEPTH_COMPONENT32F &&
          object->format != RINGL_DEPTH24_STENCIL8) ||
         texture_realize_image(context, object) != 0 ||
@@ -1660,8 +1676,18 @@ int ringl_texture_realize_depth_target(RinGLContext* context, uint32_t texture,
         return -1;
     }
     *image_out = object->ringpu_image;
-    *image_state_out = &object->ringpu_image_state[0];
-    *width_out = object->width;
-    *height_out = object->height;
+    *image_state_out = &object->ringpu_image_state[mip_level];
+    if (mip_level == 0u) {
+        *width_out = object->width;
+        *height_out = object->height;
+    } else {
+        const RinGLTextureMipStorage* storage =
+            texture_mip_storage_const(object, mip_level);
+
+        if (storage == NULL)
+            return -1;
+        *width_out = storage->width;
+        *height_out = storage->height;
+    }
     return 0;
 }

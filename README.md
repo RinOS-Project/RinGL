@@ -429,14 +429,14 @@ depth and byte stencil in separate checked planes, so its eight-byte transfer
 format is never used as the in-memory depth pitch. Strict FBO tests and the
 actual RinGL-to-RinGPU-to-Aquamarine test cover these combinations. Texture
 attachments are not merely query-only: the same actual test covers every
-supported distinct pair of D32/D24S8 depth renderbuffer or level-zero texture
-and native S8/D24S8 stencil renderbuffer or level-zero D24S8 texture through
-clear, depth-fail stencil update, and RGBA readback. Texture cube faces,
-nonzero depth/stencil mip attachments, multisample storage, and resolve remain
-outside this bounded profile. An exactly defined unpacked RGBA8 nonzero color
-mip can be a render target when the embedding provides the optional V5
-subresource callbacks; unsupported embeddings report
-`FRAMEBUFFER_UNSUPPORTED` rather than redirecting to level zero.
+supported distinct pair of D32/D24S8 depth renderbuffer or texture and native
+S8/D24S8 stencil renderbuffer or D24S8 texture through clear, depth-fail
+stencil update, and RGBA readback. Exact-dimension manual D32/D24S8 mip levels
+may be attached with a same-extent color mip. RinGL uses the optional V6 pass
+records to provide every color/depth/stencil subresource to RinGPU; unsupported
+embeddings report `FRAMEBUFFER_UNSUPPORTED` rather than redirecting to level
+zero. Texture cube faces, multisample storage, and resolve remain outside this
+bounded profile.
 
 `ringl_get_framebuffer_attachment()` is the versioned, caller-owned query for
 the bounded custom-FBO model. It reports the actual current
@@ -445,10 +445,9 @@ the bounded custom-FBO model. It reports the actual current
 realizing a RinGPU image for observation. A combined query returns no object
 unless both logical aspects share one attachment. The older color-only helper
 is retained as a compatibility shorthand; new embeddings should use the
-attachment-point query. Texture cube faces, nonzero depth/stencil mip
-attachments, separate attachments outside the verified D32/D24S8 level-zero depth and native
-S8/D24S8 level-zero stencil matrix, and multisample attachments remain outside
-the profile.
+attachment-point query. Texture cube faces, separate attachments outside the
+verified D32/D24S8 depth and native S8/D24S8 stencil matrix, and multisample
+attachments remain outside the profile.
 
 `ringl_clear()` also carries a bounded lower-left clear region and an RGBA
 write mask to RinGPU. An enabled WebGL scissor clips color, depth, and stencil
@@ -485,14 +484,15 @@ them into level zero. Both paths realize each contiguous level through the
 optional V2 RinGPU image/upload callbacks. A base-level sub-image update drops
 only generated levels, preserving explicitly supplied level data. The executor
 still has no derivatives or automatic LOD selection: it samples the explicitly
-bound base level, so it does not claim mip-filtered rendering. Packed color and
-depth/stencil mip render targets remain rejected. Exactly defined unpacked
-RGBA8 nonzero color mips execute clear, direct/multi-buffer draws, and
-readback through the optional V5 callbacks; without that complete callback set
-the FBO reports `FRAMEBUFFER_UNSUPPORTED`. The strict C11 RinGL tests cover
-format normalization, tightly-packed RGB image/sub-image data, padded D32
-source rows, generated/manual mip upload, and the actual RinGPU bridge image
-descriptor plus level-one FBO execution.
+bound base level, so it does not claim mip-filtered rendering. Packed color
+mip render targets remain rejected. Exactly defined unpacked RGBA8 color mips
+execute clear, direct/multi-buffer draws, and readback through optional V5
+callbacks. Exact-dimension manual D32/D24S8 levels use V6 pass records for
+color/depth/stencil subresources; without the required tail the FBO reports
+`FRAMEBUFFER_UNSUPPORTED`. The strict C11 RinGL tests cover format
+normalization, tightly-packed RGB image/sub-image data, padded D32 source rows,
+generated/manual mip upload, and the actual RinGPU bridge image descriptor plus
+level-one color/D24S8 FBO execution.
 
 Embeddings handling browser-facing byte uploads must use
 `ringl_tex_image_2d_from_bytes()` and `ringl_tex_sub_image_2d_from_bytes()`.

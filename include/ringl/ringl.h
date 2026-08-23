@@ -537,6 +537,31 @@ typedef struct RinGLRinGpuRenderPassDepthV1 {
     RinGLRinGpuClearRegionV1 clear_region;
 } RinGLRinGpuRenderPassDepthV1;
 
+/* Native separate D32_FLOAT + S8_UINT attachment render pass. A pipeline
+ * targets the logical D32_FLOAT_S8_UINT profile while the backend preserves
+ * each aspect in its own image. */
+typedef struct RinGLRinGpuRenderPassDepthStencilV1 {
+    uint64_t color_target;
+    uint64_t depth_target;
+    uint64_t stencil_target;
+    uint32_t color_load_op;
+    uint32_t color_store_op;
+    uint32_t depth_load_op;
+    uint32_t depth_store_op;
+    float clear_red;
+    float clear_green;
+    float clear_blue;
+    float clear_alpha;
+    float clear_depth;
+    uint32_t stencil_load_op;
+    uint32_t stencil_store_op;
+    uint32_t clear_stencil;
+    uint32_t stencil_write_mask;
+    uint32_t color_write_mask;
+    uint32_t reserved0;
+    RinGLRinGpuClearRegionV1 clear_region;
+} RinGLRinGpuRenderPassDepthStencilV1;
+
 typedef struct RinGLRinGpuDrawVerticesV1 {
     uint64_t pipeline;
     uint64_t color_target;
@@ -703,6 +728,9 @@ typedef int (*RinGLRinGpuBeginRenderPassFn)(
 typedef int (*RinGLRinGpuBeginRenderPassDepthFn)(
     void* session, uint64_t command_list,
     const RinGLRinGpuRenderPassDepthV1* render_pass);
+typedef int (*RinGLRinGpuBeginRenderPassDepthStencilFn)(
+    void* session, uint64_t command_list,
+    const RinGLRinGpuRenderPassDepthStencilV1* render_pass);
 typedef int (*RinGLRinGpuSetRasterStateFn)(
     void* session, uint64_t command_list,
     const RinGLRinGpuRasterStateV1* state);
@@ -785,6 +813,8 @@ typedef struct RinGLRinGpuOpsV1 {
         create_graphics_pipeline_native_v2;
     RinGLRinGpuCreateGraphicsPipelineNativeVertexBindingsV2Fn
         create_graphics_pipeline_native_vertex_bindings_v2;
+    /* Optional V3 tail: distinct D32 and S8 framebuffer attachments. */
+    RinGLRinGpuBeginRenderPassDepthStencilFn begin_render_pass_depth_stencil;
 } RinGLRinGpuOpsV1;
 
 typedef struct RinGLRinGpuBindingV1 {

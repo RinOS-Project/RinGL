@@ -411,9 +411,13 @@ rejection, replacement, write masking, depth-fail behavior, reversed winding,
 back-face culling, and an enabled `DEPTH_TEST` with `NEVER` on a stencil-only
 FBO. `ringl_clear(RINGL_STENCIL_BUFFER_BIT)` also forwards the front stencil
 write mask through the native render pass, so it preserves masked-off stencil
-bits rather than overwriting the complete S8 plane. Separate depth and stencil
-images, depth-only D24S8 attachment, multisample storage, and resolve remain
-outside this bounded profile.
+bits rather than overwriting the complete S8 plane. Separate D32 depth and
+native S8 stencil renderbuffers are supported through a versioned three-target
+RinGPU pass. RinGL preserves the two attachment owners and only reports a
+combined attachment when they are identical; the surface backend passes their
+Float32 depth and byte stencil planes independently to the software rasterizer.
+Separate texture attachment, depth-only D24S8 attachment, multisample storage,
+and resolve remain outside this bounded profile.
 
 `ringl_get_framebuffer_attachment()` is the versioned, caller-owned query for
 the bounded custom-FBO model. It reports the actual current
@@ -423,7 +427,8 @@ realizing a RinGPU image for observation. A combined query returns no object
 unless both logical aspects share one attachment. The older color-only helper
 is retained as a compatibility shorthand; new embeddings should use the
 attachment-point query. Texture cube faces, mip levels beyond zero, separate
-depth/stencil images, and multisample attachments remain outside the profile.
+depth/stencil texture attachments, and multisample attachments remain outside
+the profile.
 
 `ringl_clear()` also carries a bounded lower-left clear region and an RGBA
 write mask to RinGPU. An enabled WebGL scissor clips color, depth, and stencil

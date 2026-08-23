@@ -62,6 +62,9 @@ typedef struct RinGLFramebufferObject {
     int32_t depth_attachment_level;
     uint32_t depth_attachment_has_depth;
     uint32_t depth_attachment_has_stencil;
+    uint32_t stencil_attachment_kind;
+    uint32_t stencil_attachment_object;
+    int32_t stencil_attachment_level;
 } RinGLFramebufferObject;
 
 typedef struct RinGLRenderbufferObject {
@@ -193,6 +196,12 @@ typedef struct RinGLDepthTarget {
     uint32_t* state;
 } RinGLDepthTarget;
 
+typedef struct RinGLDepthStencilTargets {
+    RinGLDepthTarget depth;
+    RinGLDepthTarget stencil;
+    uint32_t combined;
+} RinGLDepthStencilTargets;
+
 struct RinGLContext {
     uint32_t magic;
     uint32_t pending_error;
@@ -304,6 +313,8 @@ int ringl_resolve_color_target(RinGLContext* context,
                                RinGLColorTarget* target);
 int ringl_resolve_depth_target(RinGLContext* context,
                                RinGLDepthTarget* target);
+int ringl_resolve_depth_stencil_targets(RinGLContext* context,
+                                        RinGLDepthStencilTargets* targets);
 int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
                                  int32_t width, int32_t height, void* pixels);
 
@@ -398,6 +409,9 @@ int ringl_backend_begin_render_pass(RinGLContext* context,
 int ringl_backend_begin_render_pass_depth(
     RinGLContext* context, uint64_t command_list,
     const RinGLRinGpuRenderPassDepthV1* render_pass);
+int ringl_backend_begin_render_pass_depth_stencil(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuRenderPassDepthStencilV1* render_pass);
 int ringl_backend_set_raster_state(RinGLContext* context,
                                    uint64_t command_list,
                                    const RinGLRinGpuRasterStateV1* state);

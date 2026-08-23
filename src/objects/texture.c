@@ -1637,7 +1637,8 @@ void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
     if (context->framebuffer_binding != 0u &&
         ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) !=
             RINGL_FRAMEBUFFER_COMPLETE) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        ringl_context_record_error(context,
+                                   ringl_framebuffer_operation_error(context));
         return;
     }
     if (ringl_resolve_color_target(context, &source) != 0) {
@@ -1762,7 +1763,8 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
     if (context->framebuffer_binding != 0u &&
         ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) !=
             RINGL_FRAMEBUFFER_COMPLETE) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        ringl_context_record_error(context,
+                                   ringl_framebuffer_operation_error(context));
         return;
     }
     if (ringl_resolve_color_target(context, &source) != 0) {

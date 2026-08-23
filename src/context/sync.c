@@ -376,7 +376,8 @@ void ringl_read_pixels(int32_t x, int32_t y,
         return;
     }
     if (ringl_read_color_target_rgba(context, x, y, width, height, pixels) != 0)
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        ringl_context_record_error(context,
+                                   ringl_framebuffer_operation_error(context));
 }
 
 void ringl_read_pixels_to_bytes(int32_t x, int32_t y,
@@ -403,5 +404,6 @@ void ringl_read_pixels_to_bytes(int32_t x, int32_t y,
         return;
     }
     if (ringl_read_color_target_rgba(context, x, y, width, height, pixels) != 0)
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        ringl_context_record_error(context,
+                                   ringl_framebuffer_operation_error(context));
 }

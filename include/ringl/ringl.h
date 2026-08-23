@@ -16,6 +16,7 @@ extern "C" {
 #define RINGL_INVALID_VALUE     0x0501u
 #define RINGL_INVALID_OPERATION 0x0502u
 #define RINGL_OUT_OF_MEMORY     0x0505u
+#define RINGL_INVALID_FRAMEBUFFER_OPERATION 0x0506u
 #define RINGL_CONTEXT_LOST_WEBGL 0x9242u
 
 /* RinGPU adapters report this exact status when their device can no longer
@@ -357,6 +358,10 @@ extern "C" {
 #define RINGL_RIN_GPU_VERTEX_INPUT_MULTI_BUFFER          0x00000002u
 
 typedef struct RinGLContext RinGLContext;
+
+/* Opt into WebGL 1 framebuffer completeness and operation-error policy while
+ * retaining the richer native RinGL framebuffer profile for non-WebGL users. */
+#define RINGL_CONTEXT_FLAG_WEBGL1_FRAMEBUFFER_POLICY 0x00000001u
 
 typedef struct RinGLRinGpuVertexAttributeV1 {
     uint32_t location;
@@ -991,6 +996,7 @@ typedef struct RinGLContextDescV1 {
     uint32_t struct_size;
     uint32_t api_version;
     const RinGLRinGpuBindingV1* ringpu;
+    /* RINGL_CONTEXT_FLAG_*; unknown bits are rejected. */
     uint32_t flags;
     uint32_t reserved0;
 } RinGLContextDescV1;

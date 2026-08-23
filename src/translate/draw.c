@@ -1125,11 +1125,11 @@ static uint32_t ringl_submit_clear(RinGLContext* context, uint32_t mask)
     }
     if (!command_ops_ready(context) ||
         ringl_resolve_color_target(context, &target) != 0) {
-        return RINGL_INVALID_OPERATION;
+        return ringl_framebuffer_operation_error(context);
     }
     depth_status = ringl_resolve_depth_stencil_targets(context, &depth_targets);
     if (depth_status < 0) {
-        return RINGL_INVALID_OPERATION;
+        return ringl_framebuffer_operation_error(context);
     }
     color_load_op = (mask & RINGL_COLOR_BUFFER_BIT) != 0u
         ? RINGL_RIN_GPU_RENDER_CLEAR
@@ -1370,7 +1370,8 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
                               use_depth_target != 0u ? &depth_targets : NULL,
                               effective_depth_test,
                               effective_stencil_test)) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        ringl_context_record_error(context,
+                                   ringl_framebuffer_operation_error(context));
         return;
     }
     if (ringl_validate_vertex_fetch(context, (uint32_t)first,

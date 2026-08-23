@@ -509,6 +509,7 @@ void ringl_framebuffer_detach_texture(RinGLContext* context, uint32_t texture);
 void ringl_framebuffer_detach_renderbuffer(RinGLContext* context,
                                            uint32_t renderbuffer);
 void ringl_framebuffer_objects_destroy_all(RinGLContext* context);
+uint32_t ringl_framebuffer_operation_error(const RinGLContext* context);
 int ringl_renderbuffer_realize_color_target(RinGLContext* context,
                                             uint32_t renderbuffer,
                                             uint64_t* image_out,

@@ -123,6 +123,22 @@ int main(void)
         "varying vec2 uv; void main() { gl_FragColor = ("
         "texture2D(firstTexture, uv) + texture2D(secondTexture, uv)) * "
         "vec4(0.5, 1.0, 0.25, 1.0); }";
+    const char* varying_biased_texture_source =
+        "uniform sampler2D colorTexture; varying vec2 uv; "
+        "void main() { gl_FragColor = texture2D(colorTexture, uv) + "
+        "vec4(0.1, 0.2, 0.1, 0.0); }";
+    const char* varying_subtracted_texture_source =
+        "uniform sampler2D colorTexture; varying vec2 uv; "
+        "void main() { gl_FragColor = texture2D(colorTexture, uv) - "
+        "vec4(0.1, 0.2, 0.1, 0.0); }";
+    const char* varying_divided_texture_source =
+        "uniform sampler2D colorTexture; varying vec2 uv; "
+        "void main() { gl_FragColor = texture2D(colorTexture, uv) / "
+        "vec4(2.0, 2.0, 2.0, 1.0); }";
+    const char* varying_zero_divisor_texture_source =
+        "uniform sampler2D colorTexture; varying vec2 uv; "
+        "void main() { gl_FragColor = texture2D(colorTexture, uv) / "
+        "vec4(1.0, 1.0, 0.0, 1.0); }";
     const char* varying_two_coordinate_source =
         "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
         "varying vec2 firstUv; varying vec2 secondUv; "
@@ -209,6 +225,8 @@ int main(void)
         "texture2D(s0, sampleUv + vec2(0.0, 0.0)); }";
     float scalar_splat = 0.75f;
     const float tint_values[4] = {0.5f, 1.0f, 0.25f, 1.0f};
+    const float bias_values[4] = {0.1f, 0.2f, 0.1f, 0.0f};
+    const float divisor_values[4] = {2.0f, 2.0f, 2.0f, 1.0f};
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -499,6 +517,86 @@ int main(void)
         assert(store->opcode == RSH1_STORE_OUTPUT_F32);
         assert(store->source0 == 20u + component);
     }
+
+    ringl_shader_source(shader, varying_biased_texture_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 21u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.instruction_count == 21u);
+    assert(header.register_count == 16u);
+    assert(header.resource_count == 2u);
+    for (component = 0u; component < 4u; ++component) {
+        uint32_t bias_bits;
+        const Instruction* constant =
+            (const Instruction*)(blob + sizeof(header)) + 8u + component;
+        const Instruction* add =
+            (const Instruction*)(blob + sizeof(header)) + 12u + component;
+
+        memcpy(&bias_bits, &bias_values[component], sizeof(bias_bits));
+        assert(constant->opcode == RSH1_CONST_F32);
+        assert(constant->immediate == bias_bits);
+        assert(add->opcode == RSH1_ADD_F32);
+        assert(add->destination == 12u + component);
+        assert(add->source0 == 2u + component);
+        assert(add->source1 == 8u + component);
+    }
+
+    ringl_shader_source(shader, varying_subtracted_texture_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 21u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    for (component = 0u; component < 4u; ++component) {
+        uint32_t bias_bits;
+        const Instruction* constant =
+            (const Instruction*)(blob + sizeof(header)) + 8u + component;
+        const Instruction* subtract =
+            (const Instruction*)(blob + sizeof(header)) + 12u + component;
+
+        memcpy(&bias_bits, &bias_values[component], sizeof(bias_bits));
+        assert(constant->opcode == RSH1_CONST_F32);
+        assert(constant->immediate == bias_bits);
+        assert(subtract->opcode == RSH1_SUB_F32);
+        assert(subtract->source0 == 2u + component);
+        assert(subtract->source1 == 8u + component);
+    }
+
+    ringl_shader_source(shader, varying_divided_texture_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 21u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    for (component = 0u; component < 4u; ++component) {
+        uint32_t divisor_bits;
+        const Instruction* constant =
+            (const Instruction*)(blob + sizeof(header)) + 8u + component;
+        const Instruction* divide =
+            (const Instruction*)(blob + sizeof(header)) + 12u + component;
+
+        memcpy(&divisor_bits, &divisor_values[component],
+               sizeof(divisor_bits));
+        assert(constant->immediate == divisor_bits);
+        assert(divide->opcode == RSH1_DIV_F32);
+        assert(divide->source0 == 2u + component);
+        assert(divide->source1 == 8u + component);
+    }
+
+    /* A zero literal divisor is rejected during lowering, before it could
+     * reach RinGPU's fragment executor. */
+    ringl_shader_source(shader, varying_zero_divisor_texture_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) != 0);
 
     /* Two declared vec2 varyings occupy the four perspective RSH1 inputs;
      * each texture call chooses its own pair instead of silently reusing the

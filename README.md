@@ -168,12 +168,13 @@ The same bounded two-UV operation may be named first as
 `vec2 mixedUv = firstUv +/- secondUv;` and then passed to `texture2D()`.
 That result can also feed the existing direct/finite-affine local chain, up to
 the shared six-local ceiling, while preserving the source-order RSH1 arithmetic.
-One sampled RGBA result may additionally be multiplied by a finite `vec4`
-literal before `gl_FragColor` is stored. An additive multi-sample chain is also
-supported when explicitly parenthesized before the tint; unparenthesized
-multi-sample precedence is rejected rather than guessed. RinGL emits RSH1
-constants and component-wise multiplies, subject to the normal RSH1 limits,
-and does not claim general fragment-expression support.
+One sampled RGBA result may additionally use a finite `vec4` literal with
+component-wise `+`, `-`, `*`, or nonzero `/` before `gl_FragColor` is stored.
+An additive multi-sample chain is also supported when explicitly parenthesized
+before that color operation; unparenthesized multi-sample precedence is rejected
+rather than guessed. RinGL emits RSH1 constants and arithmetic instructions,
+checks the normal RSH1 limits and literal zero divisors, and does not claim
+general fragment-expression support.
 Up to six fragment-local values may be chained from the shared UV; each
 initializer is lowered in source order before samples. This remains a
 deliberately narrow GLSL ES subset: other local vector expressions, more than

@@ -187,10 +187,11 @@ The combined local may feed the same direct/finite-affine local chain as the
 single-UV profile, subject to the common six-local bound; each subsequent RSH1
 stage reads the preceding result rather than a host-side folded coordinate.
 For one sampled texture result, or an explicitly parenthesized additive sample
-chain, a finite `vec4` tint literal is emitted as four RSH1 constants followed
-by component-wise `MUL_F32` instructions before the fragment stores its output.
-This uses the existing public RinGPU arithmetic execution path; unparenthesized
-multi-sample tint precedence is deliberately not inferred.
+chain, a finite `vec4` color literal is emitted as four RSH1 constants followed
+by component-wise `ADD_F32`, `SUB_F32`, `MUL_F32`, or nonzero `DIV_F32`
+instructions before the fragment stores its output. This uses the existing
+public RinGPU arithmetic execution path; unparenthesized multi-sample precedence
+is deliberately not inferred and zero division components are rejected early.
 
 Before cache eviction during a draw, RinGL resets its reusable command list. This releases references retained by the previous recorded submission before an old pipeline is destroyed.
 

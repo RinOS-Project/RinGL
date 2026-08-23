@@ -428,8 +428,9 @@ definition intact. The older raw-pointer texture APIs remain only for trusted
 native callers that can prove the source extent independently.
 
 `copyTexSubImage2D` has a bounded data-movement path from the current complete
-RGBA color target, including a complete RGBA8 texture/renderbuffer FBO, into a
-defined level-zero `RGBA` texture. It validates FBO completeness and both source
+color target, including a complete RGBA8 texture/renderbuffer FBO or a packed
+RGB565/RGBA4/RGB5_A1 renderbuffer FBO, into a defined level-zero `RGBA` texture.
+It validates FBO completeness and both source
 and destination rectangles before allocating a temporary RGBA snapshot, uses the
 existing fenced RinGPU readback path (including default-framebuffer
 BGRA-to-RGBA swizzle), and updates the canonical texture shadow only after that
@@ -437,8 +438,9 @@ readback succeeds. Non-RGBA destination textures and out-of-range rectangles
 are rejected; custom FBO depth/stencil readback, multisample, and other
 unrepresented copy semantics remain outside the current profile.
 
-`copyTexImage2D` uses the same fenced snapshot to replace a bound texture with
-a new level-zero `RGBA` definition. Its full source rectangle, FBO completeness,
+`copyTexImage2D` uses the same fenced snapshot from those complete color targets
+to replace a bound texture with a new level-zero `RGBA` definition. Its full
+source rectangle, FBO completeness,
 and destination limits are validated before readback; the previous texture
 definition and realized RinGPU image remain intact unless snapshot completion
 succeeds. This profile does not yet define zero-sized, non-RGBA, depth/stencil,

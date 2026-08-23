@@ -226,15 +226,16 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 ## Phase 7 — Data movement, synchronization, and observability
 
 - [ ] Implement clear/copy paths that must end or split render passes.
-  - [x] Add a bounded `copyTexSubImage2D` path from the current complete RGBA
-    color target, including a texture/renderbuffer FBO, to a defined level-zero
-    RGBA texture through fenced image readback. The copy validates FBO
+  - [x] Add a bounded `copyTexSubImage2D` path from the current complete color
+    target, including an RGBA8 texture/renderbuffer FBO or packed RGB565/RGBA4/
+    RGB5_A1 renderbuffer FBO, to a defined level-zero RGBA texture through fenced
+    image readback. The copy validates FBO
     completeness and source/destination ranges before allocation and updates
     texture storage only after the full default-BGRA/FBO-RGBA snapshot succeeds.
     Unsupported destination formats and unrepresented FBO copy semantics remain
     rejected.
   - [x] Add a bounded `copyTexImage2D` definition path from the same complete
-    RGBA color targets. The new RGBA storage is snapshotted before the bound
+    color targets. The new RGBA storage is snapshotted before the bound
     texture's old shadow/image is discarded, so invalid source rectangles,
     incomplete FBOs, and readback failure leave that texture definition intact.
     Zero-sized, non-RGBA, depth/stencil, and multisample definitions remain

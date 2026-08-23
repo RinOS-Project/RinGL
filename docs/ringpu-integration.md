@@ -89,8 +89,9 @@ backend supplies bounded readback, so RinGL's complete RGBA color-target
 `RGBA/UNSIGNED_BYTE` `readPixels` path can transition to `COPY_SOURCE`, wait,
 read back, and swizzle default-framebuffer BGRA storage to RGBA. The same fenced
 snapshot powers `copyTexSubImage2D` and `copyTexImage2D` from either the default
-color buffer or a complete RGBA8 texture/renderbuffer FBO into level-zero RGBA
-texture storage; FBO completeness and source/destination rectangles are checked
+color buffer, a complete RGBA8 texture/renderbuffer FBO, or a complete packed
+RGB565/RGBA4/RGB5_A1 renderbuffer FBO into level-zero RGBA texture storage; FBO
+completeness and source/destination rectangles are checked
 before temporary allocation, and the destination shadow is changed only after
 readback succeeds. `copyTexImage2D` retains a prior texture definition/image
 until the replacement snapshot completes. The focused OS-Core

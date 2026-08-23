@@ -78,6 +78,11 @@ static int fake_transition_image(void* session, uint64_t command_list,
     if (image == 700u) {
         assert(old_state == RINGL_RIN_GPU_IMAGE_PRESENT);
         assert(new_state == RINGL_RIN_GPU_IMAGE_COPY_SOURCE);
+    } else if (image == 702u) {
+        assert((old_state == RINGL_RIN_GPU_IMAGE_UNDEFINED &&
+                new_state == RINGL_RIN_GPU_IMAGE_COLOR_TARGET) ||
+               (old_state == RINGL_RIN_GPU_IMAGE_COLOR_TARGET &&
+                new_state == RINGL_RIN_GPU_IMAGE_COPY_SOURCE));
     } else {
         assert(image == 701u);
         assert((old_state == RINGL_RIN_GPU_IMAGE_UNDEFINED &&
@@ -96,10 +101,14 @@ static int fake_create_image_2d(void* session,
     (void)session;
     assert(desc != NULL && image_out != NULL);
     assert(desc->width == 8u && desc->height == 8u);
-    assert(desc->format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM);
     assert(desc->usage == (RINGL_RIN_GPU_IMAGE_USAGE_COLOR_TARGET |
                            RINGL_RIN_GPU_IMAGE_USAGE_COPY_SOURCE));
-    *image_out = 701u;
+    if (desc->format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM)
+        *image_out = 701u;
+    else {
+        assert(desc->format == RINGL_RIN_GPU_FORMAT_RGBA4_UNORM);
+        *image_out = 702u;
+    }
     return 0;
 }
 
@@ -109,7 +118,7 @@ static int fake_begin_render_pass(void* session, uint64_t command_list,
     FakeBackend* backend = session;
 
     assert(command_list != 0u && pass != NULL);
-    assert(pass->color_target == 701u);
+    assert(pass->color_target == 701u || pass->color_target == 702u);
     assert(pass->load_op == RINGL_RIN_GPU_RENDER_CLEAR);
     assert(pass->store_op == RINGL_RIN_GPU_RENDER_STORE);
     backend->render_passes++;
@@ -186,12 +195,18 @@ static int fake_readback(void* session, uint64_t image,
         10u, 20u, 30u, 255u,
         40u, 50u, 60u, 128u,
     };
-    assert((image == 700u || image == 701u) && readback != NULL &&
+    const uint16_t expected_rgba4[2] = { UINT16_C(0xf00f), UINT16_C(0x0f08) };
+    assert((image == 700u || image == 701u || image == 702u) && readback != NULL &&
            destination != NULL);
     assert(readback->x == 1u && readback->y == 2u);
     assert(readback->width == 2u && readback->height == 1u);
-    assert(readback->destination_row_pitch_bytes == 8u);
-    assert(destination_size == sizeof(expected_bgra));
+    if (image == 702u) {
+        assert(readback->destination_row_pitch_bytes == sizeof(expected_rgba4));
+        assert(destination_size == sizeof(expected_rgba4));
+    } else {
+        assert(readback->destination_row_pitch_bytes == 8u);
+        assert(destination_size == sizeof(expected_bgra));
+    }
     if (backend->fail_next_readback != 0u) {
         backend->fail_next_readback = 0u;
         backend->failed_readbacks++;
@@ -202,8 +217,11 @@ static int fake_readback(void* session, uint64_t image,
         backend->failed_readbacks++;
         return RINGL_RIN_GPU_ERROR_DEVICE_LOST;
     }
-    memcpy(destination, image == 700u ? expected_bgra : expected_rgba,
-           sizeof(expected_bgra));
+    if (image == 702u)
+        memcpy(destination, expected_rgba4, sizeof(expected_rgba4));
+    else
+        memcpy(destination, image == 700u ? expected_bgra : expected_rgba,
+               sizeof(expected_bgra));
     backend->readbacks++;
     return 0;
 }
@@ -260,6 +278,8 @@ int main(void)
     uint32_t copied_texture = 0u;
     uint32_t source_framebuffer = 0u;
     uint32_t renderbuffer = 0u;
+    uint32_t packed_renderbuffer = 0u;
+    uint32_t packed_framebuffer = 0u;
     uint32_t depth_renderbuffer = 0u;
     uint32_t texture_before_loss;
     uint32_t submits_before_loss;
@@ -272,6 +292,10 @@ int main(void)
     const uint8_t expected_rgba[8] = {
         10u, 20u, 30u, 255u,
         40u, 50u, 60u, 128u,
+    };
+    const uint8_t expected_packed_rgba[8] = {
+        255u, 0u, 0u, 255u,
+        0u, 255u, 0u, 136u,
     };
 
     assert(ringl_context_create(&desc, &context) == 0);
@@ -363,6 +387,26 @@ int main(void)
     assert(backend.failed_readbacks == 1u && backend.readbacks == 5u);
     assert(memcmp(context->textures[ringl_object_slot_index(copied_texture)].shadow_bytes,
                   expected_rgba, sizeof(expected_rgba)) == 0);
+
+    ringl_gen_renderbuffers(1, &packed_renderbuffer);
+    ringl_bind_renderbuffer(RINGL_RENDERBUFFER, packed_renderbuffer);
+    ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_RGBA4, 8, 8);
+    ringl_gen_framebuffers(1, &packed_framebuffer);
+    ringl_bind_framebuffer(RINGL_FRAMEBUFFER, packed_framebuffer);
+    ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT0,
+                                   RINGL_RENDERBUFFER, packed_renderbuffer);
+    assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
+           RINGL_FRAMEBUFFER_COMPLETE);
+    ringl_clear(RINGL_COLOR_BUFFER_BIT);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_copy_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 1, 2, 2, 1, 0);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(backend.transitions == 5u);
+    assert(backend.submits == 8u && backend.waits == 8u);
+    assert(backend.readbacks == 6u);
+    assert(memcmp(context->textures[ringl_object_slot_index(copied_texture)].shadow_bytes,
+                  expected_packed_rgba, sizeof(expected_packed_rgba)) == 0);
+
     ringl_gen_renderbuffers(1, &depth_renderbuffer);
     ringl_bind_renderbuffer(RINGL_RENDERBUFFER, depth_renderbuffer);
     ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_DEPTH_COMPONENT32F,
@@ -373,9 +417,9 @@ int main(void)
            RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT);
     ringl_copy_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 1, 2, 2, 1);
     assert(ringl_get_error() == RINGL_INVALID_OPERATION);
-    assert(backend.transitions == 3u && backend.readbacks == 5u);
+    assert(backend.transitions == 5u && backend.readbacks == 6u);
     assert(memcmp(context->textures[ringl_object_slot_index(copied_texture)].shadow_bytes,
-                  expected_rgba, sizeof(expected_rgba)) == 0);
+                  expected_packed_rgba, sizeof(expected_packed_rgba)) == 0);
 
     ringl_bind_framebuffer(RINGL_FRAMEBUFFER, 0u);
     assert(ringl_get_error() == RINGL_NO_ERROR);
@@ -398,7 +442,7 @@ int main(void)
     assert(ringl_get_error() == RINGL_NO_ERROR);
 
     ringl_context_destroy(context);
-    assert(backend.destroys == 3u); /* renderbuffer image + command list + fence */
+    assert(backend.destroys == 4u); /* two color images + command list + fence */
 
     binding.session = &command_loss_backend;
     assert(ringl_context_create(&desc, &context) == 0);

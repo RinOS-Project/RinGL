@@ -26,6 +26,7 @@
 #define RINGL_MAX_VEC2_UNIFORMS 8u
 #define RINGL_MAX_VEC3_UNIFORMS 8u
 #define RINGL_MAX_VEC4_UNIFORMS 8u
+#define RINGL_MAX_MAT4_UNIFORMS 4u
 #define RINGL_MAX_VARYINGS 8u
 #define RINGL_UNIFORM_NAME_MAX RINGL_ACTIVE_INFO_NAME_MAX
 /* RINGL_MAX_TEXTURE_SIZE is 4096, so a 2D texture has at most levels 0..12.
@@ -116,6 +117,7 @@ typedef struct RinGLShaderObject {
     uint32_t vec2_uniform_count;
     uint32_t vec3_uniform_count;
     uint32_t vec4_uniform_count;
+    uint32_t mat4_uniform_count;
     uint32_t rsh1_sampler_binding_count;
     uint32_t varying_count;
     uint32_t delete_pending;
@@ -124,6 +126,7 @@ typedef struct RinGLShaderObject {
     char vec2_uniform_names[RINGL_MAX_VEC2_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char vec3_uniform_names[RINGL_MAX_VEC3_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char vec4_uniform_names[RINGL_MAX_VEC4_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
+    char mat4_uniform_names[RINGL_MAX_MAT4_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     uint32_t rsh1_sampler_binding_indices[RINGL_MAX_SAMPLER_UNIFORMS];
     char varying_names[RINGL_MAX_VARYINGS][RINGL_UNIFORM_NAME_MAX];
     uint32_t varying_widths[RINGL_MAX_VARYINGS];
@@ -159,6 +162,11 @@ typedef struct RinGLProgramVec4Uniform {
     float values[4];
 } RinGLProgramVec4Uniform;
 
+typedef struct RinGLProgramMat4Uniform {
+    char name[RINGL_UNIFORM_NAME_MAX];
+    float values[16];
+} RinGLProgramMat4Uniform;
+
 typedef struct RinGLProgramAttribute {
     char name[RINGL_UNIFORM_NAME_MAX];
     uint32_t width;
@@ -191,6 +199,7 @@ typedef struct RinGLProgramObject {
     uint32_t vec2_uniform_count;
     uint32_t vec3_uniform_count;
     uint32_t vec4_uniform_count;
+    uint32_t mat4_uniform_count;
     uint32_t varying_count;
     RinGLProgramAttribute attributes[RINGL_MAX_VERTEX_ATTRIBS];
     /* Pending bindAttribLocation requests deliberately live outside the
@@ -203,6 +212,7 @@ typedef struct RinGLProgramObject {
     RinGLProgramVec2Uniform vec2_uniforms[RINGL_MAX_VEC2_UNIFORMS];
     RinGLProgramVec3Uniform vec3_uniforms[RINGL_MAX_VEC3_UNIFORMS];
     RinGLProgramVec4Uniform vec4_uniforms[RINGL_MAX_VEC4_UNIFORMS];
+    RinGLProgramMat4Uniform mat4_uniforms[RINGL_MAX_MAT4_UNIFORMS];
     uint8_t* vertex_uniform_rsh1;
     uint8_t* fragment_uniform_rsh1;
     uint64_t vertex_uniform_module;

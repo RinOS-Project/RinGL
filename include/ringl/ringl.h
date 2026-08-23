@@ -40,6 +40,7 @@ extern "C" {
 #define RINGL_FLOAT_VEC2     0x8b50u
 #define RINGL_FLOAT_VEC3     0x8b51u
 #define RINGL_FLOAT_VEC4     0x8b52u
+#define RINGL_FLOAT_MAT4     0x8b5cu
 #define RINGL_SAMPLER_2D     0x8b5eu
 
 #define RINGL_ACTIVE_INFO_NAME_MAX 64u
@@ -1467,6 +1468,14 @@ void ringl_uniform_4f(int32_t location, float x, float y, float z, float w);
  * an error. */
 int ringl_get_uniform_4f(uint32_t program, int32_t location,
                           float values_out[4]);
+/* The bounded matrix profile accepts a vertex-stage `uniform mat4` only when
+ * it is multiplied by one vec4 attribute to produce gl_Position. Values use
+ * WebGL's column-major order and transpose must be zero. */
+void ringl_uniform_matrix4fv(int32_t location, uint32_t transpose,
+                             const float values[16]);
+/* Reads an active mat4 uniform in WebGL column-major order. */
+int ringl_get_uniform_matrix4f(uint32_t program, int32_t location,
+                                float values_out[16]);
 
 #ifdef __cplusplus
 }

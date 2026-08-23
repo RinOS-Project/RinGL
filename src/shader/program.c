@@ -130,6 +130,10 @@ static int ringl_program_add_float_uniform(RinGLProgramObject* program,
         if (strcmp(program->vec4_uniforms[index].name, name) == 0)
             return 0;
     }
+    for (index = 0u; index < program->mat4_uniform_count; ++index) {
+        if (strcmp(program->mat4_uniforms[index].name, name) == 0)
+            return 0;
+    }
     if (program->float_uniform_count >= RINGL_MAX_FLOAT_UNIFORMS)
         return 0;
     index = program->float_uniform_count++;
@@ -184,6 +188,9 @@ static int ringl_program_add_vec2_uniform(RinGLProgramObject* program,
     for (index = 0u; index < program->vec4_uniform_count; ++index)
         if (strcmp(program->vec4_uniforms[index].name, name) == 0)
             return 0;
+    for (index = 0u; index < program->mat4_uniform_count; ++index)
+        if (strcmp(program->mat4_uniforms[index].name, name) == 0)
+            return 0;
     index = program->vec2_uniform_count++;
     ringl_copy_c_string(program->vec2_uniforms[index].name,
                         sizeof(program->vec2_uniforms[index].name), name);
@@ -233,6 +240,9 @@ static int ringl_program_add_vec3_uniform(RinGLProgramObject* program,
             return 1;
     for (index = 0u; index < program->vec4_uniform_count; ++index)
         if (strcmp(program->vec4_uniforms[index].name, name) == 0)
+            return 0;
+    for (index = 0u; index < program->mat4_uniform_count; ++index)
+        if (strcmp(program->mat4_uniforms[index].name, name) == 0)
             return 0;
     index = program->vec3_uniform_count++;
     ringl_copy_c_string(program->vec3_uniforms[index].name,
@@ -288,6 +298,10 @@ static int ringl_program_add_vec4_uniform(RinGLProgramObject* program,
         if (strcmp(program->vec4_uniforms[index].name, name) == 0)
             return 1;
     }
+    for (index = 0u; index < program->mat4_uniform_count; ++index) {
+        if (strcmp(program->mat4_uniforms[index].name, name) == 0)
+            return 0;
+    }
     if (program->vec4_uniform_count >= RINGL_MAX_VEC4_UNIFORMS)
         return 0;
     index = program->vec4_uniform_count++;
@@ -316,6 +330,59 @@ static int ringl_program_collect_vec4_uniforms(RinGLProgramObject* program,
                                              fragment->vec4_uniform_names[index]))
             return 0;
     }
+    return 1;
+}
+
+static int ringl_program_add_mat4_uniform(RinGLProgramObject* program,
+                                          const char* name)
+{
+    uint32_t index;
+
+    if (program == NULL || name == NULL ||
+        program->mat4_uniform_count >= RINGL_MAX_MAT4_UNIFORMS)
+        return 0;
+    for (index = 0u; index < program->sampler_uniform_count; ++index)
+        if (strcmp(program->sampler_uniforms[index].name, name) == 0)
+            return 0;
+    for (index = 0u; index < program->float_uniform_count; ++index)
+        if (strcmp(program->float_uniforms[index].name, name) == 0)
+            return 0;
+    for (index = 0u; index < program->vec2_uniform_count; ++index)
+        if (strcmp(program->vec2_uniforms[index].name, name) == 0)
+            return 0;
+    for (index = 0u; index < program->vec3_uniform_count; ++index)
+        if (strcmp(program->vec3_uniforms[index].name, name) == 0)
+            return 0;
+    for (index = 0u; index < program->vec4_uniform_count; ++index)
+        if (strcmp(program->vec4_uniforms[index].name, name) == 0)
+            return 0;
+    for (index = 0u; index < program->mat4_uniform_count; ++index)
+        if (strcmp(program->mat4_uniforms[index].name, name) == 0)
+            return 1;
+    index = program->mat4_uniform_count++;
+    ringl_copy_c_string(program->mat4_uniforms[index].name,
+                        sizeof(program->mat4_uniforms[index].name), name);
+    return 1;
+}
+
+static int ringl_program_collect_mat4_uniforms(RinGLProgramObject* program,
+                                               const RinGLShaderObject* vertex,
+                                               const RinGLShaderObject* fragment)
+{
+    uint32_t index;
+
+    if (program == NULL || vertex == NULL || fragment == NULL)
+        return 0;
+    program->mat4_uniform_count = 0u;
+    memset(program->mat4_uniforms, 0, sizeof(program->mat4_uniforms));
+    for (index = 0u; index < vertex->mat4_uniform_count; ++index)
+        if (!ringl_program_add_mat4_uniform(program,
+                                             vertex->mat4_uniform_names[index]))
+            return 0;
+    for (index = 0u; index < fragment->mat4_uniform_count; ++index)
+        if (!ringl_program_add_mat4_uniform(program,
+                                             fragment->mat4_uniform_names[index]))
+            return 0;
     return 1;
 }
 
@@ -644,11 +711,13 @@ static int ringl_program_rebuild_uniform_artifacts(
     if (context == NULL || program == NULL || vertex == NULL ||
         fragment == NULL ||
         (program->float_uniform_count == 0u && program->vec2_uniform_count == 0u &&
-         program->vec3_uniform_count == 0u && program->vec4_uniform_count == 0u) ||
+         program->vec3_uniform_count == 0u && program->vec4_uniform_count == 0u &&
+         program->mat4_uniform_count == 0u) ||
         program->float_uniform_count > RINGL_MAX_FLOAT_UNIFORMS ||
         program->vec2_uniform_count > RINGL_MAX_VEC2_UNIFORMS ||
         program->vec3_uniform_count > RINGL_MAX_VEC3_UNIFORMS ||
-        program->vec4_uniform_count > RINGL_MAX_VEC4_UNIFORMS)
+        program->vec4_uniform_count > RINGL_MAX_VEC4_UNIFORMS ||
+        program->mat4_uniform_count > RINGL_MAX_MAT4_UNIFORMS)
         return 0;
     memset(uniforms, 0, sizeof(uniforms));
     for (index = 0u; index < program->float_uniform_count; ++index) {
@@ -684,17 +753,31 @@ static int ringl_program_rebuild_uniform_artifacts(
         uniforms[uniform_index].type = RINGL_FLOAT_VEC4;
         memcpy(uniforms[uniform_index].values,
                program->vec4_uniforms[index].values,
-               sizeof(uniforms[uniform_index].values));
+               sizeof(program->vec4_uniforms[index].values));
+    }
+    for (index = 0u; index < program->mat4_uniform_count; ++index) {
+        uint32_t uniform_index = program->float_uniform_count +
+                                 program->vec2_uniform_count +
+                                 program->vec3_uniform_count +
+                                 program->vec4_uniform_count + index;
+
+        uniforms[uniform_index].name = program->mat4_uniforms[index].name;
+        uniforms[uniform_index].type = RINGL_FLOAT_MAT4;
+        memcpy(uniforms[uniform_index].values,
+               program->mat4_uniforms[index].values,
+               sizeof(program->mat4_uniforms[index].values));
     }
     if (!ringl_program_lower_uniform_shader(
             context, vertex, uniforms,
             program->float_uniform_count + program->vec2_uniform_count +
-                program->vec3_uniform_count + program->vec4_uniform_count,
+                program->vec3_uniform_count + program->vec4_uniform_count +
+                program->mat4_uniform_count,
             &vertex_rsh1, &vertex_rsh1_size, &vertex_module) ||
         !ringl_program_lower_uniform_shader(
             context, fragment, uniforms,
             program->float_uniform_count + program->vec2_uniform_count +
-                program->vec3_uniform_count + program->vec4_uniform_count,
+                program->vec3_uniform_count + program->vec4_uniform_count +
+                program->mat4_uniform_count,
             &fragment_rsh1, &fragment_rsh1_size, &fragment_module)) {
         if (vertex_module != 0u)
             ringl_backend_destroy_object(context, vertex_module);
@@ -748,6 +831,7 @@ void ringl_link_program(uint32_t program)
     object->vec2_uniform_count = 0u;
     object->vec3_uniform_count = 0u;
     object->vec4_uniform_count = 0u;
+    object->mat4_uniform_count = 0u;
     object->varying_count = 0u;
     memset(object->attributes, 0, sizeof(object->attributes));
     memset(object->sampler_uniforms, 0, sizeof(object->sampler_uniforms));
@@ -755,6 +839,7 @@ void ringl_link_program(uint32_t program)
     memset(object->vec2_uniforms, 0, sizeof(object->vec2_uniforms));
     memset(object->vec3_uniforms, 0, sizeof(object->vec3_uniforms));
     memset(object->vec4_uniforms, 0, sizeof(object->vec4_uniforms));
+    memset(object->mat4_uniforms, 0, sizeof(object->mat4_uniforms));
     memset(object->varyings, 0, sizeof(object->varyings));
     if (object->vertex_shader == 0u || object->fragment_shader == 0u) {
         ringl_program_set_log(object, "vertex and fragment shaders are required");
@@ -796,12 +881,18 @@ void ringl_link_program(uint32_t program)
                               "invalid or too many active vec4 uniforms");
         return;
     }
+    if (!ringl_program_collect_mat4_uniforms(object, vertex, fragment)) {
+        ringl_program_set_log(object,
+                              "invalid or too many active mat4 uniforms");
+        return;
+    }
     if (!ringl_program_collect_varyings(object, vertex, fragment)) {
         ringl_program_set_log(object, "vertex/fragment varying interface mismatch");
         return;
     }
     if (object->float_uniform_count == 0u && object->vec2_uniform_count == 0u &&
         object->vec3_uniform_count == 0u && object->vec4_uniform_count == 0u &&
+        object->mat4_uniform_count == 0u &&
         context->has_ringpu_ops &&
         context->ringpu_ops.create_shader_module != NULL) {
         if (!ringl_program_prepare_gpu_shader(context, object->vertex_shader, vertex)) {
@@ -814,7 +905,8 @@ void ringl_link_program(uint32_t program)
         }
     }
     if ((object->float_uniform_count != 0u || object->vec2_uniform_count != 0u ||
-         object->vec3_uniform_count != 0u || object->vec4_uniform_count != 0u) &&
+         object->vec3_uniform_count != 0u || object->vec4_uniform_count != 0u ||
+         object->mat4_uniform_count != 0u) &&
         !ringl_program_rebuild_uniform_artifacts(context, object, vertex,
                                                  fragment)) {
         ringl_program_set_log(object,
@@ -894,7 +986,8 @@ int ringl_get_program_info(uint32_t program, RinGLProgramInfoV1* info)
                                        object->float_uniform_count +
                                        object->vec2_uniform_count +
                                        object->vec3_uniform_count +
-                                       object->vec4_uniform_count;
+                                       object->vec4_uniform_count +
+                                       object->mat4_uniform_count;
     }
     *info = result;
     return 0;
@@ -989,7 +1082,7 @@ int ringl_get_active_uniform(uint32_t program, uint32_t index,
     }
     if (index >= object->sampler_uniform_count + object->float_uniform_count +
                      object->vec2_uniform_count + object->vec3_uniform_count +
-                     object->vec4_uniform_count) {
+                     object->vec4_uniform_count + object->mat4_uniform_count) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return -1;
     }
@@ -1017,13 +1110,25 @@ int ringl_get_active_uniform(uint32_t program, uint32_t index,
                                   index - object->sampler_uniform_count -
                                       object->float_uniform_count -
                                       object->vec2_uniform_count].name);
-    } else {
+    } else if (index < object->sampler_uniform_count +
+                       object->float_uniform_count +
+                       object->vec2_uniform_count +
+                       object->vec3_uniform_count +
+                       object->vec4_uniform_count) {
         ringl_active_info_set(&result, RINGL_FLOAT_VEC4,
                               object->vec4_uniforms[
                                   index - object->sampler_uniform_count -
                                       object->float_uniform_count -
                                       object->vec2_uniform_count -
                                       object->vec3_uniform_count].name);
+    } else {
+        ringl_active_info_set(&result, RINGL_FLOAT_MAT4,
+                              object->mat4_uniforms[
+                                  index - object->sampler_uniform_count -
+                                      object->float_uniform_count -
+                                      object->vec2_uniform_count -
+                                      object->vec3_uniform_count -
+                                      object->vec4_uniform_count].name);
     }
     *info = result;
     return 0;
@@ -1211,6 +1316,14 @@ int32_t ringl_get_uniform_location(uint32_t program, const char* name)
                              object->float_uniform_count +
                              object->vec2_uniform_count +
                              object->vec3_uniform_count + i);
+    }
+    for (i = 0u; i < object->mat4_uniform_count; ++i) {
+        if (strcmp(object->mat4_uniforms[i].name, name) == 0)
+            return (int32_t)(object->sampler_uniform_count +
+                             object->float_uniform_count +
+                             object->vec2_uniform_count +
+                             object->vec3_uniform_count +
+                             object->vec4_uniform_count + i);
     }
     return -1;
 }
@@ -1577,6 +1690,94 @@ int ringl_get_uniform_4f(uint32_t program, int32_t location,
                     object->vec3_uniform_count;
     memcpy(values_out, object->vec4_uniforms[uniform_index].values,
            sizeof(object->vec4_uniforms[uniform_index].values));
+    return 0;
+}
+
+void ringl_uniform_matrix4fv(int32_t location, uint32_t transpose,
+                             const float values[16])
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLProgramObject* object;
+    RinGLShaderObject* vertex;
+    RinGLShaderObject* fragment;
+    RinGLProgramMat4Uniform* uniform;
+    float previous_values[16];
+    uint32_t first_location;
+    uint32_t uniform_index;
+    uint32_t index;
+
+    if (context == NULL || location == -1)
+        return;
+    if (transpose != 0u || values == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    for (index = 0u; index < 16u; ++index) {
+        if (!isfinite(values[index])) {
+            ringl_context_record_error(context, RINGL_INVALID_VALUE);
+            return;
+        }
+    }
+    if (context->current_program == 0u) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    object = ringl_program_object(context, context->current_program);
+    first_location = object == NULL ? 0u : object->sampler_uniform_count +
+                                           object->float_uniform_count +
+                                           object->vec2_uniform_count +
+                                           object->vec3_uniform_count +
+                                           object->vec4_uniform_count;
+    if (object == NULL || !object->link_status || location < 0 ||
+        (uint32_t)location < first_location ||
+        (uint32_t)location >= first_location + object->mat4_uniform_count) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    uniform_index = (uint32_t)location - first_location;
+    uniform = &object->mat4_uniforms[uniform_index];
+    if (memcmp(uniform->values, values, sizeof(uniform->values)) == 0)
+        return;
+    vertex = ringl_program_shader(context, object->linked_vertex_shader);
+    fragment = ringl_program_shader(context, object->linked_fragment_shader);
+    if (vertex == NULL || fragment == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    memcpy(previous_values, uniform->values, sizeof(previous_values));
+    memcpy(uniform->values, values, sizeof(uniform->values));
+    if (!ringl_program_rebuild_uniform_artifacts(context, object, vertex,
+                                                 fragment)) {
+        memcpy(uniform->values, previous_values, sizeof(previous_values));
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+    }
+}
+
+int ringl_get_uniform_matrix4f(uint32_t program, int32_t location,
+                                float values_out[16])
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLProgramObject* object;
+    uint32_t first_location;
+    uint32_t uniform_index;
+
+    if (context == NULL || values_out == NULL)
+        return -1;
+    object = ringl_program_object(context, program);
+    first_location = object == NULL ? 0u : object->sampler_uniform_count +
+                                           object->float_uniform_count +
+                                           object->vec2_uniform_count +
+                                           object->vec3_uniform_count +
+                                           object->vec4_uniform_count;
+    if (object == NULL || !object->link_status || location < 0 ||
+        (uint32_t)location < first_location ||
+        (uint32_t)location >= first_location + object->mat4_uniform_count) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    uniform_index = (uint32_t)location - first_location;
+    memcpy(values_out, object->mat4_uniforms[uniform_index].values,
+           sizeof(object->mat4_uniforms[uniform_index].values));
     return 0;
 }
 

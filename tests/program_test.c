@@ -36,6 +36,10 @@ int main(void)
     uint32_t vec3_fragment;
     uint32_t vec3_program;
     uint32_t vec3_peer_program;
+    uint32_t mat4_vertex;
+    uint32_t mat4_fragment;
+    uint32_t mat4_program;
+    uint32_t mat4_peer_program;
     int32_t location;
     int32_t uniform_value = -1;
     char log[160];
@@ -382,6 +386,79 @@ int main(void)
     }
     ringl_delete_program(vec3_peer_program);
     ringl_delete_program(vec3_program);
+
+    /* A vertex mat4 is lowered to a real column-major RSH1 matrix/vector
+     * multiply. It is program-owned just like the scalar/vector profile. */
+    mat4_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+    mat4_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+    mat4_program = ringl_create_program();
+    mat4_peer_program = ringl_create_program();
+    assert(mat4_vertex != 0u && mat4_fragment != 0u && mat4_program != 0u &&
+           mat4_peer_program != 0u);
+    ringl_shader_source(mat4_vertex,
+                        "attribute vec4 position; uniform mat4 transform; "
+                        "void main() { gl_Position = transform * position; }",
+                        -1);
+    ringl_shader_source(mat4_fragment,
+                        "void main() { gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0); }",
+                        -1);
+    ringl_compile_shader(mat4_vertex);
+    ringl_compile_shader(mat4_fragment);
+    assert(ringl_get_shader_compile_status(mat4_vertex) == RINGL_TRUE);
+    assert(ringl_get_shader_compile_status(mat4_fragment) == RINGL_TRUE);
+    ringl_attach_shader(mat4_program, mat4_vertex);
+    ringl_attach_shader(mat4_program, mat4_fragment);
+    ringl_attach_shader(mat4_peer_program, mat4_vertex);
+    ringl_attach_shader(mat4_peer_program, mat4_fragment);
+    ringl_link_program(mat4_program);
+    ringl_link_program(mat4_peer_program);
+    assert(ringl_get_program_link_status(mat4_program) == RINGL_TRUE);
+    assert(ringl_get_program_link_status(mat4_peer_program) == RINGL_TRUE);
+    assert(ringl_get_program_info(mat4_program, &info) == 0);
+    assert(info.active_uniform_count == 1u);
+    location = ringl_get_uniform_location(mat4_program, "transform");
+    assert(location == 0);
+    assert(ringl_get_active_uniform(mat4_program, 0u, &active_info) == 0);
+    assert(active_info.type == RINGL_FLOAT_MAT4 &&
+           strcmp(active_info.name, "transform") == 0);
+    {
+        float values[16];
+        float identity[16] = {
+            1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f, 0.0f,
+            0.0f, 0.0f, 0.0f, 1.0f,
+        };
+        uint32_t index;
+
+        memset(values, 0xff, sizeof(values));
+        assert(ringl_get_uniform_matrix4f(mat4_program, location, values) == 0);
+        for (index = 0u; index < 16u; ++index)
+            assert(values[index] == 0.0f);
+        ringl_use_program(mat4_program);
+        ringl_uniform_matrix4fv(location, 0u, identity);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_matrix4f(mat4_program, location, values) == 0);
+        assert(memcmp(values, identity, sizeof(values)) == 0);
+        identity[5] = NAN;
+        ringl_uniform_matrix4fv(location, 0u, identity);
+        assert(ringl_get_error() == RINGL_INVALID_VALUE);
+        assert(ringl_get_uniform_matrix4f(mat4_program, location, values) == 0);
+        assert(values[5] == 1.0f);
+        identity[5] = 1.0f;
+        ringl_uniform_matrix4fv(location, 1u, identity);
+        assert(ringl_get_error() == RINGL_INVALID_VALUE);
+        assert(ringl_get_uniform_matrix4f(mat4_program, location, values) == 0);
+        assert(memcmp(values, identity, sizeof(values)) == 0);
+        ringl_uniform_4f(location, 1.0f, 1.0f, 1.0f, 1.0f);
+        assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+        memset(values, 0xff, sizeof(values));
+        assert(ringl_get_uniform_matrix4f(mat4_peer_program, location, values) == 0);
+        for (index = 0u; index < 16u; ++index)
+            assert(values[index] == 0.0f);
+    }
+    ringl_delete_program(mat4_peer_program);
+    ringl_delete_program(mat4_program);
 
     multi_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
     multi_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);

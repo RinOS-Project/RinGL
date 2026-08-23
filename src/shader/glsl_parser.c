@@ -18,6 +18,7 @@ typedef enum TokenKind {
     TOK_VEC2,
     TOK_VEC3,
     TOK_VEC4,
+    TOK_MAT4,
     TOK_SAMPLER2D,
     TOK_ATTRIBUTE,
     TOK_UNIFORM,
@@ -45,6 +46,7 @@ typedef enum SymbolKind {
     SYMBOL_UNIFORM_FLOAT = 5,
     SYMBOL_UNIFORM_VEC2 = 6,
     SYMBOL_UNIFORM_VEC3 = 7,
+    SYMBOL_UNIFORM_MAT4 = 8,
 } SymbolKind;
 
 typedef struct Token {
@@ -126,6 +128,8 @@ static TokenKind keyword_kind(const char* begin, size_t length)
         return TOK_VEC3;
     if (length == 4u && memcmp(begin, "vec4", 4u) == 0)
         return TOK_VEC4;
+    if (length == 4u && memcmp(begin, "mat4", 4u) == 0)
+        return TOK_MAT4;
     if (length == 9u && memcmp(begin, "sampler2D", 9u) == 0)
         return TOK_SAMPLER2D;
     if (length == 9u && memcmp(begin, "attribute", 9u) == 0)
@@ -522,7 +526,8 @@ static int assignment(Parser* parser)
             symbol->kind == SYMBOL_UNIFORM_FLOAT ||
             symbol->kind == SYMBOL_UNIFORM_VEC2 ||
             symbol->kind == SYMBOL_UNIFORM_VEC3 ||
-            symbol->kind == SYMBOL_UNIFORM_VEC4) {
+            symbol->kind == SYMBOL_UNIFORM_VEC4 ||
+            symbol->kind == SYMBOL_UNIFORM_MAT4) {
             fail(parser, "uniforms are read-only");
             return 0;
         }
@@ -664,8 +669,9 @@ static int uniform_declaration(Parser* parser)
     next_token(parser);
     if (parser->token.kind != TOK_SAMPLER2D &&
         parser->token.kind != TOK_FLOAT && parser->token.kind != TOK_VEC2 &&
-        parser->token.kind != TOK_VEC3 && parser->token.kind != TOK_VEC4) {
-        fail(parser, "only uniform sampler2D, float, vec2, vec3, and vec4 are supported");
+        parser->token.kind != TOK_VEC3 && parser->token.kind != TOK_VEC4 &&
+        parser->token.kind != TOK_MAT4) {
+        fail(parser, "only uniform sampler2D, float, vec2, vec3, vec4, and mat4 are supported");
         return 0;
     }
     {
@@ -682,11 +688,13 @@ static int uniform_declaration(Parser* parser)
                     : type == TOK_FLOAT ? SYMBOL_UNIFORM_FLOAT
                     : type == TOK_VEC2 ? SYMBOL_UNIFORM_VEC2
                     : type == TOK_VEC3 ? SYMBOL_UNIFORM_VEC3
-                                        : SYMBOL_UNIFORM_VEC4,
+                    : type == TOK_VEC4 ? SYMBOL_UNIFORM_VEC4
+                                        : SYMBOL_UNIFORM_MAT4,
                     type == TOK_SAMPLER2D ? 0u
                     : type == TOK_FLOAT ? 1u
                     : type == TOK_VEC2 ? 2u
-                    : type == TOK_VEC3 ? 3u : 4u))
+                    : type == TOK_VEC3 ? 3u
+                    : type == TOK_VEC4 ? 4u : 16u))
         return 0;
     if (type == TOK_SAMPLER2D) {
         if (parser->result->sampler_uniform_count >=
@@ -728,7 +736,7 @@ static int uniform_declaration(Parser* parser)
         memcpy(parser->result->vec3_uniform_names[index], name.begin,
                name.length);
         parser->result->vec3_uniform_names[index][name.length] = '\0';
-    } else {
+    } else if (type == TOK_VEC4) {
         if (parser->result->vec4_uniform_count >=
             RINGL_GLSL_MAX_VEC4_UNIFORMS) {
             fail(parser, "too many vec4 uniforms");
@@ -738,6 +746,16 @@ static int uniform_declaration(Parser* parser)
         memcpy(parser->result->vec4_uniform_names[index], name.begin,
                name.length);
         parser->result->vec4_uniform_names[index][name.length] = '\0';
+    } else {
+        if (parser->result->mat4_uniform_count >=
+            RINGL_GLSL_MAX_MAT4_UNIFORMS) {
+            fail(parser, "too many mat4 uniforms");
+            return 0;
+        }
+        index = parser->result->mat4_uniform_count++;
+        memcpy(parser->result->mat4_uniform_names[index], name.begin,
+               name.length);
+        parser->result->mat4_uniform_names[index][name.length] = '\0';
     }
     next_token(parser);
     if (!expect(parser, TOK_SEMI, "expected ';' after uniform"))

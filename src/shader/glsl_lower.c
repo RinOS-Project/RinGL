@@ -18,6 +18,7 @@ typedef enum Tok {
     T_VEC2,
     T_VEC3,
     T_VEC4,
+    T_MAT4,
     T_ATTRIBUTE,
     T_UNIFORM,
     T_LPAREN,
@@ -41,18 +42,20 @@ typedef struct Token {
 } Token;
 
 typedef struct Value {
-    uint16_t regs[4];
+    uint16_t regs[16];
     uint8_t width;
+    uint8_t matrix;
 } Value;
 
 typedef struct Symbol {
     char name[64];
-    uint16_t regs[4];
+    uint16_t regs[16];
     uint16_t input;
     uint8_t width;
     uint8_t attribute;
     uint8_t uniform;
     uint8_t initialized;
+    uint8_t matrix;
 } Symbol;
 
 typedef struct Lower {
@@ -132,6 +135,8 @@ static Tok keyword(const char* begin, size_t length)
         return T_VEC3;
     if (length == 4u && memcmp(begin, "vec4", 4u) == 0)
         return T_VEC4;
+    if (length == 4u && memcmp(begin, "mat4", 4u) == 0)
+        return T_MAT4;
     if (length == 9u && memcmp(begin, "attribute", 9u) == 0)
         return T_ATTRIBUTE;
     if (length == 7u && memcmp(begin, "uniform", 7u) == 0)
@@ -242,7 +247,8 @@ static Symbol* add_symbol(Lower* lower, const Token* token,
     uint32_t index;
 
     if (lower->symbol_count >= 64u || token->length == 0u ||
-        token->length >= 64u || width == 0u || width > 4u) {
+        token->length >= 64u || width == 0u ||
+        (width > 4u && width != 16u)) {
         fail(lower, "symbol limit exceeded");
         return NULL;
     }
@@ -256,10 +262,11 @@ static Symbol* add_symbol(Lower* lower, const Token* token,
     symbol->name[token->length] = '\0';
     symbol->attribute = (uint8_t)attribute;
     symbol->width = width;
+    symbol->matrix = width == 16u;
     symbol->input = attribute ? lower->next_input : RINGL_RSH1_UNUSED;
     if (attribute)
         lower->next_input = (uint16_t)(lower->next_input + width);
-    for (index = 0u; index < 4u; ++index)
+    for (index = 0u; index < (symbol->matrix ? 16u : 4u); ++index)
         symbol->regs[index] = RINGL_RSH1_UNUSED;
     symbol->initialized = (uint8_t)attribute;
     return symbol;
@@ -291,7 +298,7 @@ static int initialize_uniform(Lower* lower, Symbol* symbol,
                               const Token* name, uint32_t type)
 {
     const RinGLGlslUniformValue* uniform;
-    float zero_values[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    float zero_values[16] = { 0.0f };
     const float* values = zero_values;
     uint32_t index;
 
@@ -305,7 +312,7 @@ static int initialize_uniform(Lower* lower, Symbol* symbol,
     if (uniform != NULL)
         values = uniform->values;
     symbol->uniform = 1u;
-    for (index = 0u; index < symbol->width; ++index) {
+    for (index = 0u; index < (symbol->matrix ? 16u : symbol->width); ++index) {
         uint16_t reg = new_reg(lower);
         uint32_t bits;
 
@@ -397,6 +404,7 @@ static Value symbol_value(Lower* lower)
     }
     next(lower);
     value.width = symbol->width;
+    value.matrix = symbol->matrix;
     if (symbol->attribute) {
         for (index = 0u; index < symbol->width; ++index) {
             uint16_t reg = new_reg(lower);
@@ -409,7 +417,7 @@ static Value symbol_value(Lower* lower)
             value.regs[index] = reg;
         }
     } else {
-        for (index = 0u; index < symbol->width; ++index)
+        for (index = 0u; index < (symbol->matrix ? 16u : symbol->width); ++index)
             value.regs[index] = symbol->regs[index];
     }
     return value;
@@ -430,7 +438,7 @@ static Value constructor_value(Lower* lower, uint8_t target_width)
     for (;;) {
         Value argument = expression(lower);
         uint32_t index;
-        if (argument.width == 0u)
+        if (argument.width == 0u || argument.matrix)
             return result;
         if (width + argument.width > target_width) {
             fail(lower, "too many vector constructor components");
@@ -483,7 +491,7 @@ static Value unary(Lower* lower)
         return primary(lower);
 
     value = unary(lower);
-    if (value.width != 1u) {
+    if (value.width != 1u || value.matrix) {
         fail(lower, "vector unary arithmetic is not supported yet");
         return invalid_value();
     }
@@ -502,6 +510,50 @@ static Value unary(Lower* lower)
     return value;
 }
 
+static Value matrix_times_vec4(Lower* lower, const Value* matrix,
+                               const Value* vector)
+{
+    Value result = invalid_value();
+    uint32_t row;
+
+    if (matrix == NULL || vector == NULL || !matrix->matrix ||
+        vector->matrix || vector->width != 4u)
+        return result;
+    for (row = 0u; row < 4u; ++row) {
+        uint16_t products[4];
+        uint16_t left_sum;
+        uint16_t right_sum;
+        uint16_t output;
+        uint32_t column;
+
+        for (column = 0u; column < 4u; ++column) {
+            products[column] = new_reg(lower);
+            if (products[column] == RINGL_RSH1_UNUSED ||
+                !emit(lower, RINGL_RSH1_OP_MUL_F32, products[column],
+                      matrix->regs[column * 4u + row], vector->regs[column],
+                      0u)) {
+                return invalid_value();
+            }
+        }
+        left_sum = new_reg(lower);
+        right_sum = new_reg(lower);
+        output = new_reg(lower);
+        if (left_sum == RINGL_RSH1_UNUSED || right_sum == RINGL_RSH1_UNUSED ||
+            output == RINGL_RSH1_UNUSED ||
+            !emit(lower, RINGL_RSH1_OP_ADD_F32, left_sum, products[0],
+                  products[1], 0u) ||
+            !emit(lower, RINGL_RSH1_OP_ADD_F32, right_sum, products[2],
+                  products[3], 0u) ||
+            !emit(lower, RINGL_RSH1_OP_ADD_F32, output, left_sum, right_sum,
+                  0u)) {
+            return invalid_value();
+        }
+        result.regs[row] = output;
+    }
+    result.width = 4u;
+    return result;
+}
+
 static Value multiplicative(Lower* lower)
 {
     Value left = unary(lower);
@@ -512,7 +564,13 @@ static Value multiplicative(Lower* lower)
         uint16_t result;
         next(lower);
         right = unary(lower);
-        if (left.width != 1u || right.width != 1u) {
+        if (operation == T_STAR && left.matrix) {
+            left = matrix_times_vec4(lower, &left, &right);
+            if (left.width == 0u)
+                fail(lower, "mat4 multiplication requires a vec4 right operand");
+            continue;
+        }
+        if (left.matrix || right.matrix || left.width != 1u || right.width != 1u) {
             fail(lower, "vector arithmetic is not supported yet");
             return invalid_value();
         }
@@ -539,7 +597,7 @@ static Value expression(Lower* lower)
         uint16_t result;
         next(lower);
         right = multiplicative(lower);
-        if (left.width != 1u || right.width != 1u) {
+        if (left.matrix || right.matrix || left.width != 1u || right.width != 1u) {
             fail(lower, "vector arithmetic is not supported yet");
             return invalid_value();
         }
@@ -631,7 +689,7 @@ static int assignment(Lower* lower)
     if (!need(lower, T_SEMI, "expected ';' after assignment"))
         return 0;
     if (output) {
-        if (value.width != 1u && value.width != 4u) {
+        if (value.matrix || (value.width != 1u && value.width != 4u)) {
             fail(lower, "shader output must be scalar or vec4");
             return 0;
         }
@@ -668,8 +726,12 @@ static int parse_all(Lower* lower)
                 width = 1u;
             else if (lower->token.kind == T_VEC2)
                 width = 2u;
+            else if (lower->token.kind == T_VEC3)
+                width = 3u;
+            else if (lower->token.kind == T_VEC4)
+                width = 4u;
             else {
-                fail(lower, "expected float or vec2 attribute type");
+                fail(lower, "expected float, vec2, vec3, or vec4 attribute type");
                 return 0;
             }
             next(lower);
@@ -702,8 +764,11 @@ static int parse_all(Lower* lower)
                 uniform_type = RINGL_FLOAT_VEC3;
             } else if (lower->token.kind == T_VEC4) {
                 uniform_type = RINGL_FLOAT_VEC4;
+            } else if (lower->token.kind == T_MAT4 &&
+                       lower->shader_type == RINGL_VERTEX_SHADER) {
+                uniform_type = RINGL_FLOAT_MAT4;
             } else {
-                fail(lower, "only uniform float/vec2/vec3/vec4 lowering is supported");
+                fail(lower, "only vertex uniform mat4 and uniform float/vec2/vec3/vec4 lowering are supported");
                 return 0;
             }
             next(lower);
@@ -716,7 +781,8 @@ static int parse_all(Lower* lower)
                 (symbol = add_symbol(lower, &name, 0,
                                      uniform_type == RINGL_FLOAT ? 1u
                                      : uniform_type == RINGL_FLOAT_VEC2 ? 2u
-                                     : uniform_type == RINGL_FLOAT_VEC3 ? 3u : 4u)) == NULL ||
+                                     : uniform_type == RINGL_FLOAT_VEC3 ? 3u
+                                     : uniform_type == RINGL_FLOAT_VEC4 ? 4u : 16u)) == NULL ||
                 !initialize_uniform(lower, symbol, &name, uniform_type)) {
                 return 0;
             }

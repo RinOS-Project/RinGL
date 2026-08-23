@@ -303,21 +303,25 @@ the replacement executable. The query validates its ABI header and only writes
 the caller-owned structure after it has validated the program, so an invalid
 program cannot partially publish stale metadata.
 
-The current bounded uniform profile consists of linked `sampler2D` values and
-single `float`, `vec2`, `vec3`, and `vec4` values. `ringl_get_uniform_1i()`
-reads the selected texture unit; `ringl_get_uniform_1f()`,
-`ringl_get_uniform_2f()`, `ringl_get_uniform_3f()`, and
-`ringl_get_uniform_4f()` read the scalar or complete vector for a specific
-linked program and location without depending on the current program binding.
-Each checks the complete input before writing caller-owned storage, so invalid
-programs or locations cannot expose a partially updated result.
+The current bounded uniform profile consists of linked `sampler2D` values,
+single `float`, `vec2`, `vec3`, and `vec4` values, and a vertex-only `mat4`
+position transform. `ringl_get_uniform_1i()` reads the selected texture unit;
+`ringl_get_uniform_1f()`, `ringl_get_uniform_2f()`,
+`ringl_get_uniform_3f()`, and `ringl_get_uniform_4f()` read the scalar or
+complete vector, while `ringl_get_uniform_matrix4f()` reads all sixteen
+column-major matrix values, for a specific linked program and location without
+depending on the current program binding. Each checks the complete input before
+writing caller-owned storage, so invalid programs or locations cannot expose a
+partially updated result.
 
-`ringl_uniform_1f()`, `ringl_uniform_2f()`, `ringl_uniform_3f()`, and
-`ringl_uniform_4f()` update a linked program only after every supplied
-component is finite. A NaN or infinity records `INVALID_VALUE` and leaves the
-published uniform and its derived executable unchanged. This lets embeddings
-preserve atomic WebGL-visible uniform state while the bounded RSH1 lowering
-path has no non-finite literal representation.
+`ringl_uniform_1f()`, `ringl_uniform_2f()`, `ringl_uniform_3f()`,
+`ringl_uniform_4f()`, and `ringl_uniform_matrix4fv()` update a linked program
+only after every supplied component is finite. The matrix setter requires
+`transpose == 0` and preserves WebGL's column-major order. A NaN, infinity, or
+transposed matrix records `INVALID_VALUE` and leaves the published uniform and
+its derived executable unchanged. This lets embeddings preserve atomic
+WebGL-visible uniform state while the bounded RSH1 lowering path has no
+non-finite literal representation.
 
 `ringl_get_renderbuffer_info()` exposes the current renderbuffer's dimensions,
 internal format, component bit counts, and zero sample count through a
@@ -405,7 +409,7 @@ Linked program reflection is also exposed without borrowing RinGL storage.
 `ringl_get_active_attrib()` and `ringl_get_active_uniform()` copy one bounded
 entry into `RinGLActiveInfoV1` only after validating its versioned output
 header. The current profile reports scalar/`vec2`/`vec3`/`vec4` float
-attributes and `sampler2D`, scalar `float`, `vec2`, `vec3`, and `vec4`
+attributes and `sampler2D`, scalar `float`, `vec2`, `vec3`, `vec4`, and `mat4`
 uniforms; unlinked programs or out-of-range indices record the appropriate
 error and leave caller storage unchanged.
 
@@ -669,15 +673,18 @@ entry points stop observing it, `ringl_get_error()` returns
 Browser `webglcontextlost` dispatch, restoration, and broader shader expressions
 remain unfinished. No API or ABI stability guarantee is made yet.
 
-The raw shader path now has a bounded scalar/vector uniform execution profile.
-A linked program retains `float`, `vec2`, `vec3`, and `vec4` values
-independently from the shader objects it shares with other programs. Each
-`ringl_uniform_{1,2,3,4}f()` update first lowers a new program-owned RSH1 pair
+The raw shader path now has a bounded scalar/vector/matrix uniform execution
+profile. A linked program retains `float`, `vec2`, `vec3`, `vec4`, and bounded
+`mat4` values independently from the shader objects it shares with other
+programs. Each `ringl_uniform_{1,2,3,4}f()` or
+`ringl_uniform_matrix4fv()` update first lowers a new program-owned RSH1 pair
 containing the corresponding Float32 `CONST_F32` instructions, asks RinGPU to
 validate/create both replacement modules, then invalidates the old pipeline
 and publishes the new executable. Thus an update affects the actual RinGPU
 draw without textual source replacement or a CPU color fallback. The accepted
 generic no-varying forms include `vec4(tint2, 0.0, 1.0)` for a `vec2`,
-`vec4(tint3, 1.0)` for a `vec3`, and a direct `vec4` read. Arrays, matrices,
-and vector combinations with the specialized varying/texture profiles remain
-unavailable rather than being reported as successful GLES.
+`vec4(tint3, 1.0)` for a `vec3`, a direct `vec4` read, and vertex
+`gl_Position = transform * position` for one `uniform mat4` and
+`attribute vec4`. Arrays, other matrix expressions, and vector combinations
+with the specialized varying/texture profiles remain unavailable rather than
+being reported as successful GLES.

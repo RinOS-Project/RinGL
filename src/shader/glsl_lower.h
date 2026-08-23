@@ -10,7 +10,8 @@
 #define RINGL_GLSL_RSH1_MAX_BYTES (64u + 128u * 16u)
 #define RINGL_GLSL_MAX_UNIFORMS \
     (RINGL_GLSL_MAX_FLOAT_UNIFORMS + RINGL_GLSL_MAX_VEC2_UNIFORMS + \
-     RINGL_GLSL_MAX_VEC3_UNIFORMS + RINGL_GLSL_MAX_VEC4_UNIFORMS)
+     RINGL_GLSL_MAX_VEC3_UNIFORMS + RINGL_GLSL_MAX_VEC4_UNIFORMS + \
+     RINGL_GLSL_MAX_MAT4_UNIFORMS)
 
 typedef struct RinGLGlslLowerResult {
     uint32_t ok;
@@ -30,7 +31,7 @@ typedef struct RinGLGlslLowerResult {
 typedef struct RinGLGlslUniformValue {
     const char* name;
     uint32_t type;
-    float values[4];
+    float values[16];
 } RinGLGlslUniformValue;
 
 int ringl_glsl_lower_rsh1(uint32_t shader_type,

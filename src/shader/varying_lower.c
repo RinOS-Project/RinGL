@@ -344,6 +344,23 @@ static int parse_varying_texture_two_coordinate_local(
     return *primary_input_location != *secondary_input_location;
 }
 
+static int parse_varying_texture_tint(const char** cursor, float tint[4])
+{
+    uint32_t component;
+
+    if (cursor == NULL || *cursor == NULL || tint == NULL ||
+        !consume_text(cursor, "*vec4(")) {
+        return 0;
+    }
+    for (component = 0u; component < 4u; ++component) {
+        if (!parse_finite_float(cursor, &tint[component]) ||
+            (component + 1u < 4u && !consume_text(cursor, ","))) {
+            return 0;
+        }
+    }
+    return consume_text(cursor, ")");
+}
+
 static void emit_varying_texture_offset(RinGLRsh1InstructionV1* ins,
                                         uint32_t* instruction_cursor,
                                         uint32_t temporary_base,
@@ -520,9 +537,13 @@ static int lower_fragment_texture_chain(const char* source,
     uint32_t add_register_base;
     uint32_t store_base;
     uint32_t final_base;
+    uint32_t sampled_final_base;
     uint32_t padding_base;
     uint32_t coordinate_temp_base;
+    uint32_t tint_constant_base = 0u;
+    uint32_t tint_result_base = 0u;
     uint32_t has_call_offset = 0u;
+    uint32_t tint_enabled = 0u;
     uint32_t local_temporary_register_count = 0u;
     uint32_t temporary_register_count = 0u;
     uint32_t local_coordinate_u = 0u;
@@ -530,6 +551,7 @@ static int lower_fragment_texture_chain(const char* source,
     uint32_t call_index;
     uint32_t sampler_index;
     uint32_t component;
+    float tint[4] = {0.0f};
     size_t total;
 
     if (source == NULL || result == NULL)
@@ -650,6 +672,11 @@ static int lower_fragment_texture_chain(const char* source,
             break;
         ++cursor;
     }
+    if (*cursor == '*') {
+        if (call_count != 1u || !parse_varying_texture_tint(&cursor, tint))
+            return 1;
+        tint_enabled = 1u;
+    }
     if (strcmp(cursor, ";}") != 0)
         return 1;
 
@@ -692,10 +719,17 @@ static int lower_fragment_texture_chain(const char* source,
     add_register_base = 2u + call_count * 4u;
     final_base = call_count == 1u
         ? 2u : add_register_base + (call_count - 2u) * 4u;
+    sampled_final_base = final_base;
     padding_base = final_base + 4u;
     coordinate_temp_base = padding_base + 2u;
     if (has_call_offset)
         temporary_register_count += 4u;
+    if (tint_enabled) {
+        tint_constant_base = 8u * call_count + temporary_register_count;
+        tint_result_base = tint_constant_base + 4u;
+        store_base += 8u;
+        final_base = tint_result_base;
+    }
     instruction_cursor = sample_base;
     memset(ins, 0, sizeof(ins));
     for (component = 0u; component < 4u; ++component) {
@@ -829,6 +863,24 @@ static int lower_fragment_texture_chain(const char* source,
             add->source1 = (uint16_t)(next_base + component);
         }
     }
+    if (tint_enabled) {
+        for (component = 0u; component < 4u; ++component) {
+            uint32_t tint_bits;
+            RinGLRsh1InstructionV1* constant =
+                &ins[add_base + component];
+            RinGLRsh1InstructionV1* multiply =
+                &ins[add_base + 4u + component];
+
+            memcpy(&tint_bits, &tint[component], sizeof(tint_bits));
+            init_instruction(constant, RINGL_RSH1_OP_CONST_F32);
+            constant->destination = (uint16_t)(tint_constant_base + component);
+            constant->immediate = tint_bits;
+            init_instruction(multiply, RINGL_RSH1_OP_MUL_F32);
+            multiply->destination = (uint16_t)(tint_result_base + component);
+            multiply->source0 = (uint16_t)(sampled_final_base + component);
+            multiply->source1 = (uint16_t)(tint_constant_base + component);
+        }
+    }
     for (component = 0u; component < 4u; ++component) {
         RinGLRsh1InstructionV1* store = &ins[store_base + component];
 
@@ -844,7 +896,8 @@ static int lower_fragment_texture_chain(const char* source,
     header.header_size = sizeof(header);
     header.stage = RINGL_RSH1_STAGE_FRAGMENT;
     header.instruction_count = store_base + 5u;
-    header.register_count = 8u * call_count + temporary_register_count;
+    header.register_count = 8u * call_count + temporary_register_count +
+        (tint_enabled ? 8u : 0u);
     header.input_count = 4u;
     header.output_count = 4u;
     header.resource_count = sampler_binding_count * 2u;

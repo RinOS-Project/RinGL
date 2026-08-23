@@ -114,6 +114,10 @@ int main(void)
         "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
         "varying vec2 uv; void main() { gl_FragColor = "
         "texture2D(firstTexture, uv) + texture2D(secondTexture, uv); }";
+    const char* varying_tinted_texture_source =
+        "uniform sampler2D colorTexture; varying vec2 uv; "
+        "void main() { gl_FragColor = texture2D(colorTexture, uv) * "
+        "vec4(0.5, 1.0, 0.25, 1.0); }";
     const char* varying_two_coordinate_source =
         "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
         "varying vec2 firstUv; varying vec2 secondUv; "
@@ -199,6 +203,7 @@ int main(void)
         "texture2D(s1, sampleUv + vec2(0.0, 0.0)) + "
         "texture2D(s0, sampleUv + vec2(0.0, 0.0)); }";
     float scalar_splat = 0.75f;
+    const float tint_values[4] = {0.5f, 1.0f, 0.25f, 1.0f};
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -409,6 +414,44 @@ int main(void)
         assert(second_sample->resource == 2u && second_sample->immediate == 3u);
         assert(add->source0 == 2u + component);
         assert(add->source1 == 6u + component);
+    }
+
+    /* One sampled RGBA result may be tinted by a finite vec4 literal. The
+     * constants and component-wise MUL_F32 operations remain executable RSH1
+     * instructions rather than a host-side texture rewrite. */
+    ringl_shader_source(shader, varying_tinted_texture_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 21u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.instruction_count == 21u);
+    assert(header.register_count == 16u);
+    assert(header.resource_count == 2u);
+    for (component = 0u; component < 4u; ++component) {
+        uint32_t tint_bits;
+        const Instruction* sample =
+            (const Instruction*)(blob + sizeof(header)) + 4u + component;
+        const Instruction* constant =
+            (const Instruction*)(blob + sizeof(header)) + 8u + component;
+        const Instruction* multiply =
+            (const Instruction*)(blob + sizeof(header)) + 12u + component;
+        const Instruction* store =
+            (const Instruction*)(blob + sizeof(header)) + 16u + component;
+
+        memcpy(&tint_bits, &tint_values[component], sizeof(tint_bits));
+        assert(sample->opcode == RSH1_SAMPLE_IMAGE_2D_F32);
+        assert(constant->opcode == RSH1_CONST_F32);
+        assert(constant->destination == 8u + component);
+        assert(constant->immediate == tint_bits);
+        assert(multiply->opcode == RSH1_MUL_F32);
+        assert(multiply->destination == 12u + component);
+        assert(multiply->source0 == 2u + component);
+        assert(multiply->source1 == 8u + component);
+        assert(store->opcode == RSH1_STORE_OUTPUT_F32);
+        assert(store->source0 == 12u + component);
     }
 
     /* Two declared vec2 varyings occupy the four perspective RSH1 inputs;

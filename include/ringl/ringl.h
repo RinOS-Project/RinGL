@@ -169,6 +169,8 @@ extern "C" {
 #define RINGL_DEPTH_COMPONENT 0x1902u
 #define RINGL_LUMINANCE  0x1909u
 #define RINGL_LUMINANCE_ALPHA 0x190au
+#define RINGL_NONE       0u
+#define RINGL_TEXTURE    0x1702u
 #define RINGL_DEPTH_STENCIL 0x84f9u
 #define RINGL_RGBA8      0x8058u
 #define RINGL_FLOAT       0x1406u
@@ -202,6 +204,10 @@ extern "C" {
 #define RINGL_RENDERBUFFER_ALPHA_SIZE       0x8d53u
 #define RINGL_RENDERBUFFER_DEPTH_SIZE       0x8d54u
 #define RINGL_RENDERBUFFER_STENCIL_SIZE     0x8d55u
+#define RINGL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE 0x8cd0u
+#define RINGL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME 0x8cd1u
+#define RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL 0x8cd2u
+#define RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE 0x8cd3u
 #define RINGL_COLOR_ATTACHMENT0     0x8ce0u
 #define RINGL_DEPTH_ATTACHMENT      0x8d00u
 #define RINGL_STENCIL_ATTACHMENT    0x8d20u
@@ -913,10 +919,10 @@ typedef struct RinGLSampleCoverageV1 {
     uint32_t reserved0;
 } RinGLSampleCoverageV1;
 
-/* This is a read-only description of RinGL's currently bound custom
- * framebuffer. It is intentionally separate from GLES query entry points so
- * an embedding can inspect the bounded object-model slice without claiming
- * framebuffer-completeness or rendering support. */
+/* This is a read-only description of one attachment of RinGL's currently
+ * bound custom framebuffer. It is intentionally separate from GLES query
+ * entry points so an embedding can inspect the bounded object-model slice
+ * without claiming framebuffer-completeness or rendering support. */
 typedef struct RinGLFramebufferAttachmentInfoV1 {
     uint32_t struct_size;
     uint32_t api_version;
@@ -1103,6 +1109,16 @@ uint32_t ringl_get_bound_framebuffer(uint32_t target);
 void ringl_framebuffer_texture_2d(uint32_t target, uint32_t attachment,
                                   uint32_t textarget, uint32_t texture,
                                   int32_t level);
+/* Describes COLOR_ATTACHMENT0, DEPTH_ATTACHMENT, STENCIL_ATTACHMENT, or
+ * DEPTH_STENCIL_ATTACHMENT on the currently bound custom framebuffer. The
+ * caller supplies a complete v1 header; failures leave its output fields
+ * untouched. DEPTH_STENCIL_ATTACHMENT reports an object only when one image
+ * is attached to both logical aspects. */
+int ringl_get_framebuffer_attachment(
+    uint32_t attachment, RinGLFramebufferAttachmentInfoV1* info);
+/* Compatibility shorthand for COLOR_ATTACHMENT0. New embedding code should
+ * use ringl_get_framebuffer_attachment() so it does not silently omit depth
+ * and stencil state. */
 int ringl_get_framebuffer_color_attachment(
     RinGLFramebufferAttachmentInfoV1* attachment);
 uint32_t ringl_check_framebuffer_status(uint32_t target);

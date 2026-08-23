@@ -4,6 +4,16 @@
 
 #include <ringl/ringl.h>
 
+static RinGLFramebufferAttachmentInfoV1 attachment_info(void)
+{
+    RinGLFramebufferAttachmentInfoV1 info;
+
+    memset(&info, 0, sizeof(info));
+    info.struct_size = sizeof(info);
+    info.api_version = RINGL_API_VERSION;
+    return info;
+}
+
 int main(void)
 {
     RinGLContext* context = NULL;
@@ -23,6 +33,7 @@ int main(void)
     uint32_t framebuffer_state = 0xfeedfaceu;
     uint32_t framebuffers[1] = { 0u };
     uint32_t renderbuffers[2] = { 0u, 0u };
+    RinGLFramebufferAttachmentInfoV1 attachment;
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -124,6 +135,12 @@ int main(void)
                                    RINGL_RENDERBUFFER, renderbuffers[1]);
     assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
            RINGL_FRAMEBUFFER_COMPLETE);
+    attachment = attachment_info();
+    assert(ringl_get_framebuffer_attachment(
+               RINGL_DEPTH_STENCIL_ATTACHMENT, &attachment) == 0);
+    assert(attachment.kind == RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER);
+    assert(attachment.object == renderbuffers[1]);
+    assert(attachment.level == 0);
     ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER, RINGL_DEPTH_ATTACHMENT,
                                    RINGL_RENDERBUFFER, renderbuffers[1]);
     assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==

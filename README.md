@@ -359,6 +359,16 @@ bits rather than overwriting the complete S8 plane. Separate depth and stencil
 images, depth-only D24S8 attachment, multisample storage, and resolve remain
 outside this bounded profile.
 
+`ringl_get_framebuffer_attachment()` is the versioned, caller-owned query for
+the bounded custom-FBO model. It reports the actual current
+`COLOR_ATTACHMENT0`, `DEPTH_ATTACHMENT`, `STENCIL_ATTACHMENT`, or combined
+`DEPTH_STENCIL_ATTACHMENT` object kind, name, and texture level without
+realizing a RinGPU image for observation. A combined query returns no object
+unless both logical aspects share one attachment. The older color-only helper
+is retained as a compatibility shorthand; new embeddings should use the
+attachment-point query. Texture cube faces, mip levels beyond zero, separate
+depth/stencil images, and multisample attachments remain outside the profile.
+
 `ringl_clear()` also carries a bounded lower-left clear region and an RGBA
 write mask to RinGPU. An enabled WebGL scissor clips color, depth, and stencil
 clears together; masked color channels and disabled depth writes preserve their

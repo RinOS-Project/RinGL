@@ -163,6 +163,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 ## Phase 6 — Framebuffers and fixed-function state
 
 - [x] Implement framebuffer/renderbuffer object models (bounded lifecycle, binding, level-zero `COLOR_ATTACHMENT0` tracking, RGBA8 renderbuffer storage, and automatic detach on texture/renderbuffer deletion).
+- [x] Expose a versioned bounded framebuffer-attachment query for `COLOR_ATTACHMENT0`, `DEPTH_ATTACHMENT`, `STENCIL_ATTACHMENT`, and `DEPTH_STENCIL_ATTACHMENT`. The query leaves caller output untouched on failure, reports a depth-stencil object only when both logical aspects share it, and supersedes the color-only compatibility shorthand for new embeddings.
 - [x] Map supported RGBA8 color FBO texture/renderbuffer attachments to lazy RinGPU color targets, including image-state transitions, render-pass clear/draw targets, and `COPY_SOURCE` readback capability.
 - [x] Implement framebuffer completeness validation for the supported single level-zero RGBA8 color-attachment combinations.
 - [x] Implement viewport and scissor GL state, validation, defaults, and queries.

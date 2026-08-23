@@ -59,6 +59,7 @@ typedef struct RinGLFramebufferObject {
     int32_t color_attachment_level;
     uint32_t depth_attachment_kind;
     uint32_t depth_attachment_object;
+    int32_t depth_attachment_level;
     uint32_t depth_attachment_has_depth;
     uint32_t depth_attachment_has_stencil;
 } RinGLFramebufferObject;

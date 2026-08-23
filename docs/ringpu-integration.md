@@ -196,8 +196,8 @@ output (clip `xyzw` plus those pairs), and the RinGPU surface keeps the extra
 two components in a private native clip/raster form while preserving the
 public compact RGBA clip-vertex V1 ABI. Six-plane clipping and perspective
 interpolation operate on every pair before the resource-aware fragment
-preflight and submission. This route is deliberately limited to triangle
-lists and direct coordinates, plus one `firstUv +/- secondUv` local that may
+preflight and submission. This route is deliberately limited to direct/indexed
+triangle lists and direct coordinates, plus one `firstUv +/- secondUv` local that may
 coexist with direct `thirdUv` samples; it does not claim general varying
 transport or broader three-input local expressions.
 For one sampled texture result, or an explicitly parenthesized additive sample

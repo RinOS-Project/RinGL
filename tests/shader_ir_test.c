@@ -224,6 +224,10 @@ int main(void)
     const char* vertex_color_texture_fragment_source =
         "uniform sampler2D colorTexture; varying vec2 uv; varying vec4 vertexColor; "
         "void main() { gl_FragColor = texture2D(colorTexture, uv) * vertexColor; }";
+    const char* tinted_vertex_color_texture_fragment_source =
+        "uniform sampler2D colorTexture; uniform vec4 tint; varying vec2 uv; "
+        "varying vec4 vertexColor; void main() { gl_FragColor = "
+        "texture2D(colorTexture, uv) * vertexColor * tint; }";
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -404,6 +408,16 @@ int main(void)
     assert(header.output_count == 4u);
     assert(header.resource_count == 2u);
     assert(header.instruction_count == 19u);
+
+    header = lower_and_read_header(
+        fragment, tinted_vertex_color_texture_fragment_source,
+        blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 6u);
+    assert(header.output_count == 4u);
+    assert(header.resource_count == 2u);
+    assert(header.instruction_count == 27u);
+    assert(header.register_count == 22u);
 
     ringl_shader_source(vertex, "void main() { gl_Position = 0.0; }", -1);
     assert(ringl_get_shader_compile_status(vertex) == RINGL_FALSE);

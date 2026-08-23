@@ -364,7 +364,11 @@ component-wise multiplies. One or two UV pairs may accompany that color while
 the native interface remains within eight scalar varyings. The focused native
 draw test separately verifies this six-scalar pipeline, including matrix
 uniform update, dense position/UV/RGBA attribute layout, and the image/sampler
-binding; no CPU pre-multiplied color is published.
+binding. Its bounded material form additionally accepts one `uniform vec4` in
+the exact expression `texture2D(texture, uv) * vertexColor * tint`; the
+fragment-only uniform update materializes four tint constants and four more
+RSH1 multiplies without rebuilding the matrix module. No CPU pre-multiplied
+color is published.
 
 The no-varying RSH1 profile also lowers local `vec2`, `vec3`, and `vec4`
 values and component-wise vector arithmetic directly to scalar RSH1

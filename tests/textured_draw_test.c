@@ -5,6 +5,36 @@
 
 #include <ringl/ringl.h>
 
+typedef struct __attribute__((packed)) Rsh1Header {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t header_size;
+    uint32_t total_size;
+    uint32_t stage;
+    uint32_t flags;
+    uint32_t instruction_count;
+    uint32_t register_count;
+    uint32_t input_count;
+    uint32_t output_count;
+    uint32_t resource_count;
+    uint32_t workgroup_x;
+    uint32_t workgroup_y;
+    uint32_t workgroup_z;
+    uint32_t entry_instruction;
+    uint32_t reserved0;
+    uint32_t reserved1;
+} Rsh1Header;
+
+typedef struct __attribute__((packed)) Rsh1Instruction {
+    uint16_t opcode;
+    uint16_t flags;
+    uint16_t destination;
+    uint16_t source0;
+    uint16_t source1;
+    uint16_t resource;
+    uint32_t immediate;
+} Rsh1Instruction;
+
 typedef struct FakeBackend {
     uint64_t next_handle;
     uint64_t texture_images[2];
@@ -15,6 +45,9 @@ typedef struct FakeBackend {
     char commands[32];
     uint32_t command_count;
     uint32_t shader_creates;
+    uint32_t vertex_color_tint_fragment_modules;
+    float expected_vertex_color_tint[4];
+    uint32_t validate_vertex_color_tint;
     uint32_t pipeline_creates;
     uint32_t bind_group_creates;
 } FakeBackend;
@@ -54,7 +87,30 @@ static int fake_create_shader_module(void* session, const void* rsh1,
                                      uint64_t* shader_module_out)
 {
     FakeBackend* backend = session;
+    Rsh1Header header;
+
     assert(rsh1 != NULL && size_bytes >= 64u);
+    memcpy(&header, rsh1, sizeof(header));
+    if (header.stage == 2u && header.resource_count == 2u &&
+        header.instruction_count == 27u) {
+        const Rsh1Instruction* instructions =
+            (const Rsh1Instruction*)((const uint8_t*)rsh1 + sizeof(header));
+        uint32_t index;
+
+        assert(size_bytes == sizeof(header) +
+                                 header.instruction_count * sizeof(*instructions));
+        if (backend->validate_vertex_color_tint) {
+            for (index = 0u; index < 4u; ++index) {
+                uint32_t expected_bits;
+
+                memcpy(&expected_bits, &backend->expected_vertex_color_tint[index],
+                       sizeof(expected_bits));
+                assert(instructions[14u + index].opcode == 16u &&
+                       instructions[14u + index].immediate == expected_bits);
+            }
+        }
+        ++backend->vertex_color_tint_fragment_modules;
+    }
     ++backend->shader_creates;
     *shader_module_out = ++backend->next_handle;
     return 0;
@@ -361,6 +417,7 @@ int main(void)
     int32_t tint_location;
     int32_t transform_location;
     int32_t vertex_color_sampler_location;
+    int32_t vertex_color_tint_location;
     int32_t vertex_color_transform_location;
     const float vertices[] = {
         -0.75f, -0.75f, 0.0f, 0.0f, 0.25f, 0.75f,
@@ -500,8 +557,9 @@ int main(void)
         -1);
     ringl_shader_source(
         vertex_color_fragment,
-        "uniform sampler2D colorTexture; varying vec2 uv; varying vec4 vertexColor; "
-        "void main() { gl_FragColor = texture2D(colorTexture, uv) * vertexColor; }",
+        "uniform sampler2D colorTexture; uniform vec4 tint; varying vec2 uv; "
+        "varying vec4 vertexColor; void main() { gl_FragColor = "
+        "texture2D(colorTexture, uv) * vertexColor * tint; }",
         -1);
     ringl_compile_shader(vertex_color_vertex);
     ringl_compile_shader(vertex_color_fragment);
@@ -514,17 +572,26 @@ int main(void)
     ringl_use_program(vertex_color_program);
     vertex_color_sampler_location =
         ringl_get_uniform_location(vertex_color_program, "colorTexture");
+    vertex_color_tint_location =
+        ringl_get_uniform_location(vertex_color_program, "tint");
     vertex_color_transform_location =
         ringl_get_uniform_location(vertex_color_program, "transform");
     assert(vertex_color_sampler_location == 0);
-    assert(vertex_color_transform_location == 1);
+    assert(vertex_color_tint_location == 1);
+    assert(vertex_color_transform_location == 2);
     ringl_uniform_1i(vertex_color_sampler_location, 0);
     ringl_uniform_matrix4fv(vertex_color_transform_location, RINGL_FALSE,
                             transform);
+    memcpy(backend.expected_vertex_color_tint, tint,
+           sizeof(backend.expected_vertex_color_tint));
+    backend.validate_vertex_color_tint = 1u;
+    ringl_uniform_4f(vertex_color_tint_location, tint[0], tint[1], tint[2],
+                     tint[3]);
     assert(ringl_get_error() == RINGL_NO_ERROR);
     ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);
     assert(ringl_get_error() == RINGL_NO_ERROR);
-    assert(backend.shader_creates == 7u);
+    assert(backend.shader_creates == 8u);
+    assert(backend.vertex_color_tint_fragment_modules == 2u);
     assert(backend.pipeline_creates == 2u);
     assert(backend.bind_group_creates == 2u);
 

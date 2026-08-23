@@ -1015,33 +1015,67 @@ static int lower_vertex_transformed_texture(
 
 /* This profile accepts one perspective-interpolated UV pair followed by one
  * perspective-interpolated RGBA vertex color. It is the common WebGL
- * `texture2D(...) * vertexColor` route: all six interpolation inputs, image
- * sample components, four component-wise products, and final stores are RSH1
- * instructions. The source shape is exact so a later color/texture expression
- * cannot be mistaken for this bounded native execution path. */
+ * `texture2D(...) * vertexColor` route, optionally followed by one linked
+ * `uniform vec4` tint: all six interpolation inputs, image sample components,
+ * component-wise products, and final stores are RSH1 instructions. The source
+ * shape is exact so a later color/texture expression cannot be mistaken for
+ * this bounded native execution path. */
 static int lower_fragment_textured_vertex_color(
-    const char* source, RinGLGlslLowerResult* result)
+    const char* source, const RinGLGlslUniformValue* uniforms,
+    uint32_t uniform_count, RinGLGlslLowerResult* result)
 {
     RinGLRsh1HeaderV1 header;
-    RinGLRsh1InstructionV1 ins[19];
+    RinGLRsh1InstructionV1 ins[27];
     char sampler[64];
     char uv[64];
     char color[64];
-    char expected[512];
+    char tint_name[64];
+    char expected[640];
+    float tint[4] = {0.0f};
+    uint32_t has_tint = 0u;
+    uint32_t store_base;
+    uint32_t final_base;
     uint32_t component;
     size_t total;
 
     if (source == NULL || result == NULL ||
+        (uniform_count != 0u && uniforms == NULL) ||
         !read_decl_name(source, "uniformsampler2D", 0u, sampler,
                         sizeof(sampler)) ||
         !read_decl_name(source, "varyingvec2", 0u, uv, sizeof(uv)) ||
         !read_decl_name(source, "varyingvec4", 0u, color, sizeof(color))) {
         return 1;
     }
-    (void)snprintf(expected, sizeof(expected),
-                   "uniformsampler2D%s;varyingvec2%s;varyingvec4%s;"
-                   "voidmain(){gl_FragColor=texture2D(%s,%s)*%s;}",
-                   sampler, uv, color, sampler, uv, color);
+    if (read_decl_name(source, "uniformvec4", 0u, tint_name,
+                       sizeof(tint_name))) {
+        uint32_t index;
+
+        has_tint = 1u;
+        for (index = 0u; index < uniform_count; ++index) {
+            if (uniforms[index].name == NULL ||
+                strcmp(uniforms[index].name, tint_name) != 0) {
+                continue;
+            }
+            if (uniforms[index].type != RINGL_FLOAT_VEC4)
+                return 1;
+            memcpy(tint, uniforms[index].values, sizeof(tint));
+            break;
+        }
+        for (index = 0u; index < 4u; ++index) {
+            if (!isfinite(tint[index]))
+                return 1;
+        }
+        (void)snprintf(expected, sizeof(expected),
+                       "uniformsampler2D%s;uniformvec4%s;varyingvec2%s;"
+                       "varyingvec4%s;voidmain(){gl_FragColor=texture2D(%s,%s)*%s*%s;}",
+                       sampler, tint_name, uv, color, sampler, uv, color,
+                       tint_name);
+    } else {
+        (void)snprintf(expected, sizeof(expected),
+                       "uniformsampler2D%s;varyingvec2%s;varyingvec4%s;"
+                       "voidmain(){gl_FragColor=texture2D(%s,%s)*%s;}",
+                       sampler, uv, color, sampler, uv, color);
+    }
     if (strcmp(source, expected) != 0)
         return 1;
 
@@ -1064,26 +1098,50 @@ static int lower_fragment_textured_vertex_color(
         ins[10u + component].destination = (uint16_t)(10u + component);
         ins[10u + component].source0 = (uint16_t)(6u + component);
         ins[10u + component].source1 = (uint16_t)(2u + component);
-        init_instruction(&ins[14u + component], RINGL_RSH1_OP_STORE_OUTPUT_F32);
-        ins[14u + component].source0 = (uint16_t)(10u + component);
-        ins[14u + component].immediate = component;
     }
-    init_instruction(&ins[18], RINGL_RSH1_OP_RETURN);
+    if (has_tint) {
+        for (component = 0u; component < 4u; ++component) {
+            uint32_t tint_bits;
+
+            memcpy(&tint_bits, &tint[component], sizeof(tint_bits));
+            init_instruction(&ins[14u + component], RINGL_RSH1_OP_CONST_F32);
+            ins[14u + component].destination = (uint16_t)(14u + component);
+            ins[14u + component].immediate = tint_bits;
+            init_instruction(&ins[18u + component], RINGL_RSH1_OP_MUL_F32);
+            ins[18u + component].destination = (uint16_t)(18u + component);
+            ins[18u + component].source0 = (uint16_t)(10u + component);
+            ins[18u + component].source1 = (uint16_t)(14u + component);
+        }
+        store_base = 22u;
+        final_base = 18u;
+    } else {
+        store_base = 14u;
+        final_base = 10u;
+    }
+    for (component = 0u; component < 4u; ++component) {
+        init_instruction(&ins[store_base + component],
+                         RINGL_RSH1_OP_STORE_OUTPUT_F32);
+        ins[store_base + component].source0 = (uint16_t)(final_base + component);
+        ins[store_base + component].immediate = component;
+    }
+    init_instruction(&ins[store_base + 4u], RINGL_RSH1_OP_RETURN);
 
     memset(&header, 0, sizeof(header));
     header.magic = RINGL_RSH1_MAGIC;
     header.version = RINGL_RSH1_VERSION;
     header.header_size = sizeof(header);
     header.stage = RINGL_RSH1_STAGE_FRAGMENT;
-    header.instruction_count = 19u;
-    header.register_count = 14u;
+    header.instruction_count = store_base + 5u;
+    header.register_count = has_tint ? 22u : 14u;
     header.input_count = 6u;
     header.output_count = 4u;
     header.resource_count = 2u;
-    total = sizeof(header) + sizeof(ins);
+    total = sizeof(header) +
+        (size_t)header.instruction_count * sizeof(ins[0]);
     header.total_size = (uint32_t)total;
     memcpy(result->bytes, &header, sizeof(header));
-    memcpy(result->bytes + sizeof(header), ins, sizeof(ins));
+    memcpy(result->bytes + sizeof(header), ins,
+           (size_t)header.instruction_count * sizeof(ins[0]));
     result->ok = 1u;
     result->instruction_count = header.instruction_count;
     result->register_count = header.register_count;
@@ -2231,7 +2289,8 @@ int ringl_glsl_lower_varying_rsh1_with_uniforms(
              shader_type == RINGL_FRAGMENT_SHADER) {
         rc = lower_fragment_color(compact, 4u, result);
         if (rc != 0)
-            rc = lower_fragment_textured_vertex_color(compact, result);
+            rc = lower_fragment_textured_vertex_color(compact, uniforms,
+                                                       uniform_count, result);
     }
     else if (strstr(compact, "varyingvec3") != NULL &&
              shader_type == RINGL_VERTEX_SHADER)

@@ -13,6 +13,8 @@ typedef struct FakeBackend {
     uint32_t image_uploads;
     uint32_t sampler_creates;
     uint32_t destroys;
+    uint32_t last_format;
+    uint64_t last_upload_size;
     uint8_t last_upload[16];
 } FakeBackend;
 
@@ -48,8 +50,12 @@ static int fake_create_image(void* session,
     FakeBackend* backend = session;
     assert(desc != NULL && image_out != NULL);
     assert(desc->width == 2u && desc->height == 2u);
-    assert(desc->format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM);
+    assert(desc->format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM ||
+           desc->format == RINGL_RIN_GPU_FORMAT_RGB565_UNORM ||
+           desc->format == RINGL_RIN_GPU_FORMAT_RGBA4_UNORM ||
+           desc->format == RINGL_RIN_GPU_FORMAT_RGB5_A1_UNORM);
     assert(desc->reserved0 == 0u);
+    backend->last_format = desc->format;
     backend->image_creates++;
     *image_out = ++backend->next_handle;
     return 0;
@@ -63,9 +69,14 @@ static int fake_upload_image(void* session, uint64_t image,
     assert(image != 0u && upload != NULL && data != NULL);
     assert(upload->x == 0u && upload->y == 0u);
     assert(upload->width == 2u && upload->height == 2u);
-    assert(upload->source_row_pitch_bytes == 8u);
-    assert(size_bytes == sizeof(backend->last_upload));
-    memcpy(backend->last_upload, data, sizeof(backend->last_upload));
+    uint32_t texel_bytes = backend->last_format ==
+            RINGL_RIN_GPU_FORMAT_RGBA8_UNORM
+        ? 4u : 2u;
+
+    assert(upload->source_row_pitch_bytes == 2u * texel_bytes);
+    assert(size_bytes == 4u * texel_bytes);
+    memcpy(backend->last_upload, data, (size_t)size_bytes);
+    backend->last_upload_size = size_bytes;
     backend->image_uploads++;
     return 0;
 }
@@ -114,6 +125,7 @@ int main(void)
     RinGLContext* context = NULL;
     uint32_t texture;
     uint32_t incomplete;
+    uint32_t packed_texture;
     uint64_t image;
     uint64_t sampler;
     const uint8_t pixels[16] = {
@@ -160,6 +172,16 @@ int main(void)
         9u, 9u, 9u, 0xffu, 10u, 10u, 10u, 0xffu,
         11u, 11u, 11u, 0xffu, 12u, 12u, 12u, 0xffu,
     };
+    const uint16_t rgb565_pixels[4] = {
+        UINT16_C(0xf800), UINT16_C(0x07e0), UINT16_C(0x001f), UINT16_C(0xffff),
+    };
+    const uint16_t rgba4_pixels[4] = {
+        UINT16_C(0xf00f), UINT16_C(0x0f08), UINT16_C(0x00f0), UINT16_C(0xffff),
+    };
+    const uint16_t rgb5_a1_pixels[4] = {
+        UINT16_C(0xf801), UINT16_C(0x07c0), UINT16_C(0x003f), UINT16_C(0xffff),
+    };
+    const uint16_t packed_patch = UINT16_C(0x07e0);
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -259,6 +281,43 @@ int main(void)
     assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
     assert(memcmp(backend.last_upload, luminance_expected,
                   sizeof(luminance_expected)) == 0);
+
+    ringl_gen_textures(1, &packed_texture);
+    ringl_bind_texture(RINGL_TEXTURE_2D, packed_texture);
+    ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MIN_FILTER,
+                         RINGL_LINEAR);
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGB, 2, 2, 0, RINGL_RGB,
+                       RINGL_UNSIGNED_SHORT_5_6_5, rgb565_pixels);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(backend.last_format == RINGL_RIN_GPU_FORMAT_RGB565_UNORM);
+    assert(backend.last_upload_size == sizeof(rgb565_pixels));
+    assert(memcmp(backend.last_upload, rgb565_pixels, sizeof(rgb565_pixels)) ==
+           0);
+    ringl_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 1, 0, 1, 1, RINGL_RGB,
+                           RINGL_UNSIGNED_SHORT_5_6_5, &packed_patch);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(memcmp(backend.last_upload + sizeof(uint16_t), &packed_patch,
+                  sizeof(packed_patch)) == 0);
+
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 2, 2, 0, RINGL_RGBA,
+                       RINGL_UNSIGNED_SHORT_4_4_4_4, rgba4_pixels);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(backend.last_format == RINGL_RIN_GPU_FORMAT_RGBA4_UNORM);
+    assert(backend.last_upload_size == sizeof(rgba4_pixels));
+    assert(memcmp(backend.last_upload, rgba4_pixels, sizeof(rgba4_pixels)) ==
+           0);
+
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 2, 2, 0, RINGL_RGBA,
+                       RINGL_UNSIGNED_SHORT_5_5_5_1, rgb5_a1_pixels);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(backend.last_format == RINGL_RIN_GPU_FORMAT_RGB5_A1_UNORM);
+    assert(backend.last_upload_size == sizeof(rgb5_a1_pixels));
+    assert(memcmp(backend.last_upload, rgb5_a1_pixels,
+                  sizeof(rgb5_a1_pixels)) == 0);
 
     ringl_gen_textures(1, &incomplete);
     ringl_bind_texture(RINGL_TEXTURE_2D, incomplete);

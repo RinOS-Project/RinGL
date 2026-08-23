@@ -99,6 +99,13 @@ until the replacement snapshot completes. The focused OS-Core
 borrowed surface. Depth/stencil, multisample, and other FBO copy semantics remain
 outside this slice.
 
+The same level-zero sampled-image path accepts WebGL 1 packed texture input:
+`RGB`/`UNSIGNED_SHORT_5_6_5`, `RGBA`/`UNSIGNED_SHORT_4_4_4_4`, and
+`RGBA`/`UNSIGNED_SHORT_5_5_5_1` retain native RGB565/RGBA4/RGB5_A1 two-byte
+storage and create their matching RinGPU image format. The surface sample table
+expands texels only at execution time, with opaque RGB565 alpha and preserved
+RGBA4/RGB5_A1 alpha.
+
 ## Shader module validation path
 
 RinGL lowers its current scalar GLSL ES subset to RinShader RSH1 before asking the embedding adapter to create a GPU shader module. The `create_shader_module` adapter maps directly to public `ringpu_create_shader_module()`.

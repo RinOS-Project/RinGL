@@ -77,6 +77,12 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Add texture RSH1 tests for resource slots, component selectors, and RGBA output stores.
 - [x] Parse/link/lower the initial `varying vec2` profile and map it to public RinGPU perspective varying descriptors.
 - [x] Lower `texture2D(sampler2D, varyingVec2)` for the initial textured-triangle profile.
+- [x] Add native packed WebGL 1 texture input: `RGB`/
+  `UNSIGNED_SHORT_5_6_5`, `RGBA`/`UNSIGNED_SHORT_4_4_4_4`, and
+  `RGBA`/`UNSIGNED_SHORT_5_5_5_1` use two-byte RGB565/RGBA4/RGB5_A1 shadow and
+  RinGPU sampled-image storage rather than RGBA8 normalization. Mock-RinGPU
+  tests verify format/upload/sub-image bytes and the actual RinGL-to-RinGPU
+  bridge verifies each `texture2D()` output, including packed alpha semantics.
 - [ ] Expand texture expressions beyond the initial constant/varying-coordinate one-sampler slice.
   - [x] Lower `texture2D(sampler2D, vec2(float))` as a finite constant coordinate splat, with the same scalar value stored in both RSH1 sampling-coordinate registers.
   - [x] Add the bounded two-sampler/two-call constant-coordinate addition profile: exactly two declared samplers are each sampled once and combined as `texture2D(a, vec2(...)) + texture2D(b, vec2(...))`. Lowering emits declaration-ordered resource pairs `[0, 1]` and `[2, 3]`; RinGL creates one typed bind group, transitions both distinct images before the draw, and direct/indexed RinGPU/Aquamarine bridge tests read the resulting yellow pixel.

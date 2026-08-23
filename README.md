@@ -143,6 +143,18 @@ readback through private native staging. The RinGPU software and
 Aquamarine-surface backends preserve 16-bit storage for upload, clear, draw,
 sampling, and readback.
 
+## Current packed-color texture slice
+
+`texImage2D`/`texSubImage2D` accept WebGL 1 `RGB`/
+`UNSIGNED_SHORT_5_6_5`, `RGBA`/`UNSIGNED_SHORT_4_4_4_4`, and
+`RGBA`/`UNSIGNED_SHORT_5_5_5_1`. They preserve native two-byte RGB565, RGBA4,
+and RGB5_A1 shadow storage and realize matching RinGPU sampled images; they do
+not expand through RGBA8. The Aquamarine surface backend unpacks the native
+texels only for the shader sample table, preserving RGBA4/RGB5_A1 alpha while
+making RGB565 alpha opaque. RinGL mock-backend tests verify physical format,
+upload, and sub-image bytes; the actual RinGL-to-RinGPU bridge verifies
+`texture2D()` RGBA output for all three formats.
+
 ## Current bounded texture-coordinate extension
 
 The shared perspective-UV texture profile now executes one through eight

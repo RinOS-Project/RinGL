@@ -403,8 +403,9 @@ static int texture2d_call(Parser* parser)
             return 0;
     } else if (parser->token.kind == TOK_IDENT) {
         Symbol* coordinate = find_symbol(parser, &parser->token);
-        if (coordinate == NULL || coordinate->kind != SYMBOL_VARYING ||
-            coordinate->width != 2u) {
+        if (coordinate == NULL || coordinate->width != 2u ||
+            (coordinate->kind != SYMBOL_VARYING &&
+             coordinate->kind != SYMBOL_VALUE)) {
             fail(parser, "texture2D coordinate must be vec2");
             return 0;
         }
@@ -526,13 +527,28 @@ static int assignment(Parser* parser)
 static int local_declaration(Parser* parser)
 {
     Token name;
+    uint32_t width;
+
+    if (parser->token.kind == TOK_FLOAT)
+        width = 1u;
+    else if (parser->token.kind == TOK_VEC2)
+        width = 2u;
+    else if (parser->token.kind == TOK_VEC3)
+        width = 3u;
+    else if (parser->token.kind == TOK_VEC4)
+        width = 4u;
+    else {
+        fail(parser, "expected scalar or vector type in local declaration");
+        return 0;
+    }
+
     next_token(parser);
     if (parser->token.kind != TOK_IDENT) {
-        fail(parser, "expected identifier after float");
+        fail(parser, "expected identifier after local type");
         return 0;
     }
     name = parser->token;
-    if (!add_symbol(parser, &name, SYMBOL_VALUE, 1u))
+    if (!add_symbol(parser, &name, SYMBOL_VALUE, width))
         return 0;
     next_token(parser);
     if (accept(parser, TOK_ASSIGN) && !expression(parser))
@@ -562,7 +578,10 @@ static int main_function(Parser* parser)
         return 0;
 
     while (parser->token.kind != TOK_RBRACE && parser->token.kind != TOK_EOF) {
-        if (parser->token.kind == TOK_FLOAT) {
+        if (parser->token.kind == TOK_FLOAT ||
+            parser->token.kind == TOK_VEC2 ||
+            parser->token.kind == TOK_VEC3 ||
+            parser->token.kind == TOK_VEC4) {
             if (!local_declaration(parser))
                 return 0;
         } else if (!assignment(parser)) {

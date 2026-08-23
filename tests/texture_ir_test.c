@@ -112,6 +112,15 @@ int main(void)
         "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
         "varying vec2 uv; void main() { gl_FragColor = "
         "texture2D(firstTexture, uv) + texture2D(secondTexture, uv); }";
+    const char* varying_local_alias_source =
+        "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
+        "varying vec2 uv; void main() { vec2 sampleUv = uv; gl_FragColor = "
+        "texture2D(firstTexture, sampleUv) + "
+        "texture2D(secondTexture, sampleUv); }";
+    const char* varying_unsupported_local_expression_source =
+        "uniform sampler2D colorTexture; varying vec2 uv; "
+        "void main() { vec2 sampleUv = uv + vec2(0.5, 0.0); "
+        "gl_FragColor = texture2D(colorTexture, sampleUv); }";
     const char* varying_affine_offsets_source =
         "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
         "varying vec2 uv; void main() { gl_FragColor = "
@@ -343,6 +352,41 @@ int main(void)
         assert(add->source0 == 2u + component);
         assert(add->source1 == 6u + component);
     }
+
+    /* A directly initialized local vec2 remains an interpolated coordinate
+     * in RSH1; it is not folded to a constant at compile time. */
+    ringl_shader_source(shader, varying_local_alias_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 21u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.instruction_count == 21u);
+    assert(header.register_count == 16u);
+    assert(header.resource_count == 4u);
+    for (component = 0u; component < 4u; ++component) {
+        const Instruction* first_sample =
+            (const Instruction*)(blob + sizeof(header)) + 4u + component;
+        const Instruction* second_sample =
+            (const Instruction*)(blob + sizeof(header)) + 8u + component;
+
+        assert(first_sample->opcode == RSH1_SAMPLE_IMAGE_2D_F32);
+        assert(first_sample->source0 == 0u && first_sample->source1 == 1u);
+        assert(first_sample->resource == 0u && first_sample->immediate == 1u);
+        assert(second_sample->opcode == RSH1_SAMPLE_IMAGE_2D_F32);
+        assert(second_sample->source0 == 0u && second_sample->source1 == 1u);
+        assert(second_sample->resource == 2u && second_sample->immediate == 3u);
+    }
+
+    /* Local affine expressions remain closed until their exact RSH1 lowering
+     * is implemented; parser acceptance cannot make them executable. */
+    ringl_shader_source(shader, varying_unsupported_local_expression_source,
+                        -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) != 0);
 
     /* Each sample may apply one finite vec2 offset to the interpolated
      * coordinate. The temporary coordinate registers are deliberately

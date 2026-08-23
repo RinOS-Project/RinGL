@@ -207,6 +207,28 @@ static int parse_varying_texture_call(const char** cursor,
     return 1;
 }
 
+/* The bounded texture profile accepts exactly one local vec2 alias. It is not
+ * a host-side substitution: samples keep reading RSH1's interpolated inputs. */
+static int parse_varying_texture_local_alias(const char** cursor,
+                                             const char* varying,
+                                             char* coordinate,
+                                             size_t coordinate_capacity)
+{
+    char source[64];
+
+    if (cursor == NULL || *cursor == NULL || varying == NULL ||
+        coordinate == NULL || coordinate_capacity == 0u ||
+        !consume_text(cursor, "vec2") ||
+        !read_identifier(cursor, coordinate, coordinate_capacity) ||
+        strcmp(coordinate, varying) == 0 ||
+        !consume_text(cursor, "=") ||
+        !read_identifier(cursor, source, sizeof(source)) ||
+        strcmp(source, varying) != 0 || !consume_text(cursor, ";")) {
+        return 0;
+    }
+    return 1;
+}
+
 static int lower_vertex(const char* source, RinGLGlslLowerResult* result)
 {
     RinGLRsh1HeaderV1 header;
@@ -304,6 +326,7 @@ static int lower_fragment_texture_chain(const char* source,
     RinGLRsh1InstructionV1 ins[RINGL_RSH1_MAX_INSTRUCTIONS];
     char sampler_names[RINGL_VARYING_TEXTURE_MAX_SAMPLERS][64];
     char varying[64];
+    char coordinate[64];
     VaryingTextureCall calls[RINGL_VARYING_TEXTURE_MAX_CALLS];
     uint32_t sampler_resource_indices[RINGL_VARYING_TEXTURE_MAX_SAMPLERS] = {0u};
     uint32_t sampler_binding_indices[RINGL_VARYING_TEXTURE_MAX_SAMPLERS] = {0u};
@@ -348,14 +371,21 @@ static int lower_fragment_texture_chain(const char* source,
     }
     if (sampler_count == 0u || !consume_text(&cursor, "varyingvec2") ||
         !read_identifier(&cursor, varying, sizeof(varying)) ||
-        !consume_text(&cursor, ";") ||
-        !consume_text(&cursor, "voidmain(){gl_FragColor=")) {
+        !consume_text(&cursor, ";") || !consume_text(&cursor, "voidmain(){")) {
         return 1;
     }
+    (void)snprintf(coordinate, sizeof(coordinate), "%s", varying);
+    if (strncmp(cursor, "vec2", strlen("vec2")) == 0 &&
+        !parse_varying_texture_local_alias(&cursor, varying, coordinate,
+                                           sizeof(coordinate))) {
+        return 1;
+    }
+    if (!consume_text(&cursor, "gl_FragColor="))
+        return 1;
     for (;;) {
         if (call_count == RINGL_VARYING_TEXTURE_MAX_CALLS ||
             !parse_varying_texture_call(&cursor, sampler_names, sampler_count,
-                                        varying, &calls[call_count])) {
+                                        coordinate, &calls[call_count])) {
             return 1;
         }
         ++call_count;

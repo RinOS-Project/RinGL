@@ -293,29 +293,34 @@ static int parse_varying_texture_local_coordinate(
     return 1;
 }
 
-/* Keep the two-varying extension deliberately narrow: one local vec2 may
- * combine the two declared perspective coordinates, then every sample reads
- * that named result.  This accepts the natural GLSL spelling without making
- * the bounded lowerer pretend to support arbitrary local vector expressions. */
+/* Keep the multi-varying extension deliberately narrow: one local vec2 may
+ * combine any two distinct declared perspective coordinates, then samples
+ * read that named result. This accepts the natural GLSL spelling without
+ * pretending to support arbitrary local vector expressions. */
 static int parse_varying_texture_two_coordinate_local(
-    const char** cursor, char varying_names[][64], char* coordinate,
+    const char** cursor, char varying_names[][64], uint32_t varying_count,
+    char* coordinate,
     size_t coordinate_capacity, uint32_t* coordinate_kind,
     uint32_t* primary_input_location, uint32_t* secondary_input_location)
 {
     char primary[64];
     char secondary[64];
+    uint32_t index;
 
     if (cursor == NULL || *cursor == NULL || varying_names == NULL ||
-        coordinate == NULL || coordinate_capacity == 0u ||
+        varying_count < 2u || varying_count > 3u || coordinate == NULL ||
+        coordinate_capacity == 0u ||
         coordinate_kind == NULL || primary_input_location == NULL ||
         secondary_input_location == NULL || !consume_text(cursor, "vec2") ||
         !read_identifier(cursor, coordinate, coordinate_capacity) ||
-        strcmp(coordinate, varying_names[0]) == 0 ||
-        strcmp(coordinate, varying_names[1]) == 0 ||
         !consume_text(cursor, "=") ||
         !read_identifier(cursor, primary, sizeof(primary)) ||
         (**cursor != '+' && **cursor != '-')) {
         return 0;
+    }
+    for (index = 0u; index < varying_count; ++index) {
+        if (strcmp(coordinate, varying_names[index]) == 0)
+            return 0;
     }
     *coordinate_kind = **cursor == '+'
         ? RINGL_VARYING_TEXTURE_COORD_ADD_COORDINATE
@@ -325,17 +330,21 @@ static int parse_varying_texture_two_coordinate_local(
         !consume_text(cursor, ";")) {
         return 0;
     }
-    if (strcmp(primary, varying_names[0]) == 0)
-        *primary_input_location = 0u;
-    else if (strcmp(primary, varying_names[1]) == 0)
-        *primary_input_location = 2u;
-    else
+    for (index = 0u; index < varying_count; ++index) {
+        if (strcmp(primary, varying_names[index]) == 0) {
+            *primary_input_location = index * 2u;
+            break;
+        }
+    }
+    if (index == varying_count)
         return 0;
-    if (strcmp(secondary, varying_names[0]) == 0)
-        *secondary_input_location = 0u;
-    else if (strcmp(secondary, varying_names[1]) == 0)
-        *secondary_input_location = 2u;
-    else
+    for (index = 0u; index < varying_count; ++index) {
+        if (strcmp(secondary, varying_names[index]) == 0) {
+            *secondary_input_location = index * 2u;
+            break;
+        }
+    }
+    if (index == varying_count)
         return 0;
     return *primary_input_location != *secondary_input_location;
 }
@@ -666,7 +675,8 @@ static int lower_fragment_texture_chain(const char* source,
         const char* local_source;
 
         if (!parse_varying_texture_two_coordinate_local(
-                &cursor, varying_names, local_coordinate_names[0],
+                &cursor, varying_names, varying_count,
+                local_coordinate_names[0],
                 sizeof(local_coordinate_names[0]),
                 &local_coordinate_kinds[0], &local_primary_input_location,
                 &local_secondary_input_location)) {
@@ -851,9 +861,9 @@ finish_local_coordinates:
 
         if (two_coordinate_local) {
             uint32_t primary_u = local_primary_input_location == 0u
-                ? 0u : padding_base;
+                ? 0u : padding_base + local_primary_input_location - 2u;
             uint32_t secondary_u = local_secondary_input_location == 0u
-                ? 0u : padding_base;
+                ? 0u : padding_base + local_secondary_input_location - 2u;
 
             emit_varying_texture_coordinate_combine(
                 ins, &instruction_cursor, local_temporary_base, primary_u,

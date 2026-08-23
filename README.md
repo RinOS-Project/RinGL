@@ -190,6 +190,13 @@ eight locals, more than three UV varyings, broader local expressions spanning
 three UV inputs, and more than eight calls are still
 unsupported.
 
+The bounded three-UV texture profile similarly permits exactly one local
+`vec2` constructed with `+` or `-` from any two distinct declared UV pairs;
+samples may use that result alongside direct calls on the remaining pair. The
+lowerer retains all six scalar perspective inputs and executes the combine in
+RSH1, rather than selecting or folding a coordinate on the host. Broader
+three-UV local chains and expressions using all three pairs remain unsupported.
+
 See [TODO.md](TODO.md) for the implementation roadmap.
 
 ## Repository layout

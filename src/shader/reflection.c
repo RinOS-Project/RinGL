@@ -85,12 +85,14 @@ int ringl_get_program_reflection(uint32_t program,
     if (vertex == NULL || fragment == NULL)
         return -1;
 
-    if (object->float_uniform_count == 0u && object->vec4_uniform_count == 0u &&
+    if (object->float_uniform_count == 0u && object->vec2_uniform_count == 0u &&
+        object->vec3_uniform_count == 0u && object->vec4_uniform_count == 0u &&
         vertex->rsh1_size == 0u &&
         ringl_lower_shader_rsh1(object->linked_vertex_shader) != 0) {
         return -1;
     }
-    if (object->float_uniform_count == 0u && object->vec4_uniform_count == 0u &&
+    if (object->float_uniform_count == 0u && object->vec2_uniform_count == 0u &&
+        object->vec3_uniform_count == 0u && object->vec4_uniform_count == 0u &&
         fragment->rsh1_size == 0u &&
         ringl_lower_shader_rsh1(object->linked_fragment_shader) != 0) {
         return -1;
@@ -123,6 +125,8 @@ int ringl_get_program_reflection(uint32_t program,
     result.fragment_output_count = fragment_header.output_count;
     result.active_uniform_count = object->sampler_uniform_count +
                                   object->float_uniform_count +
+                                  object->vec2_uniform_count +
+                                  object->vec3_uniform_count +
                                   object->vec4_uniform_count;
     result.vertex_shader_module = object->vertex_uniform_rsh1 != NULL
         ? object->vertex_uniform_module : vertex->ringpu_module;

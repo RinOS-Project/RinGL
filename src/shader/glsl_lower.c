@@ -16,6 +16,7 @@ typedef enum Tok {
     T_VOID,
     T_FLOAT,
     T_VEC2,
+    T_VEC3,
     T_VEC4,
     T_ATTRIBUTE,
     T_UNIFORM,
@@ -127,6 +128,8 @@ static Tok keyword(const char* begin, size_t length)
         return T_FLOAT;
     if (length == 4u && memcmp(begin, "vec2", 4u) == 0)
         return T_VEC2;
+    if (length == 4u && memcmp(begin, "vec3", 4u) == 0)
+        return T_VEC3;
     if (length == 4u && memcmp(begin, "vec4", 4u) == 0)
         return T_VEC4;
     if (length == 9u && memcmp(begin, "attribute", 9u) == 0)
@@ -455,6 +458,8 @@ static Value primary(Lower* lower)
         return number_value(lower);
     if (lower->token.kind == T_VEC2)
         return constructor_value(lower, 2u);
+    if (lower->token.kind == T_VEC3)
+        return constructor_value(lower, 3u);
     if (lower->token.kind == T_VEC4)
         return constructor_value(lower, 4u);
     if (lower->token.kind == T_IDENT)
@@ -691,10 +696,14 @@ static int parse_all(Lower* lower)
 
             if (lower->token.kind == T_FLOAT) {
                 uniform_type = RINGL_FLOAT;
+            } else if (lower->token.kind == T_VEC2) {
+                uniform_type = RINGL_FLOAT_VEC2;
+            } else if (lower->token.kind == T_VEC3) {
+                uniform_type = RINGL_FLOAT_VEC3;
             } else if (lower->token.kind == T_VEC4) {
                 uniform_type = RINGL_FLOAT_VEC4;
             } else {
-                fail(lower, "only uniform float and uniform vec4 lowering is supported");
+                fail(lower, "only uniform float/vec2/vec3/vec4 lowering is supported");
                 return 0;
             }
             next(lower);
@@ -705,7 +714,9 @@ static int parse_all(Lower* lower)
             name = lower->token;
             if (find_symbol(lower, &name) != NULL ||
                 (symbol = add_symbol(lower, &name, 0,
-                                     uniform_type == RINGL_FLOAT ? 1u : 4u)) == NULL ||
+                                     uniform_type == RINGL_FLOAT ? 1u
+                                     : uniform_type == RINGL_FLOAT_VEC2 ? 2u
+                                     : uniform_type == RINGL_FLOAT_VEC3 ? 3u : 4u)) == NULL ||
                 !initialize_uniform(lower, symbol, &name, uniform_type)) {
                 return 0;
             }

@@ -10,6 +10,8 @@
 #define RINGL_GLSL_MAX_ATTRIBUTES 16u
 #define RINGL_GLSL_MAX_SAMPLER_UNIFORMS 8u
 #define RINGL_GLSL_MAX_FLOAT_UNIFORMS 8u
+#define RINGL_GLSL_MAX_VEC2_UNIFORMS 8u
+#define RINGL_GLSL_MAX_VEC3_UNIFORMS 8u
 #define RINGL_GLSL_MAX_VEC4_UNIFORMS 8u
 #define RINGL_GLSL_MAX_VARYINGS 8u
 #define RINGL_GLSL_NAME_MAX 64u
@@ -21,12 +23,16 @@ typedef struct RinGLGlslParseResult {
     uint32_t attribute_count;
     uint32_t sampler_uniform_count;
     uint32_t float_uniform_count;
+    uint32_t vec2_uniform_count;
+    uint32_t vec3_uniform_count;
     uint32_t vec4_uniform_count;
     uint32_t varying_count;
     char attribute_names[RINGL_GLSL_MAX_ATTRIBUTES][RINGL_GLSL_NAME_MAX];
     uint32_t attribute_widths[RINGL_GLSL_MAX_ATTRIBUTES];
     char sampler_uniform_names[RINGL_GLSL_MAX_SAMPLER_UNIFORMS][RINGL_GLSL_NAME_MAX];
     char float_uniform_names[RINGL_GLSL_MAX_FLOAT_UNIFORMS][RINGL_GLSL_NAME_MAX];
+    char vec2_uniform_names[RINGL_GLSL_MAX_VEC2_UNIFORMS][RINGL_GLSL_NAME_MAX];
+    char vec3_uniform_names[RINGL_GLSL_MAX_VEC3_UNIFORMS][RINGL_GLSL_NAME_MAX];
     char vec4_uniform_names[RINGL_GLSL_MAX_VEC4_UNIFORMS][RINGL_GLSL_NAME_MAX];
     char varying_names[RINGL_GLSL_MAX_VARYINGS][RINGL_GLSL_NAME_MAX];
     uint32_t varying_widths[RINGL_GLSL_MAX_VARYINGS];

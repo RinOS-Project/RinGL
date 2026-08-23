@@ -1443,6 +1443,20 @@ void ringl_uniform_1f(int32_t location, float value);
  * leave value_out unchanged and record an error. */
 int ringl_get_uniform_1f(uint32_t program, int32_t location,
                           float* value_out);
+/* Bounded native GLSL lowering supports active `uniform vec2` values. The
+ * setter applies only to the currently used linked program and atomically
+ * replaces its program-owned RinGPU shader modules after finite-value checks. */
+void ringl_uniform_2f(int32_t location, float x, float y);
+/* Reads an active vec2 uniform into exactly two caller-owned floats. */
+int ringl_get_uniform_2f(uint32_t program, int32_t location,
+                          float values_out[2]);
+/* Bounded native GLSL lowering supports active `uniform vec3` values. The
+ * setter applies only to the currently used linked program and atomically
+ * replaces its program-owned RinGPU shader modules after finite-value checks. */
+void ringl_uniform_3f(int32_t location, float x, float y, float z);
+/* Reads an active vec3 uniform into exactly three caller-owned floats. */
+int ringl_get_uniform_3f(uint32_t program, int32_t location,
+                          float values_out[3]);
 /* Bounded native GLSL lowering supports active `uniform vec4` values. The
  * setter applies only to the currently used program. It realizes a fresh
  * program-owned RinGPU shader module before replacing the prior executable,

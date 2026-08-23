@@ -28,6 +28,14 @@ int main(void)
     uint32_t float_fragment;
     uint32_t float_program;
     uint32_t float_peer_program;
+    uint32_t vec2_vertex;
+    uint32_t vec2_fragment;
+    uint32_t vec2_program;
+    uint32_t vec2_peer_program;
+    uint32_t vec3_vertex;
+    uint32_t vec3_fragment;
+    uint32_t vec3_program;
+    uint32_t vec3_peer_program;
     int32_t location;
     int32_t uniform_value = -1;
     char log[160];
@@ -258,6 +266,122 @@ int main(void)
     assert(ringl_get_error() == RINGL_INVALID_OPERATION);
     ringl_delete_program(float_peer_program);
     ringl_delete_program(float_program);
+
+    /* vec2 and vec3 share the program-owned mutable lowering path. Their
+     * locations must remain type-separated so a setter can never index a
+     * differently-sized uniform record. */
+    vec2_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+    vec2_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+    vec2_program = ringl_create_program();
+    vec2_peer_program = ringl_create_program();
+    assert(vec2_vertex != 0u && vec2_fragment != 0u && vec2_program != 0u &&
+           vec2_peer_program != 0u);
+    ringl_shader_source(vec2_vertex,
+                        "void main() { gl_Position = vec4(-1.0, -1.0, 0.0, 1.0); }",
+                        -1);
+    ringl_shader_source(vec2_fragment,
+                        "uniform vec2 tint; "
+                        "void main() { gl_FragColor = vec4(tint, 0.0, 1.0); }",
+                        -1);
+    ringl_compile_shader(vec2_vertex);
+    ringl_compile_shader(vec2_fragment);
+    assert(ringl_get_shader_compile_status(vec2_vertex) == RINGL_TRUE);
+    assert(ringl_get_shader_compile_status(vec2_fragment) == RINGL_TRUE);
+    ringl_attach_shader(vec2_program, vec2_vertex);
+    ringl_attach_shader(vec2_program, vec2_fragment);
+    ringl_attach_shader(vec2_peer_program, vec2_vertex);
+    ringl_attach_shader(vec2_peer_program, vec2_fragment);
+    ringl_link_program(vec2_program);
+    ringl_link_program(vec2_peer_program);
+    assert(ringl_get_program_link_status(vec2_program) == RINGL_TRUE);
+    assert(ringl_get_program_link_status(vec2_peer_program) == RINGL_TRUE);
+    assert(ringl_get_program_info(vec2_program, &info) == 0);
+    assert(info.active_uniform_count == 1u);
+    location = ringl_get_uniform_location(vec2_program, "tint");
+    assert(location == 0);
+    assert(ringl_get_active_uniform(vec2_program, 0u, &active_info) == 0);
+    assert(active_info.type == RINGL_FLOAT_VEC2 &&
+           strcmp(active_info.name, "tint") == 0);
+    {
+        float values[2] = { -1.0f, -1.0f };
+
+        assert(ringl_get_uniform_2f(vec2_program, location, values) == 0);
+        assert(values[0] == 0.0f && values[1] == 0.0f);
+        ringl_use_program(vec2_program);
+        ringl_uniform_2f(location, 0.25f, 0.75f);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_2f(vec2_program, location, values) == 0);
+        assert(values[0] == 0.25f && values[1] == 0.75f);
+        ringl_uniform_2f(location, NAN, 0.5f);
+        assert(ringl_get_error() == RINGL_INVALID_VALUE);
+        assert(ringl_get_uniform_2f(vec2_program, location, values) == 0);
+        assert(values[0] == 0.25f && values[1] == 0.75f);
+        ringl_uniform_3f(location, 1.0f, 1.0f, 1.0f);
+        assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+        values[0] = -1.0f;
+        values[1] = -1.0f;
+        assert(ringl_get_uniform_2f(vec2_peer_program, location, values) == 0);
+        assert(values[0] == 0.0f && values[1] == 0.0f);
+    }
+    ringl_delete_program(vec2_peer_program);
+    ringl_delete_program(vec2_program);
+
+    vec3_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+    vec3_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+    vec3_program = ringl_create_program();
+    vec3_peer_program = ringl_create_program();
+    assert(vec3_vertex != 0u && vec3_fragment != 0u && vec3_program != 0u &&
+           vec3_peer_program != 0u);
+    ringl_shader_source(vec3_vertex,
+                        "void main() { gl_Position = vec4(-1.0, -1.0, 0.0, 1.0); }",
+                        -1);
+    ringl_shader_source(vec3_fragment,
+                        "uniform vec3 tint; "
+                        "void main() { gl_FragColor = vec4(tint, 1.0); }",
+                        -1);
+    ringl_compile_shader(vec3_vertex);
+    ringl_compile_shader(vec3_fragment);
+    assert(ringl_get_shader_compile_status(vec3_vertex) == RINGL_TRUE);
+    assert(ringl_get_shader_compile_status(vec3_fragment) == RINGL_TRUE);
+    ringl_attach_shader(vec3_program, vec3_vertex);
+    ringl_attach_shader(vec3_program, vec3_fragment);
+    ringl_attach_shader(vec3_peer_program, vec3_vertex);
+    ringl_attach_shader(vec3_peer_program, vec3_fragment);
+    ringl_link_program(vec3_program);
+    ringl_link_program(vec3_peer_program);
+    assert(ringl_get_program_link_status(vec3_program) == RINGL_TRUE);
+    assert(ringl_get_program_link_status(vec3_peer_program) == RINGL_TRUE);
+    assert(ringl_get_program_info(vec3_program, &info) == 0);
+    assert(info.active_uniform_count == 1u);
+    location = ringl_get_uniform_location(vec3_program, "tint");
+    assert(location == 0);
+    assert(ringl_get_active_uniform(vec3_program, 0u, &active_info) == 0);
+    assert(active_info.type == RINGL_FLOAT_VEC3 &&
+           strcmp(active_info.name, "tint") == 0);
+    {
+        float values[3] = { -1.0f, -1.0f, -1.0f };
+
+        assert(ringl_get_uniform_3f(vec3_program, location, values) == 0);
+        assert(values[0] == 0.0f && values[1] == 0.0f && values[2] == 0.0f);
+        ringl_use_program(vec3_program);
+        ringl_uniform_3f(location, 0.1f, 0.2f, 0.3f);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_3f(vec3_program, location, values) == 0);
+        assert(values[0] == 0.1f && values[1] == 0.2f && values[2] == 0.3f);
+        ringl_uniform_3f(location, 0.1f, INFINITY, 0.3f);
+        assert(ringl_get_error() == RINGL_INVALID_VALUE);
+        assert(ringl_get_uniform_3f(vec3_program, location, values) == 0);
+        assert(values[0] == 0.1f && values[1] == 0.2f && values[2] == 0.3f);
+        ringl_uniform_4f(location, 1.0f, 1.0f, 1.0f, 1.0f);
+        assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+        values[0] = -1.0f;
+        values[1] = -1.0f;
+        values[2] = -1.0f;
+        assert(ringl_get_uniform_3f(vec3_peer_program, location, values) == 0);
+        assert(values[0] == 0.0f && values[1] == 0.0f && values[2] == 0.0f);
+    }
+    ringl_delete_program(vec3_peer_program);
+    ringl_delete_program(vec3_program);
 
     multi_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
     multi_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);

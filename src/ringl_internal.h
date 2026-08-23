@@ -23,6 +23,8 @@
 #define RINGL_PROGRAM_LOG_MAX 160u
 #define RINGL_MAX_SAMPLER_UNIFORMS 8u
 #define RINGL_MAX_FLOAT_UNIFORMS 8u
+#define RINGL_MAX_VEC2_UNIFORMS 8u
+#define RINGL_MAX_VEC3_UNIFORMS 8u
 #define RINGL_MAX_VEC4_UNIFORMS 8u
 #define RINGL_MAX_VARYINGS 8u
 #define RINGL_UNIFORM_NAME_MAX RINGL_ACTIVE_INFO_NAME_MAX
@@ -111,12 +113,16 @@ typedef struct RinGLShaderObject {
     uint32_t attribute_count;
     uint32_t sampler_uniform_count;
     uint32_t float_uniform_count;
+    uint32_t vec2_uniform_count;
+    uint32_t vec3_uniform_count;
     uint32_t vec4_uniform_count;
     uint32_t rsh1_sampler_binding_count;
     uint32_t varying_count;
     uint32_t delete_pending;
     char sampler_uniform_names[RINGL_MAX_SAMPLER_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char float_uniform_names[RINGL_MAX_FLOAT_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
+    char vec2_uniform_names[RINGL_MAX_VEC2_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
+    char vec3_uniform_names[RINGL_MAX_VEC3_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char vec4_uniform_names[RINGL_MAX_VEC4_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     uint32_t rsh1_sampler_binding_indices[RINGL_MAX_SAMPLER_UNIFORMS];
     char varying_names[RINGL_MAX_VARYINGS][RINGL_UNIFORM_NAME_MAX];
@@ -133,6 +139,16 @@ typedef struct RinGLProgramFloatUniform {
     char name[RINGL_UNIFORM_NAME_MAX];
     float value;
 } RinGLProgramFloatUniform;
+
+typedef struct RinGLProgramVec2Uniform {
+    char name[RINGL_UNIFORM_NAME_MAX];
+    float values[2];
+} RinGLProgramVec2Uniform;
+
+typedef struct RinGLProgramVec3Uniform {
+    char name[RINGL_UNIFORM_NAME_MAX];
+    float values[3];
+} RinGLProgramVec3Uniform;
 
 /* Scalar RSH1 has no mutable uniform resource yet. Vec4 values therefore
  * live on the linked program and are lowered to program-owned CONST_F32
@@ -172,6 +188,8 @@ typedef struct RinGLProgramObject {
     uint32_t attribute_count;
     uint32_t sampler_uniform_count;
     uint32_t float_uniform_count;
+    uint32_t vec2_uniform_count;
+    uint32_t vec3_uniform_count;
     uint32_t vec4_uniform_count;
     uint32_t varying_count;
     RinGLProgramAttribute attributes[RINGL_MAX_VERTEX_ATTRIBS];
@@ -182,6 +200,8 @@ typedef struct RinGLProgramObject {
         attribute_bindings[RINGL_MAX_VERTEX_ATTRIBS];
     RinGLProgramSamplerUniform sampler_uniforms[RINGL_MAX_SAMPLER_UNIFORMS];
     RinGLProgramFloatUniform float_uniforms[RINGL_MAX_FLOAT_UNIFORMS];
+    RinGLProgramVec2Uniform vec2_uniforms[RINGL_MAX_VEC2_UNIFORMS];
+    RinGLProgramVec3Uniform vec3_uniforms[RINGL_MAX_VEC3_UNIFORMS];
     RinGLProgramVec4Uniform vec4_uniforms[RINGL_MAX_VEC4_UNIFORMS];
     uint8_t* vertex_uniform_rsh1;
     uint8_t* fragment_uniform_rsh1;

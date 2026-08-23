@@ -93,12 +93,18 @@ static void ringl_shader_reset_compile_state(RinGLContext* context,
     object->attribute_count = 0u;
     object->sampler_uniform_count = 0u;
     object->float_uniform_count = 0u;
+    object->vec2_uniform_count = 0u;
+    object->vec3_uniform_count = 0u;
     object->vec4_uniform_count = 0u;
     object->rsh1_sampler_binding_count = 0u;
     memset(object->sampler_uniform_names, 0,
            sizeof(object->sampler_uniform_names));
     memset(object->float_uniform_names, 0,
            sizeof(object->float_uniform_names));
+    memset(object->vec2_uniform_names, 0,
+           sizeof(object->vec2_uniform_names));
+    memset(object->vec3_uniform_names, 0,
+           sizeof(object->vec3_uniform_names));
     memset(object->vec4_uniform_names, 0,
            sizeof(object->vec4_uniform_names));
     memset(object->rsh1_sampler_binding_indices, 0,
@@ -275,6 +281,12 @@ void ringl_compile_shader(uint32_t shader)
     object->float_uniform_count = result.float_uniform_count;
     memcpy(object->float_uniform_names, result.float_uniform_names,
            sizeof(object->float_uniform_names));
+    object->vec2_uniform_count = result.vec2_uniform_count;
+    memcpy(object->vec2_uniform_names, result.vec2_uniform_names,
+           sizeof(object->vec2_uniform_names));
+    object->vec3_uniform_count = result.vec3_uniform_count;
+    memcpy(object->vec3_uniform_names, result.vec3_uniform_names,
+           sizeof(object->vec3_uniform_names));
     object->vec4_uniform_count = result.vec4_uniform_count;
     memcpy(object->vec4_uniform_names, result.vec4_uniform_names,
            sizeof(object->vec4_uniform_names));

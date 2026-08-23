@@ -68,7 +68,7 @@ static int read_decl_name(const char* source, const char* prefix,
 
 #define RINGL_VARYING_TEXTURE_MAX_SAMPLERS RINGL_GLSL_MAX_SAMPLER_UNIFORMS
 #define RINGL_VARYING_TEXTURE_MAX_CALLS RINGL_GLSL_MAX_SAMPLER_UNIFORMS
-#define RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES 2u
+#define RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES 3u
 
 typedef struct VaryingTextureCall {
     uint32_t sampler_index;
@@ -371,7 +371,7 @@ static int lower_vertex(const char* source, RinGLGlslLowerResult* result)
  *   [UV inputs][optional local affine coordinate][RGBA samples]
  *   [RGBA left-to-right sums][RGBA stores][return]
  *
- * Up to two local affine coordinates are evaluated in source order before the
+ * Up to three local affine coordinates are evaluated in source order before the
  * samples. Each sample may additionally use one finite offset; its four
  * temporary registers are overwritten only after that sample has consumed
  * them. The eight-call profile stays below both RSH1 and RinGPU limits.

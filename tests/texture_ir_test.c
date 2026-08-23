@@ -136,10 +136,11 @@ int main(void)
         "void main() { vec2 baseUv = uv + vec2(0.5, 0.0); "
         "vec2 sampleUv = baseUv - vec2(0.0, 0.5); "
         "gl_FragColor = texture2D(colorTexture, sampleUv); }";
-    const char* varying_unsupported_three_local_source =
+    const char* varying_three_local_affine_chain_source =
         "uniform sampler2D colorTexture; varying vec2 uv; "
-        "void main() { vec2 firstUv = uv; vec2 secondUv = firstUv; "
-        "vec2 thirdUv = secondUv; "
+        "void main() { vec2 firstUv = uv + vec2(0.25, 0.0); "
+        "vec2 secondUv = firstUv + vec2(0.25, 0.0); "
+        "vec2 thirdUv = secondUv - vec2(0.0, 0.5); "
         "gl_FragColor = texture2D(colorTexture, thirdUv); }";
     const char* varying_affine_offsets_source =
         "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
@@ -532,11 +533,38 @@ int main(void)
         assert(sample->source0 == 14u && sample->source1 == 15u);
     }
 
-    /* A third local remains closed until its exact RSH1 profile is added. */
-    ringl_shader_source(shader, varying_unsupported_three_local_source, -1);
+    /* Three local affine values execute in declaration order. The third
+     * operation must consume the second result, without algebraically folding
+     * any of the Float32 operations. */
+    ringl_shader_source(shader, varying_three_local_affine_chain_source, -1);
     ringl_compile_shader(shader);
     assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
-    assert(ringl_lower_shader_rsh1(shader) != 0);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 25u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.instruction_count == 25u);
+    assert(header.register_count == 20u);
+    assert(header.resource_count == 2u);
+    for (component = 0u; component < 4u; ++component) {
+        const Instruction* first_coordinate =
+            (const Instruction*)(blob + sizeof(header)) + 6u + component / 2u;
+        const Instruction* second_coordinate =
+            (const Instruction*)(blob + sizeof(header)) + 10u + component / 2u;
+        const Instruction* third_coordinate =
+            (const Instruction*)(blob + sizeof(header)) + 14u + component / 2u;
+        const Instruction* sample =
+            (const Instruction*)(blob + sizeof(header)) + 16u + component;
+
+        assert(first_coordinate->destination == 10u + component / 2u);
+        assert(first_coordinate->source0 == component / 2u);
+        assert(second_coordinate->destination == 14u + component / 2u);
+        assert(second_coordinate->source0 == 10u + component / 2u);
+        assert(third_coordinate->destination == 18u + component / 2u);
+        assert(third_coordinate->source0 == 14u + component / 2u);
+        assert(sample->source0 == 18u && sample->source1 == 19u);
+    }
 
     /* Each sample may apply one finite vec2 offset to the interpolated
      * coordinate. The temporary coordinate registers are deliberately

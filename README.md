@@ -148,7 +148,7 @@ shared UV, for example `vec2 baseUv = uv + vec2(...);` followed by
 `vec2 localUv = baseUv - vec2(...);`. Each affine initializer is lowered in
 source order before samples, and every sample reads the resulting live
 perspective-coordinate RSH1 registers. This remains a deliberately narrow
-GLSL ES subset: other local vector expressions, more than two locals, more
+GLSL ES subset: other local vector expressions, more than three locals, more
 than two UV varyings, and more than eight calls are still unsupported.
 
 See [TODO.md](TODO.md) for the implementation roadmap.

@@ -212,6 +212,11 @@ four-UV expressions remain deliberately outside this profile.
 
 See [TODO.md](TODO.md) for the implementation roadmap.
 
+[The GLES 2.0 API inventory](docs/gles2-api-status.md) records every registry
+entry point as bounded, partial, or absent, together with enum/query/limit
+coverage. It is the authoritative boundary for embeddings and does not claim a
+GLES version merely because a similarly named RinGL function exists.
+
 ## Repository layout
 
 The exact layout may evolve, but the intended separation is roughly:

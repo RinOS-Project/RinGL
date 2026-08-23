@@ -278,8 +278,8 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 
 ## Phase 8 — OpenGL ES compatibility expansion
 
-- [ ] Inventory required OpenGL ES 2.0 entry points, enums, limits, and queries.
-- [ ] Track implementation status per API instead of claiming version support early.
+- [x] Inventory required OpenGL ES 2.0 entry points, enums, limits, and queries in `docs/gles2-api-status.md`; it audits every `gl2.h` entry point, all enum classes, fixed limits, and accepted query pnames against the public RinGL headers.
+- [x] Track implementation status per API instead of claiming version support early. `docs/gles2-api-status.md` classifies every GLES 2.0 entry point as bounded, partial, or absent and defines the embedding rule that absent APIs must not synthesize success.
 - [ ] Close GLES 2.0 semantic gaps found by conformance-style tests.
 - [x] Implement WebGL generic attribute constants for disabled active arrays:
   active values use the default `(0, 0, 0, 1)` or `vertexAttrib[1-4]f` state as

@@ -146,19 +146,23 @@ int main(void)
         "  gl_Position = shifted / 2.0 - vec4(0.0, 0.25, 0.0, 0.0);\n"
         "}\n";
     const char* fragment_source =
+        "precision mediump float;\n"
+        "precision highp int;\n"
         "void main() {\n"
         "  gl_FragColor = vec4(1.0, 0.25, 0.0, 1.0);\n"
         "}\n";
     const char* texture_source =
+        "precision mediump float;\n"
+        "precision lowp sampler2D;\n"
         "uniform sampler2D colorTexture;\n"
         "void main() {\n"
         "  gl_FragColor = texture2D(colorTexture, vec2(0.25, 0.75));\n"
         "}\n";
     const char* varying_vertex_source =
-        "attribute vec2 position; attribute vec2 texCoord; varying vec2 uv; "
+        "precision highp float; attribute vec2 position; attribute vec2 texCoord; varying vec2 uv; "
         "void main() { gl_Position = vec4(position, 0.0, 1.0); uv = texCoord; }";
     const char* varying_fragment_source =
-        "uniform sampler2D colorTexture; varying vec2 uv; "
+        "precision mediump float; uniform sampler2D colorTexture; varying vec2 uv; "
         "void main() { gl_FragColor = texture2D(colorTexture, uv); }";
     const char* color_varying_vertex_source =
         "attribute vec2 position; attribute vec4 color; varying vec4 vertexColor; "
@@ -307,6 +311,15 @@ int main(void)
     assert(ringl_get_shader_compile_status(vertex) == RINGL_FALSE);
     assert(ringl_get_shader_rsh1_size(vertex) == 0u);
     assert(ringl_get_shader_module(vertex) == 0u);
+
+    /* Do not silently consume an incomplete precision declaration. The
+     * frontend accepts only the exact GLES qualifier/type grammar it can map
+     * to the binary32 RSH1 execution domain. */
+    ringl_shader_source(fragment,
+                        "precision float; void main() { "
+                        "gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0); }", -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
 
     ringl_context_destroy(context);
     return 0;

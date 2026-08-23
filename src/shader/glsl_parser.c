@@ -19,10 +19,15 @@ typedef enum TokenKind {
     TOK_VEC3,
     TOK_VEC4,
     TOK_MAT4,
+    TOK_INT,
     TOK_SAMPLER2D,
     TOK_ATTRIBUTE,
     TOK_UNIFORM,
     TOK_VARYING,
+    TOK_PRECISION,
+    TOK_LOWP,
+    TOK_MEDIUMP,
+    TOK_HIGHP,
     TOK_LPAREN,
     TOK_RPAREN,
     TOK_LBRACE,
@@ -130,6 +135,8 @@ static TokenKind keyword_kind(const char* begin, size_t length)
         return TOK_VEC4;
     if (length == 4u && memcmp(begin, "mat4", 4u) == 0)
         return TOK_MAT4;
+    if (length == 3u && memcmp(begin, "int", 3u) == 0)
+        return TOK_INT;
     if (length == 9u && memcmp(begin, "sampler2D", 9u) == 0)
         return TOK_SAMPLER2D;
     if (length == 9u && memcmp(begin, "attribute", 9u) == 0)
@@ -138,6 +145,14 @@ static TokenKind keyword_kind(const char* begin, size_t length)
         return TOK_UNIFORM;
     if (length == 7u && memcmp(begin, "varying", 7u) == 0)
         return TOK_VARYING;
+    if (length == 9u && memcmp(begin, "precision", 9u) == 0)
+        return TOK_PRECISION;
+    if (length == 4u && memcmp(begin, "lowp", 4u) == 0)
+        return TOK_LOWP;
+    if (length == 7u && memcmp(begin, "mediump", 7u) == 0)
+        return TOK_MEDIUMP;
+    if (length == 5u && memcmp(begin, "highp", 5u) == 0)
+        return TOK_HIGHP;
     return TOK_IDENT;
 }
 
@@ -805,6 +820,32 @@ static int varying_declaration(Parser* parser)
     return 1;
 }
 
+/* RSH1 executes this profile in binary32. A GLSL ES default precision
+ * declaration therefore selects an admissible source-language precision but
+ * does not add a second, hidden execution mode. Keep it syntactically and
+ * semantically explicit: accepting arbitrary identifiers here would make an
+ * unsupported storage type appear to compile. */
+static int precision_declaration(Parser* parser)
+{
+    next_token(parser);
+    if (parser->token.kind != TOK_LOWP && parser->token.kind != TOK_MEDIUMP &&
+        parser->token.kind != TOK_HIGHP) {
+        fail(parser, "precision declaration requires lowp, mediump, or highp");
+        return 0;
+    }
+    next_token(parser);
+    if (parser->token.kind != TOK_FLOAT && parser->token.kind != TOK_INT &&
+        parser->token.kind != TOK_SAMPLER2D) {
+        fail(parser, "precision declaration type is not supported");
+        return 0;
+    }
+    next_token(parser);
+    if (!expect(parser, TOK_SEMI, "expected ';' after precision declaration"))
+        return 0;
+    parser->result->declaration_count++;
+    return 1;
+}
+
 int ringl_glsl_parse(uint32_t shader_type,
                      const char* source,
                      size_t source_length,
@@ -832,6 +873,9 @@ int ringl_glsl_parse(uint32_t shader_type,
                 break;
         } else if (parser.token.kind == TOK_VARYING) {
             if (!varying_declaration(&parser))
+                break;
+        } else if (parser.token.kind == TOK_PRECISION) {
+            if (!precision_declaration(&parser))
                 break;
         } else if (parser.token.kind == TOK_VOID) {
             if (!main_function(&parser))

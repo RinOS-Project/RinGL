@@ -161,6 +161,7 @@ int main(void)
                         "void main() { gl_Position = vec4(-1.0, -1.0, 0.0, 1.0); }",
                         -1);
     ringl_shader_source(vec4_fragment,
+                        "precision mediump float; precision highp int; "
                         "uniform vec4 tint; void main() { "
                         "vec4 shaded = -tint * 0.5; "
                         "gl_FragColor = shaded + vec4(1.0, 0.5, 0.25, 0.0); }",

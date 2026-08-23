@@ -332,6 +332,13 @@ offset while retaining explicit RSH1 resource and register limits; swizzles,
 matrix arithmetic beyond `mat4 * vec4`, vector comparisons, and control flow
 are still outside the profile.
 
+The frontend accepts GLSL ES global `precision lowp|mediump|highp` declarations
+for `float`, `int`, and `sampler2D`. They are not ignored text: the compiler
+validates the complete declaration before lowering, and the accepted numeric
+domain executes in IEEE-754 binary32 RSH1 (a conforming higher-precision
+implementation for the advertised floating qualifiers). An incomplete or
+unknown precision declaration fails compilation rather than being skipped.
+
 `ringl_get_renderbuffer_info()` exposes the current renderbuffer's dimensions,
 internal format, component bit counts, and zero sample count through a
 versioned caller-owned snapshot. An allocated renderbuffer reports zero-sized

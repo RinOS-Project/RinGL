@@ -20,6 +20,51 @@ static void init_instruction(RinGLRsh1InstructionV1* ins, uint16_t opcode)
     ins->resource = RINGL_RSH1_UNUSED;
 }
 
+/* The structural varying lowerers compare a whitespace-free source shape.
+ * Remove only fully validated default-precision declarations before those
+ * comparisons; ringl_glsl_parse() has already rejected every other form.
+ * RSH1 evaluates the accepted scalar domain in binary32, so these statements
+ * change GLSL source precision but require no hidden backend mode. */
+static void strip_precision_declarations(char* source)
+{
+    char* read = source;
+    char* write = source;
+
+    while (*read != '\0') {
+        const char* qualifier = NULL;
+        const char* type = NULL;
+        char* cursor;
+
+        if (strncmp(read, "precision", strlen("precision")) == 0) {
+            cursor = read + strlen("precision");
+            if (strncmp(cursor, "lowp", strlen("lowp")) == 0)
+                qualifier = "lowp";
+            else if (strncmp(cursor, "mediump", strlen("mediump")) == 0)
+                qualifier = "mediump";
+            else if (strncmp(cursor, "highp", strlen("highp")) == 0)
+                qualifier = "highp";
+            if (qualifier != NULL) {
+                cursor += strlen(qualifier);
+                if (strncmp(cursor, "float", strlen("float")) == 0)
+                    type = "float";
+                else if (strncmp(cursor, "int", strlen("int")) == 0)
+                    type = "int";
+                else if (strncmp(cursor, "sampler2D", strlen("sampler2D")) == 0)
+                    type = "sampler2D";
+                if (type != NULL) {
+                    cursor += strlen(type);
+                    if (*cursor == ';') {
+                        read = cursor + 1u;
+                        continue;
+                    }
+                }
+            }
+        }
+        *write++ = *read++;
+    }
+    *write = '\0';
+}
+
 static char* compact_source(const char* source, size_t length)
 {
     char* compact;
@@ -37,6 +82,7 @@ static char* compact_source(const char* source, size_t length)
             compact[write_index++] = (char)c;
     }
     compact[write_index] = '\0';
+    strip_precision_declarations(compact);
     return compact;
 }
 

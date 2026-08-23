@@ -29,7 +29,7 @@ Status meanings:
 | `glBindTexture`, `glGenTextures`, `glDeleteTextures`, `glIsTexture` | B | `TEXTURE_2D` only. |
 | `glBlendColor`, `glBlendEquation`, `glBlendEquationSeparate`, `glBlendFunc`, `glBlendFuncSeparate` | B | Native RinGPU blend state; invalid factors/equations reject. |
 | `glClear`, `glClearColor`, `glClearDepthf`, `glClearStencil`, `glColorMask` | B | Current complete target; color/depth/stencil masks follow the bounded FBO profile. |
-| `glCompileShader`, `glCreateShader`, `glDeleteShader`, `glIsShader`, `glShaderSource` | B | GLSL ES source is compiled only by RinGL's bounded RSH1 profile; no-varying shaders execute local `vec2`/`vec3`/`vec4` values, same-width `+`/`-`, unary `-`, and scalar-broadcast `*`/`/`. |
+| `glCompileShader`, `glCreateShader`, `glDeleteShader`, `glIsShader`, `glShaderSource` | B | GLSL ES source is compiled only by RinGL's bounded RSH1 profile; exact global `precision lowp`/`mediump`/`highp` declarations for `float`/`int`/`sampler2D` map to binary32 RSH1, and no-varying shaders execute local `vec2`/`vec3`/`vec4` values, same-width `+`/`-`, unary `-`, and scalar-broadcast `*`/`/`. |
 | `glCompressedTexImage2D`, `glCompressedTexSubImage2D` | N | Compressed texture storage is not implemented. |
 | `glCopyTexImage2D`, `glCopyTexSubImage2D` | B | Complete color target only; canonical/packed 2D formats and checked ranges. |
 | `glCullFace`, `glFrontFace` | B | Current native raster-state profile. |

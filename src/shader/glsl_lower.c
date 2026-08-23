@@ -19,8 +19,13 @@ typedef enum Tok {
     T_VEC3,
     T_VEC4,
     T_MAT4,
+    T_INT,
     T_ATTRIBUTE,
     T_UNIFORM,
+    T_PRECISION,
+    T_LOWP,
+    T_MEDIUMP,
+    T_HIGHP,
     T_LPAREN,
     T_RPAREN,
     T_LBRACE,
@@ -137,10 +142,20 @@ static Tok keyword(const char* begin, size_t length)
         return T_VEC4;
     if (length == 4u && memcmp(begin, "mat4", 4u) == 0)
         return T_MAT4;
+    if (length == 3u && memcmp(begin, "int", 3u) == 0)
+        return T_INT;
     if (length == 9u && memcmp(begin, "attribute", 9u) == 0)
         return T_ATTRIBUTE;
     if (length == 7u && memcmp(begin, "uniform", 7u) == 0)
         return T_UNIFORM;
+    if (length == 9u && memcmp(begin, "precision", 9u) == 0)
+        return T_PRECISION;
+    if (length == 4u && memcmp(begin, "lowp", 4u) == 0)
+        return T_LOWP;
+    if (length == 7u && memcmp(begin, "mediump", 7u) == 0)
+        return T_MEDIUMP;
+    if (length == 5u && memcmp(begin, "highp", 5u) == 0)
+        return T_HIGHP;
     return T_IDENT;
 }
 
@@ -736,11 +751,36 @@ static int assignment(Lower* lower)
     return 1;
 }
 
+/* The RSH1 execution domain for this bounded GLES profile is binary32. GLSL
+ * ES default precision statements are still parsed as source-language
+ * declarations, but do not create an unobservable alternate lowering path. */
+static int precision_decl(Lower* lower)
+{
+    next(lower);
+    if (lower->token.kind != T_LOWP && lower->token.kind != T_MEDIUMP &&
+        lower->token.kind != T_HIGHP) {
+        fail(lower, "precision declaration requires lowp, mediump, or highp");
+        return 0;
+    }
+    next(lower);
+    if (lower->token.kind != T_FLOAT && lower->token.kind != T_INT) {
+        fail(lower, "precision declaration type is not supported");
+        return 0;
+    }
+    next(lower);
+    return need(lower, T_SEMI, "expected ';' after precision declaration");
+}
+
 static int parse_all(Lower* lower)
 {
     int main_seen = 0;
     next(lower);
     while (lower->token.kind != T_EOF) {
+        if (lower->token.kind == T_PRECISION) {
+            if (!precision_decl(lower))
+                return 0;
+            continue;
+        }
         if (lower->token.kind == T_ATTRIBUTE) {
             Token name;
             uint8_t width;

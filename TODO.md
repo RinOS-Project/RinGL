@@ -114,7 +114,10 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   successful no-op; triangle fans remain unsupported.
 - [x] Execute bounded `GL_TRIANGLE_STRIP` direct and indexed draws through a
   distinct native RinGPU triangle-strip pipeline. Fewer than three vertices is
-  a successful no-op; triangle fans remain unsupported.
+  a successful no-op.
+- [x] Execute bounded `GL_TRIANGLE_FAN` direct and indexed draws through a
+  distinct native RinGPU triangle-fan pipeline. Fewer than three vertices is
+  a successful no-op.
 - [x] Track the default color image between UNDEFINED, PRESENT, and COLOR_TARGET states and emit required transitions.
 - [x] Expose the post-submit default color-image state to trusted embeddings so a caller-owned presentation surface can remain synchronized across RinGL presentation and reuse.
 - [x] Add the OS-Core adapter that maps the RinGL operation table to public RinGPU buffer, shader, pipeline, command, submit, and present APIs.

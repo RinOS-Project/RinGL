@@ -904,6 +904,8 @@ static uint32_t ringl_native_primitive_topology(uint32_t mode)
         return RINGL_NATIVE_PRIMITIVE_TRIANGLE_LIST;
     case RINGL_TRIANGLE_STRIP:
         return RINGL_NATIVE_PRIMITIVE_TRIANGLE_STRIP;
+    case RINGL_TRIANGLE_FAN:
+        return RINGL_NATIVE_PRIMITIVE_TRIANGLE_FAN;
     default:
         return 0u;
     }

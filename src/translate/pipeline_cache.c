@@ -200,7 +200,8 @@ static int native_primitive_topology_valid(uint32_t primitive_topology)
            primitive_topology == RINGL_NATIVE_PRIMITIVE_POINT_LIST ||
            primitive_topology == RINGL_NATIVE_PRIMITIVE_LINE_LIST ||
            primitive_topology == RINGL_NATIVE_PRIMITIVE_LINE_STRIP ||
-           primitive_topology == RINGL_NATIVE_PRIMITIVE_LINE_LOOP;
+           primitive_topology == RINGL_NATIVE_PRIMITIVE_LINE_LOOP ||
+           primitive_topology == RINGL_NATIVE_PRIMITIVE_TRIANGLE_STRIP;
 }
 
 int ringl_build_pipeline_key(RinGLContext* context,

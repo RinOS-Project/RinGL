@@ -89,12 +89,13 @@ backend supplies bounded readback, so RinGL's complete RGBA color-target
 `RGBA/UNSIGNED_BYTE` `readPixels` path can transition to `COPY_SOURCE`, wait,
 read back, and swizzle default-framebuffer BGRA storage to RGBA. The same fenced
 snapshot powers `copyTexSubImage2D` and `copyTexImage2D` from either the default
-color buffer, a complete RGBA8 texture/renderbuffer FBO, or a complete packed
-RGB565/RGBA4/RGB5_A1 renderbuffer FBO into level-zero RGBA texture storage; FBO
-completeness and source/destination rectangles are checked
-before temporary allocation, and the destination shadow is changed only after
-readback succeeds. `copyTexImage2D` retains a prior texture definition/image
-until the replacement snapshot completes. The focused OS-Core
+color buffer or a complete RGBA8/packed RGB565/RGBA4/RGB5_A1
+texture/renderbuffer FBO. `copyTexSubImage2D` writes defined RGBA or packed
+texture levels, including explicit nonzero mips; packed destinations are
+quantized from the canonical snapshot only after readback succeeds. FBO
+completeness and source/destination rectangles are checked before temporary
+allocation. `copyTexImage2D` retains a prior texture definition/image until the
+replacement snapshot completes. The focused OS-Core
 `rin_webgl_ringl_bridge_test` covers clear, readback, and present through this
 borrowed surface. Depth/stencil, multisample, and other FBO copy semantics remain
 outside this slice.

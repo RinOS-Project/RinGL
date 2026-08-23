@@ -263,6 +263,7 @@ extern "C" {
 
 #define RINGL_RIN_GPU_QUEUE_GRAPHICS       0x00000004u
 #define RINGL_RIN_GPU_IMAGE_UNDEFINED      0u
+#define RINGL_RIN_GPU_IMAGE_COPY_DESTINATION 2u
 #define RINGL_RIN_GPU_IMAGE_COLOR_TARGET   3u
 #define RINGL_RIN_GPU_IMAGE_PRESENT        4u
 #define RINGL_RIN_GPU_IMAGE_DEPTH_TARGET   5u
@@ -1272,8 +1273,8 @@ void ringl_tex_image_2d(uint32_t target, int32_t level,
  * RINGL_INVALID_VALUE before changing the texture. A NULL texImage source
  * defines zero-initialized storage; non-empty texSubImage sources must not be
  * NULL. Level zero accepts the bounded color/depth formats below. Nonzero
- * levels require an existing unpacked color level zero with the same storage
- * format and exact mip dimensions; they are realized through the V2 multi-mip
+ * levels require an existing same-format color level zero and exact mip
+ * dimensions; they are realized through the V2 multi-mip
  * callbacks rather than being silently folded into level zero. The raw-pointer
  * entry points above remain for trusted native callers that can independently
  * guarantee the source extent. */
@@ -1285,7 +1286,8 @@ void ringl_tex_image_2d_from_bytes(uint32_t target, int32_t level,
 /* Generates a complete 2D color mip chain from level zero using a
  * deterministic clamped 2x2 box filter.  It is failure-atomic: allocation or
  * a missing multi-mip backend leaves an existing generated chain unchanged.
- * Depth/stencil and packed color storage remain rejected. */
+ * Depth/stencil storage remains rejected; RGB565/RGBA4/RGB5_A1 levels are
+ * generated directly at their native stored component precision. */
 void ringl_generate_mipmap(uint32_t target);
 void ringl_tex_sub_image_2d(uint32_t target, int32_t level,
                             int32_t xoffset, int32_t yoffset,
@@ -1298,8 +1300,9 @@ void ringl_tex_sub_image_2d_from_bytes(uint32_t target, int32_t level,
                                        uint32_t format, uint32_t type,
                                        const void* pixels,
                                        uint64_t pixels_size);
-/* Bounded copy path: the current complete RGBA color target to a level-zero
- * RGBA texture. Non-RGBA destinations remain rejected. */
+/* Bounded copy path: snapshot the current complete color target into a
+ * defined RGBA or RGB565/RGBA4/RGB5_A1 texture level. The packed forms are
+ * quantized into native shadow storage after the source snapshot succeeds. */
 void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
                                  int32_t xoffset, int32_t yoffset,
                                  int32_t x, int32_t y,

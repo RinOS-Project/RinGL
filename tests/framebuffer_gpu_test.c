@@ -127,7 +127,9 @@ static int fake_transition_image(void* session, uint64_t command_list,
 
     assert(command_list != 0u);
     assert(image == backend->created_images[backend->transitions]);
-    assert(old_state == RINGL_RIN_GPU_IMAGE_UNDEFINED);
+    assert(old_state == (backend->transitions == 0u
+                             ? RINGL_RIN_GPU_IMAGE_COPY_DESTINATION
+                             : RINGL_RIN_GPU_IMAGE_UNDEFINED));
     assert(new_state == RINGL_RIN_GPU_IMAGE_COLOR_TARGET);
     backend->last_transition_old_state = old_state;
     backend->last_transition_new_state = new_state;

@@ -449,6 +449,65 @@ static uint16_t texture_pack_packed_color(uint32_t format,
                       components[3]);
 }
 
+/* copyTexSubImage2D reads the source color target as canonical RGBA8. Keep
+ * packed texture shadows in their native precision by quantizing that
+ * snapshot directly into the destination's stored components. */
+static uint8_t texture_unorm8_to_packed_component(uint8_t value,
+                                                   uint32_t maximum)
+{
+    return (uint8_t)(((uint32_t)value * maximum + UINT8_MAX / 2u) /
+                     UINT8_MAX);
+}
+
+static void texture_copy_rgba_to_color_storage_texels(
+    uint8_t* destination, const uint8_t* source, uint32_t storage_format,
+    uint32_t texel_count)
+{
+    uint32_t index;
+
+    if (!texture_packed_color_format(storage_format)) {
+        memcpy(destination, source, (size_t)texel_count * 4u);
+        return;
+    }
+
+    for (index = 0u; index < texel_count; ++index) {
+        const uint8_t* source_texel = source + (uint64_t)index * 4u;
+        uint8_t components[4];
+        uint16_t packed;
+
+        if (storage_format == RINGL_RGB565) {
+            components[0] = texture_unorm8_to_packed_component(
+                source_texel[0], 31u);
+            components[1] = texture_unorm8_to_packed_component(
+                source_texel[1], 63u);
+            components[2] = texture_unorm8_to_packed_component(
+                source_texel[2], 31u);
+            components[3] = 0u;
+        } else if (storage_format == RINGL_RGBA4) {
+            components[0] = texture_unorm8_to_packed_component(
+                source_texel[0], 15u);
+            components[1] = texture_unorm8_to_packed_component(
+                source_texel[1], 15u);
+            components[2] = texture_unorm8_to_packed_component(
+                source_texel[2], 15u);
+            components[3] = texture_unorm8_to_packed_component(
+                source_texel[3], 15u);
+        } else {
+            components[0] = texture_unorm8_to_packed_component(
+                source_texel[0], 31u);
+            components[1] = texture_unorm8_to_packed_component(
+                source_texel[1], 31u);
+            components[2] = texture_unorm8_to_packed_component(
+                source_texel[2], 31u);
+            components[3] = texture_unorm8_to_packed_component(
+                source_texel[3], 1u);
+        }
+        packed = texture_pack_packed_color(storage_format, components);
+        memcpy(destination + (uint64_t)index * sizeof(packed), &packed,
+               sizeof(packed));
+    }
+}
+
 static uint32_t texture_ringpu_format(uint32_t format)
 {
     if (format == RINGL_RGB565)
@@ -659,6 +718,8 @@ static int texture_realize_image(RinGLContext* context,
         return -1;
     }
 
+    memset(texture->ringpu_image_state, RINGL_RIN_GPU_IMAGE_UNDEFINED,
+           sizeof(texture->ringpu_image_state));
     if (mip_count == 1u) {
         memset(&upload, 0, sizeof(upload));
         upload.width = texture->width;
@@ -671,6 +732,8 @@ static int texture_realize_image(RinGLContext* context,
             ringl_backend_destroy_object(context, image);
             return -1;
         }
+        texture->ringpu_image_state[0] =
+            RINGL_RIN_GPU_IMAGE_COPY_DESTINATION;
     } else {
         for (level = 0u; level < mip_count; ++level) {
             const uint8_t* bytes;
@@ -706,12 +769,12 @@ static int texture_realize_image(RinGLContext* context,
                 ringl_backend_destroy_object(context, image);
                 return -1;
             }
+            texture->ringpu_image_state[level] =
+                RINGL_RIN_GPU_IMAGE_COPY_DESTINATION;
         }
     }
 
     texture->ringpu_image = image;
-    memset(texture->ringpu_image_state, RINGL_RIN_GPU_IMAGE_UNDEFINED,
-           sizeof(texture->ringpu_image_state));
     return 0;
 }
 
@@ -1487,9 +1550,13 @@ void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLTextureObject* texture;
+    RinGLTextureMipStorage* mip_storage = NULL;
     RinGLColorTarget source;
     uint64_t size;
     uint8_t* replacement;
+    uint8_t* level_bytes;
+    uint32_t level_width;
+    uint32_t level_height;
     uint32_t row;
 
     if (context == NULL)
@@ -1498,21 +1565,38 @@ void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
-    if (level != 0 || xoffset < 0 || yoffset < 0 || x < 0 || y < 0 ||
-        width < 0 || height < 0) {
+    if (level < 0 || (uint32_t)level >= RINGL_MAX_TEXTURE_MIP_LEVELS ||
+        xoffset < 0 || yoffset < 0 || x < 0 || y < 0 || width < 0 ||
+        height < 0) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
     texture = bound_texture_2d(context);
-    if (texture == NULL || !texture->defined || texture->format != RINGL_RGBA ||
-        texture->shadow_bytes == NULL) {
+    if (texture == NULL || !texture_level0_storage_defined(texture) ||
+        (texture->format != RINGL_RGBA &&
+         !texture_packed_color_format(texture->format))) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
-    if ((uint32_t)xoffset > texture->width ||
-        (uint32_t)yoffset > texture->height ||
-        (uint32_t)width > texture->width - (uint32_t)xoffset ||
-        (uint32_t)height > texture->height - (uint32_t)yoffset) {
+    if (level == 0) {
+        level_bytes = texture->shadow_bytes;
+        level_width = texture->width;
+        level_height = texture->height;
+    } else {
+        mip_storage = texture_mip_storage(texture, (uint32_t)level);
+        if (!texture_level_storage_defined(texture, (uint32_t)level) ||
+            mip_storage == NULL) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return;
+        }
+        level_bytes = mip_storage->shadow_bytes;
+        level_width = mip_storage->width;
+        level_height = mip_storage->height;
+    }
+    if (level_bytes == NULL || (uint32_t)xoffset > level_width ||
+        (uint32_t)yoffset > level_height ||
+        (uint32_t)width > level_width - (uint32_t)xoffset ||
+        (uint32_t)height > level_height - (uint32_t)yoffset) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
@@ -1551,16 +1635,20 @@ void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
     }
     for (row = 0u; row < (uint32_t)height; ++row) {
         uint64_t destination_offset =
-            ((uint64_t)((uint32_t)yoffset + row) * texture->width +
-             (uint32_t)xoffset) * 4u;
+            ((uint64_t)((uint32_t)yoffset + row) * level_width +
+             (uint32_t)xoffset) * texture_storage_texel_bytes(texture->format);
 
-        memcpy(texture->shadow_bytes + destination_offset,
-               replacement + (uint64_t)row * (uint32_t)width * 4u,
-               (size_t)(uint32_t)width * 4u);
+        texture_copy_rgba_to_color_storage_texels(
+            level_bytes + destination_offset,
+            replacement + (uint64_t)row * (uint32_t)width * 4u,
+            texture->format, (uint32_t)width);
     }
     free(replacement);
     texture_discard_image(context, texture);
-    texture_drop_generated_mips(texture);
+    if (level == 0)
+        texture_drop_generated_mips(texture);
+    else
+        mip_storage->generated = RINGL_FALSE;
     ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
 }
 

@@ -118,7 +118,7 @@ static int fake_transition_image(void* session, uint64_t command_list,
     FakeBackend* backend = session;
     assert(command_list != 0u);
     if (image == backend->texture_image) {
-        assert(old_state == RINGL_RIN_GPU_IMAGE_UNDEFINED);
+        assert(old_state == RINGL_RIN_GPU_IMAGE_COPY_DESTINATION);
         assert(new_state == RINGL_RIN_GPU_IMAGE_SHADER_READ);
         record(backend, 't');
     } else {

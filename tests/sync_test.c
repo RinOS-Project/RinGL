@@ -226,6 +226,38 @@ static int fake_readback(void* session, uint64_t image,
     return 0;
 }
 
+static void copy_to_packed_mip_texture(RinGLContext* context,
+                                       uint32_t internal_format,
+                                       uint32_t format, uint32_t type,
+                                       uint16_t first_expected,
+                                       uint16_t second_expected)
+{
+    uint32_t texture = 0u;
+    uint16_t base_pixels[8] = {0u};
+    uint16_t level_pixels[2] = {0u};
+    RinGLTextureObject* object;
+    RinGLTextureMipStorage* level;
+    uint16_t copied[2] = {0u};
+
+    ringl_gen_textures(1, &texture);
+    ringl_bind_texture(RINGL_TEXTURE_2D, texture);
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, internal_format, 4, 2, 0,
+                       format, type, base_pixels);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 1, internal_format, 2, 1, 0,
+                       format, type, level_pixels);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_copy_tex_sub_image_2d(RINGL_TEXTURE_2D, 1, 0, 0, 1, 2, 2, 1);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+
+    object = &context->textures[ringl_object_slot_index(texture)];
+    level = &object->mip_storage[0];
+    assert(level->defined == RINGL_TRUE && level->generated == RINGL_FALSE);
+    assert(level->width == 2u && level->height == 1u);
+    memcpy(copied, level->shadow_bytes, sizeof(copied));
+    assert(copied[0] == first_expected && copied[1] == second_expected);
+}
+
 int main(void)
 {
     FakeBackend backend = {0};
@@ -407,6 +439,22 @@ int main(void)
     assert(memcmp(context->textures[ringl_object_slot_index(copied_texture)].shadow_bytes,
                   expected_packed_rgba, sizeof(expected_packed_rgba)) == 0);
 
+    /* The current source FBO is native RGBA4. Each destination is an explicit
+     * level-one packed image, so this also exercises canonical readback before
+     * direct native-precision conversion. */
+    copy_to_packed_mip_texture(context, RINGL_RGB, RINGL_RGB,
+                               RINGL_UNSIGNED_SHORT_5_6_5, UINT16_C(0xf800),
+                               UINT16_C(0x07e0));
+    copy_to_packed_mip_texture(context, RINGL_RGBA, RINGL_RGBA,
+                               RINGL_UNSIGNED_SHORT_4_4_4_4, UINT16_C(0xf00f),
+                               UINT16_C(0x0f08));
+    copy_to_packed_mip_texture(context, RINGL_RGBA, RINGL_RGBA,
+                               RINGL_UNSIGNED_SHORT_5_5_5_1, UINT16_C(0xf801),
+                               UINT16_C(0x07c1));
+    assert(backend.transitions == 5u);
+    assert(backend.submits == 11u && backend.waits == 11u);
+    assert(backend.readbacks == 9u);
+
     ringl_gen_renderbuffers(1, &depth_renderbuffer);
     ringl_bind_renderbuffer(RINGL_RENDERBUFFER, depth_renderbuffer);
     ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_DEPTH_COMPONENT32F,
@@ -417,7 +465,7 @@ int main(void)
            RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT);
     ringl_copy_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 1, 2, 2, 1);
     assert(ringl_get_error() == RINGL_INVALID_OPERATION);
-    assert(backend.transitions == 5u && backend.readbacks == 6u);
+    assert(backend.transitions == 5u && backend.readbacks == 9u);
     assert(memcmp(context->textures[ringl_object_slot_index(copied_texture)].shadow_bytes,
                   expected_packed_rgba, sizeof(expected_packed_rgba)) == 0);
 

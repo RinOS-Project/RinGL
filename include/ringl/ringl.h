@@ -275,6 +275,9 @@ extern "C" {
 #define RINGL_RIN_GPU_FORMAT_RGBA8_UNORM   2u
 #define RINGL_RIN_GPU_FORMAT_D32_FLOAT     4u
 #define RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT 5u
+/* Native stencil-only image. It must never be used for depth comparison or
+ * writes. */
+#define RINGL_RIN_GPU_FORMAT_S8_UINT       9u
 #define RINGL_RIN_GPU_FORMAT_RGB565_UNORM  6u
 #define RINGL_RIN_GPU_FORMAT_RGBA4_UNORM    7u
 #define RINGL_RIN_GPU_FORMAT_RGB5_A1_UNORM  8u

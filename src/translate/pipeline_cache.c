@@ -231,10 +231,14 @@ int ringl_build_pipeline_key(RinGLContext* context,
         depth_test_enabled > RINGL_TRUE || stencil_test_enabled > RINGL_TRUE ||
         (depth_format != 0u &&
          depth_format != RINGL_RIN_GPU_FORMAT_D32_FLOAT &&
+         depth_format != RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT &&
+         depth_format != RINGL_RIN_GPU_FORMAT_S8_UINT) ||
+        (depth_test_enabled != 0u &&
+         depth_format != RINGL_RIN_GPU_FORMAT_D32_FLOAT &&
          depth_format != RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) ||
-        (depth_test_enabled != 0u && depth_format == 0u) ||
         (stencil_test_enabled != 0u &&
-         depth_format != RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) ||
+         depth_format != RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT &&
+         depth_format != RINGL_RIN_GPU_FORMAT_S8_UINT) ||
         (depth_test_enabled == 0u && stencil_test_enabled == 0u &&
          depth_format != 0u))
         return -1;
@@ -259,9 +263,10 @@ int ringl_build_pipeline_key(RinGLContext* context,
         if (result.depth_compare == 0u)
             return -1;
         result.depth_write_enabled = context->depth_write_mask;
-    } else if (stencil_test_enabled != 0u) {
-        /* Stencil-only GLES draws still use the combined attachment. The
-         * native depth stage is made observationally inert. */
+    } else if (stencil_test_enabled != 0u &&
+               depth_format != RINGL_RIN_GPU_FORMAT_S8_UINT) {
+        /* D32S8 stencil-only draws keep the physical depth stage
+         * observationally inert. Native S8 has no depth stage at all. */
         result.depth_compare = RINGL_RIN_GPU_COMPARE_ALWAYS;
         result.depth_write_enabled = RINGL_FALSE;
     }

@@ -119,12 +119,13 @@ int ringl_resolve_depth_target(RinGLContext* context, RinGLDepthTarget* target)
             if (index >= RINGL_OBJECT_SLOT_COUNT)
                 return -1;
             target->format =
-                (context->renderbuffers[index].internal_format ==
-                     RINGL_STENCIL_INDEX8 ||
-                 context->renderbuffers[index].internal_format ==
-                     RINGL_DEPTH24_STENCIL8)
-                ? RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT
-                : RINGL_RIN_GPU_FORMAT_D32_FLOAT;
+                context->renderbuffers[index].internal_format ==
+                        RINGL_STENCIL_INDEX8
+                    ? RINGL_RIN_GPU_FORMAT_S8_UINT
+                    : context->renderbuffers[index].internal_format ==
+                              RINGL_DEPTH24_STENCIL8
+                    ? RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT
+                    : RINGL_RIN_GPU_FORMAT_D32_FLOAT;
         } else if (framebuffer->depth_attachment_kind ==
                    RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D) {
             if (ringl_texture_realize_depth_target(
@@ -198,10 +199,12 @@ static int draw_state_supported(const RinGLContext* context,
         return 0;
     if ((depth_test_enabled != 0u || stencil_test_enabled != 0u) &&
         (depth_target == NULL || depth_target->image == 0u ||
-         (depth_target->format != RINGL_RIN_GPU_FORMAT_D32_FLOAT &&
-          depth_target->format != RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) ||
-         (stencil_test_enabled != 0u &&
-          depth_target->format != RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) ||
+         ((depth_test_enabled != 0u &&
+           depth_target->format != RINGL_RIN_GPU_FORMAT_D32_FLOAT &&
+           depth_target->format != RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) ||
+          (stencil_test_enabled != 0u &&
+           depth_target->format != RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT &&
+           depth_target->format != RINGL_RIN_GPU_FORMAT_S8_UINT)) ||
          depth_target->state == NULL ||
          context->ringpu_ops.begin_render_pass_depth == NULL ||
          context->ringpu_ops.create_graphics_pipeline_native == NULL))
@@ -392,7 +395,8 @@ static int begin_depth_pass(RinGLContext* context, uint64_t command_list,
     render_pass.color_store_op = RINGL_RIN_GPU_RENDER_STORE;
     render_pass.depth_load_op = depth_load_op;
     render_pass.depth_store_op = RINGL_RIN_GPU_RENDER_STORE;
-    if (depth_target->format == RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) {
+    if (depth_target->format == RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT ||
+        depth_target->format == RINGL_RIN_GPU_FORMAT_S8_UINT) {
         render_pass.stencil_load_op = stencil_load_op;
         render_pass.stencil_store_op = RINGL_RIN_GPU_RENDER_STORE;
         if (stencil_load_op == RINGL_RIN_GPU_RENDER_CLEAR) {
@@ -787,8 +791,8 @@ static uint32_t ringl_submit_clear(RinGLContext* context, uint32_t mask)
         ? RINGL_RIN_GPU_RENDER_CLEAR
         : RINGL_RIN_GPU_RENDER_LOAD;
     stencil_load_op = depth_status == 0 && depth_target.has_stencil != 0u &&
-            depth_target.format ==
-            RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT
+            (depth_target.format == RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT ||
+             depth_target.format == RINGL_RIN_GPU_FORMAT_S8_UINT)
         ? ((mask & RINGL_STENCIL_BUFFER_BIT) != 0u
                ? RINGL_RIN_GPU_RENDER_CLEAR
                : RINGL_RIN_GPU_RENDER_LOAD)
@@ -1070,8 +1074,10 @@ void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
              ? begin_depth_pass(context, command_list, &target, &depth_target,
                                 RINGL_RIN_GPU_RENDER_LOAD,
                                 RINGL_RIN_GPU_RENDER_LOAD,
-                                depth_target.format ==
-                                        RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT
+                                (depth_target.format ==
+                                         RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT ||
+                                 depth_target.format ==
+                                         RINGL_RIN_GPU_FORMAT_S8_UINT)
                                     ? RINGL_RIN_GPU_RENDER_LOAD
                                     : 0u)
              : begin_color_pass(context, command_list, &target,
@@ -1266,8 +1272,10 @@ void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
              ? begin_depth_pass(context, command_list, &target, &depth_target,
                                 RINGL_RIN_GPU_RENDER_LOAD,
                                 RINGL_RIN_GPU_RENDER_LOAD,
-                                depth_target.format ==
-                                        RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT
+                                (depth_target.format ==
+                                         RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT ||
+                                 depth_target.format ==
+                                         RINGL_RIN_GPU_FORMAT_S8_UINT)
                                     ? RINGL_RIN_GPU_RENDER_LOAD
                                     : 0u)
              : begin_color_pass(context, command_list, &target,

@@ -791,8 +791,9 @@ int ringl_renderbuffer_realize_depth_target(RinGLContext* context,
         memset(&desc, 0, sizeof(desc));
         desc.width = object->width;
         desc.height = object->height;
-        desc.format = (object->internal_format == RINGL_STENCIL_INDEX8 ||
-                       object->internal_format == RINGL_DEPTH24_STENCIL8)
+        desc.format = object->internal_format == RINGL_STENCIL_INDEX8
+            ? RINGL_RIN_GPU_FORMAT_S8_UINT
+            : object->internal_format == RINGL_DEPTH24_STENCIL8
             ? RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT
             : RINGL_RIN_GPU_FORMAT_D32_FLOAT;
         desc.usage = RINGL_RIN_GPU_IMAGE_USAGE_DEPTH_STENCIL;

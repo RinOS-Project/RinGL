@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include <assert.h>
+#include <math.h>
 #include <string.h>
 #include <ringl/ringl.h>
 
@@ -174,6 +175,16 @@ int main(void)
         ringl_use_program(vec4_program);
         ringl_uniform_4f(location, 1.0f, 0.25f, 0.0f, 1.0f);
         assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_4f(vec4_program, location, values) == 0);
+        assert(values[0] == 1.0f && values[1] == 0.25f &&
+               values[2] == 0.0f && values[3] == 1.0f);
+        ringl_uniform_4f(location, NAN, 0.0f, 0.0f, 1.0f);
+        assert(ringl_get_error() == RINGL_INVALID_VALUE);
+        assert(ringl_get_uniform_4f(vec4_program, location, values) == 0);
+        assert(values[0] == 1.0f && values[1] == 0.25f &&
+               values[2] == 0.0f && values[3] == 1.0f);
+        ringl_uniform_4f(location, INFINITY, 0.0f, 0.0f, 1.0f);
+        assert(ringl_get_error() == RINGL_INVALID_VALUE);
         assert(ringl_get_uniform_4f(vec4_program, location, values) == 0);
         assert(values[0] == 1.0f && values[1] == 0.25f &&
                values[2] == 0.0f && values[3] == 1.0f);

@@ -3,6 +3,7 @@
 #include "glsl_parser.h"
 #include "glsl_lower.h"
 
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -992,6 +993,13 @@ void ringl_uniform_4f(int32_t location, float x, float y, float z, float w)
 
     if (context == NULL || location == -1)
         return;
+    /* Keep the linked executable representable by the RSH1 lowering path.
+     * Accepting NaN or infinity here would persist an invalid literal and
+     * could make a later uniform-artifact rebuild fail after state changed. */
+    if (!isfinite(x) || !isfinite(y) || !isfinite(z) || !isfinite(w)) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
     if (context->current_program == 0u) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;

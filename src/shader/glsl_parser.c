@@ -355,6 +355,17 @@ static int varying_vec2_offset(Parser* parser)
     if (parser->token.kind != TOK_PLUS && parser->token.kind != TOK_MINUS)
         return 1;
     next_token(parser);
+    if (parser->token.kind == TOK_IDENT) {
+        Symbol* coordinate = find_symbol(parser, &parser->token);
+
+        if (coordinate == NULL || coordinate->kind != SYMBOL_VARYING ||
+            coordinate->width != 2u) {
+            fail(parser, "texture2D varying operation requires vec2 varying");
+            return 0;
+        }
+        next_token(parser);
+        return 1;
+    }
     if (!expect(parser, TOK_VEC2,
                 "texture2D varying offset must use vec2")) {
         return 0;

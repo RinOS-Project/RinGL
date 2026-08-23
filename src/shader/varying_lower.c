@@ -73,6 +73,7 @@ static int read_decl_name(const char* source, const char* prefix,
 typedef struct VaryingTextureCall {
     uint32_t sampler_index;
     uint32_t coordinate_input_location;
+    uint32_t secondary_coordinate_input_location;
     uint32_t coordinate_kind;
     float offset_u;
     float offset_v;
@@ -84,6 +85,8 @@ enum VaryingTextureCoordinateKind {
     RINGL_VARYING_TEXTURE_COORD_SUB_OFFSET,
     RINGL_VARYING_TEXTURE_COORD_MUL_SCALE,
     RINGL_VARYING_TEXTURE_COORD_DIV_SCALE,
+    RINGL_VARYING_TEXTURE_COORD_ADD_COORDINATE,
+    RINGL_VARYING_TEXTURE_COORD_SUB_COORDINATE,
 };
 
 _Static_assert(8u * RINGL_VARYING_TEXTURE_MAX_CALLS +
@@ -212,6 +215,7 @@ static int parse_varying_texture_call(const char** cursor,
 {
     char sampler[64];
     char coordinate[64];
+    char secondary_coordinate[64];
     uint32_t coordinate_index;
 
     if (cursor == NULL || sampler_names == NULL ||
@@ -233,11 +237,36 @@ static int parse_varying_texture_call(const char** cursor,
         call->coordinate_input_location != 2u) {
         return 0;
     }
-    if (!parse_varying_texture_offset(cursor, &call->coordinate_kind,
+    call->secondary_coordinate_input_location = UINT32_MAX;
+    if ((*(*cursor) == '+' || *(*cursor) == '-') &&
+        strncmp((*cursor) + 1u, "vec2(", strlen("vec2(")) != 0 &&
+        isalpha((unsigned char)(*cursor)[1])) {
+        int subtract = **cursor == '-';
+        uint32_t secondary_index;
+
+        ++*cursor;
+        if (!read_identifier(cursor, secondary_coordinate,
+                             sizeof(secondary_coordinate)) ||
+            !sampler_index_for_name(coordinate_names, coordinate_count,
+                                    secondary_coordinate, &secondary_index)) {
+            return 0;
+        }
+        call->secondary_coordinate_input_location =
+            coordinate_input_locations[secondary_index];
+        if (call->secondary_coordinate_input_location != 0u &&
+            call->secondary_coordinate_input_location != 2u)
+            return 0;
+        call->coordinate_kind = subtract
+            ? RINGL_VARYING_TEXTURE_COORD_SUB_COORDINATE
+            : RINGL_VARYING_TEXTURE_COORD_ADD_COORDINATE;
+    } else if (!parse_varying_texture_offset(cursor, &call->coordinate_kind,
                                       &call->offset_u, &call->offset_v) ||
-        !consume_text(cursor, ")")) {
+               !consume_text(cursor, ")")) {
         return 0;
     }
+    if (call->secondary_coordinate_input_location != UINT32_MAX &&
+        !consume_text(cursor, ")"))
+        return 0;
     return 1;
 }
 
@@ -301,6 +330,25 @@ static void emit_varying_texture_offset(RinGLRsh1InstructionV1* ins,
     ins[*instruction_cursor].destination = (uint16_t)(temporary_base + 3u);
     ins[*instruction_cursor].source0 = (uint16_t)source_v;
     ins[(*instruction_cursor)++].source1 = (uint16_t)(temporary_base + 1u);
+}
+
+static void emit_varying_texture_coordinate_combine(
+    RinGLRsh1InstructionV1* ins, uint32_t* instruction_cursor,
+    uint32_t temporary_base, uint32_t source_u, uint32_t source_v,
+    uint32_t secondary_u, uint32_t secondary_v, uint32_t coordinate_kind)
+{
+    uint16_t opcode = coordinate_kind ==
+            RINGL_VARYING_TEXTURE_COORD_ADD_COORDINATE
+        ? RINGL_RSH1_OP_ADD_F32 : RINGL_RSH1_OP_SUB_F32;
+
+    init_instruction(&ins[*instruction_cursor], opcode);
+    ins[*instruction_cursor].destination = (uint16_t)(temporary_base + 2u);
+    ins[*instruction_cursor].source0 = (uint16_t)source_u;
+    ins[(*instruction_cursor)++].source1 = (uint16_t)secondary_u;
+    init_instruction(&ins[*instruction_cursor], opcode);
+    ins[*instruction_cursor].destination = (uint16_t)(temporary_base + 3u);
+    ins[*instruction_cursor].source0 = (uint16_t)source_v;
+    ins[(*instruction_cursor)++].source1 = (uint16_t)secondary_v;
 }
 
 static int lower_vertex(const char* source, RinGLGlslLowerResult* result)
@@ -549,7 +597,10 @@ static int lower_fragment_texture_chain(const char* source,
         if (calls[call_index].coordinate_kind !=
             RINGL_VARYING_TEXTURE_COORD_DIRECT) {
             has_call_offset = 1u;
-            instruction_cursor += 4u;
+            instruction_cursor +=
+                calls[call_index].secondary_coordinate_input_location !=
+                        UINT32_MAX
+                ? 2u : 4u;
         }
         instruction_cursor += 4u;
     }
@@ -612,12 +663,25 @@ static int lower_fragment_texture_chain(const char* source,
             uint32_t call_temp_base = coordinate_temp_base +
                 local_temporary_register_count;
 
-            emit_varying_texture_offset(ins, &instruction_cursor,
-                                        call_temp_base, coordinate_u,
-                                        coordinate_v,
-                                        calls[call_index].coordinate_kind,
-                                        calls[call_index].offset_u,
-                                        calls[call_index].offset_v);
+            if (calls[call_index].secondary_coordinate_input_location !=
+                UINT32_MAX) {
+                uint32_t secondary_u =
+                    calls[call_index].secondary_coordinate_input_location == 0u
+                    ? 0u : padding_base;
+                uint32_t secondary_v = secondary_u + 1u;
+
+                emit_varying_texture_coordinate_combine(
+                    ins, &instruction_cursor, call_temp_base, coordinate_u,
+                    coordinate_v, secondary_u, secondary_v,
+                    calls[call_index].coordinate_kind);
+            } else {
+                emit_varying_texture_offset(ins, &instruction_cursor,
+                                            call_temp_base, coordinate_u,
+                                            coordinate_v,
+                                            calls[call_index].coordinate_kind,
+                                            calls[call_index].offset_u,
+                                            calls[call_index].offset_v);
+            }
             coordinate_u = call_temp_base + 2u;
             coordinate_v = call_temp_base + 3u;
         }

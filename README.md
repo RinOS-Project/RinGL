@@ -136,20 +136,17 @@ After that vertical slice is stable, indexed drawing, textures, framebuffer obje
 ## Current bounded texture-coordinate extension
 
 The shared perspective-UV texture profile now executes one through eight
-left-to-right `texture2D()` calls with a coordinate of `uv`,
-`uv + vec2(finite, finite)`, or `uv - vec2(finite, finite)`. Every offset is
-lowered directly to public RSH1 `CONST_F32` and `ADD_F32`/`SUB_F32` operations
-before its real RinGPU sample; it is not folded into a host-side shortcut.
-The bounded two-UV profile also maps `firstUv` and `secondUv` to their own
-RSH1 perspective input pairs, so each call can choose either interpolated
-coordinate without reusing the first pair.
-One or two fragment-local aliases/finite affine values may be chained from the
-shared UV, for example `vec2 baseUv = uv + vec2(...);` followed by
-`vec2 localUv = baseUv - vec2(...);`. Each affine initializer is lowered in
-source order before samples, and every sample reads the resulting live
-perspective-coordinate RSH1 registers. This remains a deliberately narrow
-GLSL ES subset: other local vector expressions, more than six locals, more
-than two UV varyings, and more than eight calls are still unsupported.
+left-to-right `texture2D()` calls with a coordinate of `uv` and finite
+component-wise `+`, `-`, `*`, or nonzero `/` `vec2` literals. Every operation
+is lowered directly to public RSH1 arithmetic before its real RinGPU sample;
+it is not folded into a host-side shortcut. The bounded two-UV profile maps
+`firstUv` and `secondUv` to separate RSH1 perspective input pairs and also
+supports `firstUv + secondUv` and `firstUv - secondUv` as sampler coordinates.
+Up to six fragment-local values may be chained from the shared UV; each
+initializer is lowered in source order before samples. This remains a
+deliberately narrow GLSL ES subset: other local vector expressions, more than
+six locals, more than two UV varyings, and more than eight calls are still
+unsupported.
 
 See [TODO.md](TODO.md) for the implementation roadmap.
 

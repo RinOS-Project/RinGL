@@ -82,12 +82,16 @@ enum VaryingTextureCoordinateKind {
     RINGL_VARYING_TEXTURE_COORD_DIRECT = 0,
     RINGL_VARYING_TEXTURE_COORD_ADD_OFFSET,
     RINGL_VARYING_TEXTURE_COORD_SUB_OFFSET,
+    RINGL_VARYING_TEXTURE_COORD_MUL_SCALE,
+    RINGL_VARYING_TEXTURE_COORD_DIV_SCALE,
 };
 
-_Static_assert(8u * RINGL_VARYING_TEXTURE_MAX_CALLS + 12u <=
+_Static_assert(8u * RINGL_VARYING_TEXTURE_MAX_CALLS +
+                   4u * RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES + 4u <=
                    RINGL_RSH1_MAX_REGISTERS,
                "varying texture profile exceeds the RSH1 register ceiling");
-_Static_assert(12u * RINGL_VARYING_TEXTURE_MAX_CALLS + 13u <=
+_Static_assert(12u * RINGL_VARYING_TEXTURE_MAX_CALLS +
+                   4u * RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES + 5u <=
                    RINGL_RSH1_MAX_INSTRUCTIONS,
                "varying texture profile exceeds the RSH1 instruction ceiling");
 
@@ -178,15 +182,24 @@ static int parse_varying_texture_offset(const char** cursor,
     *coordinate_kind = RINGL_VARYING_TEXTURE_COORD_DIRECT;
     *offset_u = 0.0f;
     *offset_v = 0.0f;
-    if (**cursor != '+' && **cursor != '-')
+    if (**cursor != '+' && **cursor != '-' && **cursor != '*' &&
+        **cursor != '/')
         return 1;
     *coordinate_kind = **cursor == '+'
         ? RINGL_VARYING_TEXTURE_COORD_ADD_OFFSET
-        : RINGL_VARYING_TEXTURE_COORD_SUB_OFFSET;
+        : **cursor == '-'
+        ? RINGL_VARYING_TEXTURE_COORD_SUB_OFFSET
+        : **cursor == '*'
+        ? RINGL_VARYING_TEXTURE_COORD_MUL_SCALE
+        : RINGL_VARYING_TEXTURE_COORD_DIV_SCALE;
     ++*cursor;
-    return consume_text(cursor, "vec2(") &&
-        parse_finite_float(cursor, offset_u) && consume_text(cursor, ",") &&
-        parse_finite_float(cursor, offset_v) && consume_text(cursor, ")");
+    if (!consume_text(cursor, "vec2(") ||
+        !parse_finite_float(cursor, offset_u) || !consume_text(cursor, ",") ||
+        !parse_finite_float(cursor, offset_v) || !consume_text(cursor, ")")) {
+        return 0;
+    }
+    return *coordinate_kind != RINGL_VARYING_TEXTURE_COORD_DIV_SCALE ||
+           (*offset_u != 0.0f && *offset_v != 0.0f);
 }
 
 static int parse_varying_texture_call(const char** cursor,
@@ -228,8 +241,8 @@ static int parse_varying_texture_call(const char** cursor,
     return 1;
 }
 
-/* The bounded texture profile accepts up to two local vec2 values derived in
- * sequence from the shared varying by finite affine offsets. It is not a
+/* The bounded texture profile accepts local vec2 values derived in sequence
+ * from the shared varying by finite component-wise operations. It is not a
  * host-side substitution: samples keep reading RSH1's interpolated inputs. */
 static int parse_varying_texture_local_coordinate(
     const char** cursor, const char* source_coordinate, char* coordinate,
@@ -266,7 +279,11 @@ static void emit_varying_texture_offset(RinGLRsh1InstructionV1* ins,
     uint32_t offset_u_bits;
     uint32_t offset_v_bits;
     uint16_t opcode = coordinate_kind == RINGL_VARYING_TEXTURE_COORD_ADD_OFFSET
-        ? RINGL_RSH1_OP_ADD_F32 : RINGL_RSH1_OP_SUB_F32;
+        ? RINGL_RSH1_OP_ADD_F32
+        : coordinate_kind == RINGL_VARYING_TEXTURE_COORD_SUB_OFFSET
+        ? RINGL_RSH1_OP_SUB_F32
+        : coordinate_kind == RINGL_VARYING_TEXTURE_COORD_MUL_SCALE
+        ? RINGL_RSH1_OP_MUL_F32 : RINGL_RSH1_OP_DIV_F32;
 
     memcpy(&offset_u_bits, &offset_u, sizeof(offset_u_bits));
     memcpy(&offset_v_bits, &offset_v, sizeof(offset_v_bits));

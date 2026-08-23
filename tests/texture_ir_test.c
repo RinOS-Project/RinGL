@@ -12,6 +12,8 @@
 #define RSH1_CONST_F32 16u
 #define RSH1_ADD_F32 20u
 #define RSH1_SUB_F32 21u
+#define RSH1_MUL_F32 22u
+#define RSH1_DIV_F32 23u
 
 typedef struct __attribute__((packed)) Header {
     uint32_t magic;
@@ -138,10 +140,10 @@ int main(void)
         "gl_FragColor = texture2D(colorTexture, sampleUv); }";
     const char* varying_six_local_affine_chain_source =
         "uniform sampler2D colorTexture; varying vec2 uv; "
-        "void main() { vec2 firstUv = uv + vec2(0.125, 0.0); "
-        "vec2 secondUv = firstUv + vec2(0.125, 0.0); "
-        "vec2 thirdUv = secondUv + vec2(0.125, 0.0); "
-        "vec2 fourthUv = thirdUv + vec2(0.125, 0.0); "
+        "void main() { vec2 firstUv = uv * vec2(1.0, 1.0); "
+        "vec2 secondUv = firstUv / vec2(1.0, 1.0); "
+        "vec2 thirdUv = secondUv + vec2(0.25, 0.0); "
+        "vec2 fourthUv = thirdUv + vec2(0.25, 0.0); "
         "vec2 fifthUv = fourthUv - vec2(0.0, 0.25); "
         "vec2 sixthUv = fifthUv - vec2(0.0, 0.25); "
         "gl_FragColor = texture2D(colorTexture, sixthUv); }";
@@ -569,6 +571,10 @@ int main(void)
 
         assert(sample->source0 == 30u && sample->source1 == 31u);
     }
+    assert(((const Instruction*)(blob + sizeof(header)) + 6u)->opcode ==
+           RSH1_MUL_F32);
+    assert(((const Instruction*)(blob + sizeof(header)) + 10u)->opcode ==
+           RSH1_DIV_F32);
 
     /* Each sample may apply one finite vec2 offset to the interpolated
      * coordinate. The temporary coordinate registers are deliberately

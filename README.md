@@ -512,16 +512,17 @@ native callers that can prove the source extent independently.
 
 `copyTexSubImage2D` has a bounded data-movement path from the current complete
 color target, including an RGBA8 or packed RGB565/RGBA4/RGB5_A1
-texture/renderbuffer FBO, into a defined `RGBA` or native packed texture level.
-It validates FBO completeness and both source and destination rectangles before
-allocating a temporary RGBA snapshot, uses the existing fenced RinGPU readback
-path (including default-framebuffer BGRA-to-RGBA swizzle), and only then updates
-the destination shadow. Packed destinations quantize that canonical snapshot
-directly into their stored 5/6/4/1-bit components; explicit nonzero mip levels
-are supported and retain their independently defined storage. A failed readback
-leaves every destination level unchanged. Other color destination formats,
-depth/stencil readback, multisample, and other unrepresented copy semantics
-remain outside the current profile.
+texture/renderbuffer FBO, into a defined `RGBA`, `RGB`, or native packed texture
+level. It validates FBO completeness and both source and destination rectangles
+before allocating a temporary RGBA snapshot, uses the existing fenced RinGPU
+readback path (including default-framebuffer BGRA-to-RGBA swizzle), and only
+then updates the destination shadow. RGB retains implicit alpha one; packed
+destinations quantize that canonical snapshot directly into their stored
+5/6/4/1-bit components. Explicit nonzero mip levels are supported and retain
+their independently defined storage. A failed readback leaves every destination
+level unchanged. Other color destination formats, depth/stencil readback,
+multisample, and other unrepresented copy semantics remain outside the current
+profile.
 
 `copyTexImage2D` uses the same fenced snapshot from those complete color targets
 to define `RGBA`, `RGB`, or native RGB565/RGBA4/RGB5_A1 storage. Level zero

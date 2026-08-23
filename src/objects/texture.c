@@ -1591,7 +1591,7 @@ void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
     }
     texture = bound_texture_2d(context);
     if (texture == NULL || !texture_level0_storage_defined(texture) ||
-        (texture->format != RINGL_RGBA &&
+        (texture->format != RINGL_RGBA && texture->format != RINGL_RGB &&
          !texture_packed_color_format(texture->format))) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
@@ -1656,7 +1656,7 @@ void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
             ((uint64_t)((uint32_t)yoffset + row) * level_width +
              (uint32_t)xoffset) * texture_storage_texel_bytes(texture->format);
 
-        texture_copy_rgba_to_color_storage_texels(
+        texture_copy_rgba_to_copy_image_storage(
             level_bytes + destination_offset,
             replacement + (uint64_t)row * (uint32_t)width * 4u,
             texture->format, (uint32_t)width);

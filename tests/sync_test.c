@@ -278,6 +278,29 @@ static void copy_to_native_texture(RinGLContext* context,
            memcmp(object->shadow_bytes, expected, (size_t)expected_size) == 0);
 }
 
+static void copy_to_rgb_texture(RinGLContext* context)
+{
+    const uint8_t initial_pixels[6] = {0u};
+    const uint8_t expected_pixels[8] = {
+        255u, 0u, 0u, 255u,
+        0u, 255u, 0u, 255u,
+    };
+    uint32_t texture = 0u;
+    RinGLTextureObject* object;
+
+    ringl_gen_textures(1, &texture);
+    ringl_bind_texture(RINGL_TEXTURE_2D, texture);
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGB, 2, 1, 0,
+                       RINGL_RGB, RINGL_UNSIGNED_BYTE, initial_pixels);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_copy_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 1, 2, 2, 1);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    object = &context->textures[ringl_object_slot_index(texture)];
+    assert(object->format == RINGL_RGB &&
+           memcmp(object->shadow_bytes, expected_pixels,
+                  sizeof(expected_pixels)) == 0);
+}
+
 static void copy_to_packed_mip_definition(RinGLContext* context,
                                           uint32_t base_internal_format,
                                           uint32_t format, uint32_t type,
@@ -520,6 +543,14 @@ int main(void)
     assert(backend.submits == 12u && backend.waits == 12u);
     assert(backend.readbacks == 10u);
 
+    /* RGB has a canonical four-byte shadow but no stored alpha component;
+     * copyTexSubImage2D must preserve its implicit one instead of forwarding
+     * the source target's alpha. */
+    copy_to_rgb_texture(context);
+    assert(backend.transitions == 5u);
+    assert(backend.submits == 13u && backend.waits == 13u);
+    assert(backend.readbacks == 11u);
+
     /* A nonzero copy definition creates an explicit same-format mip only
      * after its fenced snapshot succeeds. It must not fall back to base-level
      * storage or normalize the native packed bytes. */
@@ -536,8 +567,8 @@ int main(void)
                                   RINGL_RGB5_A1,
                                   UINT16_C(0xf801), UINT16_C(0x07c1));
     assert(backend.transitions == 5u);
-    assert(backend.submits == 15u && backend.waits == 15u);
-    assert(backend.readbacks == 13u);
+    assert(backend.submits == 16u && backend.waits == 16u);
+    assert(backend.readbacks == 14u);
 
     /* The current source FBO is native RGBA4. Each destination is an explicit
      * level-one packed image, so this also exercises canonical readback before
@@ -552,8 +583,8 @@ int main(void)
                                RINGL_UNSIGNED_SHORT_5_5_5_1, UINT16_C(0xf801),
                                UINT16_C(0x07c1));
     assert(backend.transitions == 5u);
-    assert(backend.submits == 18u && backend.waits == 18u);
-    assert(backend.readbacks == 16u);
+    assert(backend.submits == 19u && backend.waits == 19u);
+    assert(backend.readbacks == 17u);
 
     ringl_gen_renderbuffers(1, &depth_renderbuffer);
     ringl_bind_renderbuffer(RINGL_RENDERBUFFER, depth_renderbuffer);
@@ -565,7 +596,7 @@ int main(void)
            RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT);
     ringl_copy_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 1, 2, 2, 1);
     assert(ringl_get_error() == RINGL_INVALID_OPERATION);
-    assert(backend.transitions == 5u && backend.readbacks == 16u);
+    assert(backend.transitions == 5u && backend.readbacks == 17u);
     assert(memcmp(context->textures[ringl_object_slot_index(copied_texture)].shadow_bytes,
                   expected_packed_rgba, sizeof(expected_packed_rgba)) == 0);
 

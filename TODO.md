@@ -243,13 +243,13 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [ ] Implement clear/copy paths that must end or split render passes.
   - [x] Add a bounded `copyTexSubImage2D` path from the current complete color
     target, including RGBA8 or packed RGB565/RGBA4/RGB5_A1 texture/renderbuffer
-    FBOs, to a defined `RGBA` or native packed RGB565/RGBA4/RGB5_A1 texture
-    level through fenced image readback. The copy validates FBO completeness and
-    source/destination ranges before allocation, writes the destination only
-    after the full default-BGRA/FBO-RGBA snapshot succeeds, and quantizes packed
-    destination components directly. Explicit nonzero levels are supported;
-    other destination formats and unrepresented FBO copy semantics remain
-    rejected.
+    FBOs, to a defined `RGBA`/`RGB` or native packed RGB565/RGBA4/RGB5_A1
+    texture level through fenced image readback. The copy validates FBO
+    completeness and source/destination ranges before allocation, writes the
+    destination only after the full default-BGRA/FBO-RGBA snapshot succeeds,
+    preserves RGB's implicit alpha one, and quantizes packed destination
+    components directly. Explicit nonzero levels are supported; other
+    destination formats and unrepresented FBO copy semantics remain rejected.
   - [x] Add a bounded `copyTexImage2D` definition path from the same complete
     color targets. RGBA/RGB and native RGB565/RGBA4/RGB5_A1 storage is defined
     only after its canonical RGBA snapshot completes. Level zero replaces the

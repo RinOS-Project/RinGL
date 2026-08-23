@@ -90,11 +90,11 @@ backend supplies bounded readback, so RinGL's complete RGBA color-target
 read back, and swizzle default-framebuffer BGRA storage to RGBA. The same fenced
 snapshot powers `copyTexSubImage2D` and `copyTexImage2D` from either the default
 color buffer or a complete RGBA8/packed RGB565/RGBA4/RGB5_A1
-texture/renderbuffer FBO. `copyTexSubImage2D` writes defined RGBA or packed
-texture levels, including explicit nonzero mips; packed destinations are
-quantized from the canonical snapshot only after readback succeeds. FBO
-completeness and source/destination rectangles are checked before temporary
-allocation. `copyTexImage2D` retains a prior texture definition/image until the
+texture/renderbuffer FBO. `copyTexSubImage2D` writes defined RGBA/RGB or packed
+texture levels, including explicit nonzero mips; RGB preserves implicit alpha
+one and packed destinations are quantized from the canonical snapshot only after
+readback succeeds. FBO completeness and source/destination rectangles are
+checked before temporary allocation. `copyTexImage2D` retains a prior texture definition/image until the
 replacement snapshot completes, then defines RGBA/RGB or native
 RGB565/RGBA4/RGB5_A1 storage at level zero or an exact explicit nonzero mip.
 The latter requires a defined same-format base. RGB writes implicit alpha one

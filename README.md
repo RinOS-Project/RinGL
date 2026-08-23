@@ -293,6 +293,13 @@ finite endpoint independently to `[0,1]`, and preserves reversed ranges.
 snapshot. Draw translation passes the exact pair through RinGPU raster state,
 rather than treating every range as the default `[0,1]`.
 
+`RINGL_POLYGON_OFFSET_FILL` and `ringl_polygon_offset()` carry finite factor
+and units values in the dynamic raster state. The RinGPU V2 descriptor keeps
+the V1 default disabled, while the Aquamarine surface backend applies
+`m * factor + 2^-23 * units` to filled-triangle depth immediately before depth
+comparison and writing. Points and lines are not offset; non-finite inputs
+leave the existing RinGL state intact and report `INVALID_VALUE`.
+
 Linked program reflection is also exposed without borrowing RinGL storage.
 `ringl_get_active_attrib()` and `ringl_get_active_uniform()` copy one bounded
 entry into `RinGLActiveInfoV1` only after validating its versioned output

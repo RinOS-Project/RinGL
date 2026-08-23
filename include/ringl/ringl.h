@@ -101,6 +101,7 @@ extern "C" {
 #define RINGL_CCW            0x0901u
 #define RINGL_CULL_FACE      0x0b44u
 #define RINGL_DEPTH_TEST     0x0b71u
+#define RINGL_POLYGON_OFFSET_FILL 0x8037u
 #define RINGL_STENCIL_TEST   0x0b90u
 #define RINGL_STENCIL_FUNC       0x0b92u
 #define RINGL_STENCIL_VALUE_MASK 0x0b93u
@@ -435,6 +436,9 @@ typedef struct RinGLRinGpuRasterStateV1 {
     uint32_t scissor_width;
     uint32_t scissor_height;
     uint32_t scissor_enabled;
+    uint32_t polygon_offset_fill_enabled;
+    float polygon_offset_factor;
+    float polygon_offset_units;
     uint32_t reserved0;
 } RinGLRinGpuRasterStateV1;
 
@@ -912,6 +916,9 @@ void ringl_depth_mask(uint32_t enabled);
 /* Finite endpoints are independently clamped to [0, 1]; reversed ranges are
  * valid and are forwarded to RinGPU without reordering. */
 void ringl_depth_range(float z_near, float z_far);
+/* Applies GLES polygon offset to filled primitives. Both finite values are
+ * carried in the dynamic RinGPU raster state; points and lines are unchanged. */
+void ringl_polygon_offset(float factor, float units);
 /* Returns the tracked depth range only for a complete v1 output header. */
 int ringl_get_depth_range(RinGLDepthRangeV1* range);
 void ringl_stencil_func(uint32_t func, int32_t reference, uint32_t mask);

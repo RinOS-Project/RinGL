@@ -233,12 +233,15 @@ struct RinGLContext {
     uint32_t scissor_enabled;
     uint32_t cull_face_enabled;
     uint32_t depth_test_enabled;
+    uint32_t polygon_offset_fill_enabled;
     uint32_t stencil_test_enabled;
     uint32_t blend_enabled;
     uint32_t cull_face_mode;
     uint32_t front_face;
     uint32_t depth_func;
     uint32_t depth_write_mask;
+    float polygon_offset_factor;
+    float polygon_offset_units;
     uint32_t stencil_func;
     uint32_t stencil_reference;
     uint32_t stencil_value_mask;

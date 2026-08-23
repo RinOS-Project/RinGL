@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #include "ringl_internal.h"
 
+#include <math.h>
 #include <stddef.h>
 #include <string.h>
 
@@ -15,6 +16,8 @@ static uint32_t* capability_field(RinGLContext* context, uint32_t capability)
         return &context->cull_face_enabled;
     case RINGL_DEPTH_TEST:
         return &context->depth_test_enabled;
+    case RINGL_POLYGON_OFFSET_FILL:
+        return &context->polygon_offset_fill_enabled;
     case RINGL_STENCIL_TEST:
         return &context->stencil_test_enabled;
     case RINGL_BLEND:
@@ -295,6 +298,25 @@ void ringl_depth_range(float z_near, float z_far)
     context->depth_range_near = clamped_near;
     context->depth_range_far = clamped_far;
     ringl_context_mark_dirty(context, RINGL_DIRTY_VIEWPORT);
+}
+
+void ringl_polygon_offset(float factor, float units)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL)
+        return;
+    if (!isfinite(factor) || !isfinite(units)) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if (context->polygon_offset_factor == factor &&
+        context->polygon_offset_units == units) {
+        return;
+    }
+    context->polygon_offset_factor = factor;
+    context->polygon_offset_units = units;
+    ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
 }
 
 void ringl_stencil_func(uint32_t func, int32_t reference, uint32_t mask)

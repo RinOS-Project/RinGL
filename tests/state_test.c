@@ -47,6 +47,7 @@ int main(void)
     assert(!ringl_is_enabled(RINGL_SCISSOR_TEST));
     assert(!ringl_is_enabled(RINGL_CULL_FACE));
     assert(!ringl_is_enabled(RINGL_DEPTH_TEST));
+    assert(!ringl_is_enabled(RINGL_POLYGON_OFFSET_FILL));
     assert(!ringl_is_enabled(RINGL_STENCIL_TEST));
     assert(!ringl_is_enabled(RINGL_BLEND));
 
@@ -132,15 +133,30 @@ int main(void)
     ringl_enable(RINGL_SCISSOR_TEST);
     ringl_enable(RINGL_CULL_FACE);
     ringl_enable(RINGL_DEPTH_TEST);
+    ringl_enable(RINGL_POLYGON_OFFSET_FILL);
     ringl_enable(RINGL_STENCIL_TEST);
     ringl_enable(RINGL_BLEND);
     assert(ringl_is_enabled(RINGL_SCISSOR_TEST));
     assert(ringl_is_enabled(RINGL_CULL_FACE));
     assert(ringl_is_enabled(RINGL_DEPTH_TEST));
+    assert(ringl_is_enabled(RINGL_POLYGON_OFFSET_FILL));
     assert(ringl_is_enabled(RINGL_STENCIL_TEST));
     assert(ringl_is_enabled(RINGL_BLEND));
     ringl_disable(RINGL_BLEND);
     assert(!ringl_is_enabled(RINGL_BLEND));
+    ringl_polygon_offset(0.5f, -2.0f);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    {
+        uint32_t nan_bits = 0x7fc00000u;
+        float nan;
+
+        memcpy(&nan, &nan_bits, sizeof(nan));
+        ringl_polygon_offset(nan, 0.0f);
+    }
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    assert(ringl_is_enabled(RINGL_POLYGON_OFFSET_FILL));
+    ringl_disable(RINGL_POLYGON_OFFSET_FILL);
+    assert(!ringl_is_enabled(RINGL_POLYGON_OFFSET_FILL));
 
     ringl_enable(0xdeadbeefu);
     assert(ringl_get_error() == RINGL_INVALID_ENUM);

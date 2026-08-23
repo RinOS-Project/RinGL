@@ -477,14 +477,17 @@ and sampler bind group instead of treating it as a placeholder: it snapshots
 the bounded RGBA8 image into the resource-aware software executor and applies
 nearest or linear filtering with clamp-to-edge, repeat, or mirrored-repeat
 addressing. `ringl_generate_mipmap()` builds a complete chain for unpacked
-RGBA8-normalized color storage and realizes each level through the optional
-V2 RinGPU image/upload callbacks. The executor still has no derivatives or
-automatic LOD selection: it samples the explicitly bound base level, so it
-does not claim mip-filtered rendering. Packed color, depth/stencil, manual
-nonzero-level definitions, and nonzero-mip render targets remain rejected.
-The strict C11 RinGL tests cover format normalization, tightly-packed RGB
-image/sub-image data, padded D32 source rows, generated mip upload, and the
-actual RinGPU bridge image descriptor.
+RGBA8-normalized color storage, while explicit nonzero-level `texImage2D` and
+`texSubImage2D` update exact-dimension unpacked color levels without folding
+them into level zero. Both paths realize each contiguous level through the
+optional V2 RinGPU image/upload callbacks. A base-level sub-image update drops
+only generated levels, preserving explicitly supplied level data. The executor
+still has no derivatives or automatic LOD selection: it samples the explicitly
+bound base level, so it does not claim mip-filtered rendering. Packed color,
+depth/stencil, and nonzero-mip render targets remain rejected. The strict C11
+RinGL tests cover format normalization, tightly-packed RGB image/sub-image
+data, padded D32 source rows, generated/manual mip upload, and the actual
+RinGPU bridge image descriptor.
 
 Embeddings handling browser-facing byte uploads must use
 `ringl_tex_image_2d_from_bytes()` and `ringl_tex_sub_image_2d_from_bytes()`.

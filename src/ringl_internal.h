@@ -46,6 +46,7 @@ typedef struct RinGLTextureMipStorage {
     uint32_t width;
     uint32_t height;
     uint32_t defined;
+    uint32_t generated;
 } RinGLTextureMipStorage;
 
 typedef struct RinGLTextureObject {

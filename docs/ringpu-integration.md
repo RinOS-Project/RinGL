@@ -113,18 +113,22 @@ RGBA4/RGB5_A1 alpha.
 separate V2 descriptor records rather than extending the old unversioned image
 records, so a V1-only backend remains ABI-safe and continues to handle
 level-zero textures.  When both callbacks are present,
-`ringl_generate_mipmap()` creates a CPU-visible sampled image with its exact
-number of 2D levels and uploads each level with an explicit `mip_level`.
+`ringl_generate_mipmap()` and explicit nonzero-level `texImage2D` uploads
+create a CPU-visible sampled image with its exact number of contiguous 2D
+levels and upload each level with an explicit `mip_level`.
 
 The generated source is presently the bounded unpacked color profile whose
 shadow representation is normalized RGBA8.  RinGL computes a deterministic
 clamped 2x2 box level on the CPU before replacing prior generated storage; a
 missing V2 callback or allocation failure leaves that prior chain untouched.
-This does not add automatic LOD selection, manual nonzero-level `texImage2D`,
-packed-color generation, or nonzero-mip FBO rendering.  The OS-Core adapter
-maps each V2 descriptor directly to `RinGpuImageDescV1.mip_levels` and each
-upload to `RinGpuImageUploadV1.mip_level`; the focused bridge test inspects the
-resulting real RinGPU image descriptor.
+Explicit nonzero levels are bounded to exact-dimension unpacked normalized
+color storage; `texSubImage2D` can update such a level and base-level updates
+retain manually defined levels while discarding only generated ones. This does
+not add automatic LOD selection, packed-color generation, or nonzero-mip FBO
+rendering. The OS-Core adapter maps each V2 descriptor directly to
+`RinGpuImageDescV1.mip_levels` and each upload to
+`RinGpuImageUploadV1.mip_level`; focused fake and real bridge tests inspect the
+level bytes and resulting RinGPU image descriptor.
 
 ## Shader module validation path
 

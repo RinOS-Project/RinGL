@@ -1150,8 +1150,12 @@ void ringl_tex_image_2d(uint32_t target, int32_t level,
  * RINGL_UNPACK_ALIGNMENT padding between rows. A short source records
  * RINGL_INVALID_VALUE before changing the texture. A NULL texImage source
  * defines zero-initialized storage; non-empty texSubImage sources must not be
- * NULL. The raw-pointer entry points above remain for trusted native callers
- * that can independently guarantee the source extent. */
+ * NULL. Level zero accepts the bounded color/depth formats below. Nonzero
+ * levels require an existing unpacked color level zero with the same storage
+ * format and exact mip dimensions; they are realized through the V2 multi-mip
+ * callbacks rather than being silently folded into level zero. The raw-pointer
+ * entry points above remain for trusted native callers that can independently
+ * guarantee the source extent. */
 void ringl_tex_image_2d_from_bytes(uint32_t target, int32_t level,
                                    uint32_t internal_format, int32_t width,
                                    int32_t height, int32_t border,

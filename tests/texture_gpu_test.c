@@ -240,6 +240,7 @@ int main(void)
         160u, 170u, 180u, 190u, 200u, 210u, 220u, 230u,
     };
     const uint8_t expected_mip_level1[4] = {80u, 90u, 100u, 110u};
+    const uint8_t manual_mip_level1[4] = {31u, 41u, 51u, 61u};
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -421,12 +422,45 @@ int main(void)
     assert(memcmp(backend.mip_upload[1], expected_mip_level1,
                   sizeof(expected_mip_level1)) == 0);
 
-    /* A base sub-image mutation invalidates generated storage rather than
-     * sampling lower levels derived from stale texels. */
+    /* Manual mip definitions are exact-size uploads into the same RinGPU
+     * multi-mip image. Invalid level geometry cannot disturb that chain. */
+    ringl_tex_image_2d_from_bytes(RINGL_TEXTURE_2D, 2, RINGL_RGBA, 1, 1, 0,
+                                  RINGL_RGBA, RINGL_UNSIGNED_BYTE,
+                                  manual_mip_level1,
+                                  sizeof(manual_mip_level1));
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    ringl_tex_image_2d_from_bytes(RINGL_TEXTURE_2D, 1, RINGL_RGBA, 1, 1, 0,
+                                  RINGL_RGBA, RINGL_UNSIGNED_BYTE,
+                                  manual_mip_level1,
+                                  sizeof(manual_mip_level1));
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    backend.mip_image_creates = 0u;
+    backend.mip_uploads = 0u;
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(backend.mip_image_creates == 1u && backend.mip_uploads == 2u);
+    assert(memcmp(backend.mip_upload[1], manual_mip_level1,
+                  sizeof(manual_mip_level1)) == 0);
+
+    ringl_tex_sub_image_2d_from_bytes(RINGL_TEXTURE_2D, 1, 0, 0, 1, 1,
+                                      RINGL_RGBA, RINGL_UNSIGNED_BYTE, patch,
+                                      sizeof(patch));
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    backend.mip_image_creates = 0u;
+    backend.mip_uploads = 0u;
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(backend.mip_image_creates == 1u && backend.mip_uploads == 2u);
+    assert(memcmp(backend.mip_upload[1], patch, sizeof(patch)) == 0);
+
+    /* A base sub-image mutation drops generated levels only. Explicit level
+     * one data remains valid and is uploaded with the updated base level. */
     ringl_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 1, 1,
                            RINGL_RGBA, RINGL_UNSIGNED_BYTE, patch);
     assert(ringl_get_error() == RINGL_NO_ERROR);
-    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) != 0);
+    backend.mip_image_creates = 0u;
+    backend.mip_uploads = 0u;
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(backend.mip_image_creates == 1u && backend.mip_uploads == 2u);
+    assert(memcmp(backend.mip_upload[1], patch, sizeof(patch)) == 0);
 
     ringl_context_destroy(context);
 

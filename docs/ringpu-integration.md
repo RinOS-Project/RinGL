@@ -197,7 +197,7 @@ two components in a private native clip/raster form while preserving the
 public compact RGBA clip-vertex V1 ABI. Six-plane clipping and perspective
 interpolation operate on every pair before the resource-aware fragment
 preflight and submission. This route is deliberately limited to direct/indexed
-triangle lists, strips, and fans. One `firstUv +/- secondUv`,
+points and triangle lists, strips, and fans. One `firstUv +/- secondUv`,
 `firstUv +/- thirdUv`, or `secondUv +/- thirdUv` local may feed following
 direct/finite-affine local declarations in source order when the complete RSH1
 shape fits its instruction/register budget, while direct samples may use every

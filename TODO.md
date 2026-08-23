@@ -242,7 +242,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 
 ## Phase 7 — Data movement, synchronization, and observability
 
-- [ ] Implement clear/copy paths that must end or split render passes.
+- [x] Implement clear/copy paths that must end or split render passes.
   - [x] Add a bounded `copyTexSubImage2D` path from the current complete color
     target, including RGBA8 or packed RGB565/RGBA4/RGB5_A1 texture/renderbuffer
     FBOs, to a defined `RGBA`/`RGB`/`ALPHA`/`LUMINANCE`/`LUMINANCE_ALPHA` or

@@ -109,8 +109,12 @@ RGBA/RGB/ALPHA/LUMINANCE/LUMINANCE_ALPHA or native RGB565/RGBA4/RGB5_A1 storage
 at level zero or an exact explicit nonzero mip. The latter requires a defined
 same-format base. Canonical formats apply their component expansion and packed
 output is quantized directly from the canonical snapshot. The
-focused OS-Core `rin_webgl_ringl_bridge_test` covers clear, readback, and packed
-level-zero/level-one copy definitions through this borrowed surface.
+focused OS-Core `rin_webgl_ringl_bridge_test` and
+`rin_webgl_ringl_framebuffer_test` cover clear, readback, and packed
+level-zero/level-one copy definitions through this borrowed surface. The latter
+executes draw -> copy -> copied-FBO readback -> copied-FBO clear -> flush/finish
+-> source-FBO readback, verifying that `COPY_SOURCE`/`COLOR_TARGET` pass
+boundaries retain both attachments rather than aliasing the source and copy.
 Depth/stencil, multisample, and other FBO copy semantics remain outside this
 slice.
 

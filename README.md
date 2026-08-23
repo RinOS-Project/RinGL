@@ -552,6 +552,13 @@ readback; the previous texture definition and realized RinGPU image remain
 intact unless snapshot completion succeeds. This profile does not yet define
 zero-sized, depth/stencil, or multisample copy definitions.
 
+The RinGL-to-RinGPU-to-Aquamarine integration test also performs the full
+observable ordering sequence: it draws to a source texture FBO, snapshots it
+with `copyTexSubImage2D`, reads the copied FBO, clears that copied attachment,
+flushes and finishes, then reads the original FBO again. This proves that the
+`COPY_SOURCE` and later `COLOR_TARGET` transitions split passes without aliasing
+or overwriting either attachment.
+
 The one-sampler constant texture profile accepts both `vec2(u, v)` and the
 GLSL scalar-splat form `vec2(value)`. The latter requires a finite literal and
 stores that exact Float32 value in both RSH1 texture-coordinate registers, so

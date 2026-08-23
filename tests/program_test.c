@@ -161,7 +161,9 @@ int main(void)
                         "void main() { gl_Position = vec4(-1.0, -1.0, 0.0, 1.0); }",
                         -1);
     ringl_shader_source(vec4_fragment,
-                        "uniform vec4 tint; void main() { gl_FragColor = tint; }",
+                        "uniform vec4 tint; void main() { "
+                        "vec4 shaded = -tint * 0.5; "
+                        "gl_FragColor = shaded + vec4(1.0, 0.5, 0.25, 0.0); }",
                         -1);
     ringl_compile_shader(vec4_vertex);
     ringl_compile_shader(vec4_fragment);
@@ -397,7 +399,8 @@ int main(void)
            mat4_peer_program != 0u);
     ringl_shader_source(mat4_vertex,
                         "attribute vec4 position; uniform mat4 transform; "
-                        "void main() { gl_Position = transform * position; }",
+                        "void main() { gl_Position = transform * position "
+                        "+ vec4(0.0, 0.0, 0.0, 0.0); }",
                         -1);
     ringl_shader_source(mat4_fragment,
                         "void main() { gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0); }",

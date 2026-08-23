@@ -138,6 +138,13 @@ int main(void)
         "void main() {\n"
         "  gl_Position = vec4(position, 0.0, 1.0);\n"
         "}\n";
+    const char* vector_arithmetic_source =
+        "attribute vec4 position;\n"
+        "void main() {\n"
+        "  vec4 scaled = -position * 0.5;\n"
+        "  vec4 shifted = scaled + vec4(0.25, 0.0, 0.0, 0.0);\n"
+        "  gl_Position = shifted / 2.0 - vec4(0.0, 0.25, 0.0, 0.0);\n"
+        "}\n";
     const char* fragment_source =
         "void main() {\n"
         "  gl_FragColor = vec4(1.0, 0.25, 0.0, 1.0);\n"
@@ -206,6 +213,17 @@ int main(void)
     assert(header.instruction_count >= 13u);
     assert(ringl_get_shader_module(vertex) == 0u);
     assert(backend.destroys == 2u);
+
+    /* The parser has always accepted vector locals. Assert that these do not
+     * merely compile: unary, matching-width, and scalar-broadcast arithmetic
+     * must lower to executable scalar RSH1 operations. */
+    header = lower_and_read_header(vertex, vector_arithmetic_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 4u);
+    assert(header.output_count == 8u);
+    assert(header.instruction_count >= 40u);
+    assert(header.register_count >= 32u);
 
     header = lower_and_read_header(fragment, fragment_source, blob, sizeof(blob));
     assert(header.stage == 2u);

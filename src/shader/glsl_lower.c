@@ -485,27 +485,28 @@ static Value primary(Lower* lower)
 static Value unary(Lower* lower)
 {
     Value value;
+    uint32_t index;
     if (take(lower, T_PLUS))
         return unary(lower);
     if (!take(lower, T_MINUS))
         return primary(lower);
 
     value = unary(lower);
-    if (value.width != 1u || value.matrix) {
-        fail(lower, "vector unary arithmetic is not supported yet");
+    if (value.width == 0u || value.matrix) {
+        fail(lower, "unary arithmetic does not accept a matrix");
         return invalid_value();
     }
-    {
+    for (index = 0u; index < value.width; ++index) {
         uint16_t zero = new_reg(lower);
         uint16_t result = new_reg(lower);
         if (zero == RINGL_RSH1_UNUSED || result == RINGL_RSH1_UNUSED ||
             !emit(lower, RINGL_RSH1_OP_CONST_F32, zero, RINGL_RSH1_UNUSED,
                   RINGL_RSH1_UNUSED, 0u) ||
-            !emit(lower, RINGL_RSH1_OP_SUB_F32, result, zero, value.regs[0],
+            !emit(lower, RINGL_RSH1_OP_SUB_F32, result, zero, value.regs[index],
                   0u)) {
             return invalid_value();
         }
-        value.regs[0] = result;
+        value.regs[index] = result;
     }
     return value;
 }
@@ -554,6 +555,51 @@ static Value matrix_times_vec4(Lower* lower, const Value* matrix,
     return result;
 }
 
+/* GLSL scalar/vector arithmetic is represented as scalar RSH1 instructions.
+ * Keep the expansion at this frontend boundary: the RSH1 ABI has no hidden
+ * vector operation and the generated module must remain independently
+ * executable by every RinGPU backend. Addition/subtraction require matching
+ * vector widths, while multiplication/division additionally permit the GLES
+ * scalar broadcast form. */
+static Value componentwise_binary(Lower* lower, const Value* left,
+                                  const Value* right, uint16_t opcode,
+                                  int allow_scalar_broadcast)
+{
+    Value result = invalid_value();
+    uint8_t width;
+    uint32_t index;
+
+    if (left == NULL || right == NULL || left->matrix || right->matrix ||
+        left->width == 0u || right->width == 0u) {
+        fail(lower, "matrix arithmetic is not supported by this expression profile");
+        return result;
+    }
+    if (left->width == right->width) {
+        width = left->width;
+    } else if (allow_scalar_broadcast && left->width == 1u) {
+        width = right->width;
+    } else if (allow_scalar_broadcast && right->width == 1u) {
+        width = left->width;
+    } else {
+        fail(lower, "vector arithmetic requires matching component counts");
+        return result;
+    }
+
+    for (index = 0u; index < width; ++index) {
+        uint16_t destination = new_reg(lower);
+        uint16_t left_reg = left->regs[left->width == 1u ? 0u : index];
+        uint16_t right_reg = right->regs[right->width == 1u ? 0u : index];
+
+        if (destination == RINGL_RSH1_UNUSED ||
+            !emit(lower, opcode, destination, left_reg, right_reg, 0u)) {
+            return invalid_value();
+        }
+        result.regs[index] = destination;
+    }
+    result.width = width;
+    return result;
+}
+
 static Value multiplicative(Lower* lower)
 {
     Value left = unary(lower);
@@ -561,7 +607,6 @@ static Value multiplicative(Lower* lower)
            (lower->token.kind == T_STAR || lower->token.kind == T_SLASH)) {
         Tok operation = lower->token.kind;
         Value right;
-        uint16_t result;
         next(lower);
         right = unary(lower);
         if (operation == T_STAR && left.matrix) {
@@ -570,19 +615,10 @@ static Value multiplicative(Lower* lower)
                 fail(lower, "mat4 multiplication requires a vec4 right operand");
             continue;
         }
-        if (left.matrix || right.matrix || left.width != 1u || right.width != 1u) {
-            fail(lower, "vector arithmetic is not supported yet");
-            return invalid_value();
-        }
-        result = new_reg(lower);
-        if (result == RINGL_RSH1_UNUSED ||
-            !emit(lower,
-                  operation == T_STAR ? RINGL_RSH1_OP_MUL_F32
-                                      : RINGL_RSH1_OP_DIV_F32,
-                  result, left.regs[0], right.regs[0], 0u)) {
-            return invalid_value();
-        }
-        left.regs[0] = result;
+        left = componentwise_binary(
+            lower, &left, &right,
+            operation == T_STAR ? RINGL_RSH1_OP_MUL_F32 : RINGL_RSH1_OP_DIV_F32,
+            1);
     }
     return left;
 }
@@ -594,27 +630,17 @@ static Value expression(Lower* lower)
            (lower->token.kind == T_PLUS || lower->token.kind == T_MINUS)) {
         Tok operation = lower->token.kind;
         Value right;
-        uint16_t result;
         next(lower);
         right = multiplicative(lower);
-        if (left.matrix || right.matrix || left.width != 1u || right.width != 1u) {
-            fail(lower, "vector arithmetic is not supported yet");
-            return invalid_value();
-        }
-        result = new_reg(lower);
-        if (result == RINGL_RSH1_UNUSED ||
-            !emit(lower,
-                  operation == T_PLUS ? RINGL_RSH1_OP_ADD_F32
-                                      : RINGL_RSH1_OP_SUB_F32,
-                  result, left.regs[0], right.regs[0], 0u)) {
-            return invalid_value();
-        }
-        left.regs[0] = result;
+        left = componentwise_binary(
+            lower, &left, &right,
+            operation == T_PLUS ? RINGL_RSH1_OP_ADD_F32 : RINGL_RSH1_OP_SUB_F32,
+            0);
     }
     return left;
 }
 
-static int local_decl(Lower* lower)
+static int local_decl(Lower* lower, uint8_t width)
 {
     Token name;
     Symbol* symbol;
@@ -628,17 +654,18 @@ static int local_decl(Lower* lower)
         fail(lower, "duplicate local");
         return 0;
     }
-    symbol = add_symbol(lower, &name, 0, 1u);
+    symbol = add_symbol(lower, &name, 0, width);
     if (symbol == NULL)
         return 0;
     next(lower);
     if (take(lower, T_ASSIGN)) {
         Value value = expression(lower);
-        if (value.width != 1u) {
-            fail(lower, "float local requires a scalar value");
+        if (value.matrix || value.width != width) {
+            fail(lower, "local initializer component count mismatch");
             return 0;
         }
-        symbol->regs[0] = value.regs[0];
+        memcpy(symbol->regs, value.regs,
+               (size_t)width * sizeof(value.regs[0]));
         symbol->initialized = 1u;
     }
     return need(lower, T_SEMI, "expected ';' after local");
@@ -806,8 +833,14 @@ static int parse_all(Lower* lower)
             }
             while (lower->token.kind != T_RBRACE &&
                    lower->token.kind != T_EOF) {
-                if (lower->token.kind == T_FLOAT) {
-                    if (!local_decl(lower))
+                if (lower->token.kind == T_FLOAT ||
+                    lower->token.kind == T_VEC2 ||
+                    lower->token.kind == T_VEC3 ||
+                    lower->token.kind == T_VEC4) {
+                    uint8_t width = lower->token.kind == T_FLOAT ? 1u
+                        : lower->token.kind == T_VEC2 ? 2u
+                        : lower->token.kind == T_VEC3 ? 3u : 4u;
+                    if (!local_decl(lower, width))
                         return 0;
                 } else if (!assignment(lower)) {
                     return 0;

@@ -29,7 +29,7 @@ Status meanings:
 | `glBindTexture`, `glGenTextures`, `glDeleteTextures`, `glIsTexture` | B | `TEXTURE_2D` only. |
 | `glBlendColor`, `glBlendEquation`, `glBlendEquationSeparate`, `glBlendFunc`, `glBlendFuncSeparate` | B | Native RinGPU blend state; invalid factors/equations reject. |
 | `glClear`, `glClearColor`, `glClearDepthf`, `glClearStencil`, `glColorMask` | B | Current complete target; color/depth/stencil masks follow the bounded FBO profile. |
-| `glCompileShader`, `glCreateShader`, `glDeleteShader`, `glIsShader`, `glShaderSource` | B | GLSL ES source is compiled only by RinGL's bounded RSH1 profile. |
+| `glCompileShader`, `glCreateShader`, `glDeleteShader`, `glIsShader`, `glShaderSource` | B | GLSL ES source is compiled only by RinGL's bounded RSH1 profile; no-varying shaders execute local `vec2`/`vec3`/`vec4` values, same-width `+`/`-`, unary `-`, and scalar-broadcast `*`/`/`. |
 | `glCompressedTexImage2D`, `glCompressedTexSubImage2D` | N | Compressed texture storage is not implemented. |
 | `glCopyTexImage2D`, `glCopyTexSubImage2D` | B | Complete color target only; canonical/packed 2D formats and checked ranges. |
 | `glCullFace`, `glFrontFace` | B | Current native raster-state profile. |
@@ -69,7 +69,7 @@ Status meanings:
 | `glUniform1i` | P | Linked `sampler2D` locations only. |
 | `glUniform1f`, `glUniform1fv`, `glUniform2f`, `glUniform2fv`, `glUniform3f`, `glUniform3fv`, `glUniform4f`, `glUniform4fv` | P | Finite scalar/vector values realize a program-owned RinGPU module for linked `uniform float`/`vec2`/`vec3`/`vec4` source; an embedding may map each `*fv` form only when its single non-array value is complete. |
 | `glUniform1iv` | P | A linked scalar `sampler2D` value only; sampler arrays and integer GLSL uniforms are not implemented. |
-| `glUniformMatrix4fv` | P | One vertex-stage `uniform mat4` used as `mat4 * attribute vec4` for `gl_Position`; column-major finite values only, `transpose == false`, no uniform arrays. |
+| `glUniformMatrix4fv` | P | One vertex-stage `uniform mat4` used as `mat4 * attribute vec4` for `gl_Position`; this may feed the bounded no-varying vector-local/arithmetic profile. Column-major finite values only, `transpose == false`, no uniform arrays. |
 | `glUniform2i`, `glUniform2iv`, `glUniform3i`, `glUniform3iv`, `glUniform4i`, `glUniform4iv`, `glUniformMatrix2fv`, `glUniformMatrix3fv` | N | Integer and remaining matrix uniform storage/lowering are not implemented. |
 | `glVertexAttrib1f`, `glVertexAttrib2f`, `glVertexAttrib3f`, `glVertexAttrib4f` | B | Current generic values for disabled arrays. |
 | `glVertexAttrib1fv`, `glVertexAttrib2fv`, `glVertexAttrib3fv`, `glVertexAttrib4fv` | N | Raw pointer-vector forms are not exported; embeddings must bounds-check then use scalar setters. |

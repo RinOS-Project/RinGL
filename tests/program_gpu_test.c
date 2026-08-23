@@ -118,7 +118,8 @@ int main(void)
     assert(matrix_vertex != 0u && matrix_fragment != 0u && matrix_program != 0u);
     ringl_shader_source(matrix_vertex,
         "attribute vec4 position; uniform mat4 transform; "
-        "void main() { gl_Position = transform * position; }", -1);
+        "void main() { gl_Position = transform * position "
+        "+ vec4(0.0, 0.0, 0.0, 0.0); }", -1);
     ringl_shader_source(matrix_fragment,
         "void main() { gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0); }", -1);
     ringl_compile_shader(matrix_vertex);

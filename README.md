@@ -323,6 +323,15 @@ its derived executable unchanged. This lets embeddings preserve atomic
 WebGL-visible uniform state while the bounded RSH1 lowering path has no
 non-finite literal representation.
 
+The no-varying RSH1 profile also lowers local `vec2`, `vec3`, and `vec4`
+values and component-wise vector arithmetic directly to scalar RSH1
+instructions. Same-width `+`/`-`, unary `-`, and vector/scalar `*` and `/`
+are executable rather than host-side constant folding. This covers common
+uniform color modulation and a matrix-transformed position plus a vector
+offset while retaining explicit RSH1 resource and register limits; swizzles,
+matrix arithmetic beyond `mat4 * vec4`, vector comparisons, and control flow
+are still outside the profile.
+
 `ringl_get_renderbuffer_info()` exposes the current renderbuffer's dimensions,
 internal format, component bit counts, and zero sample count through a
 versioned caller-owned snapshot. An allocated renderbuffer reports zero-sized
@@ -685,6 +694,7 @@ draw without textual source replacement or a CPU color fallback. The accepted
 generic no-varying forms include `vec4(tint2, 0.0, 1.0)` for a `vec2`,
 `vec4(tint3, 1.0)` for a `vec3`, a direct `vec4` read, and vertex
 `gl_Position = transform * position` for one `uniform mat4` and
-`attribute vec4`. Arrays, other matrix expressions, and vector combinations
-with the specialized varying/texture profiles remain unavailable rather than
-being reported as successful GLES.
+`attribute vec4`, as well as bounded no-varying vector locals and
+component-wise arithmetic. Arrays, other matrix expressions, and vector
+combinations with the specialized varying/texture profiles remain unavailable
+rather than being reported as successful GLES.

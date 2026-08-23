@@ -137,6 +137,15 @@ int main(void)
         "texture2D(firstTexture, firstUv) + "
         "texture2D(secondTexture, mixedUv) + "
         "texture2D(thirdTexture, mixedUv); }";
+    const char* varying_three_coordinate_third_pair_local_chain_source =
+        "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
+        "uniform sampler2D thirdTexture; varying vec2 firstUv; "
+        "varying vec2 secondUv; varying vec2 thirdUv; void main() { "
+        "vec2 mixedUv = secondUv - thirdUv; "
+        "vec2 sampleUv = mixedUv + vec2(0.0, 0.5); gl_FragColor = "
+        "texture2D(firstTexture, firstUv) + "
+        "texture2D(secondTexture, sampleUv) + "
+        "texture2D(thirdTexture, sampleUv); }";
     const char* varying_tinted_texture_source =
         "uniform sampler2D colorTexture; varying vec2 uv; "
         "void main() { gl_FragColor = texture2D(colorTexture, uv) * "
@@ -1314,6 +1323,52 @@ int main(void)
         assert(first_sample->source0 == 0u && first_sample->source1 == 1u);
         assert(second_sample->source0 == 28u && second_sample->source1 == 29u);
         assert(third_sample->source0 == 28u && third_sample->source1 == 29u);
+    }
+
+    /* A local built from second/third UVs may feed a finite affine local;
+     * the second stage must read the first RSH1 result in source order. */
+    ringl_shader_source(shader,
+                        varying_three_coordinate_third_pair_local_chain_source,
+                        -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 37u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.instruction_count == 37u);
+    assert(header.register_count == 34u);
+    assert(header.input_count == 6u);
+    for (component = 0u; component < 2u; ++component) {
+        const Instruction* combine =
+            (const Instruction*)(blob + sizeof(header)) + 6u + component;
+        const Instruction* affine_constant =
+            (const Instruction*)(blob + sizeof(header)) + 8u + component;
+        const Instruction* affine =
+            (const Instruction*)(blob + sizeof(header)) + 10u + component;
+
+        assert(combine->opcode == RSH1_SUB_F32);
+        assert(combine->source0 == 22u + component);
+        assert(combine->source1 == 24u + component);
+        assert(affine_constant->opcode == RSH1_CONST_F32);
+        assert(affine_constant->destination == 30u + component);
+        assert(affine->opcode == RSH1_ADD_F32);
+        assert(affine->source0 == 28u + component);
+        assert(affine->source1 == 30u + component);
+        assert(affine->destination == 32u + component);
+    }
+    for (component = 0u; component < 4u; ++component) {
+        const Instruction* first_sample =
+            (const Instruction*)(blob + sizeof(header)) + 12u + component;
+        const Instruction* second_sample =
+            (const Instruction*)(blob + sizeof(header)) + 16u + component;
+        const Instruction* third_sample =
+            (const Instruction*)(blob + sizeof(header)) + 20u + component;
+
+        assert(first_sample->source0 == 0u && first_sample->source1 == 1u);
+        assert(second_sample->source0 == 32u && second_sample->source1 == 33u);
+        assert(third_sample->source0 == 32u && third_sample->source1 == 33u);
     }
 
     ringl_context_destroy(context);

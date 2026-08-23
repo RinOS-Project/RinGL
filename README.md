@@ -356,23 +356,22 @@ Coordinate arithmetic and other matrix expressions remain outside this
 deliberately bounded shape. A fifth UV pair is outside the RSH1 interface and
 fails lowering without publishing a truncated module.
 
-The same transformed route supports the common vertex-color texture form with
-one UV pair: an `attribute vec4` is copied into a following `varying vec4`, and
-the exact fragment expression `texture2D(texture, uv) * vertexColor` loads six
+The same transformed route supports the common vertex-color texture form: an
+`attribute vec4` is copied into a following `varying vec4`, and the exact
+fragment expression `texture2D(texture, uv) * vertexColor` loads six
 interpolated scalars, samples the typed image/sampler pair, and emits four RSH1
 component-wise multiplies. One or two UV pairs may accompany that color while
-the native interface remains within eight scalar varyings. The focused native
-draw test separately verifies this six-scalar pipeline, including matrix
-uniform update, dense position/UV/RGBA attribute layout, and the image/sampler
-binding. Its bounded material form additionally accepts one `uniform vec4` in
-the exact expression `texture2D(texture, uv) * vertexColor * tint`; the
-fragment-only uniform update materializes four tint constants and four more
-RSH1 multiplies without rebuilding the matrix module. The material may append
-one `uniform float` in the exact expression
-`texture2D(texture, uv) * vertexColor * tint * opacity`; RinGL broadcasts the
-finite opacity to four RSH1 multiplies after tinting and replaces only that
-fragment executable. The image/sampler binding remains native throughout; no
-CPU pre-multiplied color is published.
+the native interface remains within eight scalar varyings. With two pairs, the
+exact material expression `(texture2D(firstTexture, firstUv) +
+texture2D(secondTexture, secondUv)) * vertexColor` samples and adds both typed
+image/sampler pairs before the RGBA modulation. The focused native draw test
+verifies both the six-scalar and twelve-output/eight-input pipelines, matrix
+uniform updates, dense position/UV/RGBA attribute layouts, and native resource
+bindings. Either material may append one `uniform vec4` tint and one `uniform
+float` opacity; RSH1 materializes the finite tint constants, then broadcasts
+opacity across RGBA without rebuilding the matrix module. Updating either one
+replaces only the fragment executable. The image/sampler binding remains native
+throughout; no CPU pre-multiplied color is published.
 
 The no-varying RSH1 profile also lowers local `vec2`, `vec3`, and `vec4`
 values and component-wise vector arithmetic directly to scalar RSH1

@@ -236,6 +236,12 @@ int main(void)
         "uniform sampler2D colorTexture; uniform vec4 tint; uniform float opacity; "
         "varying vec2 uv; varying vec4 vertexColor; void main() { gl_FragColor = "
         "texture2D(colorTexture, uv) * vertexColor * tint * opacity; }";
+    const char* two_texture_vertex_color_material_fragment_source =
+        "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
+        "uniform vec4 tint; uniform float opacity; varying vec2 firstUv; "
+        "varying vec2 secondUv; varying vec4 vertexColor; void main() { "
+        "gl_FragColor = (texture2D(firstTexture, firstUv) + "
+        "texture2D(secondTexture, secondUv)) * vertexColor * tint * opacity; }";
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -449,6 +455,19 @@ int main(void)
     assert(header.resource_count == 2u);
     assert(header.instruction_count == 32u);
     assert(header.register_count == 27u);
+
+    /* Two UV/sampler pairs are added by RSH1 before vertex color, tint, and
+     * opacity modulation. The header proves both typed resource pairs remain
+     * part of the executable rather than being pre-composed by the host. */
+    header = lower_and_read_header(
+        fragment, two_texture_vertex_color_material_fragment_source,
+        blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 8u);
+    assert(header.output_count == 4u);
+    assert(header.resource_count == 4u);
+    assert(header.instruction_count == 42u);
+    assert(header.register_count == 37u);
 
     ringl_shader_source(vertex, "void main() { gl_Position = 0.0; }", -1);
     assert(ringl_get_shader_compile_status(vertex) == RINGL_FALSE);

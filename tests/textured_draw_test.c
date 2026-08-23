@@ -92,10 +92,12 @@ static int fake_create_shader_module(void* session, const void* rsh1,
 
     assert(rsh1 != NULL && size_bytes >= 64u);
     memcpy(&header, rsh1, sizeof(header));
-    if (header.stage == 2u && header.resource_count == 2u &&
-        header.instruction_count == 32u) {
+    if (header.stage == 2u &&
+        ((header.resource_count == 2u && header.instruction_count == 32u) ||
+         (header.resource_count == 4u && header.instruction_count == 42u))) {
         const Rsh1Instruction* instructions =
             (const Rsh1Instruction*)((const uint8_t*)rsh1 + sizeof(header));
+        uint32_t tint_base = header.instruction_count == 32u ? 14u : 24u;
         uint32_t index;
 
         assert(size_bytes == sizeof(header) +
@@ -106,16 +108,16 @@ static int fake_create_shader_module(void* session, const void* rsh1,
 
                 memcpy(&expected_bits, &backend->expected_vertex_color_tint[index],
                        sizeof(expected_bits));
-                assert(instructions[14u + index].opcode == 16u &&
-                       instructions[14u + index].immediate == expected_bits);
+                assert(instructions[tint_base + index].opcode == 16u &&
+                       instructions[tint_base + index].immediate == expected_bits);
             }
             {
                 uint32_t expected_bits;
 
                 memcpy(&expected_bits, &backend->expected_vertex_color_opacity,
                        sizeof(expected_bits));
-                assert(instructions[22u].opcode == 16u &&
-                       instructions[22u].immediate == expected_bits);
+                assert(instructions[tint_base + 8u].opcode == 16u &&
+                       instructions[tint_base + 8u].immediate == expected_bits);
             }
         }
         ++backend->vertex_color_material_fragment_modules;
@@ -165,6 +167,20 @@ static int fake_create_pipeline_native(
         }
         assert(varying_count == 6u && varyings != NULL);
         for (index = 0u; index < 6u; ++index) {
+            assert(varyings[index].vertex_output_location == 4u + index);
+            assert(varyings[index].fragment_input_location == index);
+            assert(varyings[index].type == 1u &&
+                   varyings[index].interpolation == 1u);
+        }
+    } else if (backend->pipeline_creates == 2u) {
+        assert(desc->vertex_stride == 40u);
+        assert(attribute_count == 10u && attributes != NULL);
+        for (index = 0u; index < 10u; ++index) {
+            assert(attributes[index].location == index);
+            assert(attributes[index].offset == index * 4u);
+        }
+        assert(varying_count == 8u && varyings != NULL);
+        for (index = 0u; index < 8u; ++index) {
             assert(varyings[index].vertex_output_location == 4u + index);
             assert(varyings[index].fragment_input_location == index);
             assert(varyings[index].type == 1u &&
@@ -312,6 +328,24 @@ static int fake_create_bind_group(
         assert(bindings[1].kind == RINGL_RIN_GPU_RESOURCE_SAMPLER);
         assert(bindings[1].access == 0u);
         assert(bindings[1].resource == backend->texture_samplers[0]);
+    } else if (backend->pipeline_creates == 3u) {
+        assert(binding_count == 4u);
+        assert(bindings[0].binding == 0u);
+        assert(bindings[0].kind == RINGL_RIN_GPU_RESOURCE_SAMPLED_IMAGE);
+        assert(bindings[0].access == RINGL_RIN_GPU_RESOURCE_READ);
+        assert(bindings[0].resource == backend->texture_images[0]);
+        assert(bindings[1].binding == 1u);
+        assert(bindings[1].kind == RINGL_RIN_GPU_RESOURCE_SAMPLER);
+        assert(bindings[1].access == 0u);
+        assert(bindings[1].resource == backend->texture_samplers[0]);
+        assert(bindings[2].binding == 2u);
+        assert(bindings[2].kind == RINGL_RIN_GPU_RESOURCE_SAMPLED_IMAGE);
+        assert(bindings[2].access == RINGL_RIN_GPU_RESOURCE_READ);
+        assert(bindings[2].resource == backend->texture_images[1]);
+        assert(bindings[3].binding == 3u);
+        assert(bindings[3].kind == RINGL_RIN_GPU_RESOURCE_SAMPLER);
+        assert(bindings[3].access == 0u);
+        assert(bindings[3].resource == backend->texture_samplers[1]);
     } else {
         assert(0);
     }
@@ -414,6 +448,7 @@ int main(void)
     RinGLContext* context = NULL;
     uint32_t buffer;
     uint32_t vertex_color_buffer;
+    uint32_t two_texture_vertex_color_buffer;
     uint32_t textures[2];
     uint32_t vertex;
     uint32_t fragment;
@@ -421,6 +456,9 @@ int main(void)
     uint32_t vertex_color_vertex;
     uint32_t vertex_color_fragment;
     uint32_t vertex_color_program;
+    uint32_t two_texture_vertex_color_vertex;
+    uint32_t two_texture_vertex_color_fragment;
+    uint32_t two_texture_vertex_color_program;
     int32_t first_sampler_location;
     int32_t second_sampler_location;
     int32_t tint_location;
@@ -429,6 +467,11 @@ int main(void)
     int32_t vertex_color_opacity_location;
     int32_t vertex_color_tint_location;
     int32_t vertex_color_transform_location;
+    int32_t two_texture_vertex_color_first_sampler_location;
+    int32_t two_texture_vertex_color_second_sampler_location;
+    int32_t two_texture_vertex_color_opacity_location;
+    int32_t two_texture_vertex_color_tint_location;
+    int32_t two_texture_vertex_color_transform_location;
     const float vertices[] = {
         -0.75f, -0.75f, 0.0f, 0.0f, 0.25f, 0.75f,
          0.75f, -0.75f, 1.0f, 0.0f, 0.75f, 0.25f,
@@ -449,7 +492,12 @@ int main(void)
     const float vertex_color_vertices[] = {
         -0.75f, -0.75f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,
          0.75f, -0.75f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,
-         0.0f,   0.75f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f,
+        0.0f,   0.75f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f,
+    };
+    const float two_texture_vertex_color_vertices[] = {
+        -0.75f, -0.75f, 0.0f, 0.0f, 0.25f, 0.75f, 1.0f, 0.0f, 0.0f, 1.0f,
+         0.75f, -0.75f, 1.0f, 0.0f, 0.75f, 0.25f, 0.0f, 1.0f, 0.0f, 1.0f,
+         0.0f,   0.75f, 0.5f, 1.0f, 0.50f, 0.50f, 0.0f, 0.0f, 1.0f, 1.0f,
     };
     char commands[33];
 
@@ -612,6 +660,95 @@ int main(void)
     assert(backend.vertex_color_material_fragment_modules == 3u);
     assert(backend.pipeline_creates == 2u);
     assert(backend.bind_group_creates == 2u);
+
+    /* Two independently bound textures can be added before the shared
+     * interpolated vertex color, tint, and opacity material operations. This
+     * verifies the twelve-output vertex / eight-input fragment interface and
+     * both typed RinGPU image/sampler pairs end to end. */
+    backend.validate_vertex_color_tint = 0u;
+    ringl_gen_buffers(1, &two_texture_vertex_color_buffer);
+    ringl_bind_buffer(RINGL_ARRAY_BUFFER, two_texture_vertex_color_buffer);
+    ringl_buffer_data(RINGL_ARRAY_BUFFER,
+                      sizeof(two_texture_vertex_color_vertices),
+                      two_texture_vertex_color_vertices, RINGL_STATIC_DRAW);
+    ringl_vertex_attrib_pointer(0u, 2, RINGL_FLOAT, RINGL_FALSE, 40, 0u);
+    ringl_enable_vertex_attrib_array(0u);
+    ringl_vertex_attrib_pointer(1u, 2, RINGL_FLOAT, RINGL_FALSE, 40, 8u);
+    ringl_enable_vertex_attrib_array(1u);
+    ringl_vertex_attrib_pointer(2u, 2, RINGL_FLOAT, RINGL_FALSE, 40, 16u);
+    ringl_enable_vertex_attrib_array(2u);
+    ringl_vertex_attrib_pointer(3u, 4, RINGL_FLOAT, RINGL_FALSE, 40, 24u);
+    ringl_enable_vertex_attrib_array(3u);
+    two_texture_vertex_color_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+    two_texture_vertex_color_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+    two_texture_vertex_color_program = ringl_create_program();
+    assert(two_texture_vertex_color_vertex != 0u &&
+           two_texture_vertex_color_fragment != 0u &&
+           two_texture_vertex_color_program != 0u);
+    ringl_shader_source(
+        two_texture_vertex_color_vertex,
+        "attribute vec2 position; attribute vec2 firstTexCoord; "
+        "attribute vec2 secondTexCoord; attribute vec4 color; uniform mat4 transform; "
+        "varying vec2 firstUv; varying vec2 secondUv; varying vec4 vertexColor; "
+        "void main() { gl_Position = transform * vec4(position, 0.0, 1.0); "
+        "firstUv = firstTexCoord; secondUv = secondTexCoord; vertexColor = color; }",
+        -1);
+    ringl_shader_source(
+        two_texture_vertex_color_fragment,
+        "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
+        "uniform vec4 tint; uniform float opacity; varying vec2 firstUv; "
+        "varying vec2 secondUv; varying vec4 vertexColor; void main() { "
+        "gl_FragColor = (texture2D(firstTexture, firstUv) + "
+        "texture2D(secondTexture, secondUv)) * vertexColor * tint * opacity; }",
+        -1);
+    ringl_compile_shader(two_texture_vertex_color_vertex);
+    ringl_compile_shader(two_texture_vertex_color_fragment);
+    assert(ringl_get_shader_compile_status(two_texture_vertex_color_vertex) ==
+           RINGL_TRUE);
+    assert(ringl_get_shader_compile_status(two_texture_vertex_color_fragment) ==
+           RINGL_TRUE);
+    ringl_attach_shader(two_texture_vertex_color_program,
+                         two_texture_vertex_color_vertex);
+    ringl_attach_shader(two_texture_vertex_color_program,
+                         two_texture_vertex_color_fragment);
+    ringl_link_program(two_texture_vertex_color_program);
+    assert(ringl_get_program_link_status(two_texture_vertex_color_program) ==
+           RINGL_TRUE);
+    ringl_use_program(two_texture_vertex_color_program);
+    two_texture_vertex_color_first_sampler_location = ringl_get_uniform_location(
+        two_texture_vertex_color_program, "firstTexture");
+    two_texture_vertex_color_second_sampler_location = ringl_get_uniform_location(
+        two_texture_vertex_color_program, "secondTexture");
+    two_texture_vertex_color_opacity_location = ringl_get_uniform_location(
+        two_texture_vertex_color_program, "opacity");
+    two_texture_vertex_color_tint_location = ringl_get_uniform_location(
+        two_texture_vertex_color_program, "tint");
+    two_texture_vertex_color_transform_location = ringl_get_uniform_location(
+        two_texture_vertex_color_program, "transform");
+    assert(two_texture_vertex_color_first_sampler_location == 0);
+    assert(two_texture_vertex_color_second_sampler_location == 1);
+    assert(two_texture_vertex_color_opacity_location == 2);
+    assert(two_texture_vertex_color_tint_location == 3);
+    assert(two_texture_vertex_color_transform_location == 4);
+    ringl_uniform_1i(two_texture_vertex_color_first_sampler_location, 0);
+    ringl_uniform_1i(two_texture_vertex_color_second_sampler_location, 1);
+    ringl_uniform_matrix4fv(two_texture_vertex_color_transform_location,
+                            RINGL_FALSE, transform);
+    memcpy(backend.expected_vertex_color_tint, tint,
+           sizeof(backend.expected_vertex_color_tint));
+    backend.expected_vertex_color_opacity = 0.0f;
+    backend.validate_vertex_color_tint = 1u;
+    ringl_uniform_4f(two_texture_vertex_color_tint_location, tint[0], tint[1],
+                     tint[2], tint[3]);
+    backend.expected_vertex_color_opacity = opacity;
+    ringl_uniform_1f(two_texture_vertex_color_opacity_location, opacity);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(backend.shader_creates == 14u);
+    assert(backend.vertex_color_material_fragment_modules == 6u);
+    assert(backend.pipeline_creates == 3u);
+    assert(backend.bind_group_creates == 3u);
 
     ringl_context_destroy(context);
     return 0;

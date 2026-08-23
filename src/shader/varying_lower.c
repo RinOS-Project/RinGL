@@ -1013,44 +1013,60 @@ static int lower_vertex_transformed_texture(
     return 0;
 }
 
-/* This profile accepts one perspective-interpolated UV pair followed by one
- * perspective-interpolated RGBA vertex color. It is the common WebGL
- * `texture2D(...) * vertexColor` route, optionally followed by one linked
- * `uniform vec4` tint and/or one `uniform float` opacity. All six
- * interpolation inputs, image sample components, component-wise products,
- * scalar opacity broadcasts, and final stores are RSH1 instructions. The
- * source shape is exact so a later color/texture expression cannot be
- * mistaken for this bounded native execution path. */
+/* This profile accepts one or two perspective-interpolated UV pairs followed
+ * by one perspective-interpolated RGBA vertex color. It is the common WebGL
+ * `texture2D(...) * vertexColor` route, or two sampled textures added before
+ * that modulation, optionally followed by one linked `uniform vec4` tint
+ * and/or one `uniform float` opacity. Interpolation inputs, image samples,
+ * additions, component-wise products, scalar opacity broadcasts, and final
+ * stores are RSH1 instructions. The source shape is exact so a later
+ * color/texture expression cannot be mistaken for this bounded native
+ * execution path. */
 static int lower_fragment_textured_vertex_color(
     const char* source, const RinGLGlslUniformValue* uniforms,
     uint32_t uniform_count, RinGLGlslLowerResult* result)
 {
     RinGLRsh1HeaderV1 header;
-    RinGLRsh1InstructionV1 ins[32];
-    char sampler[64];
-    char uv[64];
+    RinGLRsh1InstructionV1 ins[64];
+    char samplers[2][64];
+    char uvs[2][64];
     char color[64];
     char tint_name[64];
     char opacity_name[64];
-    char expected[768];
+    char expected[1024];
     float tint[4] = {0.0f};
     float opacity = 0.0f;
     uint32_t has_tint = 0u;
     uint32_t has_opacity = 0u;
+    uint32_t sampler_count = 1u;
+    uint32_t input_count;
+    uint32_t sample_base;
+    uint32_t color_input_base;
     uint32_t instruction_cursor;
     uint32_t next_register;
     uint32_t store_base;
     uint32_t final_base;
     uint32_t component;
+    uint32_t sampler_index;
+    size_t expected_length = 0u;
     size_t total;
 
     if (source == NULL || result == NULL ||
         (uniform_count != 0u && uniforms == NULL) ||
-        !read_decl_name(source, "uniformsampler2D", 0u, sampler,
-                        sizeof(sampler)) ||
-        !read_decl_name(source, "varyingvec2", 0u, uv, sizeof(uv)) ||
+        !read_decl_name(source, "uniformsampler2D", 0u, samplers[0],
+                        sizeof(samplers[0])) ||
+        !read_decl_name(source, "varyingvec2", 0u, uvs[0],
+                        sizeof(uvs[0])) ||
         !read_decl_name(source, "varyingvec4", 0u, color, sizeof(color))) {
         return 1;
+    }
+    if (read_decl_name(source, "uniformsampler2D", 1u, samplers[1],
+                       sizeof(samplers[1]))) {
+        sampler_count = 2u;
+        if (!read_decl_name(source, "varyingvec2", 1u, uvs[1],
+                            sizeof(uvs[1]))) {
+            return 1;
+        }
     }
     if (read_decl_name(source, "uniformvec4", 0u, tint_name,
                        sizeof(tint_name))) {
@@ -1090,57 +1106,114 @@ static int lower_fragment_textured_vertex_color(
         if (!isfinite(opacity))
             return 1;
     }
-    if (has_tint && has_opacity) {
-        (void)snprintf(expected, sizeof(expected),
-                       "uniformsampler2D%s;uniformvec4%s;uniformfloat%s;"
-                       "varyingvec2%s;varyingvec4%s;voidmain(){gl_FragColor="
-                       "texture2D(%s,%s)*%s*%s*%s;}",
-                       sampler, tint_name, opacity_name, uv, color, sampler,
-                       uv, color, tint_name, opacity_name);
-    } else if (has_tint) {
-        (void)snprintf(expected, sizeof(expected),
-                       "uniformsampler2D%s;uniformvec4%s;varyingvec2%s;"
-                       "varyingvec4%s;voidmain(){gl_FragColor=texture2D(%s,%s)*%s*%s;}",
-                       sampler, tint_name, uv, color, sampler, uv, color,
-                       tint_name);
-    } else if (has_opacity) {
-        (void)snprintf(expected, sizeof(expected),
-                       "uniformsampler2D%s;uniformfloat%s;varyingvec2%s;"
-                       "varyingvec4%s;voidmain(){gl_FragColor=texture2D(%s,%s)*%s*%s;}",
-                       sampler, opacity_name, uv, color, sampler, uv, color,
-                       opacity_name);
-    } else {
-        (void)snprintf(expected, sizeof(expected),
-                       "uniformsampler2D%s;varyingvec2%s;varyingvec4%s;"
-                       "voidmain(){gl_FragColor=texture2D(%s,%s)*%s;}",
-                       sampler, uv, color, sampler, uv, color);
+    for (sampler_index = 0u; sampler_index < sampler_count; ++sampler_index) {
+        if (!append_compact_source(expected, sizeof(expected), &expected_length,
+                                   "uniformsampler2D%s;",
+                                   samplers[sampler_index])) {
+            return 1;
+        }
+    }
+    if (has_tint &&
+        !append_compact_source(expected, sizeof(expected), &expected_length,
+                               "uniformvec4%s;", tint_name)) {
+        return 1;
+    }
+    if (has_opacity &&
+        !append_compact_source(expected, sizeof(expected), &expected_length,
+                               "uniformfloat%s;", opacity_name)) {
+        return 1;
+    }
+    for (sampler_index = 0u; sampler_index < sampler_count; ++sampler_index) {
+        if (!append_compact_source(expected, sizeof(expected), &expected_length,
+                                   "varyingvec2%s;", uvs[sampler_index])) {
+            return 1;
+        }
+    }
+    if (!append_compact_source(expected, sizeof(expected), &expected_length,
+                               "varyingvec4%s;voidmain(){gl_FragColor=",
+                               color)) {
+        return 1;
+    }
+    if (sampler_count == 2u) {
+        if (!append_compact_source(expected, sizeof(expected), &expected_length,
+                                   "(texture2D(%s,%s)+texture2D(%s,%s))",
+                                   samplers[0], uvs[0], samplers[1], uvs[1])) {
+            return 1;
+        }
+    } else if (!append_compact_source(expected, sizeof(expected),
+                                      &expected_length, "texture2D(%s,%s)",
+                                      samplers[0], uvs[0])) {
+        return 1;
+    }
+    if (!append_compact_source(expected, sizeof(expected), &expected_length,
+                               "*%s", color) ||
+        (has_tint &&
+         !append_compact_source(expected, sizeof(expected), &expected_length,
+                                "*%s", tint_name)) ||
+        (has_opacity &&
+         !append_compact_source(expected, sizeof(expected), &expected_length,
+                                "*%s", opacity_name)) ||
+        !append_compact_source(expected, sizeof(expected), &expected_length,
+                               ";}")) {
+        return 1;
     }
     if (strcmp(source, expected) != 0)
         return 1;
 
     memset(ins, 0, sizeof(ins));
-    for (component = 0u; component < 6u; ++component) {
+    input_count = sampler_count * 2u + 4u;
+    for (component = 0u; component < input_count; ++component) {
         init_instruction(&ins[component], RINGL_RSH1_OP_LOAD_INPUT_F32);
         ins[component].destination = (uint16_t)component;
         ins[component].immediate = component;
     }
-    for (component = 0u; component < 4u; ++component) {
-        init_instruction(&ins[6u + component],
-                         RINGL_RSH1_OP_SAMPLE_IMAGE_2D_F32);
-        ins[6u + component].flags = (uint16_t)component;
-        ins[6u + component].destination = (uint16_t)(6u + component);
-        ins[6u + component].source0 = 0u;
-        ins[6u + component].source1 = 1u;
-        ins[6u + component].resource = 0u;
-        ins[6u + component].immediate = 1u;
-        init_instruction(&ins[10u + component], RINGL_RSH1_OP_MUL_F32);
-        ins[10u + component].destination = (uint16_t)(10u + component);
-        ins[10u + component].source0 = (uint16_t)(6u + component);
-        ins[10u + component].source1 = (uint16_t)(2u + component);
+    sample_base = input_count;
+    for (sampler_index = 0u; sampler_index < sampler_count; ++sampler_index) {
+        uint32_t resource_base = sampler_index * 2u;
+
+        for (component = 0u; component < 4u; ++component) {
+            uint32_t instruction = sample_base + sampler_index * 4u + component;
+
+            init_instruction(&ins[instruction], RINGL_RSH1_OP_SAMPLE_IMAGE_2D_F32);
+            ins[instruction].flags = (uint16_t)component;
+            ins[instruction].destination = (uint16_t)instruction;
+            ins[instruction].source0 = (uint16_t)(sampler_index * 2u);
+            ins[instruction].source1 = (uint16_t)(sampler_index * 2u + 1u);
+            ins[instruction].resource = (uint16_t)resource_base;
+            ins[instruction].immediate = resource_base + 1u;
+        }
     }
-    instruction_cursor = 14u;
-    next_register = 14u;
-    final_base = 10u;
+    instruction_cursor = sample_base + sampler_count * 4u;
+    next_register = instruction_cursor;
+    final_base = sample_base;
+    if (sampler_count == 2u) {
+        for (component = 0u; component < 4u; ++component) {
+            init_instruction(&ins[instruction_cursor + component],
+                             RINGL_RSH1_OP_ADD_F32);
+            ins[instruction_cursor + component].destination =
+                (uint16_t)(next_register + component);
+            ins[instruction_cursor + component].source0 =
+                (uint16_t)(sample_base + component);
+            ins[instruction_cursor + component].source1 =
+                (uint16_t)(sample_base + 4u + component);
+        }
+        final_base = next_register;
+        next_register += 4u;
+        instruction_cursor += 4u;
+    }
+    color_input_base = sampler_count * 2u;
+    for (component = 0u; component < 4u; ++component) {
+        init_instruction(&ins[instruction_cursor + component], RINGL_RSH1_OP_MUL_F32);
+        ins[instruction_cursor + component].destination =
+            (uint16_t)(next_register + component);
+        ins[instruction_cursor + component].source0 =
+            (uint16_t)(final_base + component);
+        ins[instruction_cursor + component].source1 =
+            (uint16_t)(color_input_base + component);
+    }
+    final_base = next_register;
+    next_register += 4u;
+    instruction_cursor += 4u;
     if (has_tint) {
         for (component = 0u; component < 4u; ++component) {
             uint32_t tint_bits;
@@ -1205,9 +1278,9 @@ static int lower_fragment_textured_vertex_color(
     header.stage = RINGL_RSH1_STAGE_FRAGMENT;
     header.instruction_count = store_base + 5u;
     header.register_count = next_register;
-    header.input_count = 6u;
+    header.input_count = input_count;
     header.output_count = 4u;
-    header.resource_count = 2u;
+    header.resource_count = sampler_count * 2u;
     total = sizeof(header) +
         (size_t)header.instruction_count * sizeof(ins[0]);
     header.total_size = (uint32_t)total;
@@ -1220,8 +1293,9 @@ static int lower_fragment_textured_vertex_color(
     result->input_count = header.input_count;
     result->output_count = header.output_count;
     result->byte_size = header.total_size;
-    result->sampler_binding_count = 1u;
-    result->sampler_binding_indices[0] = 0u;
+    result->sampler_binding_count = sampler_count;
+    for (sampler_index = 0u; sampler_index < sampler_count; ++sampler_index)
+        result->sampler_binding_indices[sampler_index] = sampler_index;
     return 0;
 }
 

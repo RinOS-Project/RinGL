@@ -105,7 +105,10 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   pipeline.
 - [x] Execute bounded `GL_LINES` direct and indexed draws through a distinct
   native RinGPU line-list pipeline. An incomplete pair is a successful no-op;
-  line strips, loops, triangle strips, and fans remain unsupported.
+  line loops, triangle strips, and fans remain unsupported.
+- [x] Execute bounded `GL_LINE_STRIP` direct and indexed draws through a
+  distinct native RinGPU line-strip pipeline. Fewer than two vertices is a
+  successful no-op; line loops, triangle strips, and fans remain unsupported.
 - [x] Track the default color image between UNDEFINED, PRESENT, and COLOR_TARGET states and emit required transitions.
 - [x] Expose the post-submit default color-image state to trusted embeddings so a caller-owned presentation surface can remain synchronized across RinGL presentation and reuse.
 - [x] Add the OS-Core adapter that maps the RinGL operation table to public RinGPU buffer, shader, pipeline, command, submit, and present APIs.

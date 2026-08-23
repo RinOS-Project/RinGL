@@ -42,6 +42,7 @@ extern "C" {
 
 #define RINGL_POINTS           0x0000u
 #define RINGL_LINES            0x0001u
+#define RINGL_LINE_STRIP       0x0003u
 #define RINGL_TRIANGLES        0x0004u
 #define RINGL_STENCIL_BUFFER_BIT 0x00000400u
 #define RINGL_DEPTH_BUFFER_BIT 0x00000100u

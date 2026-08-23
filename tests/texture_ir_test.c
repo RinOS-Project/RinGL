@@ -146,6 +146,13 @@ int main(void)
         "texture2D(firstTexture, firstUv) + "
         "texture2D(secondTexture, sampleUv) + "
         "texture2D(thirdTexture, sampleUv); }";
+    const char* varying_three_coordinate_reused_pair_source =
+        "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
+        "uniform sampler2D thirdTexture; varying vec2 firstUv; "
+        "varying vec2 secondUv; varying vec2 thirdUv; void main() { "
+        "vec2 mixedUv = firstUv + secondUv; "
+        "vec2 invalidUv = mixedUv + secondUv; gl_FragColor = "
+        "texture2D(firstTexture, invalidUv); }";
     const char* varying_tinted_texture_source =
         "uniform sampler2D colorTexture; varying vec2 uv; "
         "void main() { gl_FragColor = texture2D(colorTexture, uv) * "
@@ -1366,6 +1373,13 @@ int main(void)
         assert(second_sample->source0 == 32u && second_sample->source1 == 33u);
         assert(third_sample->source0 == 32u && third_sample->source1 == 33u);
     }
+
+    /* Only the remaining third pair may extend a distinct-pair local. */
+    ringl_shader_source(shader, varying_three_coordinate_reused_pair_source,
+                        -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) != 0);
 
     ringl_context_destroy(context);
     return 0;

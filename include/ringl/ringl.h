@@ -1435,6 +1435,14 @@ void ringl_uniform_1i(int32_t location, int32_t value);
  * program/location inputs leave value_out unchanged and record an error. */
 int ringl_get_uniform_1i(uint32_t program, int32_t location,
                           int32_t* value_out);
+/* Bounded native GLSL lowering supports active scalar `float` values. The
+ * setter applies only to the currently used program and replaces its
+ * program-owned RinGPU shader modules atomically after finite-value checks. */
+void ringl_uniform_1f(int32_t location, float value);
+/* Reads an active scalar float uniform. Invalid program/location/type inputs
+ * leave value_out unchanged and record an error. */
+int ringl_get_uniform_1f(uint32_t program, int32_t location,
+                          float* value_out);
 /* Bounded native GLSL lowering supports active `uniform vec4` values. The
  * setter applies only to the currently used program. It realizes a fresh
  * program-owned RinGPU shader module before replacing the prior executable,

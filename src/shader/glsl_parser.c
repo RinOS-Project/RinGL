@@ -42,6 +42,7 @@ typedef enum SymbolKind {
     SYMBOL_SAMPLER2D = 2,
     SYMBOL_VARYING = 3,
     SYMBOL_UNIFORM_VEC4 = 4,
+    SYMBOL_UNIFORM_FLOAT = 5,
 } SymbolKind;
 
 typedef struct Token {
@@ -516,6 +517,7 @@ static int assignment(Parser* parser)
             return 0;
         }
         if (symbol->kind == SYMBOL_SAMPLER2D ||
+            symbol->kind == SYMBOL_UNIFORM_FLOAT ||
             symbol->kind == SYMBOL_UNIFORM_VEC4) {
             fail(parser, "uniforms are read-only");
             return 0;
@@ -657,8 +659,8 @@ static int uniform_declaration(Parser* parser)
 
     next_token(parser);
     if (parser->token.kind != TOK_SAMPLER2D &&
-        parser->token.kind != TOK_VEC4) {
-        fail(parser, "only 'uniform sampler2D' and 'uniform vec4' are supported");
+        parser->token.kind != TOK_FLOAT && parser->token.kind != TOK_VEC4) {
+        fail(parser, "only 'uniform sampler2D', 'uniform float', and 'uniform vec4' are supported");
         return 0;
     }
     {
@@ -672,8 +674,10 @@ static int uniform_declaration(Parser* parser)
     name = parser->token;
     if (!add_symbol(parser, &name,
                     type == TOK_SAMPLER2D ? SYMBOL_SAMPLER2D
-                                          : SYMBOL_UNIFORM_VEC4,
-                    type == TOK_SAMPLER2D ? 0u : 4u))
+                    : type == TOK_FLOAT ? SYMBOL_UNIFORM_FLOAT
+                                        : SYMBOL_UNIFORM_VEC4,
+                    type == TOK_SAMPLER2D ? 0u
+                    : type == TOK_FLOAT ? 1u : 4u))
         return 0;
     if (type == TOK_SAMPLER2D) {
         if (parser->result->sampler_uniform_count >=
@@ -685,6 +689,16 @@ static int uniform_declaration(Parser* parser)
         memcpy(parser->result->sampler_uniform_names[index], name.begin,
                name.length);
         parser->result->sampler_uniform_names[index][name.length] = '\0';
+    } else if (type == TOK_FLOAT) {
+        if (parser->result->float_uniform_count >=
+            RINGL_GLSL_MAX_FLOAT_UNIFORMS) {
+            fail(parser, "too many float uniforms");
+            return 0;
+        }
+        index = parser->result->float_uniform_count++;
+        memcpy(parser->result->float_uniform_names[index], name.begin,
+               name.length);
+        parser->result->float_uniform_names[index][name.length] = '\0';
     } else {
         if (parser->result->vec4_uniform_count >=
             RINGL_GLSL_MAX_VEC4_UNIFORMS) {

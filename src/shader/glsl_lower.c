@@ -67,7 +67,7 @@ typedef struct Lower {
     uint16_t output_count;
     RinGLRsh1InstructionV1 ins[RINGL_RSH1_MAX_INSTRUCTIONS];
     uint32_t ins_count;
-    const RinGLGlslVec4UniformValue* uniforms;
+    const RinGLGlslUniformValue* uniforms;
     uint32_t uniform_count;
     RinGLGlslLowerResult* result;
 } Lower;
@@ -262,7 +262,7 @@ static Symbol* add_symbol(Lower* lower, const Token* token,
     return symbol;
 }
 
-static const RinGLGlslVec4UniformValue* find_uniform_value(
+static const RinGLGlslUniformValue* find_uniform_value(
     const Lower* lower, const Token* name)
 {
     uint32_t index;
@@ -270,7 +270,7 @@ static const RinGLGlslVec4UniformValue* find_uniform_value(
     if (lower == NULL || name == NULL)
         return NULL;
     for (index = 0u; index < lower->uniform_count; ++index) {
-        const RinGLGlslVec4UniformValue* uniform = &lower->uniforms[index];
+        const RinGLGlslUniformValue* uniform = &lower->uniforms[index];
         size_t length;
 
         if (uniform->name == NULL)
@@ -284,10 +284,10 @@ static const RinGLGlslVec4UniformValue* find_uniform_value(
     return NULL;
 }
 
-static int initialize_vec4_uniform(Lower* lower, Symbol* symbol,
-                                   const Token* name)
+static int initialize_uniform(Lower* lower, Symbol* symbol,
+                              const Token* name, uint32_t type)
 {
-    const RinGLGlslVec4UniformValue* uniform;
+    const RinGLGlslUniformValue* uniform;
     float zero_values[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
     const float* values = zero_values;
     uint32_t index;
@@ -295,10 +295,14 @@ static int initialize_vec4_uniform(Lower* lower, Symbol* symbol,
     if (lower == NULL || symbol == NULL || name == NULL)
         return 0;
     uniform = find_uniform_value(lower, name);
+    if (uniform != NULL && uniform->type != type) {
+        fail(lower, "uniform reflection type mismatch");
+        return 0;
+    }
     if (uniform != NULL)
         values = uniform->values;
     symbol->uniform = 1u;
-    for (index = 0u; index < 4u; ++index) {
+    for (index = 0u; index < symbol->width; ++index) {
         uint16_t reg = new_reg(lower);
         uint32_t bits;
 
@@ -683,8 +687,14 @@ static int parse_all(Lower* lower)
             Symbol* symbol;
 
             next(lower);
-            if (lower->token.kind != T_VEC4) {
-                fail(lower, "only uniform vec4 lowering is supported");
+            uint32_t uniform_type;
+
+            if (lower->token.kind == T_FLOAT) {
+                uniform_type = RINGL_FLOAT;
+            } else if (lower->token.kind == T_VEC4) {
+                uniform_type = RINGL_FLOAT_VEC4;
+            } else {
+                fail(lower, "only uniform float and uniform vec4 lowering is supported");
                 return 0;
             }
             next(lower);
@@ -694,8 +704,9 @@ static int parse_all(Lower* lower)
             }
             name = lower->token;
             if (find_symbol(lower, &name) != NULL ||
-                (symbol = add_symbol(lower, &name, 0, 4u)) == NULL ||
-                !initialize_vec4_uniform(lower, symbol, &name)) {
+                (symbol = add_symbol(lower, &name, 0,
+                                     uniform_type == RINGL_FLOAT ? 1u : 4u)) == NULL ||
+                !initialize_uniform(lower, symbol, &name, uniform_type)) {
                 return 0;
             }
             next(lower);
@@ -805,9 +816,9 @@ static int append_fragment_interpolant_inputs(Lower* lower)
     return 1;
 }
 
-int ringl_glsl_lower_rsh1_with_vec4_uniforms(
+int ringl_glsl_lower_rsh1_with_uniforms(
     uint32_t shader_type, const char* source, size_t source_length,
-    const RinGLGlslVec4UniformValue* uniforms, uint32_t uniform_count,
+    const RinGLGlslUniformValue* uniforms, uint32_t uniform_count,
     RinGLGlslLowerResult* result)
 {
     Lower lower;
@@ -815,7 +826,7 @@ int ringl_glsl_lower_rsh1_with_vec4_uniforms(
     size_t total;
 
     if (source == NULL || result == NULL ||
-        uniform_count > RINGL_GLSL_MAX_VEC4_UNIFORMS ||
+        uniform_count > RINGL_GLSL_MAX_UNIFORMS ||
         (uniform_count != 0u && uniforms == NULL))
         return -1;
     memset(result, 0, sizeof(*result));
@@ -869,6 +880,6 @@ int ringl_glsl_lower_rsh1(uint32_t shader_type, const char* source,
                           size_t source_length,
                           RinGLGlslLowerResult* result)
 {
-    return ringl_glsl_lower_rsh1_with_vec4_uniforms(
+    return ringl_glsl_lower_rsh1_with_uniforms(
         shader_type, source, source_length, NULL, 0u, result);
 }

@@ -8,6 +8,8 @@
 #include "glsl_parser.h"
 
 #define RINGL_GLSL_RSH1_MAX_BYTES (64u + 128u * 16u)
+#define RINGL_GLSL_MAX_UNIFORMS \
+    (RINGL_GLSL_MAX_FLOAT_UNIFORMS + RINGL_GLSL_MAX_VEC4_UNIFORMS)
 
 typedef struct RinGLGlslLowerResult {
     uint32_t ok;
@@ -22,20 +24,21 @@ typedef struct RinGLGlslLowerResult {
     uint8_t bytes[RINGL_GLSL_RSH1_MAX_BYTES];
 } RinGLGlslLowerResult;
 
-/* Program values passed to the bounded vec4-uniform lowering path. A missing
- * name uses WebGL's successful-link default `(0, 0, 0, 0)`. */
-typedef struct RinGLGlslVec4UniformValue {
+/* Program values passed to the bounded uniform lowering path. A missing name
+ * uses WebGL's successful-link zero default for its declared type. */
+typedef struct RinGLGlslUniformValue {
     const char* name;
+    uint32_t type;
     float values[4];
-} RinGLGlslVec4UniformValue;
+} RinGLGlslUniformValue;
 
 int ringl_glsl_lower_rsh1(uint32_t shader_type,
                           const char* source,
                           size_t source_length,
                           RinGLGlslLowerResult* result);
-int ringl_glsl_lower_rsh1_with_vec4_uniforms(
+int ringl_glsl_lower_rsh1_with_uniforms(
     uint32_t shader_type, const char* source, size_t source_length,
-    const RinGLGlslVec4UniformValue* uniforms, uint32_t uniform_count,
+    const RinGLGlslUniformValue* uniforms, uint32_t uniform_count,
     RinGLGlslLowerResult* result);
 
 #endif

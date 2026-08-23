@@ -24,6 +24,10 @@ int main(void)
     uint32_t vec4_fragment;
     uint32_t vec4_program;
     uint32_t vec4_peer_program;
+    uint32_t float_vertex;
+    uint32_t float_fragment;
+    uint32_t float_program;
+    uint32_t float_peer_program;
     int32_t location;
     int32_t uniform_value = -1;
     char log[160];
@@ -197,6 +201,63 @@ int main(void)
     assert(ringl_get_error() == RINGL_INVALID_OPERATION);
     ringl_delete_program(vec4_peer_program);
     ringl_delete_program(vec4_program);
+
+    /* A scalar float follows the same program-owned lowering path as vec4:
+     * per-program defaults, reflection, readback, and finite atomic update. */
+    float_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+    float_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+    float_program = ringl_create_program();
+    float_peer_program = ringl_create_program();
+    assert(float_vertex != 0u && float_fragment != 0u &&
+           float_program != 0u && float_peer_program != 0u);
+    ringl_shader_source(float_vertex,
+                        "void main() { gl_Position = vec4(-1.0, -1.0, 0.0, 1.0); }",
+                        -1);
+    ringl_shader_source(float_fragment,
+                        "uniform float opacity; "
+                        "void main() { gl_FragColor = vec4(opacity, 0.0, 0.0, 1.0); }",
+                        -1);
+    ringl_compile_shader(float_vertex);
+    ringl_compile_shader(float_fragment);
+    assert(ringl_get_shader_compile_status(float_vertex) == RINGL_TRUE);
+    assert(ringl_get_shader_compile_status(float_fragment) == RINGL_TRUE);
+    ringl_attach_shader(float_program, float_vertex);
+    ringl_attach_shader(float_program, float_fragment);
+    ringl_attach_shader(float_peer_program, float_vertex);
+    ringl_attach_shader(float_peer_program, float_fragment);
+    ringl_link_program(float_program);
+    ringl_link_program(float_peer_program);
+    assert(ringl_get_program_link_status(float_program) == RINGL_TRUE);
+    assert(ringl_get_program_link_status(float_peer_program) == RINGL_TRUE);
+    assert(ringl_get_program_info(float_program, &info) == 0);
+    assert(info.active_uniform_count == 1u);
+    location = ringl_get_uniform_location(float_program, "opacity");
+    assert(location == 0);
+    assert(ringl_get_active_uniform(float_program, 0u, &active_info) == 0);
+    assert(active_info.type == RINGL_FLOAT &&
+           strcmp(active_info.name, "opacity") == 0);
+    {
+        float value = -1.0f;
+
+        assert(ringl_get_uniform_1f(float_program, location, &value) == 0);
+        assert(value == 0.0f);
+        ringl_use_program(float_program);
+        ringl_uniform_1f(location, 0.25f);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_1f(float_program, location, &value) == 0);
+        assert(value == 0.25f);
+        ringl_uniform_1f(location, NAN);
+        assert(ringl_get_error() == RINGL_INVALID_VALUE);
+        assert(ringl_get_uniform_1f(float_program, location, &value) == 0);
+        assert(value == 0.25f);
+        value = -1.0f;
+        assert(ringl_get_uniform_1f(float_peer_program, location, &value) == 0);
+        assert(value == 0.0f);
+    }
+    ringl_uniform_4f(location, 1.0f, 1.0f, 1.0f, 1.0f);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    ringl_delete_program(float_peer_program);
+    ringl_delete_program(float_program);
 
     multi_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
     multi_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);

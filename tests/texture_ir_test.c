@@ -123,6 +123,14 @@ int main(void)
         "uniform sampler2D colorTexture; varying vec2 firstUv; "
         "varying vec2 secondUv; void main() { gl_FragColor = "
         "texture2D(colorTexture, firstUv + secondUv); }";
+    const char* varying_local_coordinate_add_source =
+        "uniform sampler2D colorTexture; varying vec2 firstUv; "
+        "varying vec2 secondUv; void main() { vec2 mixedUv = "
+        "firstUv + secondUv; gl_FragColor = texture2D(colorTexture, mixedUv); }";
+    const char* varying_local_coordinate_sub_source =
+        "uniform sampler2D colorTexture; varying vec2 firstUv; "
+        "varying vec2 secondUv; void main() { vec2 mixedUv = "
+        "secondUv - firstUv; gl_FragColor = texture2D(colorTexture, mixedUv); }";
     const char* varying_local_alias_source =
         "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
         "varying vec2 uv; void main() { vec2 sampleUv = uv; gl_FragColor = "
@@ -454,6 +462,55 @@ int main(void)
         assert(sample->opcode == RSH1_SAMPLE_IMAGE_2D_F32);
         assert(sample->source0 == 10u && sample->source1 == 11u);
         assert(sample->resource == 0u && sample->immediate == 1u);
+    }
+
+    /* The same two perspective inputs may be combined by a named local vec2
+     * before sampling.  This is a real RSH1 ADD path, not a source rewrite
+     * back into the call expression. */
+    ringl_shader_source(shader, varying_local_coordinate_add_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 15u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.instruction_count == 15u);
+    assert(header.register_count == 12u);
+    assert(header.resource_count == 2u);
+    for (component = 0u; component < 2u; ++component) {
+        const Instruction* combine =
+            (const Instruction*)(blob + sizeof(header)) + 4u + component;
+
+        assert(combine->opcode == RSH1_ADD_F32);
+        assert(combine->destination == 10u + component);
+        assert(combine->source0 == component);
+        assert(combine->source1 == 6u + component);
+    }
+    for (component = 0u; component < 4u; ++component) {
+        const Instruction* sample =
+            (const Instruction*)(blob + sizeof(header)) + 6u + component;
+
+        assert(sample->opcode == RSH1_SAMPLE_IMAGE_2D_F32);
+        assert(sample->source0 == 10u && sample->source1 == 11u);
+        assert(sample->resource == 0u && sample->immediate == 1u);
+    }
+
+    ringl_shader_source(shader, varying_local_coordinate_sub_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 15u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    for (component = 0u; component < 2u; ++component) {
+        const Instruction* combine =
+            (const Instruction*)(blob + sizeof(header)) + 4u + component;
+
+        assert(combine->opcode == RSH1_SUB_F32);
+        assert(combine->source0 == 6u + component);
+        assert(combine->source1 == component);
     }
 
     /* A directly initialized local vec2 remains an interpolated coordinate

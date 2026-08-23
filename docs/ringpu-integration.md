@@ -177,6 +177,13 @@ builds a selective typed bind group by linked uniform name, while the operation
 table and RinGPU surface backend validate every resulting pair rather than
 silently selecting only its first entry.
 
+For the bounded two-`varying vec2` texture profile, a named local
+`vec2 mixedUv = firstUv +/- secondUv` is emitted as two component-wise RSH1
+operations over the distinct interpolated input pairs before its sample. It
+does not materialize coordinates on the host or collapse either varying pair;
+the normal RinGPU sampled-image binding and surface executor consume the live
+arithmetic result. Other local vector expressions remain outside this profile.
+
 Before cache eviction during a draw, RinGL resets its reusable command list. This releases references retained by the previous recorded submission before an old pipeline is destroyed.
 
 ## Default framebuffer and command path

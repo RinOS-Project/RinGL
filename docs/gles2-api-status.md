@@ -53,9 +53,9 @@ Status meanings:
 | `glGetString` | N | Vendor/renderer/version/extensions strings are not fabricated. |
 | `glGetTexParameteriv` | P | Integer values for `MIN_FILTER`, `MAG_FILTER`, `WRAP_S`, `WRAP_T` only. |
 | `glGetTexParameterfv` | N | No floating tex-parameter getter. |
-| `glGetUniformiv` | P | `ringl_get_uniform_1i` for linked `sampler2D` locations only. |
-| `glGetUniformfv` | P | `ringl_get_uniform_4f` for direct linked `vec4` locations only. |
-| `glGetUniformLocation` | P | Linked `sampler2D` and direct `vec4` uniforms only. |
+| `glGetUniformiv` | P | `ringl_get_uniform_1i` for linked scalar `sampler2D` locations only. |
+| `glGetUniformfv` | P | `ringl_get_uniform_{1,2,3,4}f` for linked `float`/`vec2`/`vec3`/`vec4` locations. |
+| `glGetUniformLocation` | P | Linked `sampler2D`, `float`, `vec2`, `vec3`, and `vec4` uniforms only. |
 | `glGetVertexAttribfv`, `glGetVertexAttribiv`, `glGetVertexAttribPointerv` | P | Versioned attribute record/current-value copy; no generic GLES getter. |
 | `glHint` | P | Tracks accepted GLES hint enums; no general driver-quality control. |
 | `glLineWidth`, `glPolygonOffset`, `glSampleCoverage`, `glScissor`, `glViewport` | B | Bounded native raster state. |
@@ -67,8 +67,9 @@ Status meanings:
 | `glTexParameterf`, `glTexParameterfv`, `glTexParameteriv` | N | Raw RinGL only has integer `ringl_tex_parameteri`; an embedding may accept a float only after exact integer conversion. |
 | `glTexParameteri` | P | Four sampler pnames only; all accepted values map to RinGPU sampler state. |
 | `glUniform1i` | P | Linked `sampler2D` locations only. |
-| `glUniform4f`, `glUniform4fv` | P | `ringl_uniform_4f` realizes a program-owned RinGPU module for direct linked `uniform vec4` source; an embedding may map `4fv` only when `count == 1`. |
-| `glUniform1f`, `glUniform1fv`, `glUniform1iv`, `glUniform2f`, `glUniform2fv`, `glUniform2i`, `glUniform2iv`, `glUniform3f`, `glUniform3fv`, `glUniform3i`, `glUniform3iv`, `glUniform4i`, `glUniform4iv`, `glUniformMatrix2fv`, `glUniformMatrix3fv`, `glUniformMatrix4fv` | N | Arrays, scalar/other-vector/integer/matrix uniform storage, and general uniform lowering are not implemented. |
+| `glUniform1f`, `glUniform1fv`, `glUniform2f`, `glUniform2fv`, `glUniform3f`, `glUniform3fv`, `glUniform4f`, `glUniform4fv` | P | Finite scalar/vector values realize a program-owned RinGPU module for linked `uniform float`/`vec2`/`vec3`/`vec4` source; an embedding may map each `*fv` form only when its single non-array value is complete. |
+| `glUniform1iv` | P | A linked scalar `sampler2D` value only; sampler arrays and integer GLSL uniforms are not implemented. |
+| `glUniform2i`, `glUniform2iv`, `glUniform3i`, `glUniform3iv`, `glUniform4i`, `glUniform4iv`, `glUniformMatrix2fv`, `glUniformMatrix3fv`, `glUniformMatrix4fv` | N | Integer and matrix uniform storage/lowering are not implemented. |
 | `glVertexAttrib1f`, `glVertexAttrib2f`, `glVertexAttrib3f`, `glVertexAttrib4f` | B | Current generic values for disabled arrays. |
 | `glVertexAttrib1fv`, `glVertexAttrib2fv`, `glVertexAttrib3fv`, `glVertexAttrib4fv` | N | Raw pointer-vector forms are not exported; embeddings must bounds-check then use scalar setters. |
 

@@ -228,6 +228,14 @@ int main(void)
         "uniform sampler2D colorTexture; uniform vec4 tint; varying vec2 uv; "
         "varying vec4 vertexColor; void main() { gl_FragColor = "
         "texture2D(colorTexture, uv) * vertexColor * tint; }";
+    const char* opacity_vertex_color_texture_fragment_source =
+        "uniform sampler2D colorTexture; uniform float opacity; varying vec2 uv; "
+        "varying vec4 vertexColor; void main() { gl_FragColor = "
+        "texture2D(colorTexture, uv) * vertexColor * opacity; }";
+    const char* tinted_opacity_vertex_color_texture_fragment_source =
+        "uniform sampler2D colorTexture; uniform vec4 tint; uniform float opacity; "
+        "varying vec2 uv; varying vec4 vertexColor; void main() { gl_FragColor = "
+        "texture2D(colorTexture, uv) * vertexColor * tint * opacity; }";
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -418,6 +426,29 @@ int main(void)
     assert(header.resource_count == 2u);
     assert(header.instruction_count == 27u);
     assert(header.register_count == 22u);
+
+    header = lower_and_read_header(
+        fragment, opacity_vertex_color_texture_fragment_source,
+        blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 6u);
+    assert(header.output_count == 4u);
+    assert(header.resource_count == 2u);
+    assert(header.instruction_count == 24u);
+    assert(header.register_count == 19u);
+
+    /* A material opacity is an RSH1 scalar broadcast after the sampled RGBA,
+     * vertex color, and tint products. It is not folded into CPU-side color
+     * data, so changing it retains the native image/sampler resource layout. */
+    header = lower_and_read_header(
+        fragment, tinted_opacity_vertex_color_texture_fragment_source,
+        blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 6u);
+    assert(header.output_count == 4u);
+    assert(header.resource_count == 2u);
+    assert(header.instruction_count == 32u);
+    assert(header.register_count == 27u);
 
     ringl_shader_source(vertex, "void main() { gl_Position = 0.0; }", -1);
     assert(ringl_get_shader_compile_status(vertex) == RINGL_FALSE);

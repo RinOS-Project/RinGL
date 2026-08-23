@@ -367,8 +367,12 @@ uniform update, dense position/UV/RGBA attribute layout, and the image/sampler
 binding. Its bounded material form additionally accepts one `uniform vec4` in
 the exact expression `texture2D(texture, uv) * vertexColor * tint`; the
 fragment-only uniform update materializes four tint constants and four more
-RSH1 multiplies without rebuilding the matrix module. No CPU pre-multiplied
-color is published.
+RSH1 multiplies without rebuilding the matrix module. The material may append
+one `uniform float` in the exact expression
+`texture2D(texture, uv) * vertexColor * tint * opacity`; RinGL broadcasts the
+finite opacity to four RSH1 multiplies after tinting and replaces only that
+fragment executable. The image/sampler binding remains native throughout; no
+CPU pre-multiplied color is published.
 
 The no-varying RSH1 profile also lowers local `vec2`, `vec3`, and `vec4`
 values and component-wise vector arithmetic directly to scalar RSH1

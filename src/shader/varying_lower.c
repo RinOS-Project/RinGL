@@ -1016,23 +1016,29 @@ static int lower_vertex_transformed_texture(
 /* This profile accepts one perspective-interpolated UV pair followed by one
  * perspective-interpolated RGBA vertex color. It is the common WebGL
  * `texture2D(...) * vertexColor` route, optionally followed by one linked
- * `uniform vec4` tint: all six interpolation inputs, image sample components,
- * component-wise products, and final stores are RSH1 instructions. The source
- * shape is exact so a later color/texture expression cannot be mistaken for
- * this bounded native execution path. */
+ * `uniform vec4` tint and/or one `uniform float` opacity. All six
+ * interpolation inputs, image sample components, component-wise products,
+ * scalar opacity broadcasts, and final stores are RSH1 instructions. The
+ * source shape is exact so a later color/texture expression cannot be
+ * mistaken for this bounded native execution path. */
 static int lower_fragment_textured_vertex_color(
     const char* source, const RinGLGlslUniformValue* uniforms,
     uint32_t uniform_count, RinGLGlslLowerResult* result)
 {
     RinGLRsh1HeaderV1 header;
-    RinGLRsh1InstructionV1 ins[27];
+    RinGLRsh1InstructionV1 ins[32];
     char sampler[64];
     char uv[64];
     char color[64];
     char tint_name[64];
-    char expected[640];
+    char opacity_name[64];
+    char expected[768];
     float tint[4] = {0.0f};
+    float opacity = 0.0f;
     uint32_t has_tint = 0u;
+    uint32_t has_opacity = 0u;
+    uint32_t instruction_cursor;
+    uint32_t next_register;
     uint32_t store_base;
     uint32_t final_base;
     uint32_t component;
@@ -1065,11 +1071,44 @@ static int lower_fragment_textured_vertex_color(
             if (!isfinite(tint[index]))
                 return 1;
         }
+    }
+    if (read_decl_name(source, "uniformfloat", 0u, opacity_name,
+                       sizeof(opacity_name))) {
+        uint32_t index;
+
+        has_opacity = 1u;
+        for (index = 0u; index < uniform_count; ++index) {
+            if (uniforms[index].name == NULL ||
+                strcmp(uniforms[index].name, opacity_name) != 0) {
+                continue;
+            }
+            if (uniforms[index].type != RINGL_FLOAT)
+                return 1;
+            opacity = uniforms[index].values[0];
+            break;
+        }
+        if (!isfinite(opacity))
+            return 1;
+    }
+    if (has_tint && has_opacity) {
+        (void)snprintf(expected, sizeof(expected),
+                       "uniformsampler2D%s;uniformvec4%s;uniformfloat%s;"
+                       "varyingvec2%s;varyingvec4%s;voidmain(){gl_FragColor="
+                       "texture2D(%s,%s)*%s*%s*%s;}",
+                       sampler, tint_name, opacity_name, uv, color, sampler,
+                       uv, color, tint_name, opacity_name);
+    } else if (has_tint) {
         (void)snprintf(expected, sizeof(expected),
                        "uniformsampler2D%s;uniformvec4%s;varyingvec2%s;"
                        "varyingvec4%s;voidmain(){gl_FragColor=texture2D(%s,%s)*%s*%s;}",
                        sampler, tint_name, uv, color, sampler, uv, color,
                        tint_name);
+    } else if (has_opacity) {
+        (void)snprintf(expected, sizeof(expected),
+                       "uniformsampler2D%s;uniformfloat%s;varyingvec2%s;"
+                       "varyingvec4%s;voidmain(){gl_FragColor=texture2D(%s,%s)*%s*%s;}",
+                       sampler, opacity_name, uv, color, sampler, uv, color,
+                       opacity_name);
     } else {
         (void)snprintf(expected, sizeof(expected),
                        "uniformsampler2D%s;varyingvec2%s;varyingvec4%s;"
@@ -1099,25 +1138,58 @@ static int lower_fragment_textured_vertex_color(
         ins[10u + component].source0 = (uint16_t)(6u + component);
         ins[10u + component].source1 = (uint16_t)(2u + component);
     }
+    instruction_cursor = 14u;
+    next_register = 14u;
+    final_base = 10u;
     if (has_tint) {
         for (component = 0u; component < 4u; ++component) {
             uint32_t tint_bits;
 
             memcpy(&tint_bits, &tint[component], sizeof(tint_bits));
-            init_instruction(&ins[14u + component], RINGL_RSH1_OP_CONST_F32);
-            ins[14u + component].destination = (uint16_t)(14u + component);
-            ins[14u + component].immediate = tint_bits;
-            init_instruction(&ins[18u + component], RINGL_RSH1_OP_MUL_F32);
-            ins[18u + component].destination = (uint16_t)(18u + component);
-            ins[18u + component].source0 = (uint16_t)(10u + component);
-            ins[18u + component].source1 = (uint16_t)(14u + component);
+            init_instruction(&ins[instruction_cursor + component],
+                             RINGL_RSH1_OP_CONST_F32);
+            ins[instruction_cursor + component].destination =
+                (uint16_t)(next_register + component);
+            ins[instruction_cursor + component].immediate = tint_bits;
         }
-        store_base = 22u;
-        final_base = 18u;
-    } else {
-        store_base = 14u;
-        final_base = 10u;
+        instruction_cursor += 4u;
+        for (component = 0u; component < 4u; ++component) {
+            init_instruction(&ins[instruction_cursor + component],
+                             RINGL_RSH1_OP_MUL_F32);
+            ins[instruction_cursor + component].destination =
+                (uint16_t)(next_register + 4u + component);
+            ins[instruction_cursor + component].source0 =
+                (uint16_t)(final_base + component);
+            ins[instruction_cursor + component].source1 =
+                (uint16_t)(next_register + component);
+        }
+        final_base = next_register + 4u;
+        next_register += 8u;
+        instruction_cursor += 4u;
     }
+    if (has_opacity) {
+        uint32_t opacity_bits;
+        uint32_t opacity_register = next_register++;
+
+        memcpy(&opacity_bits, &opacity, sizeof(opacity_bits));
+        init_instruction(&ins[instruction_cursor], RINGL_RSH1_OP_CONST_F32);
+        ins[instruction_cursor].destination = (uint16_t)opacity_register;
+        ins[instruction_cursor++].immediate = opacity_bits;
+        for (component = 0u; component < 4u; ++component) {
+            init_instruction(&ins[instruction_cursor + component],
+                             RINGL_RSH1_OP_MUL_F32);
+            ins[instruction_cursor + component].destination =
+                (uint16_t)(next_register + component);
+            ins[instruction_cursor + component].source0 =
+                (uint16_t)(final_base + component);
+            ins[instruction_cursor + component].source1 =
+                (uint16_t)opacity_register;
+        }
+        final_base = next_register;
+        next_register += 4u;
+        instruction_cursor += 4u;
+    }
+    store_base = instruction_cursor;
     for (component = 0u; component < 4u; ++component) {
         init_instruction(&ins[store_base + component],
                          RINGL_RSH1_OP_STORE_OUTPUT_F32);
@@ -1132,7 +1204,7 @@ static int lower_fragment_textured_vertex_color(
     header.header_size = sizeof(header);
     header.stage = RINGL_RSH1_STAGE_FRAGMENT;
     header.instruction_count = store_base + 5u;
-    header.register_count = has_tint ? 22u : 14u;
+    header.register_count = next_register;
     header.input_count = 6u;
     header.output_count = 4u;
     header.resource_count = 2u;

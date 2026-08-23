@@ -45,8 +45,9 @@ typedef struct FakeBackend {
     char commands[32];
     uint32_t command_count;
     uint32_t shader_creates;
-    uint32_t vertex_color_tint_fragment_modules;
+    uint32_t vertex_color_material_fragment_modules;
     float expected_vertex_color_tint[4];
+    float expected_vertex_color_opacity;
     uint32_t validate_vertex_color_tint;
     uint32_t pipeline_creates;
     uint32_t bind_group_creates;
@@ -92,7 +93,7 @@ static int fake_create_shader_module(void* session, const void* rsh1,
     assert(rsh1 != NULL && size_bytes >= 64u);
     memcpy(&header, rsh1, sizeof(header));
     if (header.stage == 2u && header.resource_count == 2u &&
-        header.instruction_count == 27u) {
+        header.instruction_count == 32u) {
         const Rsh1Instruction* instructions =
             (const Rsh1Instruction*)((const uint8_t*)rsh1 + sizeof(header));
         uint32_t index;
@@ -108,8 +109,16 @@ static int fake_create_shader_module(void* session, const void* rsh1,
                 assert(instructions[14u + index].opcode == 16u &&
                        instructions[14u + index].immediate == expected_bits);
             }
+            {
+                uint32_t expected_bits;
+
+                memcpy(&expected_bits, &backend->expected_vertex_color_opacity,
+                       sizeof(expected_bits));
+                assert(instructions[22u].opcode == 16u &&
+                       instructions[22u].immediate == expected_bits);
+            }
         }
-        ++backend->vertex_color_tint_fragment_modules;
+        ++backend->vertex_color_material_fragment_modules;
     }
     ++backend->shader_creates;
     *shader_module_out = ++backend->next_handle;
@@ -417,6 +426,7 @@ int main(void)
     int32_t tint_location;
     int32_t transform_location;
     int32_t vertex_color_sampler_location;
+    int32_t vertex_color_opacity_location;
     int32_t vertex_color_tint_location;
     int32_t vertex_color_transform_location;
     const float vertices[] = {
@@ -435,6 +445,7 @@ int main(void)
         0.0f, 0.0f, 0.0f, 1.0f,
     };
     const float tint[4] = {0.5f, 1.0f, 0.25f, 1.0f};
+    const float opacity = 0.625f;
     const float vertex_color_vertices[] = {
         -0.75f, -0.75f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,
          0.75f, -0.75f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,
@@ -532,7 +543,7 @@ int main(void)
     /* The common vertex-color texture route uses a distinct six-scalar
      * varying interface. It must preserve the matrix transform and bind the
      * real image/sampler pair instead of falling back to a pre-multiplied CPU
-     * color. */
+     * color. Its tint and scalar opacity remain RSH1 material operations. */
     ringl_gen_buffers(1, &vertex_color_buffer);
     ringl_bind_buffer(RINGL_ARRAY_BUFFER, vertex_color_buffer);
     ringl_buffer_data(RINGL_ARRAY_BUFFER, sizeof(vertex_color_vertices),
@@ -557,9 +568,10 @@ int main(void)
         -1);
     ringl_shader_source(
         vertex_color_fragment,
-        "uniform sampler2D colorTexture; uniform vec4 tint; varying vec2 uv; "
+        "uniform sampler2D colorTexture; uniform vec4 tint; uniform float opacity; "
+        "varying vec2 uv; "
         "varying vec4 vertexColor; void main() { gl_FragColor = "
-        "texture2D(colorTexture, uv) * vertexColor * tint; }",
+        "texture2D(colorTexture, uv) * vertexColor * tint * opacity; }",
         -1);
     ringl_compile_shader(vertex_color_vertex);
     ringl_compile_shader(vertex_color_fragment);
@@ -572,26 +584,32 @@ int main(void)
     ringl_use_program(vertex_color_program);
     vertex_color_sampler_location =
         ringl_get_uniform_location(vertex_color_program, "colorTexture");
+    vertex_color_opacity_location =
+        ringl_get_uniform_location(vertex_color_program, "opacity");
     vertex_color_tint_location =
         ringl_get_uniform_location(vertex_color_program, "tint");
     vertex_color_transform_location =
         ringl_get_uniform_location(vertex_color_program, "transform");
     assert(vertex_color_sampler_location == 0);
-    assert(vertex_color_tint_location == 1);
-    assert(vertex_color_transform_location == 2);
+    assert(vertex_color_opacity_location == 1);
+    assert(vertex_color_tint_location == 2);
+    assert(vertex_color_transform_location == 3);
     ringl_uniform_1i(vertex_color_sampler_location, 0);
     ringl_uniform_matrix4fv(vertex_color_transform_location, RINGL_FALSE,
                             transform);
     memcpy(backend.expected_vertex_color_tint, tint,
            sizeof(backend.expected_vertex_color_tint));
+    backend.expected_vertex_color_opacity = 0.0f;
     backend.validate_vertex_color_tint = 1u;
     ringl_uniform_4f(vertex_color_tint_location, tint[0], tint[1], tint[2],
                      tint[3]);
+    backend.expected_vertex_color_opacity = opacity;
+    ringl_uniform_1f(vertex_color_opacity_location, opacity);
     assert(ringl_get_error() == RINGL_NO_ERROR);
     ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);
     assert(ringl_get_error() == RINGL_NO_ERROR);
-    assert(backend.shader_creates == 8u);
-    assert(backend.vertex_color_tint_fragment_modules == 2u);
+    assert(backend.shader_creates == 9u);
+    assert(backend.vertex_color_material_fragment_modules == 3u);
     assert(backend.pipeline_creates == 2u);
     assert(backend.bind_group_creates == 2u);
 

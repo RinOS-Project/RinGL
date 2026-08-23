@@ -243,18 +243,20 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [ ] Implement clear/copy paths that must end or split render passes.
   - [x] Add a bounded `copyTexSubImage2D` path from the current complete color
     target, including RGBA8 or packed RGB565/RGBA4/RGB5_A1 texture/renderbuffer
-    FBOs, to a defined `RGBA`/`RGB` or native packed RGB565/RGBA4/RGB5_A1
-    texture level through fenced image readback. The copy validates FBO
-    completeness and source/destination ranges before allocation, writes the
-    destination only after the full default-BGRA/FBO-RGBA snapshot succeeds,
-    preserves RGB's implicit alpha one, and quantizes packed destination
-    components directly. Explicit nonzero levels are supported; other
-    destination formats and unrepresented FBO copy semantics remain rejected.
+    FBOs, to a defined `RGBA`/`RGB`/`ALPHA`/`LUMINANCE`/`LUMINANCE_ALPHA` or
+    native packed RGB565/RGBA4/RGB5_A1 texture level through fenced image
+    readback. The copy validates FBO completeness and source/destination ranges
+    before allocation, writes the destination only after the full
+    default-BGRA/FBO-RGBA snapshot succeeds, preserves the canonical component
+    expansion for RGB/alpha/luminance formats, and quantizes packed destination
+    components directly. Explicit nonzero levels are supported; depth/stencil,
+    multisample, and other unrepresented FBO copy semantics remain rejected.
   - [x] Add a bounded `copyTexImage2D` definition path from the same complete
-    color targets. RGBA/RGB and native RGB565/RGBA4/RGB5_A1 storage is defined
-    only after its canonical RGBA snapshot completes. Level zero replaces the
-    base chain, while a nonzero definition requires a defined same-format base
-    and exact mip dimensions. RGB retains implicit alpha one and packed output
+    color targets. RGBA/RGB/ALPHA/LUMINANCE/LUMINANCE_ALPHA and native
+    RGB565/RGBA4/RGB5_A1 storage is defined only after its canonical RGBA
+    snapshot completes. Level zero replaces the base chain, while a nonzero
+    definition requires a defined same-format base and exact mip dimensions.
+    Canonical formats apply their component expansion and packed output
     quantizes directly into two-byte storage. The bound texture's old
     shadow/image remains intact for invalid source rectangles, incomplete FBOs,
     allocation failure, or readback failure. Zero-sized, depth/stencil, and

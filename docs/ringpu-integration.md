@@ -90,15 +90,17 @@ backend supplies bounded readback, so RinGL's complete RGBA color-target
 read back, and swizzle default-framebuffer BGRA storage to RGBA. The same fenced
 snapshot powers `copyTexSubImage2D` and `copyTexImage2D` from either the default
 color buffer or a complete RGBA8/packed RGB565/RGBA4/RGB5_A1
-texture/renderbuffer FBO. `copyTexSubImage2D` writes defined RGBA/RGB or packed
-texture levels, including explicit nonzero mips; RGB preserves implicit alpha
-one and packed destinations are quantized from the canonical snapshot only after
+texture/renderbuffer FBO. `copyTexSubImage2D` writes defined
+RGBA/RGB/ALPHA/LUMINANCE/LUMINANCE_ALPHA or packed texture levels, including
+explicit nonzero mips; canonical formats apply their GL component expansion and
+packed destinations are quantized from the canonical snapshot only after
 readback succeeds. FBO completeness and source/destination rectangles are
 checked before temporary allocation. `copyTexImage2D` retains a prior texture definition/image until the
-replacement snapshot completes, then defines RGBA/RGB or native
-RGB565/RGBA4/RGB5_A1 storage at level zero or an exact explicit nonzero mip.
-The latter requires a defined same-format base. RGB writes implicit alpha one
-and packed output is quantized directly from the canonical snapshot. The
+replacement snapshot completes, then defines
+RGBA/RGB/ALPHA/LUMINANCE/LUMINANCE_ALPHA or native RGB565/RGBA4/RGB5_A1 storage
+at level zero or an exact explicit nonzero mip. The latter requires a defined
+same-format base. Canonical formats apply their component expansion and packed
+output is quantized directly from the canonical snapshot. The
 focused OS-Core `rin_webgl_ringl_bridge_test` covers clear, readback, and packed
 level-zero/level-one copy definitions through this borrowed surface.
 Depth/stencil, multisample, and other FBO copy semantics remain outside this

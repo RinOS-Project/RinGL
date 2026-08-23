@@ -508,10 +508,10 @@ static void texture_copy_rgba_to_color_storage_texels(
     }
 }
 
-/* copyTexImage2D snapshots canonical RGBA from its source color target. RGB
- * uses the ordinary four-byte shadow layout but preserves its implicit alpha
- * one, while packed destinations use the same direct quantization path as
- * copyTexSubImage2D. */
+/* Copy-to-texture entry points snapshot canonical RGBA from their source color
+ * target. Canonical color formats retain their GL component rules in the
+ * ordinary four-byte shadow layout, while packed destinations use the same
+ * direct quantization path as copyTexSubImage2D. */
 static void texture_copy_rgba_to_copy_image_storage(
     uint8_t* destination, const uint8_t* source, uint32_t storage_format,
     uint32_t texel_count)
@@ -520,10 +520,27 @@ static void texture_copy_rgba_to_copy_image_storage(
 
     texture_copy_rgba_to_color_storage_texels(destination, source,
                                                storage_format, texel_count);
-    if (storage_format != RINGL_RGB)
-        return;
-    for (index = 0u; index < texel_count; ++index)
-        destination[(uint64_t)index * 4u + 3u] = UINT8_MAX;
+    for (index = 0u; index < texel_count; ++index) {
+        uint8_t* destination_texel = destination + (uint64_t)index * 4u;
+        const uint8_t* source_texel = source + (uint64_t)index * 4u;
+
+        if (storage_format == RINGL_RGB) {
+            destination_texel[3] = UINT8_MAX;
+        } else if (storage_format == RINGL_ALPHA) {
+            destination_texel[0] = 0u;
+            destination_texel[1] = 0u;
+            destination_texel[2] = 0u;
+        } else if (storage_format == RINGL_LUMINANCE) {
+            destination_texel[0] = source_texel[0];
+            destination_texel[1] = source_texel[0];
+            destination_texel[2] = source_texel[0];
+            destination_texel[3] = UINT8_MAX;
+        } else if (storage_format == RINGL_LUMINANCE_ALPHA) {
+            destination_texel[0] = source_texel[0];
+            destination_texel[1] = source_texel[0];
+            destination_texel[2] = source_texel[0];
+        }
+    }
 }
 
 static uint32_t texture_ringpu_format(uint32_t format)
@@ -1591,8 +1608,7 @@ void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
     }
     texture = bound_texture_2d(context);
     if (texture == NULL || !texture_level0_storage_defined(texture) ||
-        (texture->format != RINGL_RGBA && texture->format != RINGL_RGB &&
-         !texture_packed_color_format(texture->format))) {
+        !texture_color_format(texture->format)) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
@@ -1706,9 +1722,7 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
 
     if (context == NULL)
         return;
-    if (!texture_target_valid(target) ||
-        (internal_format != RINGL_RGBA && internal_format != RINGL_RGB &&
-         !texture_packed_color_format(internal_format))) {
+    if (!texture_target_valid(target) || !texture_color_format(internal_format)) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }

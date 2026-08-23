@@ -340,7 +340,11 @@ transform or sampled-color fallback is involved. Coordinate arithmetic,
 multiple transformed varyings, and other matrix expressions remain outside
 this deliberately bounded shape. The focused `textured-draw` test binds the
 two attributes, uploads a matrix through the public uniform API, and verifies
-the resulting RinGPU-native texture pipeline and resource bindings.
+the resulting RinGPU-native texture pipeline and resource bindings. That
+fragment shape may additionally multiply its sampled RGBA by one linked
+`uniform vec4`; RinGL materializes the finite four-component value in the
+program-owned fragment RSH1 module and retains the sampler-resource metadata
+needed to bind the native image/sampler pair.
 
 The no-varying RSH1 profile also lowers local `vec2`, `vec3`, and `vec4`
 values and component-wise vector arithmetic directly to scalar RSH1

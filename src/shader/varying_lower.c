@@ -508,13 +508,22 @@ static int parse_varying_texture_color_literal(const char** cursor,
 
 static int parse_varying_texture_color_operation(const char** cursor,
                                                  uint16_t* opcode,
-                                                 float color[4])
+                                                 float color[4],
+                                                 const char* uniform_name)
 {
     uint32_t component;
 
-    if (!parse_varying_texture_color_operator(cursor, opcode) ||
-        !parse_varying_texture_color_literal(cursor, color)) {
+    if (!parse_varying_texture_color_operator(cursor, opcode)) {
         return 0;
+    }
+    if (!parse_varying_texture_color_literal(cursor, color)) {
+        char name[64];
+
+        if (uniform_name == NULL || !read_identifier(cursor, name,
+                                                      sizeof(name)) ||
+            strcmp(name, uniform_name) != 0) {
+            return 0;
+        }
     }
     if (*opcode == RINGL_RSH1_OP_DIV_F32) {
         for (component = 0u; component < 4u; ++component) {
@@ -894,12 +903,14 @@ static int lower_vertex_transformed_texture(
  * temporary registers are overwritten only after that sample has consumed
  * them. The eight-call profile stays below both RSH1 and RinGPU limits.
  */
-static int lower_fragment_texture_chain(const char* source,
-                                        RinGLGlslLowerResult* result)
+static int lower_fragment_texture_chain(
+    const char* source, const RinGLGlslUniformValue* uniforms,
+    uint32_t uniform_count, RinGLGlslLowerResult* result)
 {
     RinGLRsh1HeaderV1 header;
     RinGLRsh1InstructionV1 ins[RINGL_RSH1_MAX_INSTRUCTIONS];
     char sampler_names[RINGL_VARYING_TEXTURE_MAX_SAMPLERS][64];
+    char color_uniform_name[64] = {0};
     char varying_names[4][64];
     char coordinate_names[5][64];
     char local_coordinate_names[RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES][64];
@@ -916,6 +927,7 @@ static int lower_fragment_texture_chain(const char* source,
     uint32_t sampler_binding_indices[RINGL_VARYING_TEXTURE_MAX_SAMPLERS] = {0u};
     const char* cursor;
     uint32_t sampler_count = 0u;
+    uint32_t has_color_uniform = 0u;
     uint32_t varying_count = 0u;
     uint32_t coordinate_name_count;
     uint32_t local_coordinate_count = 0u;
@@ -954,7 +966,8 @@ static int lower_fragment_texture_chain(const char* source,
     float color[4] = {0.0f};
     size_t total;
 
-    if (source == NULL || result == NULL)
+    if (source == NULL || result == NULL ||
+        (uniform_count != 0u && uniforms == NULL))
         return 1;
     for (call_index = 0u;
          call_index < RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES;
@@ -963,22 +976,34 @@ static int lower_fragment_texture_chain(const char* source,
     }
     cursor = source;
     while (strncmp(cursor, "uniformsampler2D", strlen("uniformsampler2D")) ==
-           0) {
-        if (sampler_count == RINGL_VARYING_TEXTURE_MAX_SAMPLERS ||
-            !consume_text(&cursor, "uniformsampler2D") ||
-            !read_identifier(&cursor, sampler_names[sampler_count],
-                             sizeof(sampler_names[sampler_count])) ||
-            !consume_text(&cursor, ";")) {
-            return 1;
-        }
-        for (sampler_index = 0u; sampler_index < sampler_count;
-             ++sampler_index) {
-            if (strcmp(sampler_names[sampler_index],
-                       sampler_names[sampler_count]) == 0) {
+               0 ||
+           strncmp(cursor, "uniformvec4", strlen("uniformvec4")) == 0) {
+        if (strncmp(cursor, "uniformsampler2D",
+                    strlen("uniformsampler2D")) == 0) {
+            if (sampler_count == RINGL_VARYING_TEXTURE_MAX_SAMPLERS ||
+                !consume_text(&cursor, "uniformsampler2D") ||
+                !read_identifier(&cursor, sampler_names[sampler_count],
+                                 sizeof(sampler_names[sampler_count])) ||
+                !consume_text(&cursor, ";")) {
                 return 1;
             }
+            for (sampler_index = 0u; sampler_index < sampler_count;
+                 ++sampler_index) {
+                if (strcmp(sampler_names[sampler_index],
+                           sampler_names[sampler_count]) == 0) {
+                    return 1;
+                }
+            }
+            ++sampler_count;
+        } else {
+            if (has_color_uniform || !consume_text(&cursor, "uniformvec4") ||
+                !read_identifier(&cursor, color_uniform_name,
+                                 sizeof(color_uniform_name)) ||
+                !consume_text(&cursor, ";")) {
+                return 1;
+            }
+            has_color_uniform = 1u;
         }
-        ++sampler_count;
     }
     while (strncmp(cursor, "varyingvec2", strlen("varyingvec2")) == 0) {
         uint32_t index;
@@ -1000,6 +1025,18 @@ static int lower_fragment_texture_chain(const char* source,
     if (sampler_count == 0u || varying_count == 0u ||
         !consume_text(&cursor, "voidmain(){")) {
         return 1;
+    }
+    if (has_color_uniform) {
+        for (call_index = 0u; call_index < uniform_count; ++call_index) {
+            if (uniforms[call_index].name == NULL ||
+                strcmp(uniforms[call_index].name, color_uniform_name) != 0) {
+                continue;
+            }
+            if (uniforms[call_index].type != RINGL_FLOAT_VEC4)
+                return 1;
+            memcpy(color, uniforms[call_index].values, sizeof(color));
+            break;
+        }
     }
     for (call_index = 0u; call_index < varying_count; ++call_index) {
         (void)snprintf(coordinate_names[call_index],
@@ -1173,7 +1210,8 @@ static int lower_fragment_texture_chain(const char* source,
         if (parenthesized_color_operation) {
             if (!consume_text(&cursor, ")") ||
                 !parse_varying_texture_color_operation(
-                    &cursor, &color_operation, color)) {
+                    &cursor, &color_operation, color,
+                    has_color_uniform ? color_uniform_name : NULL)) {
                 return 1;
             }
             color_operation_enabled = 1u;
@@ -1181,7 +1219,8 @@ static int lower_fragment_texture_chain(const char* source,
                    *cursor == '/') {
             if (call_count != 1u ||
                 !parse_varying_texture_color_operation(
-                    &cursor, &color_operation, color)) {
+                    &cursor, &color_operation, color,
+                    has_color_uniform ? color_uniform_name : NULL)) {
                 return 1;
             }
             color_operation_enabled = 1u;
@@ -1997,12 +2036,14 @@ int ringl_glsl_lower_varying_rsh1_with_uniforms(
                shader_type == RINGL_FRAGMENT_SHADER) {
         rc = lower_fragment_two_vec2(compact, result);
         if (rc != 0)
-            rc = lower_fragment_texture_chain(compact, result);
+            rc = lower_fragment_texture_chain(compact, uniforms, uniform_count,
+                                              result);
     }
     else if (shader_type == RINGL_VERTEX_SHADER)
         rc = lower_vertex(compact, result);
     else if (shader_type == RINGL_FRAGMENT_SHADER)
-        rc = lower_fragment_texture_chain(compact, result);
+        rc = lower_fragment_texture_chain(compact, uniforms, uniform_count,
+                                          result);
     else
         rc = 1;
     free(compact);

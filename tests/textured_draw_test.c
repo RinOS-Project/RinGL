@@ -307,6 +307,7 @@ int main(void)
     uint32_t fragment;
     uint32_t program;
     int32_t sampler_location;
+    int32_t tint_location;
     int32_t transform_location;
     const float vertices[] = {
         -0.75f, -0.75f, 0.0f, 0.0f,
@@ -323,6 +324,7 @@ int main(void)
         0.0f, 0.0f, 1.0f, 0.0f,
         0.0f, 0.0f, 0.0f, 1.0f,
     };
+    const float tint[4] = {0.5f, 1.0f, 0.25f, 1.0f};
     char commands[33];
 
     assert(ringl_context_create(&desc, &context) == 0);
@@ -357,8 +359,8 @@ int main(void)
         -1);
     ringl_shader_source(
         fragment,
-        "uniform sampler2D colorTexture; varying vec2 uv; "
-        "void main() { gl_FragColor = texture2D(colorTexture, uv); }",
+        "uniform sampler2D colorTexture; uniform vec4 tint; varying vec2 uv; "
+        "void main() { gl_FragColor = texture2D(colorTexture, uv) * tint; }",
         -1);
     ringl_compile_shader(vertex);
     ringl_compile_shader(fragment);
@@ -370,11 +372,14 @@ int main(void)
     assert(ringl_get_program_link_status(program) == RINGL_TRUE);
     ringl_use_program(program);
     sampler_location = ringl_get_uniform_location(program, "colorTexture");
+    tint_location = ringl_get_uniform_location(program, "tint");
     transform_location = ringl_get_uniform_location(program, "transform");
     assert(sampler_location == 0);
-    assert(transform_location == 1);
+    assert(tint_location == 1);
+    assert(transform_location == 2);
     ringl_uniform_1i(sampler_location, 0);
     ringl_uniform_matrix4fv(transform_location, RINGL_FALSE, transform);
+    ringl_uniform_4f(tint_location, tint[0], tint[1], tint[2], tint[3]);
     assert(ringl_get_error() == RINGL_NO_ERROR);
 
     ringl_viewport(-9, -4, 100, 80);
@@ -384,10 +389,10 @@ int main(void)
     ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);
     assert(ringl_get_error() == RINGL_NO_ERROR);
 
-    /* The fragment texture module and the vertex's initial matrix module are
-     * created at link. The matrix setter then atomically replaces the latter
-     * before the native textured draw builds its pipeline. */
-    assert(backend.shader_creates == 3u);
+    /* Link builds program-owned vertex and fragment modules. The matrix and
+     * tint setters each atomically rebuild those native RSH1 executables
+     * before the textured draw builds its pipeline. */
+    assert(backend.shader_creates == 6u);
     assert(backend.bind_group_creates == 1u);
     memcpy(commands, backend.commands, backend.command_count);
     commands[backend.command_count] = '\0';

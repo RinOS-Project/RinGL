@@ -929,6 +929,19 @@ void ringl_link_program(uint32_t program)
             ringl_program_set_log(object, "fragment shader failed RinGPU validation");
             return;
         }
+        /* The linked fragment may instead use a program-owned numeric-uniform
+         * module. Its resource layout is still sourced from the validated
+         * shader lowering, because draw-time texture binding maps declared
+         * sampler locations to the RSH1 resource pairs. Do not leave that
+         * metadata empty merely because the executable module is rebuilt per
+         * program. */
+        if (ringl_shader_has_numeric_uniforms(fragment) &&
+            fragment->sampler_uniform_count != 0u && fragment->rsh1_size == 0u &&
+            ringl_lower_shader_rsh1(object->fragment_shader) != 0) {
+            ringl_program_set_log(object,
+                                  "fragment sampler metadata failed RinGPU validation");
+            return;
+        }
     }
     if ((object->float_uniform_count != 0u || object->vec2_uniform_count != 0u ||
          object->vec3_uniform_count != 0u || object->vec4_uniform_count != 0u ||

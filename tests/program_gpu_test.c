@@ -39,9 +39,12 @@ typedef struct FakeBackend {
     uint64_t next_handle;
     uint32_t shader_creates;
     uint32_t texture_fragment_modules;
+    uint32_t tinted_texture_fragment_modules;
     uint32_t transformed_texture_vertex_modules;
     float expected_transform[16];
+    float expected_tint[4];
     uint32_t validate_expected_transform;
+    uint32_t validate_expected_tint;
     uint32_t reject_create;
 } FakeBackend;
 
@@ -79,6 +82,27 @@ static int fake_create_shader_module(void* session, const void* rsh1,
     assert(header.magic == UINT32_C(0x31485352) && header.total_size == size_bytes);
     if (header.stage == 2u && header.resource_count == 2u)
         backend->texture_fragment_modules++;
+    if (header.stage == 2u && header.resource_count == 2u &&
+        header.instruction_count == 21u) {
+        const Rsh1Instruction* instructions =
+            (const Rsh1Instruction*)((const uint8_t*)rsh1 + sizeof(header));
+
+        assert(size_bytes == sizeof(header) +
+                                 header.instruction_count * sizeof(*instructions));
+        if (backend->validate_expected_tint && !backend->reject_create) {
+            uint32_t index;
+
+            for (index = 0u; index < 4u; ++index) {
+                uint32_t expected_bits;
+
+                memcpy(&expected_bits, &backend->expected_tint[index],
+                       sizeof(expected_bits));
+                assert(instructions[8u + index].opcode == 16u &&
+                       instructions[8u + index].immediate == expected_bits);
+            }
+        }
+        backend->tinted_texture_fragment_modules++;
+    }
     if (header.stage == 1u && header.input_count == 6u &&
         header.output_count == 8u && header.resource_count == 0u &&
         header.instruction_count == 61u) {
@@ -201,8 +225,9 @@ int main(void)
         "void main() { gl_Position = transform * position; uv = texCoord; }",
         -1);
     ringl_shader_source(matrix_fragment,
-        "precision mediump float; uniform sampler2D texture; varying vec2 uv; "
-        "void main() { gl_FragColor = texture2D(texture, uv); }",
+        "precision mediump float; uniform sampler2D texture; uniform vec4 tint; "
+        "varying vec2 uv; void main() { gl_FragColor = texture2D(texture, uv) "
+        "* tint; }",
         -1);
     ringl_compile_shader(matrix_vertex);
     ringl_compile_shader(matrix_fragment);
@@ -214,6 +239,7 @@ int main(void)
     assert(ringl_get_program_link_status(matrix_program) == RINGL_TRUE);
     assert(backend.shader_creates == 5u);
     assert(backend.texture_fragment_modules == 2u);
+    assert(backend.tinted_texture_fragment_modules == 1u);
     assert(backend.transformed_texture_vertex_modules == 1u);
     {
         float transform[16] = {
@@ -223,25 +249,42 @@ int main(void)
             5.0f, 6.0f, 0.0f, 1.0f,
         };
         float values[16];
+        int32_t tint_location = ringl_get_uniform_location(matrix_program, "tint");
         int32_t location = ringl_get_uniform_location(matrix_program, "transform");
 
         /* `texture` occupies sampler location zero. The vertex mat4 remains
          * independently mutable while the fragment uses its ordinary
          * texture-lowering module. */
-        assert(location == 1);
+        assert(tint_location == 1);
+        assert(location == 2);
         ringl_use_program(matrix_program);
         memcpy(backend.expected_transform, transform, sizeof(transform));
         backend.validate_expected_transform = 1u;
         ringl_uniform_matrix4fv(location, 0u, transform);
         assert(ringl_get_error() == RINGL_NO_ERROR);
-        assert(backend.shader_creates == 6u);
-        assert(backend.texture_fragment_modules == 2u);
+        assert(backend.shader_creates == 7u);
+        assert(backend.texture_fragment_modules == 3u);
+        assert(backend.tinted_texture_fragment_modules == 2u);
         assert(backend.transformed_texture_vertex_modules == 2u);
+        backend.expected_tint[0] = 0.5f;
+        backend.expected_tint[1] = 1.0f;
+        backend.expected_tint[2] = 0.25f;
+        backend.expected_tint[3] = 1.0f;
+        backend.validate_expected_tint = 1u;
+        ringl_uniform_4f(tint_location, backend.expected_tint[0],
+                          backend.expected_tint[1],
+                          backend.expected_tint[2],
+                          backend.expected_tint[3]);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(backend.shader_creates == 9u);
+        assert(backend.texture_fragment_modules == 4u);
+        assert(backend.tinted_texture_fragment_modules == 3u);
+        assert(backend.transformed_texture_vertex_modules == 3u);
         backend.reject_create = 1u;
         transform[0] = 7.0f;
         ringl_uniform_matrix4fv(location, 0u, transform);
         assert(ringl_get_error() == RINGL_INVALID_OPERATION);
-        assert(backend.shader_creates == 7u);
+        assert(backend.shader_creates == 10u);
         assert(ringl_get_uniform_matrix4f(matrix_program, location, values) == 0);
         assert(values[0] == 2.0f);
         backend.reject_create = 0u;
@@ -254,7 +297,7 @@ int main(void)
     backend.reject_create = 1u;
     ringl_link_program(program);
     assert(ringl_get_program_link_status(program) == RINGL_FALSE);
-    assert(backend.shader_creates == 8u);
+    assert(backend.shader_creates == 11u);
 
     ringl_context_destroy(context);
     return 0;

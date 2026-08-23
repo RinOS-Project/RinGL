@@ -296,18 +296,25 @@ using its linked shader pair when later attach/detach calls change the pending
 link inputs.
 
 `RinGLProgramInfoV1` exposes a bounded snapshot of a live program's link and
-validation status, attached shader count, and linked active attribute/sampler
-uniform counts. `ringl_validate_program()` records successful validation only
+validation status, attached shader count, and linked active attribute/uniform
+counts. `ringl_validate_program()` records successful validation only
 for a linked executable; each new link resets that state before it validates
 the replacement executable. The query validates its ABI header and only writes
 the caller-owned structure after it has validated the program, so an invalid
 program cannot partially publish stale metadata.
 
-The current bounded uniform profile consists of linked `sampler2D` values.
-`ringl_get_uniform_1i()` reads the selected texture unit for a specific linked
-program and location without depending on the current program binding. It
-checks the complete input before writing its caller-owned integer, so invalid
+The current bounded uniform profile consists of linked `sampler2D` values and
+single `vec4` values. `ringl_get_uniform_1i()` reads the selected texture unit,
+and `ringl_get_uniform_4f()` reads all four components, for a specific linked
+program and location without depending on the current program binding. Both
+check the complete input before writing caller-owned storage, so invalid
 programs or locations cannot expose a partially updated result.
+
+`ringl_uniform_4f()` updates a linked program's scalar `vec4` only after every
+component is finite. A NaN or infinity records `INVALID_VALUE` and leaves the
+published uniform and its derived executable unchanged. This lets embeddings
+preserve atomic WebGL-visible uniform state while the bounded RSH1 lowering
+path has no non-finite literal representation.
 
 `ringl_get_renderbuffer_info()` exposes the current renderbuffer's dimensions,
 internal format, component bit counts, and zero sample count through a

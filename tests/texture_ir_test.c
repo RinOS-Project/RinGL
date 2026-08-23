@@ -130,6 +130,14 @@ int main(void)
         "texture2D(secondTexture, secondUv) + "
         "texture2D(thirdTexture, thirdUv) + "
         "texture2D(fourthTexture, fourthUv); }";
+    const char* varying_four_coordinate_local_source =
+        "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
+        "uniform sampler2D thirdTexture; uniform sampler2D fourthTexture; "
+        "varying vec2 firstUv; varying vec2 secondUv; varying vec2 thirdUv; "
+        "varying vec2 fourthUv; void main() { vec2 mixedUv = secondUv + "
+        "fourthUv; gl_FragColor = texture2D(firstTexture, firstUv) + "
+        "texture2D(secondTexture, mixedUv) + texture2D(thirdTexture, thirdUv) + "
+        "texture2D(fourthTexture, mixedUv); }";
     const char* varying_three_coordinate_local_source =
         "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
         "uniform sampler2D thirdTexture; varying vec2 firstUv; "
@@ -1310,6 +1318,44 @@ int main(void)
         assert(second_sample->source0 == 30u && second_sample->source1 == 31u);
         assert(third_sample->source0 == 32u && third_sample->source1 == 33u);
         assert(fourth_sample->source0 == 34u && fourth_sample->source1 == 35u);
+    }
+
+    /* A four-UV local can combine any two physical pairs while direct samples
+     * continue to read their own registers. */
+    ringl_shader_source(shader, varying_four_coordinate_local_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 43u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.instruction_count == 43u);
+    assert(header.register_count == 40u);
+    assert(header.input_count == 8u);
+    for (component = 0u; component < 2u; ++component) {
+        const Instruction* combine =
+            (const Instruction*)(blob + sizeof(header)) + 8u + component;
+
+        assert(combine->opcode == RSH1_ADD_F32);
+        assert(combine->source0 == 30u + component);
+        assert(combine->source1 == 34u + component);
+        assert(combine->destination == 38u + component);
+    }
+    for (component = 0u; component < 4u; ++component) {
+        const Instruction* first_sample =
+            (const Instruction*)(blob + sizeof(header)) + 10u + component;
+        const Instruction* second_sample =
+            (const Instruction*)(blob + sizeof(header)) + 14u + component;
+        const Instruction* third_sample =
+            (const Instruction*)(blob + sizeof(header)) + 18u + component;
+        const Instruction* fourth_sample =
+            (const Instruction*)(blob + sizeof(header)) + 22u + component;
+
+        assert(first_sample->source0 == 0u && first_sample->source1 == 1u);
+        assert(second_sample->source0 == 38u && second_sample->source1 == 39u);
+        assert(third_sample->source0 == 32u && third_sample->source1 == 33u);
+        assert(fourth_sample->source0 == 38u && fourth_sample->source1 == 39u);
     }
 
     ringl_shader_source(shader, varying_three_coordinate_local_source, -1);

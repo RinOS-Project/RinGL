@@ -206,8 +206,9 @@ A bounded four-UV texture profile additionally maps `firstUv` through
 stage emits 12 outputs (`xyzw` plus all four pairs), and the native
 RinGPU/Aquamarine transport clips and perspective-interpolates every scalar
 without changing the public compact clip-vertex V1 ABI. Direct samples may use
-each pair independently; four-UV local expressions remain deliberately
-outside this profile.
+each pair independently. One local may combine any two distinct four-UV pairs
+with `+` or `-`, and may feed the existing finite-affine local chain; broader
+four-UV expressions remain deliberately outside this profile.
 
 See [TODO.md](TODO.md) for the implementation roadmap.
 

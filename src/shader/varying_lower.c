@@ -359,7 +359,7 @@ static int parse_varying_texture_two_coordinate_local(
     uint32_t index;
 
     if (cursor == NULL || *cursor == NULL || varying_names == NULL ||
-        varying_count < 2u || varying_count > 3u || coordinate == NULL ||
+        varying_count < 2u || varying_count > 4u || coordinate == NULL ||
         coordinate_capacity == 0u ||
         coordinate_kind == NULL || primary_input_location == NULL ||
         secondary_input_location == NULL || tertiary_coordinate_kind == NULL ||
@@ -757,7 +757,8 @@ static int lower_fragment_texture_chain(const char* source,
                            "%s", local_coordinate_names[
                                local_coordinate_count - 1u]);
         }
-    } else if ((varying_count == 2u || varying_count == 3u) &&
+    } else if ((varying_count == 2u || varying_count == 3u ||
+                varying_count == 4u) &&
                strncmp(cursor, "vec2", strlen("vec2")) == 0) {
         const char* local_source;
 
@@ -771,7 +772,7 @@ static int lower_fragment_texture_chain(const char* source,
             return 1;
         }
         local_source = local_coordinate_names[0];
-        coordinate_name_count = varying_count == 2u ? 1u : 4u;
+        coordinate_name_count = varying_count == 2u ? 1u : varying_count + 1u;
         local_coordinate_count = 1u;
         two_coordinate_local = 1u;
         if (local_tertiary_input_location != UINT32_MAX) {
@@ -796,12 +797,14 @@ static int lower_fragment_texture_chain(const char* source,
             if (local_tertiary_input_location != UINT32_MAX)
                 allowed_third_input_location = UINT32_MAX;
         }
-        if (varying_count == 3u) {
-            (void)snprintf(coordinate_names[3], sizeof(coordinate_names[3]),
+        if (varying_count >= 3u) {
+            (void)snprintf(coordinate_names[varying_count],
+                           sizeof(coordinate_names[varying_count]),
                            "%s", local_coordinate_names[0]);
-            /* Slot three is a named local for the three-UV profile, not the
-             * fourth physical pair reserved by the direct four-UV profile. */
-            coordinate_input_locations[3] = UINT32_MAX;
+            /* This appended slot is a named local, not another physical
+             * pair. Keeping it separate prevents a local from aliasing the
+             * fourth pair in the four-UV profile. */
+            coordinate_input_locations[varying_count] = UINT32_MAX;
         }
         while (strncmp(cursor, "vec2", strlen("vec2")) == 0) {
             if (local_coordinate_count ==
@@ -832,11 +835,12 @@ static int lower_fragment_texture_chain(const char* source,
             }
             local_source = local_coordinate_names[local_coordinate_count++];
         }
-        if (varying_count == 3u) {
-            (void)snprintf(coordinate_names[3], sizeof(coordinate_names[3]),
+        if (varying_count >= 3u) {
+            (void)snprintf(coordinate_names[varying_count],
+                           sizeof(coordinate_names[varying_count]),
                            "%s", local_coordinate_names[
                                local_coordinate_count - 1u]);
-            coordinate_input_locations[3] = UINT32_MAX;
+            coordinate_input_locations[varying_count] = UINT32_MAX;
         } else {
             (void)snprintf(coordinate_names[0], sizeof(coordinate_names[0]),
                            "%s", local_coordinate_names[
@@ -1057,7 +1061,7 @@ static int lower_fragment_texture_chain(const char* source,
         uint32_t coordinate_v;
 
         if (calls[call_index].coordinate_input_location == UINT32_MAX ||
-            (varying_count != 3u && local_coordinate_count != 0u)) {
+            (varying_count <= 2u && local_coordinate_count != 0u)) {
             coordinate_u = local_coordinate_u;
             coordinate_v = local_coordinate_v;
         } else {

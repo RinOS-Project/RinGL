@@ -262,8 +262,10 @@ direct/finite-affine local declarations in source order when the complete RSH1
 shape fits its instruction/register budget, while direct samples may use every
 declared pair. It does not claim general varying transport, expressions that
 combine all three pairs in one local, or broader three-input local expressions.
-The four-UV shape permits only independent direct samples; four-UV local
-expressions are not inferred. For one sampled texture result, or an explicitly parenthesized additive sample
+The four-UV shape permits independent direct samples plus one named local that
+combines any two distinct pairs with `+` or `-`; it can feed the existing
+finite-affine local chain. Broader four-UV expressions are not inferred. For
+one sampled texture result, or an explicitly parenthesized additive sample
 chain, a finite `vec4` color literal is emitted as four RSH1 constants followed
 by component-wise `ADD_F32`, `SUB_F32`, `MUL_F32`, or nonzero `DIV_F32`
 instructions before the fragment stores its output. This uses the existing

@@ -34,6 +34,10 @@ int main(void)
     uint32_t framebuffers[1] = { 0u };
     uint32_t renderbuffers[2] = { 0u, 0u };
     RinGLFramebufferAttachmentInfoV1 attachment;
+    RinGLRenderbufferInfoV1 renderbuffer_info = {
+        .struct_size = sizeof(renderbuffer_info),
+        .api_version = RINGL_API_VERSION,
+    };
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -104,7 +108,7 @@ int main(void)
     ringl_bind_renderbuffer(RINGL_RENDERBUFFER, renderbuffers[0]);
     ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_RGBA8, 4, 4);
     ringl_bind_renderbuffer(RINGL_RENDERBUFFER, renderbuffers[1]);
-    ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_DEPTH_COMPONENT32F,
+    ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_DEPTH_COMPONENT16,
                                4, 4);
     ringl_gen_framebuffers(1, framebuffers);
     ringl_bind_framebuffer(RINGL_FRAMEBUFFER, framebuffers[0]);
@@ -114,6 +118,11 @@ int main(void)
                                    RINGL_RENDERBUFFER, renderbuffers[1]);
     assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
            RINGL_FRAMEBUFFER_COMPLETE);
+    assert(ringl_get_renderbuffer_info(RINGL_RENDERBUFFER,
+                                       &renderbuffer_info) == 0);
+    assert(renderbuffer_info.internal_format == RINGL_DEPTH_COMPONENT16);
+    assert(renderbuffer_info.depth_size == 16u);
+    assert(renderbuffer_info.stencil_size == 0u);
     ringl_bind_renderbuffer(RINGL_RENDERBUFFER, renderbuffers[1]);
     ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_DEPTH_COMPONENT32F,
                                2, 4);

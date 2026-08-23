@@ -180,12 +180,14 @@ The bounded first-triangle and textured-triangle translation paths are
 implemented and covered by strict C11 mock-RinGPU tests. Level-zero RGBA8
 texture/renderbuffer color attachments are completeness-checked, realized as
 RinGPU color targets, used by clear/draw render passes, and read back through
-`COPY_SOURCE`. A matching `DEPTH_COMPONENT32F` renderbuffer or level-zero
-`DEPTH_COMPONENT32F`/`DEPTH_COMPONENT`/`FLOAT` texture can now be attached as
+`COPY_SOURCE`. A matching WebGL 1 `DEPTH_COMPONENT16` renderbuffer or
+`DEPTH_COMPONENT32F` renderbuffer, or a level-zero
+`DEPTH_COMPONENT32F`/`DEPTH_COMPONENT`/`FLOAT` texture can be attached as
 `DEPTH_ATTACHMENT`; the pair is rejected on an invalid attachment or dimension
-mismatch, and its D32 image is realized lazily as a RinGPU depth target. The
-RinOS surface integration test verifies a depth-only clear while preserving
-color and depth-tested triangle output from either custom FBO kind. The
+mismatch. `DEPTH_COMPONENT16` keeps its logical 16-bit query format while
+sharing the existing lazy D32 RinGPU depth-target execution path. The RinOS
+surface integration test verifies a depth-only clear while preserving color
+and depth-tested triangle output from both custom renderbuffer formats. The
 RinGPU depth pipeline supports every GLES comparison predicate: `NEVER`,
 `LESS`, `EQUAL`, `LEQUAL`, `GREATER`, `NOTEQUAL`, `GEQUAL`, and `ALWAYS`.
 A trusted embedding can query the default color image's post-submit
@@ -243,7 +245,7 @@ programs or locations cannot expose a partially updated result.
 `ringl_get_renderbuffer_info()` exposes the current renderbuffer's dimensions,
 internal format, component bit counts, and zero sample count through a
 versioned caller-owned snapshot. An allocated renderbuffer reports zero-sized
-RGBA4 default state; the supported RGBA8, D32, and D24S8 storage profiles
+RGBA4 default state; the supported RGBA8, D16, D32, and D24S8 storage profiles
 report their actual channel/depth/stencil precision without realizing a RinGPU
 image merely to answer a query.
 

@@ -31,7 +31,8 @@ static int depth_attachment_format_valid(uint32_t format,
 {
     if (has_depth == 0u && has_stencil == 0u)
         return 0;
-    if (format == RINGL_DEPTH_COMPONENT32F)
+    if (format == RINGL_DEPTH_COMPONENT16 ||
+        format == RINGL_DEPTH_COMPONENT32F)
         return has_depth != 0u && has_stencil == 0u;
     return format == RINGL_DEPTH24_STENCIL8 && has_stencil != 0u;
 }
@@ -620,6 +621,8 @@ int ringl_get_renderbuffer_info(uint32_t target, RinGLRenderbufferInfoV1* info)
             result.green_size = 8u;
             result.blue_size = 8u;
             result.alpha_size = 8u;
+        } else if (renderbuffer->internal_format == RINGL_DEPTH_COMPONENT16) {
+            result.depth_size = 16u;
         } else if (renderbuffer->internal_format == RINGL_DEPTH_COMPONENT32F) {
             result.depth_size = 32u;
         } else if (renderbuffer->internal_format == RINGL_DEPTH24_STENCIL8) {
@@ -644,6 +647,7 @@ void ringl_renderbuffer_storage(uint32_t target, uint32_t internal_format,
         return;
     }
     if (internal_format != RINGL_RGBA8 &&
+        internal_format != RINGL_DEPTH_COMPONENT16 &&
         internal_format != RINGL_DEPTH_COMPONENT32F &&
         internal_format != RINGL_DEPTH24_STENCIL8) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
@@ -738,7 +742,8 @@ int ringl_renderbuffer_realize_depth_target(RinGLContext* context,
         return -1;
     object = &context->renderbuffers[index];
     if (!object->defined ||
-        (object->internal_format != RINGL_DEPTH_COMPONENT32F &&
+        (object->internal_format != RINGL_DEPTH_COMPONENT16 &&
+         object->internal_format != RINGL_DEPTH_COMPONENT32F &&
          object->internal_format != RINGL_DEPTH24_STENCIL8) ||
         object->width == 0u || object->height == 0u) {
         return -1;

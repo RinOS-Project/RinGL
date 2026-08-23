@@ -136,12 +136,15 @@ int main(void)
         "void main() { vec2 baseUv = uv + vec2(0.5, 0.0); "
         "vec2 sampleUv = baseUv - vec2(0.0, 0.5); "
         "gl_FragColor = texture2D(colorTexture, sampleUv); }";
-    const char* varying_three_local_affine_chain_source =
+    const char* varying_six_local_affine_chain_source =
         "uniform sampler2D colorTexture; varying vec2 uv; "
-        "void main() { vec2 firstUv = uv + vec2(0.25, 0.0); "
-        "vec2 secondUv = firstUv + vec2(0.25, 0.0); "
-        "vec2 thirdUv = secondUv - vec2(0.0, 0.5); "
-        "gl_FragColor = texture2D(colorTexture, thirdUv); }";
+        "void main() { vec2 firstUv = uv + vec2(0.125, 0.0); "
+        "vec2 secondUv = firstUv + vec2(0.125, 0.0); "
+        "vec2 thirdUv = secondUv + vec2(0.125, 0.0); "
+        "vec2 fourthUv = thirdUv + vec2(0.125, 0.0); "
+        "vec2 fifthUv = fourthUv - vec2(0.0, 0.25); "
+        "vec2 sixthUv = fifthUv - vec2(0.0, 0.25); "
+        "gl_FragColor = texture2D(colorTexture, sixthUv); }";
     const char* varying_affine_offsets_source =
         "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
         "varying vec2 uv; void main() { gl_FragColor = "
@@ -533,37 +536,38 @@ int main(void)
         assert(sample->source0 == 14u && sample->source1 == 15u);
     }
 
-    /* Three local affine values execute in declaration order. The third
-     * operation must consume the second result, without algebraically folding
-     * any of the Float32 operations. */
-    ringl_shader_source(shader, varying_three_local_affine_chain_source, -1);
+    /* Six local affine values execute in declaration order. Each operation
+     * consumes the preceding result without algebraically folding Float32
+     * operations. */
+    ringl_shader_source(shader, varying_six_local_affine_chain_source, -1);
     ringl_compile_shader(shader);
     assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
     assert(ringl_lower_shader_rsh1(shader) == 0);
     size = ringl_get_shader_rsh1_size(shader);
-    assert(size == sizeof(header) + 25u * sizeof(Instruction));
+    assert(size == sizeof(header) + 37u * sizeof(Instruction));
     assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
     memcpy(&header, blob, sizeof(header));
-    assert(header.instruction_count == 25u);
-    assert(header.register_count == 20u);
+    assert(header.instruction_count == 37u);
+    assert(header.register_count == 32u);
     assert(header.resource_count == 2u);
-    for (component = 0u; component < 4u; ++component) {
-        const Instruction* first_coordinate =
-            (const Instruction*)(blob + sizeof(header)) + 6u + component / 2u;
-        const Instruction* second_coordinate =
-            (const Instruction*)(blob + sizeof(header)) + 10u + component / 2u;
-        const Instruction* third_coordinate =
-            (const Instruction*)(blob + sizeof(header)) + 14u + component / 2u;
-        const Instruction* sample =
-            (const Instruction*)(blob + sizeof(header)) + 16u + component;
+    for (uint32_t local_index = 0u; local_index < 6u; ++local_index) {
+        for (component = 0u; component < 2u; ++component) {
+            const Instruction* coordinate =
+                (const Instruction*)(blob + sizeof(header)) +
+                6u + local_index * 4u + component;
+            uint32_t expected_source = local_index == 0u
+                ? component : 10u + (local_index - 1u) * 4u + component;
 
-        assert(first_coordinate->destination == 10u + component / 2u);
-        assert(first_coordinate->source0 == component / 2u);
-        assert(second_coordinate->destination == 14u + component / 2u);
-        assert(second_coordinate->source0 == 10u + component / 2u);
-        assert(third_coordinate->destination == 18u + component / 2u);
-        assert(third_coordinate->source0 == 14u + component / 2u);
-        assert(sample->source0 == 18u && sample->source1 == 19u);
+            assert(coordinate->destination ==
+                   10u + local_index * 4u + component);
+            assert(coordinate->source0 == expected_source);
+        }
+    }
+    for (component = 0u; component < 4u; ++component) {
+        const Instruction* sample =
+            (const Instruction*)(blob + sizeof(header)) + 28u + component;
+
+        assert(sample->source0 == 30u && sample->source1 == 31u);
     }
 
     /* Each sample may apply one finite vec2 offset to the interpolated

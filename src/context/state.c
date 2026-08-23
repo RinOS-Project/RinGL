@@ -300,6 +300,22 @@ void ringl_depth_range(float z_near, float z_far)
     ringl_context_mark_dirty(context, RINGL_DIRTY_VIEWPORT);
 }
 
+void ringl_line_width(float width)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL)
+        return;
+    if (!isfinite(width) || width < 1.0f || width > 64.0f) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if (context->line_width == width)
+        return;
+    context->line_width = width;
+    ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
+}
+
 void ringl_polygon_offset(float factor, float units)
 {
     RinGLContext* context = ringl_get_current_context();

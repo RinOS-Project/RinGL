@@ -102,6 +102,7 @@ extern "C" {
 #define RINGL_CULL_FACE      0x0b44u
 #define RINGL_DEPTH_TEST     0x0b71u
 #define RINGL_POLYGON_OFFSET_FILL 0x8037u
+#define RINGL_LINE_WIDTH     0x0b21u
 #define RINGL_STENCIL_TEST   0x0b90u
 #define RINGL_STENCIL_FUNC       0x0b92u
 #define RINGL_STENCIL_VALUE_MASK 0x0b93u
@@ -439,6 +440,7 @@ typedef struct RinGLRinGpuRasterStateV1 {
     uint32_t polygon_offset_fill_enabled;
     float polygon_offset_factor;
     float polygon_offset_units;
+    float line_width;
     uint32_t reserved0;
 } RinGLRinGpuRasterStateV1;
 
@@ -916,6 +918,9 @@ void ringl_depth_mask(uint32_t enabled);
 /* Finite endpoints are independently clamped to [0, 1]; reversed ranges are
  * valid and are forwarded to RinGPU without reordering. */
 void ringl_depth_range(float z_near, float z_far);
+/* RinGL implements aliased line widths in the finite inclusive [1, 64] range.
+ * Out-of-range values report INVALID_VALUE and leave state unchanged. */
+void ringl_line_width(float width);
 /* Applies GLES polygon offset to filled primitives. Both finite values are
  * carried in the dynamic RinGPU raster state; points and lines are unchanged. */
 void ringl_polygon_offset(float factor, float units);

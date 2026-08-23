@@ -242,6 +242,7 @@ struct RinGLContext {
     uint32_t depth_write_mask;
     float polygon_offset_factor;
     float polygon_offset_units;
+    float line_width;
     uint32_t stencil_func;
     uint32_t stencil_reference;
     uint32_t stencil_value_mask;

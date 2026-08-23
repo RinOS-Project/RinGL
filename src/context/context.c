@@ -93,6 +93,7 @@ int ringl_context_create(const RinGLContextDescV1* desc,
     context->depth_write_mask = RINGL_TRUE;
     context->depth_range_near = 0.0f;
     context->depth_range_far = 1.0f;
+    context->line_width = 1.0f;
     context->clear_depth = 1.0f;
     context->stencil_func = RINGL_ALWAYS;
     context->stencil_value_mask = 0xffu;

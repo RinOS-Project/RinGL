@@ -413,6 +413,7 @@ static int set_raster_state(RinGLContext* context, uint64_t command_list,
     state.polygon_offset_fill_enabled = context->polygon_offset_fill_enabled;
     state.polygon_offset_factor = context->polygon_offset_factor;
     state.polygon_offset_units = context->polygon_offset_units;
+    state.line_width = context->line_width;
 
     if (context->scissor_enabled) {
         x0 = context->scissor_x;

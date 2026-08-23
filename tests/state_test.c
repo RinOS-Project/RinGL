@@ -146,6 +146,10 @@ int main(void)
     assert(!ringl_is_enabled(RINGL_BLEND));
     ringl_polygon_offset(0.5f, -2.0f);
     assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_line_width(3.0f);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_line_width(0.5f);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
     {
         uint32_t nan_bits = 0x7fc00000u;
         float nan;

@@ -300,6 +300,12 @@ the V1 default disabled, while the Aquamarine surface backend applies
 comparison and writing. Points and lines are not offset; non-finite inputs
 leave the existing RinGL state intact and report `INVALID_VALUE`.
 
+`ringl_line_width()` accepts finite aliased widths from one through 64 pixels.
+RinGPU's V3 raster descriptor preserves V1/V2's one-pixel default, and the
+Aquamarine backend rasterizes bounded unique coverage for line lists, strips,
+and loops. A half-open edge rule preserves the width-one rasterization at
+pixel-boundary ties; invalid values leave state unchanged with `INVALID_VALUE`.
+
 Linked program reflection is also exposed without borrowing RinGL storage.
 `ringl_get_active_attrib()` and `ringl_get_active_uniform()` copy one bounded
 entry into `RinGLActiveInfoV1` only after validating its versioned output

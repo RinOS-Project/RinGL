@@ -234,6 +234,7 @@ struct RinGLContext {
     uint32_t cull_face_enabled;
     uint32_t depth_test_enabled;
     uint32_t polygon_offset_fill_enabled;
+    uint32_t sample_coverage_enabled;
     uint32_t stencil_test_enabled;
     uint32_t blend_enabled;
     uint32_t cull_face_mode;
@@ -243,6 +244,8 @@ struct RinGLContext {
     float polygon_offset_factor;
     float polygon_offset_units;
     float line_width;
+    float sample_coverage_value;
+    uint32_t sample_coverage_invert;
     uint32_t stencil_func;
     uint32_t stencil_reference;
     uint32_t stencil_value_mask;

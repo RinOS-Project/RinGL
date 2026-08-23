@@ -309,6 +309,17 @@ pixel-boundary ties; invalid values leave state unchanged with `INVALID_VALUE`.
 a versioned snapshot for WebGL `LINE_WIDTH` and `ALIASED_LINE_WIDTH_RANGE`
 queries.
 
+`RINGL_SAMPLE_COVERAGE` and `ringl_sample_coverage()` keep the finite-clamped
+coverage value and invert flag in explicit dynamic raster state. RinGPU's V4
+suffix preserves the V1--V3 disabled/full-coverage default. The current
+Aquamarine target owns one storage sample, so enabled zero coverage suppresses
+that sample's color/depth/stencil fragment operation and inverted zero coverage
+retains it. `RinGLSampleCoverageV1` provides a versioned, failure-atomic
+snapshot for browser queries. `ringl_hint()` accepts only
+`GENERATE_MIPMAP_HINT` with standard hint modes as an advisory no-op because
+this bounded profile has no generated mip chain; derivative hints are not
+claimed as supported.
+
 Linked program reflection is also exposed without borrowing RinGL storage.
 `ringl_get_active_attrib()` and `ringl_get_active_uniform()` copy one bounded
 entry into `RinGLActiveInfoV1` only after validating its versioned output

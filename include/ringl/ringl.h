@@ -102,6 +102,7 @@ extern "C" {
 #define RINGL_CULL_FACE      0x0b44u
 #define RINGL_DEPTH_TEST     0x0b71u
 #define RINGL_POLYGON_OFFSET_FILL 0x8037u
+#define RINGL_SAMPLE_COVERAGE 0x80a0u
 #define RINGL_LINE_WIDTH     0x0b21u
 #define RINGL_STENCIL_TEST   0x0b90u
 #define RINGL_STENCIL_FUNC       0x0b92u
@@ -143,6 +144,13 @@ extern "C" {
 #define RINGL_FRONT_FACE                    0x0b46u
 #define RINGL_DEPTH_RANGE                   0x0b70u
 #define RINGL_ALIASED_LINE_WIDTH_RANGE       0x846eu
+#define RINGL_SAMPLE_COVERAGE_VALUE           0x80a8u
+#define RINGL_SAMPLE_COVERAGE_INVERT          0x80abu
+#define RINGL_GENERATE_MIPMAP_HINT             0x8192u
+#define RINGL_FRAGMENT_SHADER_DERIVATIVE_HINT  0x8b8bu
+#define RINGL_DONT_CARE                        0x1100u
+#define RINGL_FASTEST                          0x1101u
+#define RINGL_NICEST                           0x1102u
 
 #define RINGL_ARRAY_BUFFER          0x8892u
 #define RINGL_ELEMENT_ARRAY_BUFFER  0x8893u
@@ -442,6 +450,9 @@ typedef struct RinGLRinGpuRasterStateV1 {
     float polygon_offset_factor;
     float polygon_offset_units;
     float line_width;
+    uint32_t sample_coverage_enabled;
+    float sample_coverage_value;
+    uint32_t sample_coverage_invert;
     uint32_t reserved0;
 } RinGLRinGpuRasterStateV1;
 
@@ -889,6 +900,18 @@ typedef struct RinGLLineWidthV1 {
     uint32_t reserved0;
 } RinGLLineWidthV1;
 
+/* Snapshot of WebGL sample-coverage state. With the current one-sample
+ * target, a covered sample is either retained or suppressed; this remains an
+ * executable raster state rather than an embedding-only cache. */
+typedef struct RinGLSampleCoverageV1 {
+    uint32_t struct_size;
+    uint32_t api_version;
+    uint32_t enabled;
+    float value;
+    uint32_t invert;
+    uint32_t reserved0;
+} RinGLSampleCoverageV1;
+
 /* This is a read-only description of RinGL's currently bound custom
  * framebuffer. It is intentionally separate from GLES query entry points so
  * an embedding can inspect the bounded object-model slice without claiming
@@ -936,6 +959,16 @@ void ringl_line_width(float width);
 /* Returns current width and the inclusive supported range only for a complete
  * v1 output header. */
 int ringl_get_line_width(RinGLLineWidthV1* width);
+/* `value` is finite-clamped to [0, 1]. `invert` must be RINGL_FALSE/TRUE;
+ * invalid inputs preserve the prior state. */
+void ringl_sample_coverage(float value, uint32_t invert);
+/* Returns the exact enabled/value/invert state only for a complete v1 output
+ * header; invalid output leaves caller storage unchanged. */
+int ringl_get_sample_coverage(RinGLSampleCoverageV1* coverage);
+/* The bounded renderer currently has no generated mip chain, so the only
+ * accepted GLES hint is GENERATE_MIPMAP_HINT and its valid modes are advisory
+ * no-ops. Unsupported hint targets are never reported as implemented. */
+void ringl_hint(uint32_t target, uint32_t mode);
 /* Applies GLES polygon offset to filled primitives. Both finite values are
  * carried in the dynamic RinGPU raster state; points and lines are unchanged. */
 void ringl_polygon_offset(float factor, float units);

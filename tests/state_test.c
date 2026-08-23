@@ -38,6 +38,10 @@ int main(void)
         .struct_size = sizeof(line_width),
         .api_version = RINGL_API_VERSION,
     };
+    RinGLSampleCoverageV1 sample_coverage = {
+        .struct_size = sizeof(sample_coverage),
+        .api_version = RINGL_API_VERSION,
+    };
     RinGLDefaultFramebufferV1 framebuffer = {
         .struct_size = sizeof(framebuffer),
         .api_version = RINGL_API_VERSION,
@@ -157,6 +161,33 @@ int main(void)
            line_width.maximum == 64.0f);
     ringl_line_width(0.5f);
     assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    assert(ringl_get_sample_coverage(&sample_coverage) == 0);
+    assert(sample_coverage.enabled == RINGL_FALSE &&
+           sample_coverage.value == 1.0f &&
+           sample_coverage.invert == RINGL_FALSE);
+    ringl_enable(RINGL_SAMPLE_COVERAGE);
+    ringl_sample_coverage(0.0f, RINGL_FALSE);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_get_sample_coverage(&sample_coverage) == 0);
+    assert(sample_coverage.enabled == RINGL_TRUE &&
+           sample_coverage.value == 0.0f &&
+           sample_coverage.invert == RINGL_FALSE);
+    ringl_sample_coverage(2.0f, RINGL_TRUE);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_get_sample_coverage(&sample_coverage) == 0);
+    assert(sample_coverage.value == 1.0f &&
+           sample_coverage.invert == RINGL_TRUE);
+    ringl_sample_coverage(0.5f, 2u);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    assert(ringl_get_sample_coverage(&sample_coverage) == 0);
+    assert(sample_coverage.value == 1.0f &&
+           sample_coverage.invert == RINGL_TRUE);
+    ringl_get_integerv(RINGL_SAMPLE_COVERAGE_INVERT, values);
+    assert(values[0] == (int32_t)RINGL_TRUE);
+    ringl_hint(RINGL_GENERATE_MIPMAP_HINT, RINGL_NICEST);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_hint(RINGL_FRAGMENT_SHADER_DERIVATIVE_HINT, RINGL_NICEST);
+    assert(ringl_get_error() == RINGL_INVALID_ENUM);
     {
         uint32_t nan_bits = 0x7fc00000u;
         float nan;

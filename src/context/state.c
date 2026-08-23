@@ -18,6 +18,8 @@ static uint32_t* capability_field(RinGLContext* context, uint32_t capability)
         return &context->depth_test_enabled;
     case RINGL_POLYGON_OFFSET_FILL:
         return &context->polygon_offset_fill_enabled;
+    case RINGL_SAMPLE_COVERAGE:
+        return &context->sample_coverage_enabled;
     case RINGL_STENCIL_TEST:
         return &context->stencil_test_enabled;
     case RINGL_BLEND:
@@ -333,6 +335,68 @@ int ringl_get_line_width(RinGLLineWidthV1* width)
     snapshot.reserved0 = 0u;
     *width = snapshot;
     return 0;
+}
+
+void ringl_sample_coverage(float value, uint32_t invert)
+{
+    RinGLContext* context = ringl_get_current_context();
+    float clamped;
+
+    if (context == NULL)
+        return;
+    if (!isfinite(value) || invert > RINGL_TRUE) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if (value <= 0.0f)
+        clamped = 0.0f;
+    else if (value >= 1.0f)
+        clamped = 1.0f;
+    else
+        clamped = value;
+    if (context->sample_coverage_value == clamped &&
+        context->sample_coverage_invert == invert) {
+        return;
+    }
+    context->sample_coverage_value = clamped;
+    context->sample_coverage_invert = invert;
+    ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
+}
+
+int ringl_get_sample_coverage(RinGLSampleCoverageV1* coverage)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLSampleCoverageV1 snapshot;
+
+    if (context == NULL || coverage == NULL ||
+        coverage->struct_size < sizeof(*coverage) ||
+        coverage->api_version != RINGL_API_VERSION) {
+        return -1;
+    }
+    snapshot.struct_size = sizeof(snapshot);
+    snapshot.api_version = RINGL_API_VERSION;
+    snapshot.enabled = context->sample_coverage_enabled;
+    snapshot.value = context->sample_coverage_value;
+    snapshot.invert = context->sample_coverage_invert;
+    snapshot.reserved0 = 0u;
+    *coverage = snapshot;
+    return 0;
+}
+
+void ringl_hint(uint32_t target, uint32_t mode)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL)
+        return;
+    if (target != RINGL_GENERATE_MIPMAP_HINT) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return;
+    }
+    if (mode != RINGL_DONT_CARE && mode != RINGL_FASTEST &&
+        mode != RINGL_NICEST) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+    }
 }
 
 void ringl_polygon_offset(float factor, float units)
@@ -703,6 +767,7 @@ static size_t ringl_get_integerv_value_count(uint32_t pname)
     case RINGL_BLEND_DST_ALPHA:
     case RINGL_BLEND_EQUATION_RGB:
     case RINGL_BLEND_EQUATION_ALPHA:
+    case RINGL_SAMPLE_COVERAGE_INVERT:
         return 1u;
     default:
         return 0u;
@@ -838,6 +903,9 @@ int ringl_get_integerv_bounded(uint32_t pname, int32_t* values,
         return 0;
     case RINGL_BLEND_EQUATION_ALPHA:
         values[0] = (int32_t)context->blend_equation_alpha;
+        return 0;
+    case RINGL_SAMPLE_COVERAGE_INVERT:
+        values[0] = (int32_t)context->sample_coverage_invert;
         return 0;
     case RINGL_COLOR_WRITEMASK:
         values[0] = (context->color_write_mask & 0x01u) != 0u;

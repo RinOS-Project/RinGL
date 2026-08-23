@@ -24,7 +24,7 @@ typedef struct FakeBackend {
     uint32_t mip_upload_width[3];
     uint32_t mip_upload_height[3];
     uint64_t mip_upload_size[3];
-    uint8_t mip_upload[3][24];
+    uint8_t mip_upload[3][32];
 } FakeBackend;
 
 static int fake_create_buffer(void* session, uint64_t size_bytes,
@@ -97,13 +97,20 @@ static int fake_create_mip_image(void* session,
     FakeBackend* backend = session;
 
     assert(desc != NULL && image_out != NULL);
-    assert(desc->width == 3u && desc->height == 2u);
-    assert(desc->format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM);
+    assert((desc->width == 3u && desc->height == 2u &&
+            desc->format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM) ||
+           (desc->width == 4u && desc->height == 4u &&
+            (desc->format == RINGL_RIN_GPU_FORMAT_RGB565_UNORM ||
+             desc->format == RINGL_RIN_GPU_FORMAT_RGBA4_UNORM ||
+             desc->format == RINGL_RIN_GPU_FORMAT_RGB5_A1_UNORM)));
     assert(desc->usage == (RINGL_RIN_GPU_IMAGE_USAGE_COPY_DESTINATION |
                            RINGL_RIN_GPU_IMAGE_USAGE_SAMPLED));
-    assert(desc->mip_levels == 2u && desc->reserved0 == 0u);
+    assert(desc->mip_levels ==
+           (desc->format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM ? 2u : 3u));
+    assert(desc->reserved0 == 0u);
     backend->mip_image_creates++;
     backend->mip_level_count = desc->mip_levels;
+    backend->last_format = desc->format;
     *image_out = ++backend->next_handle;
     return 0;
 }
@@ -119,8 +126,16 @@ static int fake_upload_mip_image(void* session, uint64_t image,
     assert(index < 3u && upload->reserved0 == 0u);
     assert(upload->mip_level == index);
     assert(upload->x == 0u && upload->y == 0u);
-    assert(upload->source_row_pitch_bytes == (uint64_t)upload->width * 4u);
-    assert(size_bytes == (uint64_t)upload->width * upload->height * 4u);
+    {
+        uint32_t texel_bytes = backend->last_format ==
+                RINGL_RIN_GPU_FORMAT_RGBA8_UNORM
+            ? 4u : 2u;
+
+        assert(upload->source_row_pitch_bytes ==
+               (uint64_t)upload->width * texel_bytes);
+        assert(size_bytes == (uint64_t)upload->width * upload->height *
+               texel_bytes);
+    }
     backend->mip_upload_level[index] = upload->mip_level;
     backend->mip_upload_width[index] = upload->width;
     backend->mip_upload_height[index] = upload->height;
@@ -136,7 +151,8 @@ static int fake_create_sampler(void* session,
 {
     FakeBackend* backend = session;
     assert(desc != NULL && sampler_out != NULL);
-    assert(desc->min_filter == RINGL_RIN_GPU_SAMPLER_LINEAR);
+    assert(desc->min_filter == RINGL_RIN_GPU_SAMPLER_LINEAR ||
+           desc->min_filter == RINGL_RIN_GPU_SAMPLER_NEAREST);
     assert(desc->mag_filter == RINGL_RIN_GPU_SAMPLER_LINEAR);
     assert(desc->mip_filter == RINGL_RIN_GPU_SAMPLER_MIP_NONE ||
            desc->mip_filter == RINGL_RIN_GPU_SAMPLER_NEAREST ||
@@ -179,6 +195,7 @@ int main(void)
     uint32_t texture;
     uint32_t incomplete;
     uint32_t packed_texture;
+    uint32_t packed_mip_texture;
     uint32_t mip_texture;
     uint64_t image;
     uint64_t sampler;
@@ -243,6 +260,39 @@ int main(void)
     };
     const uint8_t expected_mip_level1[4] = {80u, 90u, 100u, 110u};
     const uint8_t manual_mip_level1[4] = {31u, 41u, 51u, 61u};
+    const uint16_t packed_mip_pixels[16] = {
+        UINT16_C(0xf800), UINT16_C(0xf800), UINT16_C(0x07e0), UINT16_C(0x07e0),
+        UINT16_C(0xf800), UINT16_C(0xf800), UINT16_C(0x07e0), UINT16_C(0x07e0),
+        UINT16_C(0x001f), UINT16_C(0x001f), UINT16_C(0xffff), UINT16_C(0xffff),
+        UINT16_C(0x001f), UINT16_C(0x001f), UINT16_C(0xffff), UINT16_C(0xffff),
+    };
+    const uint16_t expected_packed_mip_level1[4] = {
+        UINT16_C(0xf800), UINT16_C(0x07e0), UINT16_C(0x001f), UINT16_C(0xffff),
+    };
+    const uint16_t expected_packed_mip_level2 = UINT16_C(0x8410);
+    const uint16_t manual_packed_mip_level1[4] = {
+        UINT16_C(0x07ff), UINT16_C(0x07ff), UINT16_C(0x07ff), UINT16_C(0x07ff),
+    };
+    const uint16_t rgba4_mip_pixels[16] = {
+        UINT16_C(0xf00f), UINT16_C(0x0f0f), UINT16_C(0xf00f), UINT16_C(0x0f0f),
+        UINT16_C(0x00ff), UINT16_C(0xffff), UINT16_C(0x00ff), UINT16_C(0xffff),
+        UINT16_C(0xf00f), UINT16_C(0x0f0f), UINT16_C(0xf00f), UINT16_C(0x0f0f),
+        UINT16_C(0x00ff), UINT16_C(0xffff), UINT16_C(0x00ff), UINT16_C(0xffff),
+    };
+    const uint16_t expected_rgba4_mip_level1[4] = {
+        UINT16_C(0x888f), UINT16_C(0x888f), UINT16_C(0x888f), UINT16_C(0x888f),
+    };
+    const uint16_t expected_rgba4_mip_level2 = UINT16_C(0x888f);
+    const uint16_t rgb5_a1_mip_pixels[16] = {
+        UINT16_C(0xf801), UINT16_C(0x07c1), UINT16_C(0xf801), UINT16_C(0x07c1),
+        UINT16_C(0x003f), UINT16_C(0xffff), UINT16_C(0x003f), UINT16_C(0xffff),
+        UINT16_C(0xf801), UINT16_C(0x07c1), UINT16_C(0xf801), UINT16_C(0x07c1),
+        UINT16_C(0x003f), UINT16_C(0xffff), UINT16_C(0x003f), UINT16_C(0xffff),
+    };
+    const uint16_t expected_rgb5_a1_mip_level1[4] = {
+        UINT16_C(0x8421), UINT16_C(0x8421), UINT16_C(0x8421), UINT16_C(0x8421),
+    };
+    const uint16_t expected_rgb5_a1_mip_level2 = UINT16_C(0x8421);
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -453,8 +503,94 @@ int main(void)
     assert(backend.mip_image_creates == 1u && backend.mip_uploads == 2u);
     assert(memcmp(backend.mip_upload[1], patch, sizeof(patch)) == 0);
 
+    /* Packed UNORM formats use the same native multi-mip descriptor. Their
+     * generated levels average native 5/6-bit components and retain their
+     * packed byte layout through the backend upload boundary. */
+    ringl_gen_textures(1, &packed_mip_texture);
+    ringl_bind_texture(RINGL_TEXTURE_2D, packed_mip_texture);
+    ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MIN_FILTER,
+                         RINGL_NEAREST_MIPMAP_NEAREST);
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGB, 4, 4, 0, RINGL_RGB,
+                       RINGL_UNSIGNED_SHORT_5_6_5, packed_mip_pixels);
+    ringl_generate_mipmap(RINGL_TEXTURE_2D);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    backend.mip_image_creates = 0u;
+    backend.mip_uploads = 0u;
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(backend.mip_image_creates == 1u && backend.mip_level_count == 3u &&
+           backend.mip_uploads == 3u);
+    assert(backend.last_format == RINGL_RIN_GPU_FORMAT_RGB565_UNORM);
+    assert(backend.mip_upload_size[0] == sizeof(packed_mip_pixels));
+    assert(memcmp(backend.mip_upload[0], packed_mip_pixels,
+                  sizeof(packed_mip_pixels)) == 0);
+    assert(backend.mip_upload_level[1] == 1u &&
+           backend.mip_upload_width[1] == 2u &&
+           backend.mip_upload_height[1] == 2u &&
+           backend.mip_upload_size[1] == sizeof(expected_packed_mip_level1));
+    assert(memcmp(backend.mip_upload[1], expected_packed_mip_level1,
+                  sizeof(expected_packed_mip_level1)) == 0);
+    assert(backend.mip_upload_level[2] == 2u &&
+           backend.mip_upload_width[2] == 1u &&
+           backend.mip_upload_height[2] == 1u &&
+           backend.mip_upload_size[2] == sizeof(expected_packed_mip_level2));
+    assert(memcmp(backend.mip_upload[2], &expected_packed_mip_level2,
+                  sizeof(expected_packed_mip_level2)) == 0);
+
+    ringl_tex_image_2d_from_bytes(RINGL_TEXTURE_2D, 1, RINGL_RGB, 2, 2, 0,
+                                  RINGL_RGB, RINGL_UNSIGNED_SHORT_5_6_5,
+                                  manual_packed_mip_level1,
+                                  sizeof(manual_packed_mip_level1));
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    backend.mip_image_creates = 0u;
+    backend.mip_uploads = 0u;
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(backend.mip_image_creates == 1u && backend.mip_uploads == 3u);
+    assert(memcmp(backend.mip_upload[1], manual_packed_mip_level1,
+                  sizeof(manual_packed_mip_level1)) == 0);
+
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 4, 4, 0,
+                       RINGL_RGBA, RINGL_UNSIGNED_SHORT_4_4_4_4,
+                       rgba4_mip_pixels);
+    ringl_generate_mipmap(RINGL_TEXTURE_2D);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    backend.mip_image_creates = 0u;
+    backend.mip_uploads = 0u;
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(backend.last_format == RINGL_RIN_GPU_FORMAT_RGBA4_UNORM &&
+           backend.mip_image_creates == 1u && backend.mip_uploads == 3u);
+    assert(memcmp(backend.mip_upload[1], expected_rgba4_mip_level1,
+                  sizeof(expected_rgba4_mip_level1)) == 0);
+    assert(memcmp(backend.mip_upload[2], &expected_rgba4_mip_level2,
+                  sizeof(expected_rgba4_mip_level2)) == 0);
+    ringl_tex_image_2d_from_bytes(RINGL_TEXTURE_2D, 1, RINGL_RGBA, 2, 2, 0,
+                                  RINGL_RGBA, RINGL_UNSIGNED_SHORT_4_4_4_4,
+                                  expected_rgba4_mip_level1,
+                                  sizeof(expected_rgba4_mip_level1));
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 4, 4, 0,
+                       RINGL_RGBA, RINGL_UNSIGNED_SHORT_5_5_5_1,
+                       rgb5_a1_mip_pixels);
+    ringl_generate_mipmap(RINGL_TEXTURE_2D);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    backend.mip_image_creates = 0u;
+    backend.mip_uploads = 0u;
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(backend.last_format == RINGL_RIN_GPU_FORMAT_RGB5_A1_UNORM &&
+           backend.mip_image_creates == 1u && backend.mip_uploads == 3u);
+    assert(memcmp(backend.mip_upload[1], expected_rgb5_a1_mip_level1,
+                  sizeof(expected_rgb5_a1_mip_level1)) == 0);
+    assert(memcmp(backend.mip_upload[2], &expected_rgb5_a1_mip_level2,
+                  sizeof(expected_rgb5_a1_mip_level2)) == 0);
+    ringl_tex_image_2d_from_bytes(RINGL_TEXTURE_2D, 1, RINGL_RGBA, 2, 2, 0,
+                                  RINGL_RGBA, RINGL_UNSIGNED_SHORT_5_5_5_1,
+                                  expected_rgb5_a1_mip_level1,
+                                  sizeof(expected_rgb5_a1_mip_level1));
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+
     /* A base sub-image mutation drops generated levels only. Explicit level
      * one data remains valid and is uploaded with the updated base level. */
+    ringl_bind_texture(RINGL_TEXTURE_2D, mip_texture);
     ringl_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 1, 1,
                            RINGL_RGBA, RINGL_UNSIGNED_BYTE, patch);
     assert(ringl_get_error() == RINGL_NO_ERROR);

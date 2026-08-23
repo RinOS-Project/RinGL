@@ -398,6 +398,57 @@ static uint32_t texture_storage_texel_bytes(uint32_t format)
     return texture_packed_color_format(format) ? 2u : 4u;
 }
 
+/* Packed formats retain their native component precision in the shadow image.
+ * GenerateMipmap therefore averages the stored component values and quantizes
+ * only at the destination level. This is equivalent to averaging normalized
+ * values followed by conversion back to the same UNORM format, without first
+ * expanding a 5/6/4-bit source through an avoidable 8-bit intermediate. */
+static void texture_unpack_packed_color(uint32_t format, const uint8_t* source,
+                                        uint8_t components[4])
+{
+    uint16_t packed;
+
+    memcpy(&packed, source, sizeof(packed));
+    if (format == RINGL_RGB565) {
+        components[0] = (uint8_t)((packed >> 11u) & 0x1fu);
+        components[1] = (uint8_t)((packed >> 5u) & 0x3fu);
+        components[2] = (uint8_t)(packed & 0x1fu);
+        components[3] = 1u;
+        return;
+    }
+    if (format == RINGL_RGBA4) {
+        components[0] = (uint8_t)((packed >> 12u) & 0xfu);
+        components[1] = (uint8_t)((packed >> 8u) & 0xfu);
+        components[2] = (uint8_t)((packed >> 4u) & 0xfu);
+        components[3] = (uint8_t)(packed & 0xfu);
+        return;
+    }
+    components[0] = (uint8_t)((packed >> 11u) & 0x1fu);
+    components[1] = (uint8_t)((packed >> 6u) & 0x1fu);
+    components[2] = (uint8_t)((packed >> 1u) & 0x1fu);
+    components[3] = (uint8_t)(packed & 0x1u);
+}
+
+static uint16_t texture_pack_packed_color(uint32_t format,
+                                          const uint8_t components[4])
+{
+    if (format == RINGL_RGB565) {
+        return (uint16_t)(((uint16_t)components[0] << 11u) |
+                          ((uint16_t)components[1] << 5u) |
+                          components[2]);
+    }
+    if (format == RINGL_RGBA4) {
+        return (uint16_t)(((uint16_t)components[0] << 12u) |
+                          ((uint16_t)components[1] << 8u) |
+                          ((uint16_t)components[2] << 4u) |
+                          components[3]);
+    }
+    return (uint16_t)(((uint16_t)components[0] << 11u) |
+                      ((uint16_t)components[1] << 6u) |
+                      ((uint16_t)components[2] << 1u) |
+                      components[3]);
+}
+
 static uint32_t texture_ringpu_format(uint32_t format)
 {
     if (format == RINGL_RGB565)
@@ -1000,6 +1051,7 @@ static int texture_generate_color_mips(
     const uint8_t* source = texture->shadow_bytes;
     uint32_t source_width = texture->width;
     uint32_t source_height = texture->height;
+    uint32_t texel_bytes = texture_storage_texel_bytes(texture->format);
     uint32_t level_count = texture_mip_level_count(texture->width,
                                                     texture->height);
     uint32_t level;
@@ -1014,7 +1066,8 @@ static int texture_generate_color_mips(
 
         destination->width = source_width > 1u ? source_width >> 1u : 1u;
         destination->height = source_height > 1u ? source_height >> 1u : 1u;
-        size = (uint64_t)destination->width * destination->height * 4u;
+        size = (uint64_t)destination->width * destination->height *
+               texel_bytes;
         if (size > SIZE_MAX) {
             texture_free_generated_mips(generated);
             return -1;
@@ -1037,21 +1090,52 @@ static int texture_generate_color_mips(
                 uint32_t source_x1 = source_x0 + 1u < source_width
                     ? source_x0 + 1u : source_x0;
                 const uint8_t* a = source +
-                    ((uint64_t)source_y0 * source_width + source_x0) * 4u;
+                    ((uint64_t)source_y0 * source_width + source_x0) *
+                        texel_bytes;
                 const uint8_t* b = source +
-                    ((uint64_t)source_y0 * source_width + source_x1) * 4u;
+                    ((uint64_t)source_y0 * source_width + source_x1) *
+                        texel_bytes;
                 const uint8_t* c = source +
-                    ((uint64_t)source_y1 * source_width + source_x0) * 4u;
+                    ((uint64_t)source_y1 * source_width + source_x0) *
+                        texel_bytes;
                 const uint8_t* d = source +
-                    ((uint64_t)source_y1 * source_width + source_x1) * 4u;
+                    ((uint64_t)source_y1 * source_width + source_x1) *
+                        texel_bytes;
                 uint8_t* output = destination->shadow_bytes +
-                    ((uint64_t)y * destination->width + x) * 4u;
+                    ((uint64_t)y * destination->width + x) * texel_bytes;
                 uint32_t component;
 
-                for (component = 0u; component < 4u; ++component) {
-                    output[component] = (uint8_t)(
-                        ((uint32_t)a[component] + b[component] + c[component] +
-                         d[component] + 2u) / 4u);
+                if (texture_packed_color_format(texture->format)) {
+                    uint8_t a_components[4];
+                    uint8_t b_components[4];
+                    uint8_t c_components[4];
+                    uint8_t d_components[4];
+                    uint8_t output_components[4];
+                    uint16_t packed;
+
+                    texture_unpack_packed_color(texture->format, a,
+                                                a_components);
+                    texture_unpack_packed_color(texture->format, b,
+                                                b_components);
+                    texture_unpack_packed_color(texture->format, c,
+                                                c_components);
+                    texture_unpack_packed_color(texture->format, d,
+                                                d_components);
+                    for (component = 0u; component < 4u; ++component) {
+                        output_components[component] = (uint8_t)(
+                            ((uint32_t)a_components[component] +
+                             b_components[component] + c_components[component] +
+                             d_components[component] + 2u) / 4u);
+                    }
+                    packed = texture_pack_packed_color(texture->format,
+                                                        output_components);
+                    memcpy(output, &packed, sizeof(packed));
+                } else {
+                    for (component = 0u; component < 4u; ++component) {
+                        output[component] = (uint8_t)(
+                            ((uint32_t)a[component] + b[component] +
+                             c[component] + d[component] + 2u) / 4u);
+                    }
                 }
             }
         }
@@ -1078,8 +1162,7 @@ void ringl_generate_mipmap(uint32_t target)
     }
     texture = bound_texture_2d(context);
     if (texture == NULL || !texture_level0_storage_defined(texture) ||
-        !texture_color_format(texture->format) ||
-        texture_packed_color_format(texture->format)) {
+        !texture_color_format(texture->format)) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
@@ -1150,8 +1233,7 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
             ? storage_format : internal_format;
 
         if (!texture_level0_storage_defined(texture) ||
-            !((storage_format != 0u && texture_color_format(storage_format) &&
-               !texture_packed_color_format(storage_format)) ||
+            !((storage_format != 0u && texture_color_format(storage_format)) ||
               requested_format == RINGL_DEPTH_COMPONENT32F ||
               requested_format == RINGL_DEPTH24_STENCIL8) ||
             texture->format != requested_format) {

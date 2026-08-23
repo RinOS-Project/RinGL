@@ -117,17 +117,19 @@ level-zero textures.  When both callbacks are present,
 create a CPU-visible sampled image with its exact number of contiguous 2D
 levels and upload each level with an explicit `mip_level`.
 
-The generated source is presently the bounded unpacked color profile whose
-shadow representation is normalized RGBA8.  RinGL computes a deterministic
-clamped 2x2 box level on the CPU before replacing prior generated storage; a
-missing V2 callback or allocation failure leaves that prior chain untouched.
-Explicit nonzero levels are bounded to exact-dimension unpacked normalized
-color storage; `texSubImage2D` can update such a level and base-level updates
-retain manually defined levels while discarding only generated ones. D32 and
-D24S8 levels use the same exact-dimension storage rule but are manually
-defined only. The optional V5 tail selects a color mip for transition, render
-pass, direct and multi-buffer draw, and readback. The V6 tail supplies the
-color/depth/stencil mip selections for depth passes, including combined D24S8.
+The generated source is presently the bounded color profile whose shadow
+representation is normalized RGBA8 or native RGB565/RGBA4/RGB5_A1. RinGL
+computes a deterministic clamped 2x2 box level on the CPU before replacing
+prior generated storage; packed levels average their stored component values
+then repack once at the destination. A missing V2 callback or allocation
+failure leaves that prior chain untouched. Explicit nonzero levels are bounded
+to exact-dimension same-format color storage; `texSubImage2D` can update such
+a level and base-level updates retain manually defined levels while discarding
+only generated ones. D32 and D24S8 levels use the same exact-dimension storage
+rule but are manually defined only. The optional V5 tail selects a color mip
+for transition, render pass, direct and multi-buffer draw, and readback. The
+V6 tail supplies the color/depth/stencil mip selections for depth passes,
+including combined D24S8.
 The appended V7 `create_graphics_bind_group_v2` callback identifies a sampled
 mip-chain without changing the V1 binding layout. For a mipmap minification
 filter RinGL transitions every contiguous level to `SHADER_READ` and requires
@@ -137,8 +139,10 @@ whose core validates every exposed subresource and rejects render-target alias
 or a non-shader-read level. Aquamarine snapshots the complete chain and the
 software executor derives perspective-correct implicit gradients, applies
 sampler bias/min/max LOD, and executes nearest/linear mip selection with the
-independent min/mag texel filters. Packed-color mip generation remains outside
-this profile. Focused fake and real bridge tests inspect level bytes, the
+independent min/mag texel filters. RGB565/RGBA4/RGB5_A1 generated chains keep
+their native packed storage and average stored component precision before
+repacking; packed color mip render targets remain outside this profile.
+Focused fake and real bridge tests inspect unpacked and packed level bytes, the
 RinGPU descriptor, and the distinct level-one colour selected from a
 three-level texture.
 

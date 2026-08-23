@@ -475,12 +475,14 @@ applied to `texImage2D` and `texSubImage2D`, including RGB padding and D32
 source rows, before the texture is uploaded as a RinGPU sampled image. The
 RinOS surface backend now executes the matching typed sampled-image
 and sampler bind group instead of treating it as a placeholder: it snapshots
-the bounded RGBA8 image into the resource-aware software executor and applies
-nearest or linear filtering with clamp-to-edge, repeat, or mirrored-repeat
-addressing. `ringl_generate_mipmap()` builds a complete chain for unpacked
-RGBA8-normalized color storage, while explicit nonzero-level `texImage2D` and
-`texSubImage2D` update exact-dimension unpacked color levels without folding
-them into level zero. Both paths realize each contiguous level through the
+the bounded RGBA8 and packed-color images into the resource-aware software
+executor and applies nearest or linear filtering with clamp-to-edge, repeat,
+or mirrored-repeat addressing. `ringl_generate_mipmap()` builds a complete
+chain for unpacked RGBA8-normalized and native RGB565/RGBA4/RGB5_A1 color
+storage; packed levels average their stored 5/6/4-bit components before
+repacking. Explicit nonzero-level `texImage2D` and `texSubImage2D` update
+exact-dimension same-format color levels without folding them into level zero.
+Both paths realize each contiguous level through the
 optional V2 RinGPU image/upload callbacks. A base-level sub-image update drops
 only generated levels, preserving explicitly supplied level data. The executor
 uses the optional V7 bind-group callback for a minification sampler: it

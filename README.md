@@ -305,6 +305,9 @@ RinGPU's V3 raster descriptor preserves V1/V2's one-pixel default, and the
 Aquamarine backend rasterizes bounded unique coverage for line lists, strips,
 and loops. A half-open edge rule preserves the width-one rasterization at
 pixel-boundary ties; invalid values leave state unchanged with `INVALID_VALUE`.
+`RinGLLineWidthV1` exposes the current width and fixed `[1, 64]` range through
+a versioned snapshot for WebGL `LINE_WIDTH` and `ALIASED_LINE_WIDTH_RANGE`
+queries.
 
 Linked program reflection is also exposed without borrowing RinGL storage.
 `ringl_get_active_attrib()` and `ringl_get_active_uniform()` copy one bounded

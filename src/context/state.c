@@ -316,6 +316,25 @@ void ringl_line_width(float width)
     ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
 }
 
+int ringl_get_line_width(RinGLLineWidthV1* width)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLLineWidthV1 snapshot;
+
+    if (context == NULL || width == NULL || width->struct_size < sizeof(*width) ||
+        width->api_version != RINGL_API_VERSION) {
+        return -1;
+    }
+    snapshot.struct_size = sizeof(snapshot);
+    snapshot.api_version = RINGL_API_VERSION;
+    snapshot.width = context->line_width;
+    snapshot.minimum = 1.0f;
+    snapshot.maximum = 64.0f;
+    snapshot.reserved0 = 0u;
+    *width = snapshot;
+    return 0;
+}
+
 void ringl_polygon_offset(float factor, float units)
 {
     RinGLContext* context = ringl_get_current_context();

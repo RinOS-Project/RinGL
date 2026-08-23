@@ -34,6 +34,10 @@ int main(void)
         .struct_size = sizeof(depth_range),
         .api_version = RINGL_API_VERSION,
     };
+    RinGLLineWidthV1 line_width = {
+        .struct_size = sizeof(line_width),
+        .api_version = RINGL_API_VERSION,
+    };
     RinGLDefaultFramebufferV1 framebuffer = {
         .struct_size = sizeof(framebuffer),
         .api_version = RINGL_API_VERSION,
@@ -148,6 +152,9 @@ int main(void)
     assert(ringl_get_error() == RINGL_NO_ERROR);
     ringl_line_width(3.0f);
     assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_get_line_width(&line_width) == 0);
+    assert(line_width.width == 3.0f && line_width.minimum == 1.0f &&
+           line_width.maximum == 64.0f);
     ringl_line_width(0.5f);
     assert(ringl_get_error() == RINGL_INVALID_VALUE);
     {

@@ -142,6 +142,7 @@ extern "C" {
 #define RINGL_CULL_FACE_MODE                0x0b45u
 #define RINGL_FRONT_FACE                    0x0b46u
 #define RINGL_DEPTH_RANGE                   0x0b70u
+#define RINGL_ALIASED_LINE_WIDTH_RANGE       0x846eu
 
 #define RINGL_ARRAY_BUFFER          0x8892u
 #define RINGL_ELEMENT_ARRAY_BUFFER  0x8893u
@@ -877,6 +878,17 @@ typedef struct RinGLDepthRangeV1 {
     uint32_t reserved0;
 } RinGLDepthRangeV1;
 
+/* Snapshot of the current line width and the bounded aliased implementation
+ * range exposed to a browser embedding. */
+typedef struct RinGLLineWidthV1 {
+    uint32_t struct_size;
+    uint32_t api_version;
+    float width;
+    float minimum;
+    float maximum;
+    uint32_t reserved0;
+} RinGLLineWidthV1;
+
 /* This is a read-only description of RinGL's currently bound custom
  * framebuffer. It is intentionally separate from GLES query entry points so
  * an embedding can inspect the bounded object-model slice without claiming
@@ -921,6 +933,9 @@ void ringl_depth_range(float z_near, float z_far);
 /* RinGL implements aliased line widths in the finite inclusive [1, 64] range.
  * Out-of-range values report INVALID_VALUE and leave state unchanged. */
 void ringl_line_width(float width);
+/* Returns current width and the inclusive supported range only for a complete
+ * v1 output header. */
+int ringl_get_line_width(RinGLLineWidthV1* width);
 /* Applies GLES polygon offset to filled primitives. Both finite values are
  * carried in the dynamic RinGPU raster state; points and lines are unchanged. */
 void ringl_polygon_offset(float factor, float units);

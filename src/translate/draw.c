@@ -179,9 +179,20 @@ int ringl_resolve_depth_target(RinGLContext* context, RinGLDepthTarget* target)
         return 1;
     target->image = context->default_framebuffer.depth_target;
     target->format = context->default_framebuffer.depth_format;
-    target->has_depth = RINGL_TRUE;
-    target->has_stencil =
-        target->format == RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT;
+    if (context->default_framebuffer.flags == 0u) {
+        /* Preserve the v1 native embedding interpretation. Browser
+         * embeddings can opt into an explicit logical aspect mask below. */
+        target->has_depth = RINGL_TRUE;
+        target->has_stencil =
+            target->format == RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT;
+    } else {
+        target->has_depth =
+            (context->default_framebuffer.flags &
+             RINGL_DEFAULT_FRAMEBUFFER_DEPTH) != 0u;
+        target->has_stencil =
+            (context->default_framebuffer.flags &
+             RINGL_DEFAULT_FRAMEBUFFER_STENCIL) != 0u;
+    }
     target->state = &context->default_depth_framebuffer_state;
     return (target->format == RINGL_RIN_GPU_FORMAT_D32_FLOAT ||
             target->format == RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) &&
@@ -505,7 +516,8 @@ static int transition_to_depth_stencil_targets(
         return -1;
     if (targets->stencil.image != 0u && targets->stencil.has_stencil != 0u &&
         (targets->combined == 0u ||
-         targets->stencil.image != targets->depth.image) &&
+         targets->stencil.image != targets->depth.image ||
+         targets->depth.has_depth == 0u) &&
         transition_to_depth_target(context, command_list, &targets->stencil) !=
             0)
         return -1;

@@ -328,7 +328,15 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     queries the live raw attachments at its boundary, reports a distinct pair
     as `FRAMEBUFFER_UNSUPPORTED`, and rejects draw/read/copy/clear before
     native submission; an identical object and level remains valid.
-- [ ] Define a clean embedding API for browser contexts and surfaces.
+- [x] Define a clean embedding API for browser contexts and surfaces.
+  - The versioned RinGPU binding, default-framebuffer descriptor, and opt-in
+    `ringl_aquamarine_surface` owner form the browser boundary. The embedding
+    exposes only initial image-state setup, post-submit state synchronization,
+    and a borrowed native view; clear/draw/readback/present remain RinGL
+    commands. Explicit default-framebuffer depth/stencil aspect flags separate
+    the WebGL contract from a shared physical D32/S8 allocation. Focused
+    bridge tests prove full, depth-only, and stencil-only targets without a
+    direct surface command path.
 - [ ] Ensure robust buffer/texture access independent of backend behavior.
   - [x] Add a capacity-checked `readPixels` import/export boundary for
     browser-owned destinations. The bounded RGBA8 API rejects short spans

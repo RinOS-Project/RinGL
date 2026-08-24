@@ -10,7 +10,7 @@ static int framebuffer_valid(const RinGLDefaultFramebufferV1* framebuffer)
     if (framebuffer->struct_size < sizeof(*framebuffer) ||
         framebuffer->api_version != RINGL_API_VERSION ||
         framebuffer->reserved0 != 0u || framebuffer->reserved1 != 0u ||
-        framebuffer->flags != 0u) {
+        (framebuffer->flags & ~RINGL_DEFAULT_FRAMEBUFFER_FLAG_MASK) != 0u) {
         return 0;
     }
     if (framebuffer->color_target == 0u || framebuffer->color_format == 0u ||
@@ -27,6 +27,13 @@ static int framebuffer_valid(const RinGLDefaultFramebufferV1* framebuffer)
             RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) {
         return 0;
     }
+    if ((framebuffer->flags & RINGL_DEFAULT_FRAMEBUFFER_STENCIL) != 0u &&
+        framebuffer->depth_format !=
+            RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) {
+        return 0;
+    }
+    if (framebuffer->depth_target == 0u && framebuffer->flags != 0u)
+        return 0;
     return 1;
 }
 

@@ -146,6 +146,19 @@ int main(void)
                RINGL_RIN_GPU_IMAGE_PRESENT) == -1);
     assert(ringl_get_error() == RINGL_INVALID_ENUM);
 
+    /* A nonzero aspect mask is an explicit browser-embedding contract. A
+     * D32 target cannot be misdeclared as stencil-only, while a depth-only
+     * declaration remains valid. */
+    framebuffer.flags = RINGL_DEFAULT_FRAMEBUFFER_STENCIL;
+    assert(ringl_set_default_framebuffer(&framebuffer) == -1);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    framebuffer.flags = RINGL_DEFAULT_FRAMEBUFFER_DEPTH;
+    assert(ringl_set_default_framebuffer(&framebuffer) == 0);
+    framebuffer.flags = RINGL_DEFAULT_FRAMEBUFFER_ASPECT_MASK;
+    assert(ringl_set_default_framebuffer(&framebuffer) == -1);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    framebuffer.flags = 0u;
+
     framebuffer.width = 0u;
     assert(ringl_set_default_framebuffer(&framebuffer) == -1);
     assert(ringl_get_error() == RINGL_INVALID_VALUE);

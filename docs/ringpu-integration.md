@@ -81,6 +81,18 @@ can be overridden only for an explicitly selected external checkout.
 
 The opt-in `ringl_aquamarine_surface` embedding owns a caller-provided BGRA/D32/S8 target and exposes a private native view of its RinGPU core, graphics queue, and default images. OS-Core's `rin_webgl_ringl_bridge.{h,c}` creates a RinGL context using that view and binds the images as RinGL's default framebuffer. The embedding remains the owner of the core, queue, images, and caller-provided pixel backing store.
 
+`RinGLDefaultFramebufferV1.flags` provides the browser-facing logical
+depth/stencil contract. A zero flag word retains the original native
+format-derived behavior. An embedding that supplies a shared D32/S8 allocation
+for stencil sets `RINGL_DEFAULT_FRAMEBUFFER_EXPLICIT_ASPECTS` together with
+`RINGL_DEFAULT_FRAMEBUFFER_STENCIL`; RinGL
+then preserves the physical D32 plane but exposes no depth attachment to GL.
+`RINGL_DEFAULT_FRAMEBUFFER_DEPTH` and the combined mask are likewise explicit;
+the explicit bit alone deliberately exposes neither physical plane. An invalid
+D32/stencil combination is rejected before the framebuffer is published. This
+prevents `getContext({ depth: false, stencil: true })` from gaining depth
+testing merely because its storage must carry both physical planes.
+
 During the bridge lifetime RinGL is the exclusive graphics command producer for the embedding. The embedding has no public clear/draw/present entry point: it only prepares the initial image state and records state after a successful RinGL submission.
 
 The bridge creates an unflagged native RinGL context. WebGL 1 attachment policy

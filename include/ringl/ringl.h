@@ -1067,6 +1067,20 @@ typedef struct RinGLDefaultFramebufferV1 {
     uint32_t reserved1;
 } RinGLDefaultFramebufferV1;
 
+/* `flags == 0` retains the original format-derived behavior for native
+ * embedders: a D32 target exposes depth and a D32/S8 target exposes both
+ * aspects. Browser embedders set EXPLICIT_ASPECTS and then choose the logical
+ * WebGL-visible planes. The explicit bit also permits a physical depth/stencil
+ * allocation with neither aspect exposed. Unknown bits are rejected. */
+#define RINGL_DEFAULT_FRAMEBUFFER_DEPTH   0x00000001u
+#define RINGL_DEFAULT_FRAMEBUFFER_STENCIL 0x00000002u
+#define RINGL_DEFAULT_FRAMEBUFFER_EXPLICIT_ASPECTS 0x00000004u
+#define RINGL_DEFAULT_FRAMEBUFFER_ASPECT_MASK \
+    (RINGL_DEFAULT_FRAMEBUFFER_DEPTH | RINGL_DEFAULT_FRAMEBUFFER_STENCIL)
+#define RINGL_DEFAULT_FRAMEBUFFER_FLAG_MASK \
+    (RINGL_DEFAULT_FRAMEBUFFER_ASPECT_MASK | \
+     RINGL_DEFAULT_FRAMEBUFFER_EXPLICIT_ASPECTS)
+
 /* Snapshot of the mutable clear values for an embedding that must issue an
  * internal clear without changing the WebGL-visible clear state. */
 typedef struct RinGLClearValuesV1 {

@@ -618,23 +618,23 @@ int ringl_get_framebuffer_color_attachment(
                                             attachment);
 }
 
-int ringl_framebuffer_color_attachment_is_float(uint32_t* is_float_out)
+int ringl_framebuffer_color_attachment_component_type(uint32_t* type_out)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLFramebufferObject* framebuffer;
-    uint32_t is_float = RINGL_FALSE;
+    uint32_t component_type = RINGL_UNSIGNED_BYTE;
     uint32_t index;
 
     if (context == NULL)
         return -1;
-    if (is_float_out == NULL) {
+    if (type_out == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return -1;
     }
     /* The default drawing buffer is supplied by the embedding as a normalized
      * color target. It cannot become a Float target through this API. */
     if (context->framebuffer_binding == 0u) {
-        *is_float_out = RINGL_FALSE;
+        *type_out = component_type;
         return 0;
     }
     framebuffer = bound_framebuffer(context);
@@ -644,7 +644,7 @@ int ringl_framebuffer_color_attachment_is_float(uint32_t* is_float_out)
     }
     if (framebuffer->color_attachment_kind ==
         RINGL_FRAMEBUFFER_ATTACHMENT_NONE) {
-        *is_float_out = RINGL_FALSE;
+        *type_out = component_type;
         return 0;
     }
     index = ringl_object_slot_index(framebuffer->color_attachment_object);
@@ -666,7 +666,7 @@ int ringl_framebuffer_color_attachment_is_float(uint32_t* is_float_out)
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return -1;
         }
-        is_float = texture->color_component_type == RINGL_FLOAT;
+        component_type = texture->color_component_type;
     } else if (framebuffer->color_attachment_kind ==
                RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER) {
         RinGLRenderbufferObject* renderbuffer;
@@ -681,12 +681,27 @@ int ringl_framebuffer_color_attachment_is_float(uint32_t* is_float_out)
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return -1;
         }
-        is_float = renderbuffer->internal_format == RINGL_RGBA32F;
+        component_type = renderbuffer->internal_format == RINGL_RGBA32F
+            ? RINGL_FLOAT : RINGL_UNSIGNED_BYTE;
     } else {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return -1;
     }
-    *is_float_out = is_float;
+    *type_out = component_type;
+    return 0;
+}
+
+int ringl_framebuffer_color_attachment_is_float(uint32_t* is_float_out)
+{
+    uint32_t component_type;
+
+    if (is_float_out == NULL)
+        return ringl_framebuffer_color_attachment_component_type(NULL);
+    if (ringl_framebuffer_color_attachment_component_type(&component_type) !=
+        0) {
+        return -1;
+    }
+    *is_float_out = component_type == RINGL_FLOAT ? RINGL_TRUE : RINGL_FALSE;
     return 0;
 }
 

@@ -679,6 +679,22 @@ component before it changes its target. The Aquamarine embedding snapshots the
 same Float32 components into its RSH1 sampler table, and the product bridge
 test draws a Float texture through the full RinGL/RinGPU route into a Float FBO.
 
+`OES_texture_half_float` is represented by the public
+`RINGL_HALF_FLOAT_OES` token. Its bounded uploads accept binary16 bytes only
+after the caller has checked their complete packed/padded span; RinGL reads
+each 16-bit component by `memcpy`, decodes it into the private RGBA32F shadow,
+and realizes that exact shadow as the existing `RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT`
+sampled image. `RINGL_HALF_FLOAT_OES` has its own
+`ringl_enable_webgl_half_float_texture_linear()` completion gate, so granting
+Float linear filtering cannot accidentally make a binary16 texture linearly
+sampleable. Short `texSubImage2D` imports leave the old shadow unchanged. The
+component-type attachment query distinguishes `RINGL_HALF_FLOAT_OES` from
+Float32, letting a browser keep half texture FBOs unavailable until it can
+implement the separate `EXT_color_buffer_half_float` RGBA16F precision and
+readback contract. The RinGL and full Aquamarine bridge tests exercise the
+binary16 conversion and a real 2×2 bilinear sampled draw; there is no direct
+Aquamarine texture or sampler path.
+
 `EXT_blend_minmax` follows the same policy: `MIN` and `MAX` are rejected until
 the embedding explicitly calls `ringl_enable_webgl_blend_minmax()` after the
 WebGL extension object is acquired. The existing native blend pipeline then

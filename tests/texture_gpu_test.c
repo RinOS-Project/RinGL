@@ -214,10 +214,13 @@ int main(void)
     uint32_t float_texture;
     uint32_t float_mip_texture;
     uint32_t float_framebuffer;
+    uint32_t half_float_texture;
+    uint32_t half_float_framebuffer;
     uint32_t webgl_depth_texture;
     uint32_t webgl_depth_stencil_texture;
     uint32_t webgl_depth_framebuffer;
     uint32_t color_attachment_is_float;
+    uint32_t color_attachment_component_type;
     uint64_t image;
     uint64_t sampler;
     const uint8_t pixels[16] = {
@@ -324,6 +327,22 @@ int main(void)
         0.125f, 1.0f, 0.875f, 0.5f,
     };
     const float float_patch[4] = { 0.50f, 0.25f, 0.75f, 1.25f };
+    const uint16_t half_float_rgba_pixels[16] = {
+        UINT16_C(0xbc00), UINT16_C(0x3800), UINT16_C(0x3d00), UINT16_C(0x3a00),
+        UINT16_C(0x0000), UINT16_C(0x3c00), UINT16_C(0x3400), UINT16_C(0x3c00),
+        UINT16_C(0x4000), UINT16_C(0xc000), UINT16_C(0x3000), UINT16_C(0x3800),
+        UINT16_C(0x3a00), UINT16_C(0x3900), UINT16_C(0x3600), UINT16_C(0x3400),
+    };
+    const float expected_half_float_rgba_pixels[16] = {
+        -1.0f, 0.50f, 1.25f, 0.75f,
+        0.00f, 1.00f, 0.25f, 1.00f,
+        2.00f, -2.00f, 0.125f, 0.50f,
+        0.75f, 0.625f, 0.375f, 0.25f,
+    };
+    const uint16_t half_float_patch[4] = {
+        UINT16_C(0x3800), UINT16_C(0x3400), UINT16_C(0x3a00), UINT16_C(0x3d00),
+    };
+    const float expected_half_float_patch[4] = { 0.50f, 0.25f, 0.75f, 1.25f };
     const uint16_t expected_rgb5_a1_mip_level2 = UINT16_C(0x8421);
     const uint16_t webgl_depth_u16[4] = {
         0u, UINT16_C(0x8000), UINT16_MAX, UINT16_C(0x4000),
@@ -536,6 +555,66 @@ int main(void)
     assert(ringl_framebuffer_color_attachment_is_float(
                &color_attachment_is_float) == 0);
     assert(color_attachment_is_float == RINGL_TRUE);
+    ringl_bind_framebuffer(RINGL_FRAMEBUFFER, 0u);
+
+    /* HALF_FLOAT_OES is supplied as Uint16 payload bits, decoded without
+     * aliasing into the same RGBA32F RinGPU sampled storage. It has its own
+     * linear-completeness gate: enabling Float filtering must not grant it. */
+    ringl_gen_textures(1, &half_float_texture);
+    ringl_bind_texture(RINGL_TEXTURE_2D, half_float_texture);
+    ringl_tex_image_2d_from_bytes(
+        RINGL_TEXTURE_2D, 0, RINGL_RGBA, 2, 2, 0, RINGL_RGBA,
+        RINGL_HALF_FLOAT_OES, half_float_rgba_pixels,
+        sizeof(half_float_rgba_pixels));
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) != 0);
+    ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MIN_FILTER,
+                         RINGL_NEAREST);
+    ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MAG_FILTER,
+                         RINGL_NEAREST);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(backend.last_format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT);
+    assert(backend.last_upload_size == sizeof(expected_half_float_rgba_pixels));
+    assert(memcmp(backend.last_upload, expected_half_float_rgba_pixels,
+                  sizeof(expected_half_float_rgba_pixels)) == 0);
+    ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MIN_FILTER,
+                         RINGL_LINEAR);
+    ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MAG_FILTER,
+                         RINGL_LINEAR);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) != 0);
+    assert(ringl_enable_webgl_half_float_texture_linear() == 0);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    ringl_tex_sub_image_2d_from_bytes(
+        RINGL_TEXTURE_2D, 0, 1, 0, 1, 1, RINGL_RGBA,
+        RINGL_HALF_FLOAT_OES, half_float_patch,
+        sizeof(half_float_patch) - 1u);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    assert(memcmp(&context->textures[ringl_object_slot_index(half_float_texture)]
+                      .shadow_bytes[4u * sizeof(float)],
+                  &expected_half_float_rgba_pixels[4],
+                  4u * sizeof(float)) == 0);
+    ringl_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 1, 0, 1, 1, RINGL_RGBA,
+                           RINGL_HALF_FLOAT_OES, half_float_patch);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(memcmp(backend.last_upload + 4u * sizeof(float),
+                  expected_half_float_patch,
+                  sizeof(expected_half_float_patch)) == 0);
+    assert(ringl_texture_require_color_target(context, half_float_texture) ==
+           0);
+    ringl_gen_framebuffers(1, &half_float_framebuffer);
+    ringl_bind_framebuffer(RINGL_FRAMEBUFFER, half_float_framebuffer);
+    ringl_framebuffer_texture_2d(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT0,
+                                 RINGL_TEXTURE_2D, half_float_texture, 0);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    color_attachment_component_type = RINGL_UNSIGNED_BYTE;
+    assert(ringl_framebuffer_color_attachment_component_type(
+               &color_attachment_component_type) == 0);
+    assert(color_attachment_component_type == RINGL_HALF_FLOAT_OES);
+    color_attachment_is_float = RINGL_TRUE;
+    assert(ringl_framebuffer_color_attachment_is_float(
+               &color_attachment_is_float) == 0);
+    assert(color_attachment_is_float == RINGL_FALSE);
     ringl_bind_framebuffer(RINGL_FRAMEBUFFER, 0u);
 
     /* OES_texture_float_linear extends the base nearest-only profile with

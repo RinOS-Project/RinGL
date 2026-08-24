@@ -38,6 +38,8 @@ extern "C" {
 #define RINGL_UNSIGNED_SHORT_5_6_5 0x8363u
 #define RINGL_UNSIGNED_INT   0x1405u
 #define RINGL_FLOAT          0x1406u
+/* OES_texture_half_float's WebGL 1 upload token. */
+#define RINGL_HALF_FLOAT_OES 0x8d61u
 #define RINGL_FLOAT_VEC2     0x8b50u
 #define RINGL_FLOAT_VEC3     0x8b51u
 #define RINGL_FLOAT_VEC4     0x8b52u
@@ -187,7 +189,6 @@ extern "C" {
 #define RINGL_RGBA8      0x8058u
 /* WEBGL_color_buffer_float's RGBA32F_EXT storage token. */
 #define RINGL_RGBA32F    0x8814u
-#define RINGL_FLOAT       0x1406u
 #define RINGL_UNSIGNED_INT_24_8 0x84fau
 #define RINGL_TEXTURE_MAG_FILTER 0x2800u
 #define RINGL_TEXTURE_MIN_FILTER 0x2801u
@@ -1331,6 +1332,10 @@ int32_t ringl_get_tex_parameteri(uint32_t target, uint32_t pname);
  * been acquired. Returns zero only when a live current context accepted the
  * capability. */
 int ringl_enable_webgl_float_texture_linear(void);
+/* Enables the WebGL 1 OES_texture_half_float_linear completion rules for
+ * the current context. HALF_FLOAT_OES textures remain nearest-only until the
+ * browser has acquired that extension object. */
+int ringl_enable_webgl_half_float_texture_linear(void);
 /* WEBGL_color_buffer_float enables unclamped blendColor state for the current
  * context. RinGL retains finite components, then clamps them only while it
  * builds a pipeline for a fixed-point target. Returns zero only when a live
@@ -1419,6 +1424,12 @@ int ringl_get_framebuffer_color_attachment(
  * slot report zero. It is an inspection API only: callers must still use
  * ringl_check_framebuffer_status() before issuing a render or readback. */
 int ringl_framebuffer_color_attachment_is_float(uint32_t* is_float_out);
+/* Reports the declared color component type of the currently bound FBO's
+ * color attachment: RINGL_UNSIGNED_BYTE for normalized/default storage,
+ * RINGL_FLOAT for Float32, or RINGL_HALF_FLOAT_OES for a half-float upload
+ * normalized into RinGL's private Float32 shadow. The query is inspection
+ * only and leaves the output untouched on failure. */
+int ringl_framebuffer_color_attachment_component_type(uint32_t* type_out);
 uint32_t ringl_check_framebuffer_status(uint32_t target);
 
 void ringl_gen_renderbuffers(int32_t count, uint32_t* renderbuffers);

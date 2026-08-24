@@ -234,18 +234,25 @@ static int texture_level0_storage_defined(const RinGLTextureObject* texture)
     return texture_level_storage_defined(texture, 0u);
 }
 
+static int texture_color_component_is_float(uint32_t type)
+{
+    return type == RINGL_FLOAT || type == RINGL_HALF_FLOAT_OES;
+}
+
 static int texture_level0_complete(const RinGLContext* context,
                                    const RinGLTextureObject* texture)
 {
     if (!context || !texture_level0_storage_defined(texture))
         return 0;
 
-    /* OES_texture_float only guarantees nearest filters. The WebGL bridge
-     * flips this context-local bit when, and only when, script has obtained
-     * OES_texture_float_linear. Do not expose a native sampler capability
-     * merely because the RinGPU backend happens to support it. */
-    if (texture->color_component_type == RINGL_FLOAT &&
-        context->webgl_float_texture_linear_enabled == RINGL_FALSE &&
+    /* OES_texture_float and OES_texture_half_float guarantee nearest
+     * filters only. The WebGL bridge flips the matching context-local bit
+     * when, and only when, script has obtained its linear extension. Do not
+     * expose a native sampler capability merely because RinGPU supports it. */
+    if (((texture->color_component_type == RINGL_FLOAT &&
+          context->webgl_float_texture_linear_enabled == RINGL_FALSE) ||
+         (texture->color_component_type == RINGL_HALF_FLOAT_OES &&
+          context->webgl_half_float_texture_linear_enabled == RINGL_FALSE)) &&
         (texture->mag_filter != RINGL_NEAREST ||
          (texture->min_filter != RINGL_NEAREST &&
           texture->min_filter != RINGL_NEAREST_MIPMAP_NEAREST))) {
@@ -318,6 +325,21 @@ static uint32_t texture_external_texel_bytes(uint32_t format, uint32_t type)
             return 0u;
         }
     }
+    if (type == RINGL_HALF_FLOAT_OES) {
+        switch (format) {
+        case RINGL_RGBA:
+            return 8u;
+        case RINGL_RGB:
+            return 6u;
+        case RINGL_LUMINANCE_ALPHA:
+            return 4u;
+        case RINGL_ALPHA:
+        case RINGL_LUMINANCE:
+            return 2u;
+        default:
+            return 0u;
+        }
+    }
     if (type == RINGL_UNSIGNED_SHORT_5_6_5 ||
         type == RINGL_UNSIGNED_SHORT_4_4_4_4 ||
         type == RINGL_UNSIGNED_SHORT_5_5_5_1) {
@@ -375,6 +397,53 @@ static int texture_required_source_bytes(uint32_t width, uint32_t height,
     return 0;
 }
 
+static float texture_read_float_component(const uint8_t* source,
+                                          uint32_t type)
+{
+    if (type == RINGL_FLOAT) {
+        float value;
+
+        memcpy(&value, source, sizeof(value));
+        return value;
+    }
+    {
+        uint16_t half;
+        uint32_t sign;
+        uint32_t exponent;
+        uint32_t mantissa;
+        uint32_t bits;
+        float value;
+
+        memcpy(&half, source, sizeof(half));
+        sign = ((uint32_t)half & 0x8000u) << 16u;
+        exponent = ((uint32_t)half >> 10u) & 0x1fu;
+        mantissa = (uint32_t)half & 0x03ffu;
+        if (exponent == 0u) {
+            if (mantissa == 0u) {
+                bits = sign;
+            } else {
+                int32_t unbiased_exponent = -14;
+
+                while ((mantissa & 0x0400u) == 0u) {
+                    mantissa <<= 1u;
+                    --unbiased_exponent;
+                }
+                mantissa &= 0x03ffu;
+                bits = sign |
+                    ((uint32_t)(unbiased_exponent + 127) << 23u) |
+                    (mantissa << 13u);
+            }
+        } else if (exponent == 0x1fu) {
+            bits = sign | 0x7f800000u | (mantissa << 13u);
+        } else {
+            bits = sign | ((exponent + 112u) << 23u) |
+                   (mantissa << 13u);
+        }
+        memcpy(&value, &bits, sizeof(value));
+        return value;
+    }
+}
+
 static void texture_copy_color_texels(uint8_t* destination,
                                       const uint8_t* source,
                                       uint32_t storage_format,
@@ -385,28 +454,45 @@ static void texture_copy_color_texels(uint8_t* destination,
     uint32_t source_texel_bytes = texture_external_texel_bytes(source_format,
                                                                 type);
 
-    if (type == RINGL_FLOAT) {
+    if (texture_color_component_is_float(type)) {
         for (index = 0u; index < texel_count; ++index) {
             const uint8_t* source_texel =
                 source + (uint64_t)index * source_texel_bytes;
             float components[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+            uint32_t component_bytes = type == RINGL_FLOAT
+                ? (uint32_t)sizeof(float) : (uint32_t)sizeof(uint16_t);
 
             if (source_format == RINGL_RGBA) {
-                memcpy(components, source_texel, sizeof(components));
+                components[0] = texture_read_float_component(source_texel,
+                                                             type);
+                components[1] = texture_read_float_component(
+                    source_texel + component_bytes, type);
+                components[2] = texture_read_float_component(
+                    source_texel + 2u * component_bytes, type);
+                components[3] = texture_read_float_component(
+                    source_texel + 3u * component_bytes, type);
             } else if (source_format == RINGL_RGB) {
-                memcpy(components, source_texel, 3u * sizeof(float));
+                components[0] = texture_read_float_component(source_texel,
+                                                             type);
+                components[1] = texture_read_float_component(
+                    source_texel + component_bytes, type);
+                components[2] = texture_read_float_component(
+                    source_texel + 2u * component_bytes, type);
             } else if (source_format == RINGL_ALPHA) {
-                memcpy(&components[3], source_texel, sizeof(float));
+                components[3] = texture_read_float_component(source_texel,
+                                                             type);
             } else if (source_format == RINGL_LUMINANCE) {
-                memcpy(&components[0], source_texel, sizeof(float));
+                components[0] = texture_read_float_component(source_texel,
+                                                             type);
                 components[1] = components[0];
                 components[2] = components[0];
             } else if (source_format == RINGL_LUMINANCE_ALPHA) {
-                memcpy(&components[0], source_texel, sizeof(float));
+                components[0] = texture_read_float_component(source_texel,
+                                                             type);
                 components[1] = components[0];
                 components[2] = components[0];
-                memcpy(&components[3], source_texel + sizeof(float),
-                       sizeof(float));
+                components[3] = texture_read_float_component(
+                    source_texel + component_bytes, type);
             }
             memcpy(destination + (uint64_t)index * sizeof(components),
                    components, sizeof(components));
@@ -463,7 +549,7 @@ static uint32_t texture_storage_texel_bytes(uint32_t format,
 {
     if (format == RINGL_DEPTH24_STENCIL8)
         return 8u;
-    if (color_component_type == RINGL_FLOAT)
+    if (texture_color_component_is_float(color_component_type))
         return 4u * (uint32_t)sizeof(float);
     return texture_packed_color_format(format) ? 2u : 4u;
 }
@@ -616,7 +702,7 @@ static void texture_copy_rgba_to_copy_image_storage(
 static uint32_t texture_ringpu_format(uint32_t format,
                                       uint32_t color_component_type)
 {
-    if (color_component_type == RINGL_FLOAT)
+    if (texture_color_component_is_float(color_component_type))
         return RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT;
     if (format == RINGL_RGB565)
         return RINGL_RIN_GPU_FORMAT_RGB565_UNORM;
@@ -641,7 +727,7 @@ static uint32_t texture_storage_format(uint32_t internal_format,
         return RINGL_RGB5_A1;
     if (texture_color_format(internal_format) &&
         !texture_packed_color_format(internal_format) &&
-        internal_format == format && type == RINGL_FLOAT)
+        internal_format == format && texture_color_component_is_float(type))
         return internal_format;
     if (texture_color_format(internal_format) && internal_format == format &&
         type == RINGL_UNSIGNED_BYTE)
@@ -682,10 +768,11 @@ static int texture_upload_format_valid(const RinGLTextureObject* texture,
     if (texture == NULL)
         return 0;
     storage_format = texture->format;
-    if (texture->color_component_type == RINGL_FLOAT)
+    if (texture_color_component_is_float(texture->color_component_type))
         return texture_color_format(storage_format) &&
                !texture_packed_color_format(storage_format) &&
-               storage_format == format && type == RINGL_FLOAT;
+               storage_format == format &&
+               type == texture->color_component_type;
     if (storage_format == RINGL_RGB565)
         return format == RINGL_RGB && type == RINGL_UNSIGNED_SHORT_5_6_5;
     if (storage_format == RINGL_RGBA4)
@@ -1036,6 +1123,16 @@ int ringl_enable_webgl_float_texture_linear(void)
     if (context == NULL || context->lost != RINGL_FALSE)
         return -1;
     context->webgl_float_texture_linear_enabled = RINGL_TRUE;
+    return 0;
+}
+
+int ringl_enable_webgl_half_float_texture_linear(void)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL || context->lost != RINGL_FALSE)
+        return -1;
+    context->webgl_half_float_texture_linear_enabled = RINGL_TRUE;
     return 0;
 }
 
@@ -1400,7 +1497,8 @@ static int texture_generate_color_mips(
                     packed = texture_pack_packed_color(texture->format,
                                                         output_components);
                     memcpy(output, &packed, sizeof(packed));
-                } else if (texture->color_component_type == RINGL_FLOAT) {
+                } else if (texture_color_component_is_float(
+                               texture->color_component_type)) {
                     for (component = 0u; component < 4u; ++component) {
                         float a_component;
                         float b_component;
@@ -1804,7 +1902,7 @@ void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
     texture = bound_texture_2d(context);
     if (texture == NULL || !texture_level0_storage_defined(texture) ||
         !texture_color_format(texture->format) ||
-        texture->color_component_type == RINGL_FLOAT) {
+        texture_color_component_is_float(texture->color_component_type)) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }

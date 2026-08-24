@@ -359,6 +359,7 @@ struct RinGLContext {
     uint32_t default_framebuffer_state;
     uint32_t default_depth_framebuffer_state;
     uint32_t webgl_float_texture_linear_enabled;
+    uint32_t webgl_half_float_texture_linear_enabled;
     uint32_t webgl_float_color_buffer_enabled;
     uint32_t webgl_blend_minmax_enabled;
     uint64_t graphics_command_list;

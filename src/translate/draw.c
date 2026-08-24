@@ -97,8 +97,10 @@ int ringl_resolve_color_target(RinGLContext* context,
             return -1;
         switch (context->textures[index].format) {
         case RINGL_RGBA:
-            target->format = context->textures[index].color_component_type ==
-                    RINGL_FLOAT
+            target->format = (context->textures[index].color_component_type ==
+                    RINGL_FLOAT ||
+                context->textures[index].color_component_type ==
+                    RINGL_HALF_FLOAT_OES)
                 ? RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT
                 : RINGL_RIN_GPU_FORMAT_RGBA8_UNORM;
             break;

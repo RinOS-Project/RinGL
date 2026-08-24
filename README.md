@@ -164,6 +164,16 @@ readback through private native staging. The RinGPU software and
 Aquamarine-surface backends preserve 16-bit storage for upload, clear, draw,
 sampling, and readback.
 
+## Default drawing-buffer query slice
+
+`ringl_get_integerv_bounded()` reports `RED_BITS`, `GREEN_BITS`, `BLUE_BITS`,
+and `ALPHA_BITS` from the configured native default color format. It also
+reports `DEPTH_BITS` and `STENCIL_BITS` only when that logical plane is exposed
+by the default framebuffer's explicit-aspect contract. A physical D32/S8
+allocation used to supply a stencil-only WebGL drawing buffer therefore reports
+zero depth bits and eight stencil bits; a hidden physical plane never becomes a
+browser-visible capability merely because RinGL owns its storage.
+
 ## Current packed-color texture slice
 
 `texImage2D`/`texSubImage2D` accept WebGL 1 `RGB`/

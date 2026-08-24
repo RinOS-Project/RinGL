@@ -45,7 +45,7 @@ Status meanings:
 | `glGetBufferParameteriv` | P | `ringl_get_buffer_size` / `ringl_get_buffer_usage` only. |
 | `glGetError` | B | `ringl_get_error`. |
 | `glGetFramebufferAttachmentParameteriv` | P | Versioned attachment record; supported attachments and fields only. |
-| `glGetIntegerv` | P | `ringl_get_integerv_bounded` accepts only the inventory below. |
+| `glGetIntegerv` | P | `ringl_get_integerv_bounded` accepts only the inventory below, including default drawing-buffer component/depth/stencil bit counts derived from real configured planes. |
 | `glGetProgramiv`, `glGetShaderiv` | P | Versioned program record and dedicated shader-status/type calls; not every GLES pname. |
 | `glGetProgramInfoLog`, `glGetShaderInfoLog`, `glGetShaderSource` | B | Caller-owned bounded copies. |
 | `glGetRenderbufferParameteriv` | P | `RinGLRenderbufferInfoV1` supplies bounded storage metadata. |
@@ -108,6 +108,10 @@ failure. It accepts these exact pnames:
   `FRAMEBUFFER_BINDING`, `RENDERBUFFER_BINDING`, `CURRENT_PROGRAM`,
   `UNPACK_ALIGNMENT`, `MAX_TEXTURE_SIZE`, `MAX_TEXTURE_IMAGE_UNITS`,
   `MAX_COMBINED_TEXTURE_IMAGE_UNITS`, `MAX_VERTEX_ATTRIBS`;
+- default drawing-buffer component/plane counts: `RED_BITS`, `GREEN_BITS`,
+  `BLUE_BITS`, `ALPHA_BITS`, `DEPTH_BITS`, `STENCIL_BITS`. Component counts
+  come from the configured native color format; depth/stencil counts are zero
+  when the explicit browser-facing aspect contract hides that logical plane;
 - raster/depth/stencil/blend state: `CULL_FACE_MODE`, `FRONT_FACE`,
   `DEPTH_FUNC`, `DEPTH_WRITEMASK`, front/back stencil function/reference/masks
   and operations, blend source/destination/equation RGB/alpha, and

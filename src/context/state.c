@@ -782,6 +782,12 @@ static size_t ringl_get_integerv_value_count(uint32_t pname)
     case RINGL_RENDERBUFFER_BINDING:
     case RINGL_CURRENT_PROGRAM:
     case RINGL_UNPACK_ALIGNMENT:
+    case RINGL_RED_BITS:
+    case RINGL_GREEN_BITS:
+    case RINGL_BLUE_BITS:
+    case RINGL_ALPHA_BITS:
+    case RINGL_DEPTH_BITS:
+    case RINGL_STENCIL_BITS:
     case RINGL_MAX_TEXTURE_SIZE_QUERY:
     case RINGL_MAX_TEXTURE_IMAGE_UNITS:
     case RINGL_MAX_COMBINED_TEXTURE_IMAGE_UNITS:
@@ -814,6 +820,95 @@ static size_t ringl_get_integerv_value_count(uint32_t pname)
         return 1u;
     default:
         return 0u;
+    }
+}
+
+static uint32_t default_framebuffer_has_depth(
+    const RinGLDefaultFramebufferV1* framebuffer)
+{
+    if (framebuffer == NULL || framebuffer->depth_target == 0u)
+        return RINGL_FALSE;
+    if (framebuffer->flags == 0u)
+        return RINGL_TRUE;
+    return (framebuffer->flags & RINGL_DEFAULT_FRAMEBUFFER_DEPTH) != 0u
+        ? RINGL_TRUE
+        : RINGL_FALSE;
+}
+
+static uint32_t default_framebuffer_has_stencil(
+    const RinGLDefaultFramebufferV1* framebuffer)
+{
+    if (framebuffer == NULL || framebuffer->depth_target == 0u ||
+        framebuffer->depth_format != RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT)
+        return RINGL_FALSE;
+    if (framebuffer->flags == 0u)
+        return RINGL_TRUE;
+    return (framebuffer->flags & RINGL_DEFAULT_FRAMEBUFFER_STENCIL) != 0u
+        ? RINGL_TRUE
+        : RINGL_FALSE;
+}
+
+static int32_t default_framebuffer_color_bits(
+    const RinGLDefaultFramebufferV1* framebuffer, uint32_t pname)
+{
+    uint32_t red_bits = 0u;
+    uint32_t green_bits = 0u;
+    uint32_t blue_bits = 0u;
+    uint32_t alpha_bits = 0u;
+
+    if (framebuffer == NULL)
+        return 0;
+    switch (framebuffer->color_format) {
+    case RINGL_RIN_GPU_FORMAT_RGBA8_UNORM:
+    case RINGL_RIN_GPU_FORMAT_BGRA8_UNORM:
+        red_bits = 8u;
+        green_bits = 8u;
+        blue_bits = 8u;
+        alpha_bits = 8u;
+        break;
+    case RINGL_RIN_GPU_FORMAT_RGB565_UNORM:
+        red_bits = 5u;
+        green_bits = 6u;
+        blue_bits = 5u;
+        break;
+    case RINGL_RIN_GPU_FORMAT_RGBA4_UNORM:
+        red_bits = 4u;
+        green_bits = 4u;
+        blue_bits = 4u;
+        alpha_bits = 4u;
+        break;
+    case RINGL_RIN_GPU_FORMAT_RGB5_A1_UNORM:
+        red_bits = 5u;
+        green_bits = 5u;
+        blue_bits = 5u;
+        alpha_bits = 1u;
+        break;
+    case RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT:
+        red_bits = 16u;
+        green_bits = 16u;
+        blue_bits = 16u;
+        alpha_bits = 16u;
+        break;
+    case RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT:
+        red_bits = 32u;
+        green_bits = 32u;
+        blue_bits = 32u;
+        alpha_bits = 32u;
+        break;
+    default:
+        break;
+    }
+    switch (pname) {
+    case RINGL_RED_BITS:
+        return (int32_t)red_bits;
+    case RINGL_GREEN_BITS:
+        return (int32_t)green_bits;
+    case RINGL_BLUE_BITS:
+        return (int32_t)blue_bits;
+    case RINGL_ALPHA_BITS:
+        return (int32_t)alpha_bits;
+    default:
+        return 0;
     }
 }
 
@@ -864,6 +959,30 @@ int ringl_get_integerv_bounded(uint32_t pname, int32_t* values,
         return 0;
     case RINGL_UNPACK_ALIGNMENT:
         values[0] = (int32_t)context->unpack_alignment;
+        return 0;
+    case RINGL_RED_BITS:
+    case RINGL_GREEN_BITS:
+    case RINGL_BLUE_BITS:
+    case RINGL_ALPHA_BITS:
+        values[0] = default_framebuffer_color_bits(
+            context->has_default_framebuffer != 0u
+                ? &context->default_framebuffer
+                : NULL,
+            pname);
+        return 0;
+    case RINGL_DEPTH_BITS:
+        values[0] = context->has_default_framebuffer != 0u &&
+                default_framebuffer_has_depth(&context->default_framebuffer) !=
+                    0u
+            ? 32
+            : 0;
+        return 0;
+    case RINGL_STENCIL_BITS:
+        values[0] = context->has_default_framebuffer != 0u &&
+                default_framebuffer_has_stencil(
+                    &context->default_framebuffer) != 0u
+            ? 8
+            : 0;
         return 0;
     case RINGL_MAX_TEXTURE_SIZE_QUERY:
         values[0] = (int32_t)RINGL_MAX_TEXTURE_SIZE;

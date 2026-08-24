@@ -142,6 +142,12 @@ extern "C" {
 
 #define RINGL_VIEWPORT                      0x0ba2u
 #define RINGL_SCISSOR_BOX                   0x0c10u
+#define RINGL_RED_BITS                      0x0d52u
+#define RINGL_GREEN_BITS                    0x0d53u
+#define RINGL_BLUE_BITS                     0x0d54u
+#define RINGL_ALPHA_BITS                    0x0d55u
+#define RINGL_DEPTH_BITS                    0x0d56u
+#define RINGL_STENCIL_BITS                  0x0d57u
 #define RINGL_MAX_TEXTURE_SIZE_QUERY        0x0d33u
 #define RINGL_TEXTURE_BINDING_2D            0x8069u
 #define RINGL_ACTIVE_TEXTURE                0x84e0u
@@ -290,6 +296,10 @@ extern "C" {
 #define RINGL_RIN_GPU_INDEX_UINT32         2u
 #define RINGL_RIN_GPU_INDEX_UINT8          3u
 #define RINGL_RIN_GPU_FORMAT_RGBA8_UNORM   2u
+/* The caller-owned WebGL drawing buffer is BGRA8, while offscreen WebGL
+ * framebuffer images use RGBA8. Keep both native formats visible to the
+ * frontend so default-framebuffer queries report the actual bit layout. */
+#define RINGL_RIN_GPU_FORMAT_BGRA8_UNORM   3u
 #define RINGL_RIN_GPU_FORMAT_D32_FLOAT     4u
 #define RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT 5u
 /* Native stencil-only image. It must never be used for depth comparison or

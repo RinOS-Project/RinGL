@@ -409,6 +409,36 @@ int main(void)
     assert(ringl_set_default_framebuffer(&framebuffer) == 0);
     ringl_get_integerv(RINGL_VIEWPORT, values);
     assert(values[0] == 0 && values[1] == 0 && values[2] == 320 && values[3] == 200);
+    ringl_get_integerv(RINGL_RED_BITS, values);
+    assert(values[0] == 8);
+    ringl_get_integerv(RINGL_GREEN_BITS, values);
+    assert(values[0] == 8);
+    ringl_get_integerv(RINGL_BLUE_BITS, values);
+    assert(values[0] == 8);
+    ringl_get_integerv(RINGL_ALPHA_BITS, values);
+    assert(values[0] == 8);
+    ringl_get_integerv(RINGL_DEPTH_BITS, values);
+    assert(values[0] == 0);
+    ringl_get_integerv(RINGL_STENCIL_BITS, values);
+    assert(values[0] == 0);
+
+    framebuffer.depth_target = 2u;
+    framebuffer.depth_format = RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT;
+    framebuffer.flags = RINGL_DEFAULT_FRAMEBUFFER_EXPLICIT_ASPECTS |
+        RINGL_DEFAULT_FRAMEBUFFER_STENCIL;
+    assert(ringl_set_default_framebuffer(&framebuffer) == 0);
+    ringl_get_integerv(RINGL_DEPTH_BITS, values);
+    assert(values[0] == 0);
+    ringl_get_integerv(RINGL_STENCIL_BITS, values);
+    assert(values[0] == 8);
+
+    framebuffer.flags = RINGL_DEFAULT_FRAMEBUFFER_EXPLICIT_ASPECTS |
+        RINGL_DEFAULT_FRAMEBUFFER_DEPTH;
+    assert(ringl_set_default_framebuffer(&framebuffer) == 0);
+    ringl_get_integerv(RINGL_DEPTH_BITS, values);
+    assert(values[0] == 32);
+    ringl_get_integerv(RINGL_STENCIL_BITS, values);
+    assert(values[0] == 0);
     ringl_context_destroy(context);
     return 0;
 }

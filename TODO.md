@@ -227,6 +227,12 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   embeddings: it forces WebGL's color/depth/stencil defaults without observing
   bound-FBO, scissor, or write-mask state, and reports its own failure without
   consuming the application's pending `glGetError()` value.
+- [x] Report the actual default drawing-buffer `RED_BITS`/`GREEN_BITS`/
+  `BLUE_BITS`/`ALPHA_BITS` and logical `DEPTH_BITS`/`STENCIL_BITS` through the
+  bounded integer-query API. RinGL derives component widths from the configured
+  native color format and depth/stencil visibility from the explicit-aspect
+  contract that controls draw/clear behavior; absent logical planes report zero
+  rather than being inferred from private storage.
 - [x] Map viewport/scissor state through dynamic RinGPU raster-state commands, including finite negative viewport origins and clipped scissor rectangles.
 - [x] Add `depthRange` state with a versioned `RinGLDepthRangeV1` snapshot. Finite endpoints clamp independently to `[0,1]`, reversed ranges remain valid, NaN/Inf leave state unchanged, and draw translation carries the exact pair in native RinGPU raster state.
 - [x] Carry `POLYGON_OFFSET_FILL` and finite `polygonOffset(factor, units)` state through RinGL's dynamic raster-state callback. RinGPU's V2 raster descriptor preserves the V1 disabled default, and the Aquamarine backend applies `m * factor + 2^-23 * units` only to filled-triangle depth before depth comparison/write; points and lines remain unchanged. Invalid non-finite inputs leave RinGL state unchanged. State and actual RinGL-to-RinGPU depth readback tests cover enabled and disabled behavior.

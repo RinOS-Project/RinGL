@@ -390,14 +390,17 @@ fails lowering without publishing a truncated module.
 
 The same transformed route supports the common vertex-color texture form: an
 `attribute vec4` is copied into a following `varying vec4`, and the exact
-fragment expression `texture2D(texture, uv) * vertexColor` loads six
+fragment expression `texture2D(texture, uv) * vertexColor` (or a full-width,
+read-only `xyzw`/`rgba`/`stpq` swizzle of that color) loads six
 interpolated scalars, samples the typed image/sampler pair, and emits four RSH1
 component-wise multiplies. One or two UV pairs may accompany that color while
 the native interface remains within eight scalar varyings. With two pairs, the
 exact material expression `(texture2D(firstTexture, firstUv) +
 texture2D(secondTexture, secondUv)) * vertexColor` samples and adds both typed
-image/sampler pairs before the RGBA modulation. The focused native draw test
-verifies both the six-scalar and twelve-output/eight-input pipelines, matrix
+image/sampler pairs before the RGBA modulation. Full-width, read-only color
+swizzles are composed into those four multiply sources, rather than requiring a
+backend vector operation. The focused native draw test verifies both the
+six-scalar and twelve-output/eight-input pipelines, matrix
 uniform updates, dense position/UV/RGBA attribute layouts, and native resource
 bindings. Either material may append one `uniform vec4` tint and one `uniform
 float` opacity; RSH1 materializes the finite tint constants, then broadcasts
@@ -781,7 +784,8 @@ remain unsupported.
 The initial varying bridge now also executes a bounded vertex-color profile:
 `attribute vec2 position; attribute vec4 color; varying vec4 vertexColor;`
 with `gl_Position = vec4(position, 0.0, 1.0)`, `vertexColor = color`, and
-`gl_FragColor = vertexColor`. RinGL expands the two attributes to six scalar
+`gl_FragColor = vertexColor` or a full-width read-only swizzle such as
+`vertexColor.stpq.bgra`. RinGL expands the two attributes to six scalar
 Float32 RinGPU inputs and the color to four perspective-interpolated scalar
 varyings; RSH1 lowering and a RinGL-to-RinGPU surface test verify the resulting
 RGBA pixels. This does not make arbitrary varying declarations or expressions
@@ -801,7 +805,8 @@ described above; WebGL 2 integer attributes and general vertex pulling remain
 outside this slice.
 
 The corresponding bounded RGB profile accepts `attribute vec3 color` and
-`varying vec3 vertexColor`, with `gl_FragColor = vec4(vertexColor, 1.0)`.
+`varying vec3 vertexColor`, with `gl_FragColor = vec4(vertexColor, 1.0)` or a
+full-width read-only selector such as `vec4(vertexColor.bgr, 1.0)`.
 It uses three interpolated color slots, then explicitly writes `1.0` to the
 fourth fixed vertex output and loads that slot in the fragment RSH1. This keeps
 the native RinGPU interface fully mapped and type-checked instead of treating

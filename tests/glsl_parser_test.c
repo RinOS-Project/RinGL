@@ -52,7 +52,7 @@ int main(void)
     assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
     ringl_shader_source(fragment,
         "varying vec4 vertexColor;\n"
-        "void main() { gl_FragColor = vertexColor; }\n", -1);
+        "void main() { gl_FragColor = vertexColor.stpq.bgra; }\n", -1);
     ringl_compile_shader(fragment);
     assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
 
@@ -84,7 +84,7 @@ int main(void)
     assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
     ringl_shader_source(fragment,
         "varying vec3 vertexColor;\n"
-        "void main() { gl_FragColor = vec4(vertexColor, 1.0); }\n", -1);
+        "void main() { gl_FragColor = vec4(vertexColor.bgr, 1.0); }\n", -1);
     ringl_compile_shader(fragment);
     assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
 

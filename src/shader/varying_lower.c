@@ -191,6 +191,74 @@ static int read_identifier(const char** cursor, char* name, size_t capacity)
     return 1;
 }
 
+/* The bounded varying profiles still need ordinary GLSL read selectors at
+ * their source boundary. Keep the selector as a register permutation: RSH1
+ * has scalar registers, so emitting a synthetic vector operation would hide
+ * the component order from every backend. A caller may omit the selector,
+ * but when present it must produce the exact width required by the enclosing
+ * GLSL expression. */
+static int parse_optional_read_swizzle(const char** cursor,
+                                       uint32_t source_width,
+                                       uint32_t result_width,
+                                       uint32_t components[4])
+{
+    uint32_t current_width;
+    uint32_t index;
+
+    if (cursor == NULL || *cursor == NULL || components == NULL ||
+        source_width == 0u || source_width > 4u || result_width == 0u ||
+        result_width > 4u) {
+        return 0;
+    }
+    for (index = 0u; index < source_width; ++index)
+        components[index] = index;
+    current_width = source_width;
+    while (**cursor == '.') {
+        const char* p = *cursor + 1u;
+        uint32_t selected[4];
+        uint32_t length = 0u;
+        uint8_t family = 0u;
+
+        while (isalpha((unsigned char)*p)) {
+            uint8_t component_family;
+            uint32_t component_index;
+
+            if (length == 4u)
+                return 0;
+            switch (*p++) {
+            case 'x': component_family = 1u; component_index = 0u; break;
+            case 'y': component_family = 1u; component_index = 1u; break;
+            case 'z': component_family = 1u; component_index = 2u; break;
+            case 'w': component_family = 1u; component_index = 3u; break;
+            case 'r': component_family = 2u; component_index = 0u; break;
+            case 'g': component_family = 2u; component_index = 1u; break;
+            case 'b': component_family = 2u; component_index = 2u; break;
+            case 'a': component_family = 2u; component_index = 3u; break;
+            case 's': component_family = 3u; component_index = 0u; break;
+            case 't': component_family = 3u; component_index = 1u; break;
+            case 'p': component_family = 3u; component_index = 2u; break;
+            case 'q': component_family = 3u; component_index = 3u; break;
+            default: return 0;
+            }
+            if ((family != 0u && family != component_family) ||
+                component_index >= current_width) {
+                return 0;
+            }
+            family = component_family;
+            selected[length++] = components[component_index];
+        }
+        if (length == 0u)
+            return 0;
+        for (index = 0u; index < length; ++index)
+            components[index] = selected[index];
+        current_width = length;
+        *cursor = p;
+    }
+    if (current_width != result_width)
+        return 0;
+    return 1;
+}
+
 static int sampler_index_for_name(char names[][64], uint32_t count,
                                   const char* name, uint32_t* index_out)
 {
@@ -1042,6 +1110,7 @@ static int lower_fragment_textured_vertex_color(
     uint32_t input_count;
     uint32_t sample_base;
     uint32_t color_input_base;
+    uint32_t color_components[4];
     uint32_t instruction_cursor;
     uint32_t next_register;
     uint32_t store_base;
@@ -1050,6 +1119,9 @@ static int lower_fragment_textured_vertex_color(
     uint32_t sampler_index;
     size_t expected_length = 0u;
     size_t total;
+    const char* color_cursor;
+    const char* color_selector;
+    size_t color_selector_length;
 
     if (source == NULL || result == NULL ||
         (uniform_count != 0u && uniforms == NULL) ||
@@ -1145,8 +1217,25 @@ static int lower_fragment_textured_vertex_color(
                                       samplers[0], uvs[0])) {
         return 1;
     }
+    if (strncmp(source, expected, expected_length) != 0)
+        return 1;
+    color_cursor = source + expected_length;
+    if (!consume_text(&color_cursor, "*") ||
+        !consume_text(&color_cursor, color)) {
+        return 1;
+    }
+    color_selector = color_cursor;
+    if (!parse_optional_read_swizzle(&color_cursor, 4u, 4u,
+                                     color_components)) {
+        return 1;
+    }
+    color_selector_length = (size_t)(color_cursor - color_selector);
     if (!append_compact_source(expected, sizeof(expected), &expected_length,
                                "*%s", color) ||
+        (color_selector_length != 0u &&
+         !append_compact_source(expected, sizeof(expected), &expected_length,
+                                "%.*s", (int)color_selector_length,
+                                color_selector)) ||
         (has_tint &&
          !append_compact_source(expected, sizeof(expected), &expected_length,
                                 "*%s", tint_name)) ||
@@ -1209,7 +1298,7 @@ static int lower_fragment_textured_vertex_color(
         ins[instruction_cursor + component].source0 =
             (uint16_t)(final_base + component);
         ins[instruction_cursor + component].source1 =
-            (uint16_t)(color_input_base + component);
+            (uint16_t)(color_input_base + color_components[component]);
     }
     final_base = next_register;
     next_register += 4u;
@@ -2016,8 +2105,11 @@ static int lower_fragment_color(const char* source,
     RinGLRsh1InstructionV1 ins[9];
     char varying_tag[16];
     char varying[64];
-    char expected[256];
+    char prefix[256];
+    const char* cursor;
+    uint32_t source_components[4];
     uint32_t component;
+    int prefix_length;
     size_t total;
 
     if ((color_width != 3u && color_width != 4u) ||
@@ -2027,17 +2119,27 @@ static int lower_fragment_color(const char* source,
                         sizeof(varying))) {
         return 1;
     }
-    if (color_width == 4u) {
-        (void)snprintf(expected, sizeof(expected),
-                       "varyingvec4%s;voidmain(){gl_FragColor=%s;}",
-                       varying, varying);
-    } else {
-        (void)snprintf(expected, sizeof(expected),
-                       "varyingvec3%s;voidmain(){gl_FragColor=vec4(%s,1.0);}",
-                       varying, varying);
-    }
-    if (strcmp(source, expected) != 0)
+    if (color_width == 4u)
+        prefix_length = snprintf(prefix, sizeof(prefix),
+                                 "varyingvec4%s;voidmain(){gl_FragColor=%s",
+                                 varying, varying);
+    else
+        prefix_length = snprintf(prefix, sizeof(prefix),
+                                 "varyingvec3%s;voidmain(){gl_FragColor=vec4(%s",
+                                 varying, varying);
+    if (prefix_length < 0 || (size_t)prefix_length >= sizeof(prefix) ||
+        strncmp(source, prefix, (size_t)prefix_length) != 0) {
         return 1;
+    }
+    cursor = source + prefix_length;
+    if (!parse_optional_read_swizzle(&cursor, color_width, color_width,
+                                     source_components)) {
+        return 1;
+    }
+    if ((color_width == 4u && strcmp(cursor, ";}") != 0) ||
+        (color_width == 3u && strcmp(cursor, ",1.0);}") != 0)) {
+        return 1;
+    }
     for (component = 0u; component < 4u; ++component) {
         init_instruction(&ins[component], RINGL_RSH1_OP_LOAD_INPUT_F32);
         ins[component].destination = (uint16_t)component;
@@ -2045,7 +2147,9 @@ static int lower_fragment_color(const char* source,
     }
     for (component = 0u; component < 4u; ++component) {
         init_instruction(&ins[4u + component], RINGL_RSH1_OP_STORE_OUTPUT_F32);
-        ins[4u + component].source0 = (uint16_t)component;
+        ins[4u + component].source0 = component < color_width
+            ? (uint16_t)source_components[component]
+            : (uint16_t)component;
         ins[4u + component].immediate = component;
     }
     init_instruction(&ins[8], RINGL_RSH1_OP_RETURN);

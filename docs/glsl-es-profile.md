@@ -35,6 +35,18 @@ The current first-triangle slice supports:
 
 RinShader RSH1 remains scalar. Vector values are flattened by RinGL into consecutive scalar F32 I/O slots. For example, one `attribute vec2 position` occupies input slots 0 and 1, while `gl_Position = vec4(position, 0.0, 1.0)` stores four scalar outputs. This keeps vector source semantics above the stable RSH1 instruction ABI.
 
+The bounded perspective-color profiles apply the same read-only selector rule
+to their `varying vec3`/`vec4` fragment values. A full-width selector is
+composed directly into the scalar input registers, so `vertexColor.stpq.bgra`
+and `vec4(vertexColor.bgr, 1.0)` do not require a backend-specific vector
+instruction. Partial-width selectors and swizzle writes remain outside those
+structural profiles.
+
+The bounded `texture2D(colorTexture, uv) * vertexColor` material uses the same
+four scalar input-register permutation for a full-width `varying vec4` selector
+before its component-wise texture modulation. It does not introduce a general
+vector operation or broaden the accepted material grammar.
+
 The first visible-triangle shader can therefore take the standards-shaped form:
 
 ```glsl

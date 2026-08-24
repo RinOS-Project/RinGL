@@ -619,7 +619,7 @@ int main(void)
         "uniform sampler2D colorTexture; uniform vec4 tint; uniform float opacity; "
         "varying vec2 uv; "
         "varying vec4 vertexColor; void main() { gl_FragColor = "
-        "texture2D(colorTexture, uv) * vertexColor * tint * opacity; }",
+        "texture2D(colorTexture, uv) * vertexColor.stpq.bgra * tint * opacity; }",
         -1);
     ringl_compile_shader(vertex_color_vertex);
     ringl_compile_shader(vertex_color_fragment);

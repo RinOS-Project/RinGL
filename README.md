@@ -747,8 +747,10 @@ RinGL is not a GLES conformance claim. An exact backend
 `RINGL_RIN_GPU_ERROR_DEVICE_LOST` now makes the context sticky-lost: ordinary
 entry points stop observing it, `ringl_get_error()` returns
 `CONTEXT_LOST_WEBGL` once, and subsequent calls cannot mutate its GL state.
-Browser `webglcontextlost` dispatch, restoration, and broader shader expressions
-remain unfinished. No API or ABI stability guarantee is made yet.
+The RinOS Ladybird WebGL 1 embedding latches that browser-visible state and
+emits one canvas `webglcontextlost` event before script can re-enter it. Context
+restoration, `webglcontextrestored`, and broader shader expressions remain
+unfinished. No API or ABI stability guarantee is made yet.
 
 The raw shader path now has a bounded scalar/vector/matrix uniform execution
 profile. A linked program retains `float`, `vec2`, `vec3`, `vec4`, and bounded

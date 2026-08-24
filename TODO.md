@@ -335,6 +335,11 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     before command submission, image-state transition, or destination writes;
     its raw-pointer predecessor is documented as trusted native-only.
 - [ ] Ensure context loss can be propagated predictably to a browser implementation.
+  - RinOS Ladybird WebGL 1 now translates sticky RinGL loss through command,
+    present, and `isContextLost()` into a once-only `webglcontextlost` canvas
+    event with the browser lost flag set before handler re-entry. Surface
+    recreation, restoration, `webglcontextrestored`, WebGL 2, and browser
+    ISO/QEMU evidence remain unfinished, so this parent remains unchecked.
 - [ ] Audit allocation limits and integer overflow paths for untrusted content.
 - [ ] Add WebGL-oriented negative tests for malformed state and shader input.
 

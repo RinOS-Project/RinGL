@@ -360,10 +360,13 @@ context. `ringl_get_error()` then returns `RINGL_CONTEXT_LOST_WEBGL` once and
 returns `RINGL_NO_ERROR` thereafter. `ringl_context_is_lost()` lets a trusted
 embedding observe the latched state without re-enabling GL access.
 
-This is a bounded native-to-RinGL propagation contract. The Ladybird bridge
-does not yet translate it into browser `webglcontextlost`/restoration events or
-recreate an embedding surface, so it is not a browser-facing WebGL context-loss
-implementation claim.
+For the RinOS Ladybird WebGL 1 embedding, this native-to-RinGL condition is now
+also a browser transition: the command-current, presentation, and
+`isContextLost()` paths latch the WebGL context-lost flag before dispatching one
+cancelable canvas `webglcontextlost` event. A handler can therefore re-enter
+only against the already-lost context. Surface recreation, restoration, and
+`webglcontextrestored` are still absent, so this is a loss-notification
+contract, not a restoration claim.
 
 ## Expected ownership
 

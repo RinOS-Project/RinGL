@@ -16,7 +16,7 @@ typedef struct FakeBackend {
     uint32_t destroys;
     uint32_t last_format;
     uint64_t last_upload_size;
-    uint8_t last_upload[16];
+    uint8_t last_upload[64];
     uint32_t mip_image_creates;
     uint32_t mip_uploads;
     uint32_t mip_level_count;
@@ -60,6 +60,7 @@ static int fake_create_image(void* session,
     assert(desc != NULL && image_out != NULL);
     assert(desc->width == 2u && desc->height == 2u);
     assert(desc->format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM ||
+           desc->format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT ||
            desc->format == RINGL_RIN_GPU_FORMAT_RGB565_UNORM ||
            desc->format == RINGL_RIN_GPU_FORMAT_RGBA4_UNORM ||
            desc->format == RINGL_RIN_GPU_FORMAT_RGB5_A1_UNORM);
@@ -79,8 +80,10 @@ static int fake_upload_image(void* session, uint64_t image,
     assert(upload->x == 0u && upload->y == 0u);
     assert(upload->width == 2u && upload->height == 2u);
     uint32_t texel_bytes = backend->last_format ==
-            RINGL_RIN_GPU_FORMAT_RGBA8_UNORM
-        ? 4u : 2u;
+            RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT
+        ? 16u
+        : backend->last_format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM
+            ? 4u : 2u;
 
     assert(upload->source_row_pitch_bytes == 2u * texel_bytes);
     assert(size_bytes == 4u * texel_bytes);
@@ -153,7 +156,8 @@ static int fake_create_sampler(void* session,
     assert(desc != NULL && sampler_out != NULL);
     assert(desc->min_filter == RINGL_RIN_GPU_SAMPLER_LINEAR ||
            desc->min_filter == RINGL_RIN_GPU_SAMPLER_NEAREST);
-    assert(desc->mag_filter == RINGL_RIN_GPU_SAMPLER_LINEAR);
+    assert(desc->mag_filter == RINGL_RIN_GPU_SAMPLER_LINEAR ||
+           desc->mag_filter == RINGL_RIN_GPU_SAMPLER_NEAREST);
     assert(desc->mip_filter == RINGL_RIN_GPU_SAMPLER_MIP_NONE ||
            desc->mip_filter == RINGL_RIN_GPU_SAMPLER_NEAREST ||
            desc->mip_filter == RINGL_RIN_GPU_SAMPLER_LINEAR);
@@ -197,6 +201,7 @@ int main(void)
     uint32_t packed_texture;
     uint32_t packed_mip_texture;
     uint32_t mip_texture;
+    uint32_t float_texture;
     uint32_t webgl_depth_texture;
     uint32_t webgl_depth_stencil_texture;
     uint32_t webgl_depth_framebuffer;
@@ -295,6 +300,17 @@ int main(void)
     const uint16_t expected_rgb5_a1_mip_level1[4] = {
         UINT16_C(0x8421), UINT16_C(0x8421), UINT16_C(0x8421), UINT16_C(0x8421),
     };
+    const float float_rgba_pixels[16] = {
+        -0.25f, 0.50f, 1.25f, 0.75f,
+        0.00f, 1.00f, 0.25f, 1.00f,
+        2.00f, -1.00f, 0.125f, 0.50f,
+        0.75f, 0.625f, 0.375f, 0.25f,
+    };
+    const float float_luminance_alpha_pixels[8] = {
+        -0.5f, 0.25f, 1.5f, 0.75f,
+        0.125f, 1.0f, 0.875f, 0.5f,
+    };
+    const float float_patch[4] = { 0.50f, 0.25f, 0.75f, 1.25f };
     const uint16_t expected_rgb5_a1_mip_level2 = UINT16_C(0x8421);
     const uint16_t webgl_depth_u16[4] = {
         0u, UINT16_C(0x8000), UINT16_MAX, UINT16_C(0x4000),
@@ -442,6 +458,61 @@ int main(void)
     assert(backend.last_upload_size == sizeof(rgb5_a1_pixels));
     assert(memcmp(backend.last_upload, rgb5_a1_pixels,
                   sizeof(rgb5_a1_pixels)) == 0);
+
+    /* OES_texture_float storage is native RGBA32F, not a clamped RGBA8
+     * emulation. The base extension permits only nearest filters, so the
+     * GLES defaults remain incomplete until both filters are made nearest. */
+    ringl_gen_textures(1, &float_texture);
+    ringl_bind_texture(RINGL_TEXTURE_2D, float_texture);
+    ringl_tex_image_2d_from_bytes(
+        RINGL_TEXTURE_2D, 0, RINGL_RGBA, 2, 2, 0, RINGL_RGBA, RINGL_FLOAT,
+        float_rgba_pixels, sizeof(float_rgba_pixels));
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) != 0);
+    ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MIN_FILTER,
+                         RINGL_NEAREST);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) != 0);
+    ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MAG_FILTER,
+                         RINGL_NEAREST);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(backend.last_format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT);
+    assert(backend.last_upload_size == sizeof(float_rgba_pixels));
+    assert(memcmp(backend.last_upload, float_rgba_pixels,
+                  sizeof(float_rgba_pixels)) == 0);
+    ringl_tex_sub_image_2d_from_bytes(
+        RINGL_TEXTURE_2D, 0, 1, 0, 1, 1, RINGL_RGBA, RINGL_FLOAT,
+        float_patch, sizeof(float_patch) - 1u);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    assert(memcmp(&context->textures[ringl_object_slot_index(float_texture)]
+                      .shadow_bytes[4u * sizeof(float)],
+                  &float_rgba_pixels[4], 4u * sizeof(float)) == 0);
+    ringl_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 1, 0, 1, 1, RINGL_RGBA,
+                           RINGL_FLOAT, float_patch);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(memcmp(backend.last_upload + 4u * sizeof(float), float_patch,
+                  sizeof(float_patch)) == 0);
+    assert(ringl_texture_require_color_target(context, float_texture) != 0);
+
+    /* Float inputs apply the same ALPHA/LUMINANCE expansion as U8 input but
+     * preserve components outside the normalized range. */
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_LUMINANCE_ALPHA, 2, 2, 0,
+                       RINGL_LUMINANCE_ALPHA, RINGL_FLOAT,
+                       float_luminance_alpha_pixels);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    {
+        const float expected_float_luminance_alpha[16] = {
+            -0.5f, -0.5f, -0.5f, 0.25f,
+            1.5f, 1.5f, 1.5f, 0.75f,
+            0.125f, 0.125f, 0.125f, 1.0f,
+            0.875f, 0.875f, 0.875f, 0.5f,
+        };
+
+        assert(backend.last_format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT);
+        assert(memcmp(backend.last_upload, expected_float_luminance_alpha,
+                      sizeof(expected_float_luminance_alpha)) == 0);
+    }
 
     ringl_gen_textures(1, &incomplete);
     ringl_bind_texture(RINGL_TEXTURE_2D, incomplete);

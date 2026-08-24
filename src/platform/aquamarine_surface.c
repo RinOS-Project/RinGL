@@ -50,6 +50,8 @@ static uint32_t backend_image_texel_bytes(uint32_t format)
         return (uint32_t)sizeof(uint8_t);
     if (format == RIN_GPU_FORMAT_D32_FLOAT_S8_UINT)
         return (uint32_t)sizeof(uint64_t);
+    if (format == RIN_GPU_FORMAT_RGBA32_FLOAT)
+        return 4u * (uint32_t)sizeof(float);
     if (format == RIN_GPU_FORMAT_RGB565_UNORM ||
         format == RIN_GPU_FORMAT_RGBA4_UNORM ||
         format == RIN_GPU_FORMAT_RGB5_A1_UNORM)
@@ -859,6 +861,11 @@ static int backend_create_image(void* opaque, const RinGpuImageDescV1* desc,
                 backend_packed_color_format(desc->format)) &&
                (desc->usage & RIN_GPU_IMAGE_PRESENT) == 0u) {
         /* Generic RinGPU color images back custom WebGL framebuffers. */
+    } else if (desc->format == RIN_GPU_FORMAT_RGBA32_FLOAT &&
+               desc->usage == (RIN_GPU_IMAGE_COPY_DESTINATION |
+                               RIN_GPU_IMAGE_SAMPLED)) {
+        /* Float RGBA is intentionally sampled-only. Do not accidentally turn
+         * OES_texture_float into an unsupported float color-target path. */
     } else if (desc->format == RIN_GPU_FORMAT_D32_FLOAT &&
                (desc->usage & RIN_GPU_IMAGE_PRESENT) == 0u &&
                (desc->usage & RIN_GPU_IMAGE_DEPTH_STENCIL) != 0u) {
@@ -1648,6 +1655,9 @@ static int backend_snapshot_sampled_mip(
                 destination_texel[1] = (float)color.g / 255.0f;
                 destination_texel[2] = (float)color.b / 255.0f;
                 destination_texel[3] = (float)color.a / 255.0f;
+            } else if (image->descriptor.format == RIN_GPU_FORMAT_RGBA32_FLOAT) {
+                memcpy(destination_texel, source_row + (uint64_t)x *
+                       4u * sizeof(float), 4u * sizeof(float));
             } else if (image->descriptor.format != RIN_GPU_FORMAT_RGBA8_UNORM) {
                 float depth;
                 if (image->descriptor.format == RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) {
@@ -1765,6 +1775,7 @@ static int backend_create_graphics_bind_group(
                  RINGL_AQUAMARINE_SURFACE_IMAGE_OFFSCREEN_DEPTH_STENCIL) ||
             (image->descriptor.format != RIN_GPU_FORMAT_RGBA8_UNORM &&
              !backend_packed_color_format(image->descriptor.format) &&
+             image->descriptor.format != RIN_GPU_FORMAT_RGBA32_FLOAT &&
              image->descriptor.format != RIN_GPU_FORMAT_D32_FLOAT &&
              image->descriptor.format != RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) ||
             (image->descriptor.usage & RIN_GPU_IMAGE_SAMPLED) == 0u ||

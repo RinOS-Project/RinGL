@@ -31,7 +31,7 @@ Status meanings:
 | `glClear`, `glClearColor`, `glClearDepthf`, `glClearStencil`, `glColorMask` | B | Current complete target; color/depth/stencil masks follow the bounded FBO profile. |
 | `glCompileShader`, `glCreateShader`, `glDeleteShader`, `glIsShader`, `glShaderSource` | B | GLSL ES source is compiled only by RinGL's bounded RSH1 profile; exact global `precision lowp`/`mediump`/`highp` declarations for `float`/`int`/`sampler2D` map to binary32 RSH1. No-varying shaders execute local `float`/`int`, `vec2`/`vec3`/`vec4`, and `ivec2`/`ivec3`/`ivec4` values with same-type arithmetic, single-component swizzles, and explicit `int(...)`/`float(...)` conversion. |
 | `glCompressedTexImage2D`, `glCompressedTexSubImage2D` | N | Compressed texture storage is not implemented. |
-| `glCopyTexImage2D`, `glCopyTexSubImage2D` | B | Complete color target only; canonical/packed 2D formats and checked ranges. |
+| `glCopyTexImage2D`, `glCopyTexSubImage2D` | B | Complete color target only; canonical/packed 2D formats and checked ranges. Float textures are rejected rather than silently converted. |
 | `glCullFace`, `glFrontFace` | B | Current native raster-state profile. |
 | `glDepthFunc`, `glDepthMask`, `glDepthRangef` | B | Finite `[0,1]` depth-range endpoints; reversed ranges remain valid. |
 | `glDisable`, `glEnable`, `glIsEnabled` | B | Blend, cull, depth, scissor, polygon offset, sample coverage, and stencil only. |
@@ -63,7 +63,7 @@ Status meanings:
 | `glReadPixels` | P | Current complete color target, tightly packed `RGBA`/`UNSIGNED_BYTE`; bounded byte-span API required for untrusted callers. |
 | `glReleaseShaderCompiler`, `glShaderBinary` | N | Shader compiler lifetime/binary shader formats are not implemented. |
 | `glStencilFunc`, `glStencilFuncSeparate`, `glStencilMask`, `glStencilMaskSeparate`, `glStencilOp`, `glStencilOpSeparate` | B | Bounded native D24S8/S8 paths; remaining attachment semantics stay outside the profile. |
-| `glTexImage2D`, `glTexSubImage2D` | B | 2D canonical/packed color plus bounded depth formats; byte-span variants protect untrusted imports. |
+| `glTexImage2D`, `glTexSubImage2D` | B | 2D canonical/packed color plus bounded depth formats; exact canonical `FLOAT` color uploads use RGBA32F sampled storage with nearest-only completeness. Byte-span variants protect untrusted imports. |
 | `glTexParameterf`, `glTexParameterfv`, `glTexParameteriv` | N | Raw RinGL only has integer `ringl_tex_parameteri`; an embedding may accept a float only after exact integer conversion. |
 | `glTexParameteri` | P | Four sampler pnames only; all accepted values map to RinGPU sampler state. |
 | `glUniform1i` | P | Linked `sampler2D` or scalar `int` location; no arrays. |

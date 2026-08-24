@@ -204,7 +204,8 @@ static int color_attachment_dimensions(RinGLContext* context,
         if (index >= RINGL_OBJECT_SLOT_COUNT)
             return -1;
         texture = &context->textures[index];
-        if ((texture->format != RINGL_RGBA &&
+        if (texture->color_component_type == RINGL_FLOAT ||
+            (texture->format != RINGL_RGBA &&
              !color_attachment_format_valid(texture->format)) ||
             texture_attachment_dimensions(texture,
                                           framebuffer->color_attachment_level,

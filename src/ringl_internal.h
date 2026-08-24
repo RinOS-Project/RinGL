@@ -66,6 +66,10 @@ typedef struct RinGLTextureObject {
     uint32_t width;
     uint32_t height;
     uint32_t format;
+    /* Zero for depth/stencil storage; otherwise the accepted color upload
+     * component type. FLOAT selects native RGBA32F shadow storage while the
+     * public WebGL internal-format token remains unchanged. */
+    uint32_t color_component_type;
     uint32_t defined;
     uint32_t min_filter;
     uint32_t mag_filter;

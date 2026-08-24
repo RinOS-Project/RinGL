@@ -647,6 +647,20 @@ partial depth texture. The focused texture and RinOS bridge tests attach those
 textures to a real custom FBO and clear/read back its color target through the
 RinGL-to-RinGPU route.
 
+The same bounded ownership path also carries Float32 color textures for the
+RinOS `OES_texture_float` embedding. Exact `RGBA`, `RGB`, `ALPHA`,
+`LUMINANCE`, and `LUMINANCE_ALPHA`/`FLOAT` uploads are converted with
+unaligned-safe reads into an RGBA32F shadow, then realized as a native
+`RIN_GPU_FORMAT_RGBA32_FLOAT` image with only `COPY_DESTINATION|SAMPLED`
+usage. A Float texture is complete only with `NEAREST` magnification and
+`NEAREST` or `NEAREST_MIPMAP_NEAREST` minification. Linear filtering,
+CopyTex, and color-target realization are rejected; RinGL therefore does not
+claim `OES_texture_float_linear` or float-FBO support. The generic software
+backend samples the single-mip format and rejects a non-finite component before
+it changes its target. The Aquamarine embedding snapshots the same Float32
+components into its RSH1 sampler table, and the product bridge test draws a
+Float texture through that route.
+
 Embeddings handling browser-facing byte uploads must use
 `ringl_tex_image_2d_from_bytes()` and `ringl_tex_sub_image_2d_from_bytes()`.
 Those APIs take the source extent and

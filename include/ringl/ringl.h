@@ -26,6 +26,7 @@ extern "C" {
 
 #define RINGL_FALSE 0u
 #define RINGL_TRUE  1u
+#define RINGL_NONE   0u
 #define RINGL_ZERO  0u
 #define RINGL_ONE   1u
 #define RINGL_BYTE           0x1400u
@@ -50,6 +51,7 @@ extern "C" {
 #define RINGL_SAMPLER_2D     0x8b5eu
 
 #define RINGL_ACTIVE_INFO_NAME_MAX 64u
+#define RINGL_MAX_COLOR_ATTACHMENTS 4u
 
 #define RINGL_POINTS           0x0000u
 #define RINGL_LINES            0x0001u
@@ -246,6 +248,15 @@ extern "C" {
 #define RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL 0x8cd2u
 #define RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE 0x8cd3u
 #define RINGL_COLOR_ATTACHMENT0     0x8ce0u
+#define RINGL_COLOR_ATTACHMENT1     0x8ce1u
+#define RINGL_COLOR_ATTACHMENT2     0x8ce2u
+#define RINGL_COLOR_ATTACHMENT3     0x8ce3u
+#define RINGL_DRAW_BUFFER0_WEBGL    0x8825u
+#define RINGL_DRAW_BUFFER1_WEBGL    0x8826u
+#define RINGL_DRAW_BUFFER2_WEBGL    0x8827u
+#define RINGL_DRAW_BUFFER3_WEBGL    0x8828u
+#define RINGL_MAX_DRAW_BUFFERS_WEBGL 0x8824u
+#define RINGL_MAX_COLOR_ATTACHMENTS_WEBGL 0x8cdfu
 #define RINGL_DEPTH_ATTACHMENT      0x8d00u
 #define RINGL_STENCIL_ATTACHMENT    0x8d20u
 #define RINGL_DEPTH_STENCIL_ATTACHMENT 0x821au
@@ -584,6 +595,42 @@ typedef struct RinGLRinGpuRenderPassV1 {
     RinGLRinGpuClearRegionV1 clear_region;
 } RinGLRinGpuRenderPassV1;
 
+/* Optional V9 multi-render-target pass. Every selected output has an
+ * explicit image/subresource tuple; inactive slots are canonical zero. The
+ * format is intentionally a property of each realized target rather than an
+ * implicit attachment-0 alias. */
+typedef struct RinGLRinGpuRenderPassMrtV1 {
+    uint64_t color_targets[RINGL_MAX_COLOR_ATTACHMENTS];
+    uint32_t color_mip_levels[RINGL_MAX_COLOR_ATTACHMENTS];
+    uint32_t color_array_layers[RINGL_MAX_COLOR_ATTACHMENTS];
+    uint32_t active_color_mask;
+    uint32_t reserved0;
+    uint64_t depth_target;
+    uint64_t stencil_target;
+    uint32_t depth_mip_level;
+    uint32_t depth_array_layer;
+    uint32_t stencil_mip_level;
+    uint32_t stencil_array_layer;
+    uint32_t color_load_op;
+    uint32_t color_store_op;
+    uint32_t depth_load_op;
+    uint32_t depth_store_op;
+    uint32_t stencil_load_op;
+    uint32_t stencil_store_op;
+    float clear_red;
+    float clear_green;
+    float clear_blue;
+    float clear_alpha;
+    float clear_depth;
+    uint32_t clear_stencil;
+    uint32_t stencil_write_mask;
+    uint32_t flags;
+    uint32_t reserved1;
+    uint32_t color_write_mask;
+    uint32_t reserved2;
+    RinGLRinGpuClearRegionV1 clear_region;
+} RinGLRinGpuRenderPassMrtV1;
+
 typedef struct RinGLRinGpuRenderPassDepthV1 {
     uint64_t color_target;
     uint64_t depth_target;
@@ -887,6 +934,9 @@ typedef int (*RinGLRinGpuTransitionImage2DMipV2Fn)(
 typedef int (*RinGLRinGpuBeginRenderPassFn)(
     void* session, uint64_t command_list,
     const RinGLRinGpuRenderPassV1* render_pass);
+typedef int (*RinGLRinGpuBeginRenderPassMrtV1Fn)(
+    void* session, uint64_t command_list,
+    const RinGLRinGpuRenderPassMrtV1* render_pass);
 typedef int (*RinGLRinGpuBeginRenderPassMipV2Fn)(
     void* session, uint64_t command_list,
     const RinGLRinGpuRenderPassMipV2* render_pass);
@@ -1034,6 +1084,8 @@ typedef struct RinGLRinGpuOpsV1 {
     RinGLRinGpuCreateGraphicsBindGroupV2Fn create_graphics_bind_group_v2;
     /* Optional V8 tail: dynamic fragment-output dither state. */
     RinGLRinGpuSetRasterStateV2Fn set_raster_state_v2;
+    /* Optional V9 tail: independently realized COLOR_ATTACHMENT0..3. */
+    RinGLRinGpuBeginRenderPassMrtV1Fn begin_render_pass_mrt_v1;
 } RinGLRinGpuOpsV1;
 
 typedef struct RinGLRinGpuBindingV1 {
@@ -1423,6 +1475,9 @@ int ringl_enable_webgl_blend_minmax(void);
  * browser extension object has been acquired. This gates GLSL dFdx/dFdy/
  * fwidth compilation and FRAGMENT_SHADER_DERIVATIVE_HINT queries. */
 int ringl_enable_webgl_standard_derivatives(void);
+/* Enables WEBGL_draw_buffers only after the embedding exposes the V9 MRT
+ * adapter callback.  The extension remains unavailable on older bindings. */
+int ringl_enable_webgl_draw_buffers(void);
 void ringl_tex_image_2d(uint32_t target, int32_t level,
                         uint32_t internal_format, int32_t width, int32_t height,
                         int32_t border, uint32_t format, uint32_t type,
@@ -1485,6 +1540,10 @@ uint32_t ringl_get_bound_framebuffer(uint32_t target);
 void ringl_framebuffer_texture_2d(uint32_t target, uint32_t attachment,
                                   uint32_t textarget, uint32_t texture,
                                   int32_t level);
+/* Configures WebGL's fixed output-to-attachment mapping for the current
+ * framebuffer. The bounded implementation admits NONE or
+ * COLOR_ATTACHMENTi in slot i, for i < RINGL_MAX_COLOR_ATTACHMENTS. */
+void ringl_draw_buffers(int32_t count, const uint32_t* buffers);
 /* Describes COLOR_ATTACHMENT0, DEPTH_ATTACHMENT, STENCIL_ATTACHMENT, or
  * DEPTH_STENCIL_ATTACHMENT on the currently bound custom framebuffer. The
  * caller supplies a complete v1 header; failures leave its output fields

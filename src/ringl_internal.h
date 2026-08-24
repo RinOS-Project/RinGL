@@ -87,9 +87,12 @@ typedef struct RinGLTextureObject {
 } RinGLTextureObject;
 
 typedef struct RinGLFramebufferObject {
-    uint32_t color_attachment_kind;
-    uint32_t color_attachment_object;
-    int32_t color_attachment_level;
+    uint32_t color_attachment_kind[RINGL_MAX_COLOR_ATTACHMENTS];
+    uint32_t color_attachment_object[RINGL_MAX_COLOR_ATTACHMENTS];
+    int32_t color_attachment_level[RINGL_MAX_COLOR_ATTACHMENTS];
+    /* Each set bit selects COLOR_ATTACHMENTi for fragment output i. */
+    uint32_t draw_buffer_mask;
+    uint32_t draw_buffer_state_initialized;
     uint32_t depth_attachment_kind;
     uint32_t depth_attachment_object;
     int32_t depth_attachment_level;
@@ -133,6 +136,7 @@ typedef struct RinGLShaderObject {
     uint32_t rsh1_sampler_binding_count;
     uint32_t varying_count;
     uint32_t uses_standard_derivatives;
+    uint32_t uses_webgl_draw_buffers;
     uint32_t delete_pending;
     char sampler_uniform_names[RINGL_MAX_SAMPLER_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char float_uniform_names[RINGL_MAX_FLOAT_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
@@ -326,6 +330,11 @@ typedef struct RinGLColorTarget {
     uint32_t* state;
 } RinGLColorTarget;
 
+typedef struct RinGLColorTargets {
+    RinGLColorTarget targets[RINGL_MAX_COLOR_ATTACHMENTS];
+    uint32_t active_mask;
+} RinGLColorTargets;
+
 typedef struct RinGLDepthTarget {
     uint64_t image;
     uint32_t format;
@@ -365,6 +374,7 @@ struct RinGLContext {
     uint32_t webgl_half_float_color_buffer_enabled;
     uint32_t webgl_blend_minmax_enabled;
     uint32_t webgl_standard_derivatives_enabled;
+    uint32_t webgl_draw_buffers_enabled;
     uint64_t graphics_command_list;
     uint64_t graphics_bind_group;
     uint64_t finish_fence;
@@ -461,6 +471,8 @@ void ringl_copy_c_string(char* destination, size_t capacity,
                          const char* source);
 int ringl_resolve_color_target(RinGLContext* context,
                                RinGLColorTarget* target);
+int ringl_resolve_color_targets(RinGLContext* context,
+                                RinGLColorTargets* targets);
 int ringl_resolve_depth_target(RinGLContext* context,
                                RinGLDepthTarget* target);
 int ringl_resolve_depth_stencil_targets(RinGLContext* context,
@@ -566,6 +578,9 @@ int ringl_backend_transition_image_2d_mip_v2(
 int ringl_backend_begin_render_pass(RinGLContext* context,
                                     uint64_t command_list,
                                      const RinGLRinGpuRenderPassV1* render_pass);
+int ringl_backend_begin_render_pass_mrt_v1(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuRenderPassMrtV1* render_pass);
 int ringl_backend_begin_render_pass_mip_v2(
     RinGLContext* context, uint64_t command_list,
     const RinGLRinGpuRenderPassMipV2* render_pass);

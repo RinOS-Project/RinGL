@@ -27,6 +27,18 @@ typedef struct __attribute__((packed)) Header {
     uint32_t reserved1;
 } Header;
 
+typedef struct __attribute__((packed)) Instruction {
+    uint16_t opcode;
+    uint16_t flags;
+    uint16_t destination;
+    uint16_t source0;
+    uint16_t source1;
+    uint16_t resource;
+    uint32_t immediate;
+} Instruction;
+
+#define RSH1_OP_STORE_OUTPUT_F32 UINT16_C(46)
+
 typedef struct FakeBackend {
     uint64_t next_handle;
     uint32_t shader_creates;
@@ -78,6 +90,13 @@ static int fake_create_shader_module(void* session, const void* rsh1,
     return 0;
 }
 
+static int fake_begin_render_pass_mrt(void* session, uint64_t command_list,
+                                      const RinGLRinGpuRenderPassMrtV1* pass)
+{
+    (void)session;
+    return command_list != 0u && pass != NULL ? 0 : -1;
+}
+
 static Header lower_and_read_header(uint32_t shader, const char* source,
                                     uint8_t* blob, uint32_t capacity)
 {
@@ -109,6 +128,7 @@ int main(void)
         .upload_buffer = fake_upload_buffer,
         .destroy_object = fake_destroy_object,
         .create_shader_module = fake_create_shader_module,
+        .begin_render_pass_mrt_v1 = fake_begin_render_pass_mrt,
     };
     RinGLRinGpuBindingV1 binding = {
         .struct_size = sizeof(binding),
@@ -166,6 +186,17 @@ int main(void)
         "  vec2 dy = dFdy(uv);\n"
         "  gl_FragColor = vec4(dx, fwidth(dy.x), 1.0);\n"
         "}\n";
+    const char* draw_buffers_fragment_source =
+        "#extension GL_EXT_draw_buffers : require\n"
+        "void main() {\n"
+        "  gl_FragData[0] = vec4(1.0, 0.0, 0.0, 1.0);\n"
+        "  gl_FragData[1] = vec4(0.0, 1.0, 0.0, 1.0);\n"
+        "  gl_FragData[2] = vec4(0.0, 0.0, 1.0, 1.0);\n"
+        "  gl_FragData[3] = vec4(1.0, 1.0, 0.0, 1.0);\n"
+        "}\n";
+    const char* sparse_draw_buffers_fragment_source =
+        "#extension GL_EXT_draw_buffers : require\n"
+        "void main() { gl_FragData[2] = vec4(0.0, 0.0, 1.0, 1.0); }\n";
     const char* texture_source =
         "precision mediump float;\n"
         "precision lowp sampler2D;\n"
@@ -324,11 +355,59 @@ int main(void)
     /* Derivatives must be emitted into RSH1, not folded into a browser-side
      * constant. The fragment ABI carries exactly the declared vec2 varying. */
     header = lower_and_read_header(fragment, derivative_fragment_source,
-                                   blob, sizeof(blob));
+                                    blob, sizeof(blob));
     assert(header.stage == 2u);
     assert(header.input_count == 2u);
     assert(header.output_count == 4u);
     assert(header.instruction_count >= 12u);
+
+    /* The extension gate applies before the shader can be used, then lower
+     * gl_FragData[n] to all four independent RSH1 output vectors. This is a
+     * real multi-target ABI, not a color-attachment-zero fallback. */
+    ringl_shader_source(fragment, draw_buffers_fragment_source, -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
+    assert(ringl_enable_webgl_draw_buffers() == 0);
+    header = lower_and_read_header(fragment, draw_buffers_fragment_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 4u);
+    assert(header.output_count == 16u);
+    {
+        Instruction const* instructions =
+            (Instruction const*)(blob + header.header_size);
+        uint32_t written_outputs = 0u;
+
+        for (uint32_t index = 0u; index < header.instruction_count; ++index) {
+            if (instructions[index].opcode == RSH1_OP_STORE_OUTPUT_F32) {
+                assert(instructions[index].immediate < 16u);
+                written_outputs |= UINT32_C(1) << instructions[index].immediate;
+            }
+        }
+        assert(written_outputs == UINT32_C(0xffff));
+    }
+    /* RSH1 insists on stores for every declared output, while WebGL defines
+     * unwritten gl_FragData entries as zero. The lowerer must materialize
+     * those twelve writes rather than rejecting this otherwise valid shader. */
+    header = lower_and_read_header(fragment, sparse_draw_buffers_fragment_source,
+                                   blob, sizeof(blob));
+    {
+        Instruction const* instructions =
+            (Instruction const*)(blob + header.header_size);
+        uint32_t written_outputs = 0u;
+        uint32_t output_stores = 0u;
+
+        assert(header.output_count == 16u);
+        for (uint32_t index = 0u; index < header.instruction_count; ++index) {
+            if (instructions[index].opcode == RSH1_OP_STORE_OUTPUT_F32) {
+                assert(instructions[index].immediate < 16u);
+                written_outputs |= UINT32_C(1) << instructions[index].immediate;
+                ++output_stores;
+            }
+        }
+        assert(written_outputs == UINT32_C(0xffff));
+        assert(output_stores == 16u);
+    }
 
     header = lower_and_read_header(fragment, texture_source, blob, sizeof(blob));
     assert(header.stage == 2u);

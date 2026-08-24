@@ -45,6 +45,8 @@ typedef enum TokenKind {
     TOK_DOT,
     TOK_HASH,
     TOK_COLON,
+    TOK_LBRACKET,
+    TOK_RBRACKET,
     TOK_INVALID,
 } TokenKind;
 
@@ -268,6 +270,8 @@ static void next_token(Parser* parser)
     case '.': token.kind = TOK_DOT; break;
     case '#': token.kind = TOK_HASH; break;
     case ':': token.kind = TOK_COLON; break;
+    case '[': token.kind = TOK_LBRACKET; break;
+    case ']': token.kind = TOK_RBRACKET; break;
     default: token.kind = TOK_INVALID; break;
     }
     parser->token = token;
@@ -615,6 +619,7 @@ static int assignment(Parser* parser)
 {
     Token target = parser->token;
     Symbol* symbol;
+    int frag_data = 0;
     if (target.kind != TOK_IDENT) {
         fail(parser, "expected assignment target");
         return 0;
@@ -629,6 +634,13 @@ static int assignment(Parser* parser)
             fail(parser, "gl_FragColor is only writable in fragment shaders");
             return 0;
         }
+    } else if (token_is_ident(&target, "gl_FragData")) {
+        if (parser->shader_type != RINGL_FRAGMENT_SHADER ||
+            parser->result->draw_buffers_enabled == 0u) {
+            fail(parser, "gl_FragData requires GL_EXT_draw_buffers");
+            return 0;
+        }
+        frag_data = 1;
     } else {
         symbol = find_symbol(parser, &target);
         if (symbol == NULL) {
@@ -655,6 +667,23 @@ static int assignment(Parser* parser)
         }
     }
     next_token(parser);
+    if (frag_data) {
+        if (!expect(parser, TOK_LBRACKET,
+                    "expected '[' after gl_FragData") ||
+            parser->token.kind != TOK_NUMBER || parser->token.length != 1u ||
+            parser->token.begin[0] < '0' ||
+            parser->token.begin[0] >=
+                (char)('0' + RINGL_MAX_COLOR_ATTACHMENTS)) {
+            fail(parser, "gl_FragData index is outside the supported range");
+            return 0;
+        }
+        next_token(parser);
+        if (!expect(parser, TOK_RBRACKET,
+                    "expected ']' after gl_FragData index")) {
+            return 0;
+        }
+        parser->result->uses_webgl_draw_buffers = 1u;
+    }
     if (!expect(parser, TOK_ASSIGN, "expected '='"))
         return 0;
     if (!expression(parser))
@@ -1014,23 +1043,31 @@ static int extension_directive(Parser* parser)
         return 0;
     }
     next_token(parser);
-    if (!token_is_ident(&parser->token, "GL_OES_standard_derivatives")) {
+    if (!token_is_ident(&parser->token, "GL_OES_standard_derivatives") &&
+        !token_is_ident(&parser->token, "GL_EXT_draw_buffers")) {
         fail(parser, "unsupported GLSL extension");
         return 0;
     }
+    {
+        int standard_derivatives = token_is_ident(
+            &parser->token, "GL_OES_standard_derivatives");
     next_token(parser);
     if (!expect(parser, TOK_COLON, "expected ':' in #extension directive"))
         return 0;
     if (!token_is_ident(&parser->token, "enable") &&
         !token_is_ident(&parser->token, "require")) {
-        fail(parser, "derivative extension must be enabled or required");
+        fail(parser, "extension must be enabled or required");
         return 0;
     }
     if (parser->shader_type != RINGL_FRAGMENT_SHADER) {
-        fail(parser, "GL_OES_standard_derivatives requires a fragment shader");
+        fail(parser, "extension requires a fragment shader");
         return 0;
     }
-    parser->result->standard_derivatives_enabled = 1u;
+        if (standard_derivatives)
+            parser->result->standard_derivatives_enabled = 1u;
+        else
+            parser->result->draw_buffers_enabled = 1u;
+    }
     next_token(parser);
     return 1;
 }

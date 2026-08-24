@@ -28,6 +28,10 @@ typedef struct RinGLGlslParseResult {
      * context can reject a shader compiled before getExtension(). */
     uint32_t standard_derivatives_enabled;
     uint32_t uses_standard_derivatives;
+    /* GL_EXT_draw_buffers is separately declared and used so contexts can
+     * reject a fragment shader compiled before WEBGL_draw_buffers is enabled. */
+    uint32_t draw_buffers_enabled;
+    uint32_t uses_webgl_draw_buffers;
     uint32_t declaration_count;
     uint32_t statement_count;
     uint32_t attribute_count;

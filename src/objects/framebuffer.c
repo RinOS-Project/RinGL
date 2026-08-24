@@ -15,7 +15,13 @@ static int renderbuffer_target_valid(uint32_t target)
 
 static int color_attachment_valid(uint32_t attachment)
 {
-    return attachment == RINGL_COLOR_ATTACHMENT0;
+    return attachment >= RINGL_COLOR_ATTACHMENT0 &&
+           attachment < RINGL_COLOR_ATTACHMENT0 + RINGL_MAX_COLOR_ATTACHMENTS;
+}
+
+static uint32_t color_attachment_index(uint32_t attachment)
+{
+    return attachment - RINGL_COLOR_ATTACHMENT0;
 }
 
 static int color_attachment_format_valid(uint32_t format)
@@ -93,13 +99,15 @@ static RinGLRenderbufferObject* bound_renderbuffer(RinGLContext* context)
     return &context->renderbuffers[index];
 }
 
-static void reset_color_attachment(RinGLFramebufferObject* framebuffer)
+static void reset_color_attachment(RinGLFramebufferObject* framebuffer,
+                                   uint32_t attachment_index)
 {
-    if (framebuffer == NULL)
+    if (framebuffer == NULL || attachment_index >= RINGL_MAX_COLOR_ATTACHMENTS)
         return;
-    framebuffer->color_attachment_kind = RINGL_FRAMEBUFFER_ATTACHMENT_NONE;
-    framebuffer->color_attachment_object = 0u;
-    framebuffer->color_attachment_level = 0;
+    framebuffer->color_attachment_kind[attachment_index] =
+        RINGL_FRAMEBUFFER_ATTACHMENT_NONE;
+    framebuffer->color_attachment_object[attachment_index] = 0u;
+    framebuffer->color_attachment_level[attachment_index] = 0;
 }
 
 static void reset_depth_attachment(RinGLFramebufferObject* framebuffer)
@@ -193,40 +201,46 @@ static int nonzero_depth_stencil_mip_backend_supported(
 
 static int color_attachment_dimensions(RinGLContext* context,
                                        const RinGLFramebufferObject* framebuffer,
+                                       uint32_t attachment_index,
                                        uint32_t* width_out, uint32_t* height_out)
 {
     uint32_t index;
 
     if (context == NULL || framebuffer == NULL || width_out == NULL ||
-        height_out == NULL)
+        height_out == NULL || attachment_index >= RINGL_MAX_COLOR_ATTACHMENTS)
         return -1;
-    if (framebuffer->color_attachment_kind ==
+    if (framebuffer->color_attachment_kind[attachment_index] ==
         RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D) {
         RinGLTextureObject* texture;
 
-        if (ringl_object_lookup(context, framebuffer->color_attachment_object,
+        if (ringl_object_lookup(context,
+                                framebuffer->color_attachment_object[attachment_index],
                                 RINGL_OBJECT_TEXTURE) == NULL)
             return -1;
-        index = ringl_object_slot_index(framebuffer->color_attachment_object);
+        index = ringl_object_slot_index(
+            framebuffer->color_attachment_object[attachment_index]);
         if (index >= RINGL_OBJECT_SLOT_COUNT)
             return -1;
         texture = &context->textures[index];
         if ((texture->format != RINGL_RGBA &&
-             !color_attachment_format_valid(texture->format)) ||
+            !color_attachment_format_valid(texture->format)) ||
             texture_attachment_dimensions(texture,
-                                          framebuffer->color_attachment_level,
+                                          framebuffer->color_attachment_level[
+                                              attachment_index],
                                           width_out, height_out) != 0)
             return -1;
         return 0;
     }
-    if (framebuffer->color_attachment_kind ==
+    if (framebuffer->color_attachment_kind[attachment_index] ==
         RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER) {
         RinGLRenderbufferObject* renderbuffer;
 
-        if (ringl_object_lookup(context, framebuffer->color_attachment_object,
+        if (ringl_object_lookup(context,
+                                framebuffer->color_attachment_object[attachment_index],
                                 RINGL_OBJECT_RENDERBUFFER) == NULL)
             return -1;
-        index = ringl_object_slot_index(framebuffer->color_attachment_object);
+        index = ringl_object_slot_index(
+            framebuffer->color_attachment_object[attachment_index]);
         if (index >= RINGL_OBJECT_SLOT_COUNT)
             return -1;
         renderbuffer = &context->renderbuffers[index];
@@ -236,6 +250,43 @@ static int color_attachment_dimensions(RinGLContext* context,
             return -1;
         *width_out = renderbuffer->width;
         *height_out = renderbuffer->height;
+        return 0;
+    }
+    return -1;
+}
+
+static int color_attachment_ringpu_format_for(
+    const RinGLContext* context, const RinGLFramebufferObject* framebuffer,
+    uint32_t attachment_index, uint32_t* format_out)
+{
+    uint32_t object_index;
+
+    if (context == NULL || framebuffer == NULL || format_out == NULL ||
+        attachment_index >= RINGL_MAX_COLOR_ATTACHMENTS)
+        return -1;
+    object_index = ringl_object_slot_index(
+        framebuffer->color_attachment_object[attachment_index]);
+    if (object_index >= RINGL_OBJECT_SLOT_COUNT)
+        return -1;
+    if (framebuffer->color_attachment_kind[attachment_index] ==
+        RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D) {
+        const RinGLTextureObject* texture = &context->textures[object_index];
+
+        if (texture->format == RINGL_RGBA) {
+            *format_out = texture->color_component_type == RINGL_FLOAT
+                ? RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT
+                : texture->color_component_type == RINGL_HALF_FLOAT_OES
+                    ? RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT
+                    : RINGL_RIN_GPU_FORMAT_RGBA8_UNORM;
+            return 0;
+        }
+        *format_out = color_attachment_ringpu_format(texture->format);
+        return 0;
+    }
+    if (framebuffer->color_attachment_kind[attachment_index] ==
+        RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER) {
+        *format_out = color_attachment_ringpu_format(
+            context->renderbuffers[object_index].internal_format);
         return 0;
     }
     return -1;
@@ -477,12 +528,56 @@ uint32_t ringl_get_bound_framebuffer(uint32_t target)
     return context->framebuffer_binding;
 }
 
+void ringl_draw_buffers(int32_t count, const uint32_t* buffers)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLFramebufferObject* framebuffer;
+    uint32_t mask = 0u;
+
+    if (context == NULL)
+        return;
+    if (context->webgl_draw_buffers_enabled == RINGL_FALSE) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    if (count < 1 || (uint32_t)count > RINGL_MAX_COLOR_ATTACHMENTS ||
+        buffers == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if (context->framebuffer_binding == 0u) {
+        if (count != 1 || buffers[0] != RINGL_BACK) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return;
+        }
+        return;
+    }
+    framebuffer = bound_framebuffer(context);
+    if (framebuffer == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    for (uint32_t index = 0u; index < (uint32_t)count; ++index) {
+        if (buffers[index] == RINGL_NONE)
+            continue;
+        if (buffers[index] != RINGL_COLOR_ATTACHMENT0 + index) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return;
+        }
+        mask |= UINT32_C(1) << index;
+    }
+    framebuffer->draw_buffer_mask = mask;
+    framebuffer->draw_buffer_state_initialized = RINGL_TRUE;
+    ringl_context_mark_dirty(context, RINGL_DIRTY_FRAMEBUFFER);
+}
+
 void ringl_framebuffer_texture_2d(uint32_t target, uint32_t attachment,
                                   uint32_t textarget, uint32_t texture,
                                   int32_t level)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLFramebufferObject* framebuffer;
+    uint32_t attachment_index = 0u;
 
     if (context == NULL)
         return;
@@ -491,6 +586,14 @@ void ringl_framebuffer_texture_2d(uint32_t target, uint32_t attachment,
         textarget != RINGL_TEXTURE_2D) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
+    }
+    if (color_attachment_valid(attachment)) {
+        attachment_index = color_attachment_index(attachment);
+        if (attachment_index != 0u &&
+            context->webgl_draw_buffers_enabled == RINGL_FALSE) {
+            ringl_context_record_error(context, RINGL_INVALID_ENUM);
+            return;
+        }
     }
     if (level < 0 || (uint32_t)level >= RINGL_MAX_TEXTURE_MIP_LEVELS) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
@@ -506,7 +609,7 @@ void ringl_framebuffer_texture_2d(uint32_t target, uint32_t attachment,
         return;
     }
     if (texture == 0u && color_attachment_valid(attachment)) {
-        reset_color_attachment(framebuffer);
+        reset_color_attachment(framebuffer, attachment_index);
     } else if (texture == 0u && attachment == RINGL_DEPTH_ATTACHMENT) {
         reset_depth_attachment(framebuffer);
     } else if (texture == 0u && attachment == RINGL_STENCIL_ATTACHMENT) {
@@ -519,10 +622,10 @@ void ringl_framebuffer_texture_2d(uint32_t target, uint32_t attachment,
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return;
         }
-        framebuffer->color_attachment_kind =
+        framebuffer->color_attachment_kind[attachment_index] =
             RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D;
-        framebuffer->color_attachment_object = texture;
-        framebuffer->color_attachment_level = level;
+        framebuffer->color_attachment_object[attachment_index] = texture;
+        framebuffer->color_attachment_level[attachment_index] = level;
     } else {
         uint32_t texture_index = ringl_object_slot_index(texture);
         uint32_t has_depth = attachment != RINGL_STENCIL_ATTACHMENT;
@@ -576,9 +679,16 @@ int ringl_get_framebuffer_attachment(
         return -1;
     }
     if (color_attachment_valid(attachment_point)) {
-        kind = framebuffer->color_attachment_kind;
-        object = framebuffer->color_attachment_object;
-        level = framebuffer->color_attachment_level;
+        uint32_t attachment_index = color_attachment_index(attachment_point);
+
+        if (attachment_index != 0u &&
+            context->webgl_draw_buffers_enabled == RINGL_FALSE) {
+            ringl_context_record_error(context, RINGL_INVALID_ENUM);
+            return -1;
+        }
+        kind = framebuffer->color_attachment_kind[attachment_index];
+        object = framebuffer->color_attachment_object[attachment_index];
+        level = framebuffer->color_attachment_level[attachment_index];
     } else if (attachment_point == RINGL_DEPTH_ATTACHMENT &&
                framebuffer->depth_attachment_has_depth != 0u) {
         kind = framebuffer->depth_attachment_kind;
@@ -646,21 +756,21 @@ int ringl_framebuffer_color_attachment_component_type(uint32_t* type_out)
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return -1;
     }
-    if (framebuffer->color_attachment_kind ==
+    if (framebuffer->color_attachment_kind[0] ==
         RINGL_FRAMEBUFFER_ATTACHMENT_NONE) {
         *type_out = component_type;
         return 0;
     }
-    index = ringl_object_slot_index(framebuffer->color_attachment_object);
+    index = ringl_object_slot_index(framebuffer->color_attachment_object[0]);
     if (index >= RINGL_OBJECT_SLOT_COUNT) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return -1;
     }
-    if (framebuffer->color_attachment_kind ==
+    if (framebuffer->color_attachment_kind[0] ==
         RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D) {
         RinGLTextureObject* texture;
 
-        if (ringl_object_lookup(context, framebuffer->color_attachment_object,
+        if (ringl_object_lookup(context, framebuffer->color_attachment_object[0],
                                 RINGL_OBJECT_TEXTURE) == NULL) {
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return -1;
@@ -671,16 +781,16 @@ int ringl_framebuffer_color_attachment_component_type(uint32_t* type_out)
             return -1;
         }
         component_type = texture->color_component_type;
-    } else if (framebuffer->color_attachment_kind ==
+    } else if (framebuffer->color_attachment_kind[0] ==
                RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER) {
         RinGLRenderbufferObject* renderbuffer;
 
-        if (ringl_object_lookup(context, framebuffer->color_attachment_object,
+        if (ringl_object_lookup(context, framebuffer->color_attachment_object[0],
                                 RINGL_OBJECT_RENDERBUFFER) == NULL) {
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return -1;
         }
-        index = ringl_object_slot_index(framebuffer->color_attachment_object);
+        index = ringl_object_slot_index(framebuffer->color_attachment_object[0]);
         if (index >= RINGL_OBJECT_SLOT_COUNT) {
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return -1;
@@ -734,10 +844,13 @@ uint32_t ringl_check_framebuffer_status(uint32_t target)
     RinGLFramebufferObject* framebuffer;
     uint32_t color_width;
     uint32_t color_height;
+    uint32_t color_format = 0u;
     uint32_t depth_width;
     uint32_t depth_height;
     uint32_t stencil_width;
     uint32_t stencil_height;
+    uint32_t color_count = 0u;
+    uint32_t color_mip_nonzero = RINGL_FALSE;
 
     if (context == NULL)
         return 0u;
@@ -753,37 +866,66 @@ uint32_t ringl_check_framebuffer_status(uint32_t target)
     framebuffer = bound_framebuffer(context);
     if (framebuffer == NULL)
         return RINGL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT;
-    if (framebuffer->color_attachment_kind ==
-        RINGL_FRAMEBUFFER_ATTACHMENT_NONE)
-        return RINGL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT;
-    if (color_attachment_dimensions(context, framebuffer, &color_width,
-                                    &color_height) != 0)
-        return RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
-    if (framebuffer->color_attachment_kind ==
-        RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D) {
-        uint32_t color_index = ringl_object_slot_index(
-            framebuffer->color_attachment_object);
+    for (uint32_t attachment = 0u;
+         attachment < RINGL_MAX_COLOR_ATTACHMENTS; ++attachment) {
+        uint32_t width;
+        uint32_t height;
+        uint32_t format;
+        uint32_t object_index;
 
-        if (color_index >= RINGL_OBJECT_SLOT_COUNT)
+        if (framebuffer->color_attachment_kind[attachment] ==
+            RINGL_FRAMEBUFFER_ATTACHMENT_NONE) {
+            continue;
+        }
+        if (color_attachment_dimensions(context, framebuffer, attachment,
+                                        &width, &height) != 0 ||
+            color_attachment_ringpu_format_for(context, framebuffer,
+                                                attachment, &format) != 0) {
             return RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
-        /* RGB16F is optional in WebGL 1. Keep its accepted storage token
-         * distinct from the required RGBA16F profile instead of silently
-         * treating an RGBA backing image as an RGB render target. */
-        if (context->textures[color_index].format == RINGL_RGB &&
-            context->textures[color_index].color_component_type ==
-                RINGL_HALF_FLOAT_OES) {
+        }
+        object_index = ringl_object_slot_index(
+            framebuffer->color_attachment_object[attachment]);
+        if (object_index >= RINGL_OBJECT_SLOT_COUNT)
+            return RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
+        /* RGB16F is not part of the guaranteed WebGL color-attachment
+         * profile. Keep it rejected rather than silently widening to RGBA. */
+        if ((framebuffer->color_attachment_kind[attachment] ==
+                 RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D &&
+             context->textures[object_index].format == RINGL_RGB &&
+             context->textures[object_index].color_component_type ==
+                 RINGL_HALF_FLOAT_OES) ||
+            (framebuffer->color_attachment_kind[attachment] ==
+                 RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER &&
+             context->renderbuffers[object_index].internal_format ==
+                 RINGL_RGB16F)) {
             return RINGL_FRAMEBUFFER_UNSUPPORTED;
         }
-    } else if (framebuffer->color_attachment_kind ==
-               RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER) {
-        uint32_t color_index = ringl_object_slot_index(
-            framebuffer->color_attachment_object);
-
-        if (color_index >= RINGL_OBJECT_SLOT_COUNT)
-            return RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
-        if (context->renderbuffers[color_index].internal_format == RINGL_RGB16F)
+        if (color_count == 0u) {
+            color_width = width;
+            color_height = height;
+            color_format = format;
+        } else if (color_width != width || color_height != height ||
+                   color_format != format) {
+            /* RinGPU's current graphics pipeline has one color format; do
+             * not claim this heterogeneous FBO is executable. */
             return RINGL_FRAMEBUFFER_UNSUPPORTED;
+        }
+        for (uint32_t previous = 0u; previous < attachment; ++previous) {
+            if (framebuffer->color_attachment_kind[previous] !=
+                    RINGL_FRAMEBUFFER_ATTACHMENT_NONE &&
+                framebuffer->color_attachment_kind[previous] ==
+                    framebuffer->color_attachment_kind[attachment] &&
+                framebuffer->color_attachment_object[previous] ==
+                    framebuffer->color_attachment_object[attachment] &&
+                framebuffer->color_attachment_level[previous] ==
+                    framebuffer->color_attachment_level[attachment]) {
+                return RINGL_FRAMEBUFFER_UNSUPPORTED;
+            }
+        }
+        color_count++;
     }
+    if (color_count == 0u)
+        return RINGL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT;
     if (framebuffer->depth_attachment_kind !=
             RINGL_FRAMEBUFFER_ATTACHMENT_NONE &&
         (depth_attachment_dimensions(context, framebuffer, &depth_width,
@@ -796,24 +938,27 @@ uint32_t ringl_check_framebuffer_status(uint32_t target)
                                        &stencil_height) != 0 ||
          color_width != stencil_width || color_height != stencil_height))
         return RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
-    if (framebuffer->color_attachment_kind ==
-            RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D &&
-        framebuffer->color_attachment_level != 0 &&
-        !nonzero_color_mip_backend_supported(context))
-        return RINGL_FRAMEBUFFER_UNSUPPORTED;
+    for (uint32_t attachment = 0u;
+         attachment < RINGL_MAX_COLOR_ATTACHMENTS; ++attachment) {
+        if (framebuffer->color_attachment_kind[attachment] ==
+                RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D &&
+            framebuffer->color_attachment_level[attachment] != 0) {
+            color_mip_nonzero = RINGL_TRUE;
+            if (!nonzero_color_mip_backend_supported(context))
+                return RINGL_FRAMEBUFFER_UNSUPPORTED;
+        }
+    }
     if ((framebuffer->depth_attachment_kind ==
              RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D &&
          framebuffer->depth_attachment_level != 0) ||
         (framebuffer->stencil_attachment_kind ==
              RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D &&
          framebuffer->stencil_attachment_level != 0) ||
-        ((framebuffer->depth_attachment_kind !=
-              RINGL_FRAMEBUFFER_ATTACHMENT_NONE ||
-          framebuffer->stencil_attachment_kind !=
-              RINGL_FRAMEBUFFER_ATTACHMENT_NONE) &&
-         framebuffer->color_attachment_kind ==
-              RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D &&
-         framebuffer->color_attachment_level != 0)) {
+         ((framebuffer->depth_attachment_kind !=
+               RINGL_FRAMEBUFFER_ATTACHMENT_NONE ||
+           framebuffer->stencil_attachment_kind !=
+               RINGL_FRAMEBUFFER_ATTACHMENT_NONE) &&
+          color_mip_nonzero != RINGL_FALSE)) {
         if (!nonzero_depth_stencil_mip_backend_supported(context, framebuffer))
             return RINGL_FRAMEBUFFER_UNSUPPORTED;
     }
@@ -1165,6 +1310,7 @@ void ringl_framebuffer_renderbuffer(uint32_t target, uint32_t attachment,
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLFramebufferObject* framebuffer;
+    uint32_t attachment_index = 0u;
 
     if (context == NULL)
         return;
@@ -1173,6 +1319,14 @@ void ringl_framebuffer_renderbuffer(uint32_t target, uint32_t attachment,
         !renderbuffer_target_valid(renderbuffer_target)) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
+    }
+    if (color_attachment_valid(attachment)) {
+        attachment_index = color_attachment_index(attachment);
+        if (attachment_index != 0u &&
+            context->webgl_draw_buffers_enabled == RINGL_FALSE) {
+            ringl_context_record_error(context, RINGL_INVALID_ENUM);
+            return;
+        }
     }
     framebuffer = bound_framebuffer(context);
     if (framebuffer == NULL) {
@@ -1184,7 +1338,7 @@ void ringl_framebuffer_renderbuffer(uint32_t target, uint32_t attachment,
         return;
     }
     if (renderbuffer == 0u && color_attachment_valid(attachment)) {
-        reset_color_attachment(framebuffer);
+        reset_color_attachment(framebuffer, attachment_index);
     } else if (renderbuffer == 0u && attachment == RINGL_DEPTH_ATTACHMENT) {
         reset_depth_attachment(framebuffer);
     } else if (renderbuffer == 0u && attachment == RINGL_STENCIL_ATTACHMENT) {
@@ -1194,10 +1348,10 @@ void ringl_framebuffer_renderbuffer(uint32_t target, uint32_t attachment,
         reset_stencil_attachment(framebuffer);
     } else {
         if (color_attachment_valid(attachment)) {
-            framebuffer->color_attachment_kind =
+            framebuffer->color_attachment_kind[attachment_index] =
                 RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER;
-            framebuffer->color_attachment_object = renderbuffer;
-            framebuffer->color_attachment_level = 0;
+            framebuffer->color_attachment_object[attachment_index] = renderbuffer;
+            framebuffer->color_attachment_level[attachment_index] = 0;
         } else {
             uint32_t renderbuffer_index = ringl_object_slot_index(renderbuffer);
             uint32_t has_depth = attachment != RINGL_STENCIL_ATTACHMENT;
@@ -1243,11 +1397,14 @@ void ringl_framebuffer_detach_texture(RinGLContext* context, uint32_t texture)
             context->objects[index].state == RINGL_OBJECT_FREE) {
             continue;
         }
-        if (framebuffer->color_attachment_kind ==
-                RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D &&
-            framebuffer->color_attachment_object == texture) {
-            reset_color_attachment(framebuffer);
-            ringl_context_mark_dirty(context, RINGL_DIRTY_FRAMEBUFFER);
+        for (uint32_t attachment = 0u;
+             attachment < RINGL_MAX_COLOR_ATTACHMENTS; ++attachment) {
+            if (framebuffer->color_attachment_kind[attachment] ==
+                    RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D &&
+                framebuffer->color_attachment_object[attachment] == texture) {
+                reset_color_attachment(framebuffer, attachment);
+                ringl_context_mark_dirty(context, RINGL_DIRTY_FRAMEBUFFER);
+            }
         }
         if (framebuffer->depth_attachment_kind ==
                 RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D &&
@@ -1278,11 +1435,14 @@ void ringl_framebuffer_detach_renderbuffer(RinGLContext* context,
             context->objects[index].state == RINGL_OBJECT_FREE) {
             continue;
         }
-        if (framebuffer->color_attachment_kind ==
-                RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER &&
-            framebuffer->color_attachment_object == renderbuffer) {
-            reset_color_attachment(framebuffer);
-            ringl_context_mark_dirty(context, RINGL_DIRTY_FRAMEBUFFER);
+        for (uint32_t attachment = 0u;
+             attachment < RINGL_MAX_COLOR_ATTACHMENTS; ++attachment) {
+            if (framebuffer->color_attachment_kind[attachment] ==
+                    RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER &&
+                framebuffer->color_attachment_object[attachment] == renderbuffer) {
+                reset_color_attachment(framebuffer, attachment);
+                ringl_context_mark_dirty(context, RINGL_DIRTY_FRAMEBUFFER);
+            }
         }
         if (framebuffer->depth_attachment_kind ==
                 RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER &&

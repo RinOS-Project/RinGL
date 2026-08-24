@@ -46,6 +46,14 @@ framebuffer_gpu_test = executable(
 
 test('framebuffer-gpu', framebuffer_gpu_test)
 
+draw_buffers_gpu_test = executable(
+  'ringl-draw-buffers-gpu-test',
+  'draw_buffers_gpu_test.c',
+  dependencies: ringl_dep,
+)
+
+test('draw-buffers-gpu', draw_buffers_gpu_test)
+
 buffer_test = executable(
   'ringl-buffer-test',
   'buffer_test.c',

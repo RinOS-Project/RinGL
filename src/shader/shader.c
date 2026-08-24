@@ -110,6 +110,7 @@ static void ringl_shader_reset_compile_state(RinGLContext* context,
     object->mat4_uniform_count = 0u;
     object->rsh1_sampler_binding_count = 0u;
     object->uses_standard_derivatives = 0u;
+    object->uses_webgl_draw_buffers = 0u;
     memset(object->sampler_uniform_names, 0,
            sizeof(object->sampler_uniform_names));
     memset(object->float_uniform_names, 0,
@@ -295,6 +296,12 @@ void ringl_compile_shader(uint32_t shader)
                             "GL_OES_standard_derivatives is not enabled");
         return;
     }
+    if (result.uses_webgl_draw_buffers != 0u &&
+        context->webgl_draw_buffers_enabled == RINGL_FALSE) {
+        ringl_copy_c_string(object->info_log, sizeof(object->info_log),
+                            "GL_EXT_draw_buffers is not enabled");
+        return;
+    }
 
     object->compile_status = RINGL_TRUE;
     object->declaration_count = result.declaration_count;
@@ -331,6 +338,7 @@ void ringl_compile_shader(uint32_t shader)
     memcpy(object->mat4_uniform_names, result.mat4_uniform_names,
            sizeof(object->mat4_uniform_names));
     object->uses_standard_derivatives = result.uses_standard_derivatives;
+    object->uses_webgl_draw_buffers = result.uses_webgl_draw_buffers;
 }
 
 uint32_t ringl_get_shader_compile_status(uint32_t shader)

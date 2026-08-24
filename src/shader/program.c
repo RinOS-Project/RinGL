@@ -956,6 +956,7 @@ static int ringl_program_lower_uniform_shader(
     *rsh1_size_out = 0u;
     *module_out = 0u;
     if (((shader->uses_standard_derivatives == 0u &&
+          shader->uses_webgl_draw_buffers == 0u &&
           strstr(shader->source, "varying") != NULL)
              ? ringl_glsl_lower_varying_rsh1_with_uniforms(
                    shader->shader_type, shader->source,

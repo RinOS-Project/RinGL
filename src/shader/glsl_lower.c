@@ -45,6 +45,8 @@ typedef enum Tok {
     T_DOT,
     T_HASH,
     T_COLON,
+    T_LBRACKET,
+    T_RBRACKET,
     T_BAD
 } Tok;
 
@@ -89,6 +91,8 @@ typedef struct Lower {
     const RinGLGlslUniformValue* uniforms;
     uint32_t uniform_count;
     uint32_t standard_derivatives_enabled;
+    uint32_t draw_buffers_enabled;
+    uint32_t uses_draw_buffers;
     RinGLGlslLowerResult* result;
 } Lower;
 
@@ -244,6 +248,8 @@ static void next(Lower* lower)
     case '.': token.kind = T_DOT; break;
     case '#': token.kind = T_HASH; break;
     case ':': token.kind = T_COLON; break;
+    case '[': token.kind = T_LBRACKET; break;
+    case ']': token.kind = T_RBRACKET; break;
     default: token.kind = T_BAD; break;
     }
     lower->token = token;
@@ -897,18 +903,19 @@ static int local_decl(Lower* lower, uint8_t width, int is_i32)
     return need(lower, T_SEMI, "expected ';' after local");
 }
 
-static int store_output(Lower* lower, const Value* value)
+static int store_output(Lower* lower, const Value* value,
+                        uint32_t first_output)
 {
     uint32_t index;
     for (index = 0u; index < value->width; ++index) {
         if (!emit(lower, RINGL_RSH1_OP_STORE_OUTPUT_F32,
                   RINGL_RSH1_UNUSED, value->regs[index],
-                  RINGL_RSH1_UNUSED, index)) {
+                  RINGL_RSH1_UNUSED, first_output + index)) {
             return 0;
         }
     }
-    if (lower->output_count < value->width)
-        lower->output_count = value->width;
+    if (lower->output_count < first_output + value->width)
+        lower->output_count = first_output + value->width;
     return 1;
 }
 
@@ -918,6 +925,8 @@ static int assignment(Lower* lower)
     Symbol* symbol = NULL;
     Value value;
     int output = 0;
+    uint32_t first_output = 0u;
+    int frag_data = 0;
 
     if (target.kind != T_IDENT) {
         fail(lower, "expected assignment");
@@ -927,6 +936,15 @@ static int assignment(Lower* lower)
         output = lower->shader_type == RINGL_VERTEX_SHADER;
     else if (text_is(&target, "gl_FragColor"))
         output = lower->shader_type == RINGL_FRAGMENT_SHADER;
+    else if (text_is(&target, "gl_FragData")) {
+        if (lower->shader_type != RINGL_FRAGMENT_SHADER ||
+            lower->draw_buffers_enabled == 0u) {
+            fail(lower, "gl_FragData requires enabled GL_EXT_draw_buffers");
+            return 0;
+        }
+        output = 1;
+        frag_data = 1;
+    }
     else
         symbol = find_symbol(lower, &target);
     if (!output && symbol == NULL) {
@@ -934,6 +952,23 @@ static int assignment(Lower* lower)
         return 0;
     }
     next(lower);
+    if (frag_data) {
+        if (!need(lower, T_LBRACKET, "expected '[' after gl_FragData") ||
+            lower->token.kind != T_NUMBER || lower->token.length != 1u ||
+            lower->token.begin[0] < '0' ||
+            lower->token.begin[0] >=
+                (char)('0' + RINGL_MAX_COLOR_ATTACHMENTS)) {
+            fail(lower, "gl_FragData index is outside the supported range");
+            return 0;
+        }
+        first_output = (uint32_t)(lower->token.begin[0] - '0') * 4u;
+        next(lower);
+        if (!need(lower, T_RBRACKET,
+                  "expected ']' after gl_FragData index")) {
+            return 0;
+        }
+        lower->uses_draw_buffers = 1u;
+    }
     if (!need(lower, T_ASSIGN, "expected '='"))
         return 0;
     value = expression(lower);
@@ -947,7 +982,11 @@ static int assignment(Lower* lower)
             fail(lower, "shader output must be scalar or vec4");
             return 0;
         }
-        return store_output(lower, &value);
+        if (frag_data && value.width != 4u) {
+            fail(lower, "gl_FragData output must be vec4");
+            return 0;
+        }
+        return store_output(lower, &value, first_output);
     }
     if (symbol->attribute || symbol->uniform) {
         fail(lower, "attribute or uniform is read-only");
@@ -991,23 +1030,31 @@ static int extension_decl(Lower* lower)
         return 0;
     }
     next(lower);
-    if (!text_is(&lower->token, "GL_OES_standard_derivatives")) {
+    if (!text_is(&lower->token, "GL_OES_standard_derivatives") &&
+        !text_is(&lower->token, "GL_EXT_draw_buffers")) {
         fail(lower, "unsupported GLSL extension");
         return 0;
     }
+    {
+        int standard_derivatives = text_is(
+            &lower->token, "GL_OES_standard_derivatives");
     next(lower);
     if (!need(lower, T_COLON, "expected ':' in #extension directive"))
         return 0;
     if (!text_is(&lower->token, "enable") &&
         !text_is(&lower->token, "require")) {
-        fail(lower, "derivative extension must be enabled or required");
+        fail(lower, "extension must be enabled or required");
         return 0;
     }
     if (lower->shader_type != RINGL_FRAGMENT_SHADER) {
-        fail(lower, "GL_OES_standard_derivatives requires a fragment shader");
+        fail(lower, "extension requires a fragment shader");
         return 0;
     }
-    lower->standard_derivatives_enabled = 1u;
+        if (standard_derivatives)
+            lower->standard_derivatives_enabled = 1u;
+        else
+            lower->draw_buffers_enabled = 1u;
+    }
     next(lower);
     return 1;
 }
@@ -1242,6 +1289,53 @@ static int append_raster_defaults(Lower* lower)
     return 1;
 }
 
+/* RSH1 validates that every declared output is written. WebGL instead defines
+ * unwritten gl_FragData entries as zero, so materialize those stores before
+ * publishing the fixed four-target output ABI. */
+static int append_draw_buffer_defaults(Lower* lower)
+{
+    uint8_t written[RINGL_MAX_COLOR_ATTACHMENTS * 4u] = { 0u };
+    uint16_t zero;
+    uint32_t instruction_index;
+    uint32_t output_index;
+
+    if (lower->shader_type != RINGL_FRAGMENT_SHADER ||
+        lower->uses_draw_buffers == 0u) {
+        return 1;
+    }
+    for (instruction_index = 0u; instruction_index < lower->ins_count;
+         ++instruction_index) {
+        const RinGLRsh1InstructionV1* instruction =
+            &lower->ins[instruction_index];
+
+        if (instruction->opcode == RINGL_RSH1_OP_STORE_OUTPUT_F32 &&
+            instruction->immediate < RINGL_MAX_COLOR_ATTACHMENTS * 4u) {
+            written[instruction->immediate] = 1u;
+        }
+    }
+    zero = RINGL_RSH1_UNUSED;
+    for (output_index = 0u;
+         output_index < RINGL_MAX_COLOR_ATTACHMENTS * 4u; ++output_index) {
+        if (written[output_index] != 0u)
+            continue;
+        if (zero == RINGL_RSH1_UNUSED) {
+            zero = new_reg(lower);
+            if (zero == RINGL_RSH1_UNUSED ||
+                !emit(lower, RINGL_RSH1_OP_CONST_F32, zero,
+                      RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED, 0u)) {
+                return 0;
+            }
+        }
+        if (!emit(lower, RINGL_RSH1_OP_STORE_OUTPUT_F32,
+                  RINGL_RSH1_UNUSED, zero, RINGL_RSH1_UNUSED,
+                  output_index)) {
+            return 0;
+        }
+    }
+    lower->output_count = RINGL_MAX_COLOR_ATTACHMENTS * 4u;
+    return 1;
+}
+
 /* Emit type-bearing loads for the fixed interpolant ABI.  They are unused by
  * constant fragment shaders, but RinGPU validates every declared input when
  * it builds a native graphics pipeline. */
@@ -1250,7 +1344,9 @@ static int append_fragment_interpolant_inputs(Lower* lower)
     uint32_t index;
 
     if (lower->shader_type != RINGL_FRAGMENT_SHADER ||
-        lower->output_count != 4u || lower->next_input != 0u) {
+        (lower->output_count != 4u &&
+         lower->output_count != RINGL_MAX_COLOR_ATTACHMENTS * 4u) ||
+        lower->next_input != 0u) {
         return 1;
     }
     for (index = 0u; index < 4u; ++index) {
@@ -1287,6 +1383,8 @@ int ringl_glsl_lower_rsh1_with_uniforms(
     lower.uniform_count = uniform_count;
     lower.result = result;
     if (!parse_all(&lower))
+        return 1;
+    if (!append_draw_buffer_defaults(&lower))
         return 1;
     if (!append_raster_defaults(&lower))
         return 1;

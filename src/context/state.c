@@ -771,6 +771,19 @@ int ringl_enable_webgl_standard_derivatives(void)
     return 0;
 }
 
+int ringl_enable_webgl_draw_buffers(void)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL || context->lost != RINGL_FALSE ||
+        !context->has_ringpu_ops ||
+        context->ringpu_ops.begin_render_pass_mrt_v1 == NULL) {
+        return -1;
+    }
+    context->webgl_draw_buffers_enabled = RINGL_TRUE;
+    return 0;
+}
+
 void ringl_blend_equation_separate(uint32_t mode_rgb, uint32_t mode_alpha)
 {
     RinGLContext* context = ringl_get_current_context();

@@ -244,9 +244,12 @@ typedef struct RinGLAquamarineSurfaceRasterState {
 
 typedef struct RinGLAquamarineSurfaceActiveRenderPass {
     uint64_t color_target_cookie;
+    uint64_t color_target_cookies[RIN_GPU_MAX_COLOR_TARGETS];
     uint64_t depth_target_cookie;
     uint64_t stencil_target_cookie;
     uint32_t color_mip_level;
+    uint32_t color_mip_levels[RIN_GPU_MAX_COLOR_TARGETS];
+    uint32_t active_color_mask;
     uint32_t depth_mip_level;
     uint32_t stencil_mip_level;
 } RinGLAquamarineSurfaceActiveRenderPass;
@@ -2548,6 +2551,73 @@ static int backend_prepare_software_context(
     return RIN_GPU_OK;
 }
 
+static int backend_software_color_target(
+    RinGLAquamarineSurfaceContext* context,
+    const RinGLAquamarineSurfaceImage* color_target, uint32_t color_mip_level,
+    RinWebGLSoftwareTargetV1* target_out)
+{
+    uint32_t color_width;
+    uint32_t color_height;
+
+    if (!context || !color_target || !target_out ||
+        color_target->owner != context ||
+        !image_is_color_target(context, (uint64_t)(uintptr_t)color_target) ||
+        !backend_image_mip_dimensions(&color_target->descriptor,
+                                      color_mip_level, &color_width,
+                                      &color_height)) {
+        return RIN_GPU_ERROR_BACKEND;
+    }
+    *target_out = context->software_context.target;
+    if (color_target->target_kind == RINGL_AQUAMARINE_SURFACE_IMAGE_COLOR) {
+        if (color_mip_level != 0u)
+            return RIN_GPU_ERROR_BACKEND;
+        target_out->pixels = context->target.pixels;
+        target_out->pitch_bytes = context->target.pitch_bytes;
+        target_out->pixel_format = RIN_WEBGL_SOFTWARE_PIXEL_FORMAT_BGRA8_UNORM;
+    } else {
+        uint8_t* pixels;
+        uint64_t pitch_bytes;
+
+        if (offscreen_image_storage(color_target, color_mip_level, &pixels,
+                                    &pitch_bytes, &color_width,
+                                    &color_height) != RIN_GPU_OK ||
+            pitch_bytes > UINT32_MAX) {
+            return RIN_GPU_ERROR_BACKEND;
+        }
+        target_out->pixels = pixels;
+        target_out->pitch_bytes = (uint32_t)pitch_bytes;
+        switch (color_target->descriptor.format) {
+        case RIN_GPU_FORMAT_RGB565_UNORM:
+            target_out->pixel_format =
+                RIN_WEBGL_SOFTWARE_PIXEL_FORMAT_RGB565_UNORM;
+            break;
+        case RIN_GPU_FORMAT_RGBA4_UNORM:
+            target_out->pixel_format =
+                RIN_WEBGL_SOFTWARE_PIXEL_FORMAT_RGBA4_UNORM;
+            break;
+        case RIN_GPU_FORMAT_RGB5_A1_UNORM:
+            target_out->pixel_format =
+                RIN_WEBGL_SOFTWARE_PIXEL_FORMAT_RGB5_A1_UNORM;
+            break;
+        case RIN_GPU_FORMAT_RGBA16_FLOAT:
+            target_out->pixel_format =
+                RIN_WEBGL_SOFTWARE_PIXEL_FORMAT_RGBA16_FLOAT;
+            break;
+        case RIN_GPU_FORMAT_RGBA32_FLOAT:
+            target_out->pixel_format =
+                RIN_WEBGL_SOFTWARE_PIXEL_FORMAT_RGBA32_FLOAT;
+            break;
+        default:
+            target_out->pixel_format =
+                RIN_WEBGL_SOFTWARE_PIXEL_FORMAT_RGBA8_UNORM;
+            break;
+        }
+    }
+    target_out->width = color_width;
+    target_out->height = color_height;
+    return RIN_GPU_OK;
+}
+
 static int raster_float_to_integer(float value, int32_t* result)
 {
     if (!result || value != value ||
@@ -2846,7 +2916,8 @@ static int backend_execute_software_draw(
     const RinWebGLSoftwareVertexBufferV1* vertices,
     const RinWebGLSoftwareIndexBufferV1* indices,
     const RinGLAquamarineSurfaceRasterState* raster_state,
-    const RinGLAquamarineSurfaceBindGroup* bind_group)
+    const RinGLAquamarineSurfaceBindGroup* bind_group,
+    const RinGLAquamarineSurfaceActiveRenderPass* active_pass)
 {
     RinWebGLSoftwareProgramV1 program;
     RinWebGLSoftwareDrawStateV1 state;
@@ -2857,12 +2928,39 @@ static int backend_execute_software_draw(
     RinWebGLSoftwareResourceBindingV1 bindings[RIN_SHADER_MAX_RESOURCES];
     RinWebGLSoftwareResourceBindingsV1 resources;
     RinWebGLSoftwareResourceDrawStateV1 resource_state;
+    RinWebGLSoftwareMrtTargetsV2 mrt_targets;
+    uint32_t color_index;
     int result;
 
     result = backend_prepare_software_context(
         context, pipeline, color_target, color_mip_level, depth_target,
         depth_mip_level, stencil_target, stencil_mip_level, raster_state);
     if (result != RIN_GPU_OK) return result;
+    if (active_pass != NULL && active_pass->active_color_mask != 0u) {
+        memset(&mrt_targets, 0, sizeof(mrt_targets));
+        mrt_targets.struct_size = sizeof(mrt_targets);
+        mrt_targets.version = RIN_WEBGL_SOFTWARE_VERSION;
+        mrt_targets.active_color_mask = active_pass->active_color_mask;
+        for (color_index = 0u; color_index < RIN_GPU_MAX_COLOR_TARGETS;
+             ++color_index) {
+            const RinGLAquamarineSurfaceImage* mrt_target;
+
+            if ((active_pass->active_color_mask & (1u << color_index)) == 0u)
+                continue;
+            mrt_target = (const RinGLAquamarineSurfaceImage*)(uintptr_t)
+                active_pass->color_target_cookies[color_index];
+            result = backend_software_color_target(
+                context, mrt_target, active_pass->color_mip_levels[color_index],
+                &mrt_targets.targets[color_index]);
+            if (result != RIN_GPU_OK)
+                return result;
+        }
+        if (rin_webgl_software_set_mrt_targets(&context->software_context,
+                                               &mrt_targets) !=
+            RIN_WEBGL_SOFTWARE_OK) {
+            return RIN_GPU_ERROR_BACKEND;
+        }
+    }
     memset(&program, 0, sizeof(program));
     program.struct_size = sizeof(program);
     program.version = RIN_WEBGL_SOFTWARE_VERSION;
@@ -3040,7 +3138,7 @@ static int backend_draw_vertices(RinGLAquamarineSurfaceContext* context,
                                            stencil_target,
                                            active_pass->stencil_mip_level,
                                            &vertices, NULL,
-                                           raster_state, bind_group);
+                                           raster_state, bind_group, active_pass);
     free(values);
     return result;
 }
@@ -3105,7 +3203,7 @@ static int backend_draw_vertices_v2(
                 context, pipeline, color_target, active_pass->color_mip_level,
                 depth_target, active_pass->depth_mip_level, stencil_target,
                 active_pass->stencil_mip_level, &vertices, NULL,
-                raster_state, bind_group);
+                raster_state, bind_group, active_pass);
         }
         if (result != RIN_GPU_OK)
             break;
@@ -3295,7 +3393,7 @@ static int backend_draw_indexed(
                                            stencil_target,
                                            active_pass->stencil_mip_level,
                                            &vertices, &indices,
-                                           raster_state, bind_group);
+                                           raster_state, bind_group, active_pass);
     free(values);
     return result;
 }
@@ -3468,7 +3566,7 @@ static int backend_draw_indexed_v2(
                 context, pipeline, color_target, active_pass->color_mip_level,
                 depth_target, active_pass->depth_mip_level, stencil_target,
                 active_pass->stencil_mip_level, &vertices, &indices,
-                raster_state, bind_group);
+                raster_state, bind_group, active_pass);
         }
         if (result != RIN_GPU_OK)
             break;
@@ -3540,6 +3638,145 @@ static int backend_submit(void* opaque,
                 command->value.render_pass_begin.mip_level;
             backend_default_raster_state(
                 color_target, active_pass.color_mip_level, &raster_state);
+        } else if (command->type ==
+                   RIN_GPU_BACKEND_COMMAND_BEGIN_RENDER_PASS_MRT) {
+            const RinGpuBackendRenderPassMrtBeginV1* pass =
+                &command->value.render_pass_mrt_begin;
+            const RinGLAquamarineSurfaceImage* first_color_target = NULL;
+            uint32_t first_width = 0u;
+            uint32_t first_height = 0u;
+            uint32_t color_index;
+
+            if (active_pass.color_target_cookie != 0u ||
+                pass->active_color_mask == 0u ||
+                (pass->active_color_mask &
+                 ~((1u << RIN_GPU_MAX_COLOR_TARGETS) - 1u)) != 0u ||
+                pass->reserved0 != 0u || pass->reserved1 != 0u ||
+                pass->reserved2 != 0u || pass->flags != 0u ||
+                pass->color_store_op != RIN_GPU_RENDER_STORE) {
+                result = RIN_GPU_ERROR_BACKEND;
+                goto cleanup;
+            }
+            for (color_index = 0u; color_index < RIN_GPU_MAX_COLOR_TARGETS;
+                 ++color_index) {
+                const RinGLAquamarineSurfaceImage* color_target;
+                uint32_t color_width;
+                uint32_t color_height;
+                uint32_t prior_index;
+
+                if ((pass->active_color_mask & (1u << color_index)) == 0u) {
+                    if (pass->color_target_cookies[color_index] != 0u ||
+                        pass->color_mip_levels[color_index] != 0u ||
+                        pass->color_array_layers[color_index] != 0u) {
+                        result = RIN_GPU_ERROR_BACKEND;
+                        goto cleanup;
+                    }
+                    continue;
+                }
+                color_target = (const RinGLAquamarineSurfaceImage*)(uintptr_t)
+                    pass->color_target_cookies[color_index];
+                if (pass->color_array_layers[color_index] != 0u ||
+                    !image_is_color_target(
+                        context, pass->color_target_cookies[color_index]) ||
+                    !backend_image_mip_dimensions(
+                        &color_target->descriptor,
+                        pass->color_mip_levels[color_index], &color_width,
+                        &color_height)) {
+                    result = RIN_GPU_ERROR_BACKEND;
+                    goto cleanup;
+                }
+                if (first_color_target == NULL) {
+                    first_color_target = color_target;
+                    first_width = color_width;
+                    first_height = color_height;
+                    active_pass.color_target_cookie =
+                        pass->color_target_cookies[color_index];
+                    active_pass.color_mip_level =
+                        pass->color_mip_levels[color_index];
+                } else if (color_target->descriptor.format !=
+                               first_color_target->descriptor.format ||
+                           color_width != first_width ||
+                           color_height != first_height) {
+                    result = RIN_GPU_ERROR_UNSUPPORTED;
+                    goto cleanup;
+                }
+                for (prior_index = 0u; prior_index < color_index;
+                     ++prior_index) {
+                    if ((pass->active_color_mask & (1u << prior_index)) != 0u &&
+                        pass->color_target_cookies[prior_index] ==
+                            pass->color_target_cookies[color_index] &&
+                        pass->color_mip_levels[prior_index] ==
+                            pass->color_mip_levels[color_index]) {
+                        result = RIN_GPU_ERROR_BACKEND;
+                        goto cleanup;
+                    }
+                }
+                active_pass.color_target_cookies[color_index] =
+                    pass->color_target_cookies[color_index];
+                active_pass.color_mip_levels[color_index] =
+                    pass->color_mip_levels[color_index];
+            }
+            if (first_color_target == NULL ||
+                (pass->depth_target_cookie == 0u &&
+                 (pass->depth_mip_level != 0u ||
+                  pass->depth_array_layer != 0u ||
+                  pass->depth_load_op != 0u || pass->depth_store_op != 0u ||
+                  pass->clear_depth != 0.0f)) ||
+                (pass->stencil_target_cookie == 0u &&
+                 (pass->stencil_mip_level != 0u ||
+                  pass->stencil_array_layer != 0u ||
+                  pass->stencil_load_op != 0u ||
+                  pass->stencil_store_op != 0u || pass->clear_stencil != 0u ||
+                  pass->stencil_write_mask != 0u))) {
+                result = RIN_GPU_ERROR_BACKEND;
+                goto cleanup;
+            }
+            if (pass->depth_target_cookie != 0u) {
+                const RinGLAquamarineSurfaceImage* depth_target =
+                    (const RinGLAquamarineSurfaceImage*)(uintptr_t)
+                        pass->depth_target_cookie;
+                uint32_t width;
+                uint32_t height;
+
+                if (pass->depth_array_layer != 0u ||
+                    pass->depth_store_op != RIN_GPU_RENDER_STORE ||
+                    !image_is_depth_target(context, pass->depth_target_cookie) ||
+                    !image_has_depth_aspect(depth_target) ||
+                    !backend_image_mip_dimensions(&depth_target->descriptor,
+                                                  pass->depth_mip_level, &width,
+                                                  &height) ||
+                    width != first_width || height != first_height) {
+                    result = RIN_GPU_ERROR_BACKEND;
+                    goto cleanup;
+                }
+                active_pass.depth_target_cookie = pass->depth_target_cookie;
+                active_pass.depth_mip_level = pass->depth_mip_level;
+            }
+            if (pass->stencil_target_cookie != 0u) {
+                const RinGLAquamarineSurfaceImage* stencil_target =
+                    (const RinGLAquamarineSurfaceImage*)(uintptr_t)
+                        pass->stencil_target_cookie;
+                uint32_t width;
+                uint32_t height;
+
+                if (pass->stencil_array_layer != 0u ||
+                    pass->stencil_store_op != RIN_GPU_RENDER_STORE ||
+                    !image_is_depth_target(context, pass->stencil_target_cookie) ||
+                    !image_has_stencil_aspect(stencil_target) ||
+                    !backend_image_mip_dimensions(&stencil_target->descriptor,
+                                                  pass->stencil_mip_level, &width,
+                                                  &height) ||
+                    width != first_width || height != first_height) {
+                    result = RIN_GPU_ERROR_BACKEND;
+                    goto cleanup;
+                }
+                active_pass.stencil_target_cookie = pass->stencil_target_cookie;
+                active_pass.stencil_mip_level = pass->stencil_mip_level;
+            }
+            active_pass.active_color_mask = pass->active_color_mask;
+            backend_default_raster_state(first_color_target,
+                                         active_pass.color_mip_level,
+                                         &raster_state);
         } else if (command->type ==
                    RIN_GPU_BACKEND_COMMAND_BEGIN_RENDER_PASS_DEPTH) {
             const RinGLAquamarineSurfaceImage* color_target =
@@ -3716,6 +3953,76 @@ static int backend_submit(void* opaque,
                     result = RIN_GPU_ERROR_BACKEND;
                     goto cleanup;
                 }
+            }
+        } else if (command->type ==
+                   RIN_GPU_BACKEND_COMMAND_BEGIN_RENDER_PASS_MRT) {
+            const RinGpuBackendRenderPassMrtBeginV1* pass =
+                &command->value.render_pass_mrt_begin;
+            const RinGLAquamarineSurfaceImage* first_color_target = NULL;
+            uint32_t color_index;
+
+            for (color_index = 0u; color_index < RIN_GPU_MAX_COLOR_TARGETS;
+                 ++color_index) {
+                if ((pass->active_color_mask & (1u << color_index)) == 0u)
+                    continue;
+                first_color_target =
+                    (const RinGLAquamarineSurfaceImage*)(uintptr_t)
+                        pass->color_target_cookies[color_index];
+                active_pass.color_target_cookie =
+                    pass->color_target_cookies[color_index];
+                active_pass.color_mip_level =
+                    pass->color_mip_levels[color_index];
+                break;
+            }
+            if (first_color_target == NULL) {
+                result = RIN_GPU_ERROR_BACKEND;
+                goto cleanup;
+            }
+            backend_default_raster_state(first_color_target,
+                                         active_pass.color_mip_level,
+                                         &raster_state);
+            active_pass.active_color_mask = pass->active_color_mask;
+            memcpy(active_pass.color_target_cookies,
+                   pass->color_target_cookies,
+                   sizeof(active_pass.color_target_cookies));
+            memcpy(active_pass.color_mip_levels, pass->color_mip_levels,
+                   sizeof(active_pass.color_mip_levels));
+            active_pass.depth_target_cookie = pass->depth_target_cookie;
+            active_pass.stencil_target_cookie = pass->stencil_target_cookie;
+            active_pass.depth_mip_level = pass->depth_mip_level;
+            active_pass.stencil_mip_level = pass->stencil_mip_level;
+            if (pass->color_load_op == RIN_GPU_RENDER_CLEAR) {
+                for (color_index = 0u;
+                     color_index < RIN_GPU_MAX_COLOR_TARGETS; ++color_index) {
+                    if ((pass->active_color_mask & (1u << color_index)) == 0u)
+                        continue;
+                    if (clear_color_target(
+                            context, pass->clear_red, pass->clear_green,
+                            pass->clear_blue, pass->clear_alpha,
+                            pass->color_write_mask, &pass->clear_region,
+                            pass->color_target_cookies[color_index],
+                            pass->color_mip_levels[color_index]) != RIN_GPU_OK) {
+                        result = RIN_GPU_ERROR_BACKEND;
+                        goto cleanup;
+                    }
+                }
+            }
+            if (pass->depth_load_op == RIN_GPU_RENDER_CLEAR &&
+                clear_depth_target(context, pass->clear_depth,
+                                   &pass->clear_region,
+                                   pass->depth_target_cookie,
+                                   pass->depth_mip_level) != RIN_GPU_OK) {
+                result = RIN_GPU_ERROR_BACKEND;
+                goto cleanup;
+            }
+            if (pass->stencil_load_op == RIN_GPU_RENDER_CLEAR &&
+                clear_stencil_target(context, pass->clear_stencil,
+                                     pass->stencil_write_mask,
+                                     &pass->clear_region,
+                                     pass->stencil_target_cookie,
+                                     pass->stencil_mip_level) != RIN_GPU_OK) {
+                result = RIN_GPU_ERROR_BACKEND;
+                goto cleanup;
             }
         } else if (command->type ==
                    RIN_GPU_BACKEND_COMMAND_BEGIN_RENDER_PASS_DEPTH) {

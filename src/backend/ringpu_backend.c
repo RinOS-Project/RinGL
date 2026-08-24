@@ -383,6 +383,20 @@ int ringl_backend_begin_render_pass(RinGLContext* context,
                                                        command_list, render_pass));
 }
 
+int ringl_backend_begin_render_pass_mrt_v1(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuRenderPassMrtV1* render_pass)
+{
+    if (context == NULL || command_list == 0u || render_pass == NULL ||
+        render_pass->active_color_mask == 0u || !context->has_ringpu_ops ||
+        context->ringpu_ops.begin_render_pass_mrt_v1 == NULL) {
+        return -1;
+    }
+    return ringl_backend_result(
+        context, context->ringpu_ops.begin_render_pass_mrt_v1(
+                     context->ringpu.session, command_list, render_pass));
+}
+
 int ringl_backend_begin_render_pass_mip_v2(
     RinGLContext* context, uint64_t command_list,
     const RinGLRinGpuRenderPassMipV2* render_pass)

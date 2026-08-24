@@ -206,6 +206,12 @@ extern "C" {
 /* WEBGL_compressed_texture_etc1. RinGL validates and expands ETC1 blocks
  * into its normal RGB8 texture storage before handing them to RinGPU. */
 #define RINGL_ETC1_RGB8_OES 0x8d64u
+/* WEBGL_compressed_texture_s3tc. These are decoded in RinGL before the
+ * texture reaches RinGPU; no compressed native image storage is required. */
+#define RINGL_COMPRESSED_RGB_S3TC_DXT1_EXT  0x83f0u
+#define RINGL_COMPRESSED_RGBA_S3TC_DXT1_EXT 0x83f1u
+#define RINGL_COMPRESSED_RGBA_S3TC_DXT3_EXT 0x83f2u
+#define RINGL_COMPRESSED_RGBA_S3TC_DXT5_EXT 0x83f3u
 #define RINGL_DEPTH_COMPONENT 0x1902u
 #define RINGL_LUMINANCE  0x1909u
 #define RINGL_LUMINANCE_ALPHA 0x190au
@@ -1292,9 +1298,9 @@ uint32_t ringl_context_dirty_bits(const RinGLContext* context);
  * Unsupported pnames return NULL and record INVALID_ENUM. */
 const char* ringl_get_string(uint32_t pname);
 /* Returns the number of compressed formats that RinGL can actually upload.
- * The bounded profile accepts ETC1 RGB8 and expands it into normal RGB8
- * storage before RinGPU sees the image. A missing context or null output
- * fails without modifying `count`. */
+ * The bounded profile accepts ETC1 RGB8 and four S3TC DXT formats, expanding
+ * them into normal RGB/RGBA storage before RinGPU sees the image. A missing
+ * context or null output fails without modifying `count`. */
 int ringl_get_compressed_texture_format_count(size_t* count);
 /* Writes the complete integer result only when `value_count` is large enough.
  * It returns zero on success and -1 on an invalid query, missing context, or
@@ -1504,10 +1510,10 @@ void ringl_tex_image_2d_from_bytes(uint32_t target, int32_t level,
                                    int32_t height, int32_t border,
                                    uint32_t format, uint32_t type,
                                    const void* pixels, uint64_t pixels_size);
-/* WEBGL_compressed_texture_etc1 upload paths. Both commands require exact
- * ETC1 block payload sizes, validate differential-mode blocks before changing
- * a texture, and expand valid blocks to RGB8 through the normal RinGL/RinGPU
- * texture path. No compressed storage is exposed below this API. */
+/* WEBGL_compressed_texture_etc1 and WEBGL_compressed_texture_s3tc upload
+ * paths. Both commands require exact format-specific block payload sizes and
+ * expand valid blocks to RGB/RGBA through the normal RinGL/RinGPU texture
+ * path. No compressed storage is exposed below this API. */
 void ringl_compressed_tex_image_2d_from_bytes(uint32_t target, int32_t level,
                                               uint32_t internal_format,
                                               int32_t width, int32_t height,

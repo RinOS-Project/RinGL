@@ -13,6 +13,10 @@ int main(void)
     };
     uint32_t vertex;
     uint32_t fragment;
+    RinGLShaderPrecisionFormatV1 precision = {
+        .struct_size = sizeof(precision),
+        .api_version = RINGL_API_VERSION,
+    };
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -26,6 +30,29 @@ int main(void)
     assert(fragment != 0u);
     assert(ringl_is_shader(vertex));
     assert(ringl_get_shader_type(vertex) == RINGL_VERTEX_SHADER);
+
+    assert(ringl_get_shader_precision_format(RINGL_VERTEX_SHADER,
+                                             RINGL_HIGH_FLOAT,
+                                             &precision) == 0);
+    assert(precision.range_min == -126 && precision.range_max == 127 &&
+           precision.precision == 23);
+    assert(ringl_get_shader_precision_format(RINGL_FRAGMENT_SHADER,
+                                             RINGL_MEDIUM_INT,
+                                             &precision) == 0);
+    assert(precision.range_min == 31 && precision.range_max == 30 &&
+           precision.precision == 0);
+    precision.range_min = 777;
+    assert(ringl_get_shader_precision_format(0xdeadbeefu, RINGL_HIGH_FLOAT,
+                                             &precision) == -1);
+    assert(precision.range_min == 777);
+    assert(ringl_get_error() == RINGL_INVALID_ENUM);
+    precision.reserved0 = 1u;
+    assert(ringl_get_shader_precision_format(RINGL_VERTEX_SHADER,
+                                             RINGL_HIGH_FLOAT,
+                                             &precision) == -1);
+    assert(precision.range_min == 777);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    precision.reserved0 = 0u;
 
     ringl_shader_source(vertex, "void main(){}", -1);
     assert(ringl_get_shader_source_length(vertex) == 13u);

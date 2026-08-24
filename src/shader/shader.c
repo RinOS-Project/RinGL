@@ -12,6 +12,13 @@ static int ringl_shader_type_valid(uint32_t type)
     return type == RINGL_VERTEX_SHADER || type == RINGL_FRAGMENT_SHADER;
 }
 
+static int ringl_shader_precision_type_valid(uint32_t type)
+{
+    return type == RINGL_LOW_FLOAT || type == RINGL_MEDIUM_FLOAT ||
+           type == RINGL_HIGH_FLOAT || type == RINGL_LOW_INT ||
+           type == RINGL_MEDIUM_INT || type == RINGL_HIGH_INT;
+}
+
 static RinGLShaderObject* ringl_shader_object(RinGLContext* context,
                                                uint32_t shader)
 {
@@ -370,6 +377,47 @@ uint32_t ringl_get_shader_type(uint32_t shader)
         return 0u;
     }
     return object->shader_type;
+}
+
+int ringl_get_shader_precision_format(
+    uint32_t shader_type, uint32_t precision_type,
+    RinGLShaderPrecisionFormatV1* format)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLShaderPrecisionFormatV1 result;
+
+    if (context == NULL)
+        return -1;
+    if (format == NULL || format->struct_size < sizeof(*format) ||
+        format->api_version != RINGL_API_VERSION || format->reserved0 != 0u) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+    if (!ringl_shader_type_valid(shader_type) ||
+        !ringl_shader_precision_type_valid(precision_type)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
+
+    memset(&result, 0, sizeof(result));
+    result.struct_size = sizeof(result);
+    result.api_version = RINGL_API_VERSION;
+    if (precision_type == RINGL_LOW_FLOAT ||
+        precision_type == RINGL_MEDIUM_FLOAT ||
+        precision_type == RINGL_HIGH_FLOAT) {
+        /* RSH1's only floating execution domain is binary32. */
+        result.range_min = -126;
+        result.range_max = 127;
+        result.precision = 23;
+    } else {
+        /* RSH1 integer values are signed two's-complement i32. GLES reports
+         * the integer exponent range as [31, 30] with zero fractional bits. */
+        result.range_min = 31;
+        result.range_max = 30;
+        result.precision = 0;
+    }
+    *format = result;
+    return 0;
 }
 
 uint64_t ringl_get_shader_source_length(uint32_t shader)

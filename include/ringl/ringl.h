@@ -252,6 +252,14 @@ extern "C" {
 #define RINGL_VERTEX_SHADER   0x8b31u
 #define RINGL_FRAGMENT_SHADER 0x8b30u
 
+/* WebGL 1 getShaderPrecisionFormat() precision classes. */
+#define RINGL_LOW_FLOAT    0x8df0u
+#define RINGL_MEDIUM_FLOAT 0x8df1u
+#define RINGL_HIGH_FLOAT   0x8df2u
+#define RINGL_LOW_INT      0x8df3u
+#define RINGL_MEDIUM_INT   0x8df4u
+#define RINGL_HIGH_INT     0x8df5u
+
 /* WebGL 1 shader/program query names. */
 #define RINGL_DELETE_STATUS      0x8b80u
 #define RINGL_COMPILE_STATUS     0x8b81u
@@ -1046,6 +1054,19 @@ typedef struct RinGLProgramInfoV1 {
     uint32_t reserved0;
 } RinGLProgramInfoV1;
 
+/* Versioned, executable RSH1 precision profile. `range_min` and
+ * `range_max` use the GLES query convention. The current backend evaluates
+ * every accepted floating expression as IEEE-754 binary32 and every accepted
+ * integer expression as signed two's-complement 32-bit. */
+typedef struct RinGLShaderPrecisionFormatV1 {
+    uint32_t struct_size;
+    uint32_t api_version;
+    int32_t range_min;
+    int32_t range_max;
+    int32_t precision;
+    uint32_t reserved0;
+} RinGLShaderPrecisionFormatV1;
+
 /* A caller-owned active attribute/uniform record. The name is always
  * NUL-terminated after its exact byte length. */
 typedef struct RinGLActiveInfoV1 {
@@ -1492,6 +1513,11 @@ void ringl_shader_source(uint32_t shader, const char* source, int64_t length);
 void ringl_compile_shader(uint32_t shader);
 uint32_t ringl_get_shader_compile_status(uint32_t shader);
 uint32_t ringl_get_shader_type(uint32_t shader);
+/* Queries only the documented RSH1 precision profile. The supplied output
+ * header must be complete; failures leave the caller's record unchanged. */
+int ringl_get_shader_precision_format(
+    uint32_t shader_type, uint32_t precision_type,
+    RinGLShaderPrecisionFormatV1* format);
 uint64_t ringl_get_shader_source_length(uint32_t shader);
 /* Copies a NUL-terminated prefix of the current shader source when capacity
  * permits. Returns the complete source length (without the NUL terminator).

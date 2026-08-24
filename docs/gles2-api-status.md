@@ -49,7 +49,7 @@ Status meanings:
 | `glGetProgramiv`, `glGetShaderiv` | P | Versioned program record and dedicated shader-status/type calls; not every GLES pname. |
 | `glGetProgramInfoLog`, `glGetShaderInfoLog`, `glGetShaderSource` | B | Caller-owned bounded copies. |
 | `glGetRenderbufferParameteriv` | P | `RinGLRenderbufferInfoV1` supplies bounded storage metadata. |
-| `glGetShaderPrecisionFormat` | N | Precision-format reflection is not implemented in raw RinGL. |
+| `glGetShaderPrecisionFormat` | B | `ringl_get_shader_precision_format` returns the executable RSH1 binary32 or signed-i32 profile through a validated versioned record. |
 | `glGetString` | N | Vendor/renderer/version/extensions strings are not fabricated. |
 | `glGetTexParameteriv` | P | Integer values for `MIN_FILTER`, `MAG_FILTER`, `WRAP_S`, `WRAP_T` only. |
 | `glGetTexParameterfv` | N | No floating tex-parameter getter. |
@@ -118,8 +118,9 @@ failure. It accepts these exact pnames:
   `SAMPLE_COVERAGE_INVERT`.
 
 Dedicated versioned records provide depth range, line width/range, sample
-coverage, blend color, clear values, renderbuffer metadata, framebuffer
-attachment metadata, program status, active names, and vertex-attribute state.
+coverage, blend color, clear values, shader precision, renderbuffer metadata,
+framebuffer attachment metadata, program status, active names, and
+vertex-attribute state.
 Every other GLES query must remain unavailable until it has an equally explicit
 RinGL representation and test coverage.
 

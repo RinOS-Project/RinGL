@@ -441,6 +441,12 @@ validates the complete declaration before lowering, and the accepted numeric
 domain executes in IEEE-754 binary32 RSH1 (a conforming higher-precision
 implementation for the advertised floating qualifiers). An incomplete or
 unknown precision declaration fails compilation rather than being skipped.
+`ringl_get_shader_precision_format()` exposes this executable profile through
+a versioned caller-owned record: all accepted floating precision classes report
+binary32's `[-126, 127]` range and 23 fraction bits, while accepted integer
+classes report RSH1's signed i32 GLES range `[31, 30]` with zero fraction bits.
+The query validates the stage, precision token, and output header before it
+updates caller storage, so a browser need not fabricate shader precision.
 
 `ringl_get_renderbuffer_info()` exposes the current renderbuffer's dimensions,
 internal format, component bit counts, and zero sample count through a

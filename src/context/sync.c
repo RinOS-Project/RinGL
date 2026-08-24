@@ -212,6 +212,68 @@ static int packed_color_format(uint32_t format)
            format == RINGL_RIN_GPU_FORMAT_RGB5_A1_UNORM;
 }
 
+static int unpack_rgba16f_to_rgba(const uint8_t* source, void* destination,
+                                  uint64_t pixel_count)
+{
+    uint64_t pixel_index;
+
+    if (source == NULL || destination == NULL)
+        return -1;
+    /* Validate the complete native image before publishing Float32 output. */
+    for (pixel_index = 0u; pixel_index < pixel_count; ++pixel_index) {
+        uint32_t component;
+
+        for (component = 0u; component < 4u; ++component) {
+            uint16_t half;
+
+            memcpy(&half, source + pixel_index * 4u * sizeof(half) +
+                   component * sizeof(half), sizeof(half));
+            if ((half & 0x7c00u) == 0x7c00u)
+                return -1;
+        }
+    }
+    for (pixel_index = 0u; pixel_index < pixel_count; ++pixel_index) {
+        uint32_t component;
+
+        for (component = 0u; component < 4u; ++component) {
+            uint16_t half;
+            uint32_t sign;
+            uint32_t exponent;
+            uint32_t mantissa;
+            uint32_t bits;
+            float value;
+
+            memcpy(&half, source + pixel_index * 4u * sizeof(half) +
+                   component * sizeof(half), sizeof(half));
+            sign = ((uint32_t)half & 0x8000u) << 16u;
+            exponent = ((uint32_t)half >> 10u) & 0x1fu;
+            mantissa = (uint32_t)half & 0x03ffu;
+            if (exponent == 0u) {
+                if (mantissa == 0u) {
+                    bits = sign;
+                } else {
+                    int32_t unbiased_exponent = -14;
+
+                    while ((mantissa & 0x0400u) == 0u) {
+                        mantissa <<= 1u;
+                        --unbiased_exponent;
+                    }
+                    bits = sign |
+                        ((uint32_t)(unbiased_exponent + 127) << 23u) |
+                        ((mantissa & 0x03ffu) << 13u);
+                }
+            } else {
+                bits = sign | ((exponent + 112u) << 23u) | (mantissa << 13u);
+            }
+            memcpy(&value, &bits, sizeof(value));
+            memcpy((uint8_t*)destination +
+                   (pixel_index * 4u + component) * sizeof(value),
+                   &value, sizeof(value));
+        }
+    }
+    return 0;
+}
+
 static int ringl_read_color_target_to_type(RinGLContext* context, int32_t x,
                                            int32_t y, int32_t width,
                                            int32_t height, uint32_t type,
@@ -276,6 +338,18 @@ static int ringl_read_color_target_to_type(RinGLContext* context, int32_t x,
             return -1;
         native_row_bytes = row_bytes;
         native_total_bytes = total_bytes;
+    } else if (target.format == RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT) {
+        if (type != RINGL_FLOAT)
+            return -1;
+        native_row_bytes = (uint64_t)(uint32_t)width * 4u * sizeof(uint16_t);
+        if ((uint64_t)(uint32_t)height > UINT64_MAX / native_row_bytes)
+            return -1;
+        native_total_bytes = native_row_bytes * (uint64_t)(uint32_t)height;
+        if (native_total_bytes > SIZE_MAX)
+            return -1;
+        native_pixels = malloc((size_t)native_total_bytes);
+        if (native_pixels == NULL)
+            return -1;
     } else if (type == RINGL_UNSIGNED_BYTE &&
                (target.format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM ||
                 target.format == RINGL_RIN_GPU_FORMAT_BGRA8_UNORM)) {
@@ -347,6 +421,12 @@ static int ringl_read_color_target_to_type(RinGLContext* context, int32_t x,
     } else if (target.format == RINGL_RIN_GPU_FORMAT_RGB5_A1_UNORM) {
         unpack_rgb5_a1_to_rgba(native_pixels, pixels,
                                (uint64_t)(uint32_t)width * (uint32_t)height);
+    } else if (target.format == RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT &&
+               unpack_rgba16f_to_rgba(native_pixels, pixels,
+                                       (uint64_t)(uint32_t)width *
+                                           (uint32_t)height) != 0) {
+        free(native_pixels);
+        return -1;
     }
     free(native_pixels);
     return 0;

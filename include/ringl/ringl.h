@@ -187,6 +187,9 @@ extern "C" {
 #define RINGL_TEXTURE    0x1702u
 #define RINGL_DEPTH_STENCIL 0x84f9u
 #define RINGL_RGBA8      0x8058u
+/* EXT_color_buffer_half_float's binary16 renderbuffer storage token. */
+#define RINGL_RGBA16F    0x881au
+#define RINGL_RGB16F     0x881bu
 /* WEBGL_color_buffer_float's RGBA32F_EXT storage token. */
 #define RINGL_RGBA32F    0x8814u
 #define RINGL_UNSIGNED_INT_24_8 0x84fau
@@ -296,6 +299,7 @@ extern "C" {
 #define RINGL_RIN_GPU_FORMAT_RGBA4_UNORM    7u
 #define RINGL_RIN_GPU_FORMAT_RGB5_A1_UNORM  8u
 #define RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT   10u
+#define RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT   11u
 #define RINGL_RIN_GPU_IMAGE_USAGE_COPY_DESTINATION 0x1u
 #define RINGL_RIN_GPU_IMAGE_USAGE_SAMPLED          0x2u
 #define RINGL_RIN_GPU_IMAGE_USAGE_COLOR_TARGET     0x4u
@@ -1341,6 +1345,9 @@ int ringl_enable_webgl_half_float_texture_linear(void);
  * builds a pipeline for a fixed-point target. Returns zero only when a live
  * current context accepted the capability. */
 int ringl_enable_webgl_float_color_buffer(void);
+/* EXT_color_buffer_half_float enables binary16 color attachments for the
+ * current context only after the browser exposes its extension object. */
+int ringl_enable_webgl_half_float_color_buffer(void);
 /* EXT_blend_minmax enables MIN/MAX blend equations for the current context.
  * The extension remains unavailable until the browser has acquired its WebGL
  * extension object. Returns zero only for a live current context. */

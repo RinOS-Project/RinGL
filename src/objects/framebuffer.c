@@ -22,6 +22,8 @@ static int color_attachment_format_valid(uint32_t format)
 {
     return format == RINGL_RGBA8 || format == RINGL_RGB565 ||
            format == RINGL_RGBA4 || format == RINGL_RGB5_A1 ||
+           format == RINGL_RGB16F ||
+           format == RINGL_RGBA16F ||
            format == RINGL_RGBA32F;
 }
 
@@ -33,6 +35,8 @@ static uint32_t color_attachment_ringpu_format(uint32_t format)
         return RINGL_RIN_GPU_FORMAT_RGBA4_UNORM;
     if (format == RINGL_RGB5_A1)
         return RINGL_RIN_GPU_FORMAT_RGB5_A1_UNORM;
+    if (format == RINGL_RGB16F || format == RINGL_RGBA16F)
+        return RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT;
     if (format == RINGL_RGBA32F)
         return RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT;
     return RINGL_RIN_GPU_FORMAT_RGBA8_UNORM;
@@ -676,13 +680,21 @@ int ringl_framebuffer_color_attachment_component_type(uint32_t* type_out)
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return -1;
         }
+        index = ringl_object_slot_index(framebuffer->color_attachment_object);
+        if (index >= RINGL_OBJECT_SLOT_COUNT) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return -1;
+        }
         renderbuffer = &context->renderbuffers[index];
         if (!renderbuffer->defined) {
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return -1;
         }
         component_type = renderbuffer->internal_format == RINGL_RGBA32F
-            ? RINGL_FLOAT : RINGL_UNSIGNED_BYTE;
+            ? RINGL_FLOAT
+            : (renderbuffer->internal_format == RINGL_RGB16F ||
+               renderbuffer->internal_format == RINGL_RGBA16F)
+                ? RINGL_HALF_FLOAT_OES : RINGL_UNSIGNED_BYTE;
     } else {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return -1;
@@ -747,6 +759,31 @@ uint32_t ringl_check_framebuffer_status(uint32_t target)
     if (color_attachment_dimensions(context, framebuffer, &color_width,
                                     &color_height) != 0)
         return RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
+    if (framebuffer->color_attachment_kind ==
+        RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D) {
+        uint32_t color_index = ringl_object_slot_index(
+            framebuffer->color_attachment_object);
+
+        if (color_index >= RINGL_OBJECT_SLOT_COUNT)
+            return RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
+        /* RGB16F is optional in WebGL 1. Keep its accepted storage token
+         * distinct from the required RGBA16F profile instead of silently
+         * treating an RGBA backing image as an RGB render target. */
+        if (context->textures[color_index].format == RINGL_RGB &&
+            context->textures[color_index].color_component_type ==
+                RINGL_HALF_FLOAT_OES) {
+            return RINGL_FRAMEBUFFER_UNSUPPORTED;
+        }
+    } else if (framebuffer->color_attachment_kind ==
+               RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER) {
+        uint32_t color_index = ringl_object_slot_index(
+            framebuffer->color_attachment_object);
+
+        if (color_index >= RINGL_OBJECT_SLOT_COUNT)
+            return RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
+        if (context->renderbuffers[color_index].internal_format == RINGL_RGB16F)
+            return RINGL_FRAMEBUFFER_UNSUPPORTED;
+    }
     if (framebuffer->depth_attachment_kind !=
             RINGL_FRAMEBUFFER_ATTACHMENT_NONE &&
         (depth_attachment_dimensions(context, framebuffer, &depth_width,
@@ -922,6 +959,15 @@ int ringl_get_renderbuffer_info(uint32_t target, RinGLRenderbufferInfoV1* info)
             result.green_size = 32u;
             result.blue_size = 32u;
             result.alpha_size = 32u;
+        } else if (renderbuffer->internal_format == RINGL_RGB16F) {
+            result.red_size = 16u;
+            result.green_size = 16u;
+            result.blue_size = 16u;
+        } else if (renderbuffer->internal_format == RINGL_RGBA16F) {
+            result.red_size = 16u;
+            result.green_size = 16u;
+            result.blue_size = 16u;
+            result.alpha_size = 16u;
         } else if (renderbuffer->internal_format == RINGL_RGB565) {
             result.red_size = 5u;
             result.green_size = 6u;
@@ -963,7 +1009,9 @@ void ringl_renderbuffer_storage(uint32_t target, uint32_t internal_format,
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
-    if (internal_format != RINGL_RGBA8 && internal_format != RINGL_RGBA32F &&
+    if (internal_format != RINGL_RGBA8 && internal_format != RINGL_RGB16F &&
+        internal_format != RINGL_RGBA16F &&
+        internal_format != RINGL_RGBA32F &&
         internal_format != RINGL_RGB565 &&
         internal_format != RINGL_RGBA4 && internal_format != RINGL_RGB5_A1 &&
         internal_format != RINGL_DEPTH_COMPONENT16 &&

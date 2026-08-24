@@ -50,6 +50,8 @@ static uint32_t backend_image_texel_bytes(uint32_t format)
         return (uint32_t)sizeof(uint8_t);
     if (format == RIN_GPU_FORMAT_D32_FLOAT_S8_UINT)
         return (uint32_t)sizeof(uint64_t);
+    if (format == RIN_GPU_FORMAT_RGBA16_FLOAT)
+        return 4u * (uint32_t)sizeof(uint16_t);
     if (format == RIN_GPU_FORMAT_RGBA32_FLOAT)
         return 4u * (uint32_t)sizeof(float);
     if (format == RIN_GPU_FORMAT_RGB565_UNORM ||
@@ -681,6 +683,84 @@ static int backend_unpack_vertex_values_v2(
     return RIN_GPU_OK;
 }
 
+static int backend_float_color_format(uint32_t format)
+{
+    return format == RIN_GPU_FORMAT_RGBA16_FLOAT ||
+           format == RIN_GPU_FORMAT_RGBA32_FLOAT;
+}
+
+static float backend_half_to_float(uint16_t half)
+{
+    uint32_t sign = ((uint32_t)half & 0x8000u) << 16u;
+    uint32_t exponent = ((uint32_t)half >> 10u) & 0x1fu;
+    uint32_t mantissa = (uint32_t)half & 0x03ffu;
+    uint32_t bits;
+    float value;
+
+    if (exponent == 0u) {
+        if (mantissa == 0u) {
+            bits = sign;
+        } else {
+            int32_t unbiased_exponent = -14;
+
+            while ((mantissa & 0x0400u) == 0u) {
+                mantissa <<= 1u;
+                --unbiased_exponent;
+            }
+            bits = sign | ((uint32_t)(unbiased_exponent + 127) << 23u) |
+                ((mantissa & 0x03ffu) << 13u);
+        }
+    } else if (exponent == 0x1fu) {
+        bits = sign | 0x7f800000u | (mantissa << 13u);
+    } else {
+        bits = sign | ((exponent + 112u) << 23u) | (mantissa << 13u);
+    }
+    memcpy(&value, &bits, sizeof(value));
+    return value;
+}
+
+static uint16_t backend_float_to_half(float value)
+{
+    uint32_t bits;
+    uint32_t sign;
+    uint32_t exponent;
+    uint32_t mantissa;
+    int32_t half_exponent;
+
+    memcpy(&bits, &value, sizeof(bits));
+    sign = (bits >> 16u) & 0x8000u;
+    exponent = (bits >> 23u) & 0xffu;
+    mantissa = bits & 0x007fffffu;
+    if (exponent == 0xffu)
+        return (uint16_t)(sign | 0x7bffu);
+    half_exponent = (int32_t)exponent - 127 + 15;
+    if (half_exponent >= 31)
+        return (uint16_t)(sign | 0x7bffu);
+    if (half_exponent <= 0) {
+        uint32_t shifted;
+        uint32_t round_bit;
+
+        if (half_exponent < -10)
+            return (uint16_t)sign;
+        mantissa |= 0x00800000u;
+        shifted = mantissa >> (uint32_t)(14 - half_exponent);
+        round_bit = UINT32_C(1) << (uint32_t)(13 - half_exponent);
+        if ((mantissa & round_bit) != 0u &&
+            ((mantissa & (round_bit - 1u)) != 0u || (shifted & 1u) != 0u))
+            ++shifted;
+        return (uint16_t)(sign | shifted);
+    }
+    mantissa += 0x00001000u;
+    if ((mantissa & 0x00800000u) != 0u) {
+        mantissa = 0u;
+        ++half_exponent;
+        if (half_exponent >= 31)
+            return (uint16_t)(sign | 0x7bffu);
+    }
+    return (uint16_t)(sign | ((uint32_t)half_exponent << 10u) |
+                      (mantissa >> 13u));
+}
+
 struct RinGLAquamarineSurfaceContext {
     RinGpuCore core;
     RinGpuDisplayInfoV1 display;
@@ -858,6 +938,7 @@ static int backend_create_image(void* opaque, const RinGpuImageDescV1* desc,
         /* A caller may supply separate D32 and S8 planes for its surface. */
         caller_owned_depth_stencil = 1;
     } else if ((desc->format == RIN_GPU_FORMAT_RGBA8_UNORM ||
+                desc->format == RIN_GPU_FORMAT_RGBA16_FLOAT ||
                 desc->format == RIN_GPU_FORMAT_RGBA32_FLOAT ||
                 backend_packed_color_format(desc->format)) &&
                (desc->usage & RIN_GPU_IMAGE_PRESENT) == 0u) {
@@ -1349,25 +1430,25 @@ static int backend_blend_pipeline_valid(
     }
     memcpy(&bits, &descriptor->blend_constant_red, sizeof(bits));
     if ((bits & 0x7f800000u) == 0x7f800000u ||
-        (descriptor->color_format != RIN_GPU_FORMAT_RGBA32_FLOAT &&
+        (!backend_float_color_format(descriptor->color_format) &&
          (descriptor->blend_constant_red < 0.0f ||
           descriptor->blend_constant_red > 1.0f)))
         return 0;
     memcpy(&bits, &descriptor->blend_constant_green, sizeof(bits));
     if ((bits & 0x7f800000u) == 0x7f800000u ||
-        (descriptor->color_format != RIN_GPU_FORMAT_RGBA32_FLOAT &&
+        (!backend_float_color_format(descriptor->color_format) &&
          (descriptor->blend_constant_green < 0.0f ||
           descriptor->blend_constant_green > 1.0f)))
         return 0;
     memcpy(&bits, &descriptor->blend_constant_blue, sizeof(bits));
     if ((bits & 0x7f800000u) == 0x7f800000u ||
-        (descriptor->color_format != RIN_GPU_FORMAT_RGBA32_FLOAT &&
+        (!backend_float_color_format(descriptor->color_format) &&
          (descriptor->blend_constant_blue < 0.0f ||
           descriptor->blend_constant_blue > 1.0f)))
         return 0;
     memcpy(&bits, &descriptor->blend_constant_alpha, sizeof(bits));
     if ((bits & 0x7f800000u) == 0x7f800000u ||
-        (descriptor->color_format != RIN_GPU_FORMAT_RGBA32_FLOAT &&
+        (!backend_float_color_format(descriptor->color_format) &&
          (descriptor->blend_constant_alpha < 0.0f ||
           descriptor->blend_constant_alpha > 1.0f)))
         return 0;
@@ -1450,6 +1531,7 @@ static int backend_create_graphics_pipeline(
         !cookie ||
         (descriptor->color_format != RIN_GPU_FORMAT_BGRA8_UNORM &&
          descriptor->color_format != RIN_GPU_FORMAT_RGBA8_UNORM &&
+         descriptor->color_format != RIN_GPU_FORMAT_RGBA16_FLOAT &&
          descriptor->color_format != RIN_GPU_FORMAT_RGBA32_FLOAT &&
          !backend_packed_color_format(descriptor->color_format)) ||
         !backend_primitive_topology_valid(descriptor->primitive_topology) ||
@@ -1659,6 +1741,15 @@ static int backend_snapshot_sampled_mip(
             } else if (image->descriptor.format == RIN_GPU_FORMAT_RGBA32_FLOAT) {
                 memcpy(destination_texel, source_row + (uint64_t)x *
                        4u * sizeof(float), 4u * sizeof(float));
+            } else if (image->descriptor.format == RIN_GPU_FORMAT_RGBA16_FLOAT) {
+                for (uint32_t component = 0u; component < 4u; ++component) {
+                    uint16_t half;
+
+                    memcpy(&half, source_row + (uint64_t)x *
+                           4u * sizeof(half) + component * sizeof(half),
+                           sizeof(half));
+                    destination_texel[component] = backend_half_to_float(half);
+                }
             } else if (image->descriptor.format != RIN_GPU_FORMAT_RGBA8_UNORM) {
                 float depth;
                 if (image->descriptor.format == RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) {
@@ -1776,6 +1867,7 @@ static int backend_create_graphics_bind_group(
                  RINGL_AQUAMARINE_SURFACE_IMAGE_OFFSCREEN_DEPTH_STENCIL) ||
             (image->descriptor.format != RIN_GPU_FORMAT_RGBA8_UNORM &&
              !backend_packed_color_format(image->descriptor.format) &&
+             image->descriptor.format != RIN_GPU_FORMAT_RGBA16_FLOAT &&
              image->descriptor.format != RIN_GPU_FORMAT_RGBA32_FLOAT &&
              image->descriptor.format != RIN_GPU_FORMAT_D32_FLOAT &&
              image->descriptor.format != RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) ||
@@ -2085,6 +2177,7 @@ static int clear_color_target(RinGLAquamarineSurfaceContext* context,
     int bgra;
     int packed_color;
     int float_color;
+    int half_color;
     uint32_t width;
     uint32_t height;
 
@@ -2118,12 +2211,14 @@ static int clear_color_target(RinGLAquamarineSurfaceContext* context,
     }
     packed_color = backend_packed_color_format(image->descriptor.format);
     float_color = image->descriptor.format == RIN_GPU_FORMAT_RGBA32_FLOAT;
+    half_color = image->descriptor.format == RIN_GPU_FORMAT_RGBA16_FLOAT;
     for (y = y0; y < y1; ++y) {
         uint8_t* row = pixels + (uint64_t)y * pitch_bytes;
         uint32_t x;
         for (x = x0; x < x1; ++x) {
             uint8_t* pixel = row + (uint64_t)x *
                 (float_color ? 4u * sizeof(float)
+                             : half_color ? 4u * sizeof(uint16_t)
                              : (packed_color ? sizeof(uint16_t)
                                              : sizeof(uint32_t)));
             if (float_color) {
@@ -2134,6 +2229,22 @@ static int clear_color_target(RinGLAquamarineSurfaceContext* context,
                         memcpy(pixel + (uint64_t)component * sizeof(float),
                                &components[component], sizeof(float));
                     }
+                }
+                continue;
+            }
+            if (half_color) {
+                const float components[4] = {red, green, blue, alpha};
+
+                for (uint32_t component = 0u; component < 4u; ++component) {
+                    uint16_t half;
+
+                    if ((color_write_mask &
+                         (RIN_GPU_COLOR_WRITE_RED << component)) == 0u) {
+                        continue;
+                    }
+                    half = backend_float_to_half(components[component]);
+                    memcpy(pixel + (uint64_t)component * sizeof(half), &half,
+                           sizeof(half));
                 }
                 continue;
             }
@@ -2321,6 +2432,9 @@ static int backend_prepare_software_context(
             break;
         case RIN_GPU_FORMAT_RGB5_A1_UNORM:
             target.pixel_format = RIN_WEBGL_SOFTWARE_PIXEL_FORMAT_RGB5_A1_UNORM;
+            break;
+        case RIN_GPU_FORMAT_RGBA16_FLOAT:
+            target.pixel_format = RIN_WEBGL_SOFTWARE_PIXEL_FORMAT_RGBA16_FLOAT;
             break;
         case RIN_GPU_FORMAT_RGBA32_FLOAT:
             target.pixel_format = RIN_WEBGL_SOFTWARE_PIXEL_FORMAT_RGBA32_FLOAT;

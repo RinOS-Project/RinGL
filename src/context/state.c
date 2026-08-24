@@ -657,7 +657,8 @@ void ringl_blend_color(float red, float green, float blue, float alpha)
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
-    if (context->webgl_float_color_buffer_enabled == RINGL_FALSE) {
+    if (context->webgl_float_color_buffer_enabled == RINGL_FALSE &&
+        context->webgl_half_float_color_buffer_enabled == RINGL_FALSE) {
         next_red = clamp_blend_color_component(next_red);
         next_green = clamp_blend_color_component(next_green);
         next_blue = clamp_blend_color_component(next_blue);
@@ -683,6 +684,16 @@ int ringl_enable_webgl_float_color_buffer(void)
     if (context == NULL || context->lost != RINGL_FALSE)
         return -1;
     context->webgl_float_color_buffer_enabled = RINGL_TRUE;
+    return 0;
+}
+
+int ringl_enable_webgl_half_float_color_buffer(void)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL || context->lost != RINGL_FALSE)
+        return -1;
+    context->webgl_half_float_color_buffer_enabled = RINGL_TRUE;
     return 0;
 }
 

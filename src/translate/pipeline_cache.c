@@ -142,7 +142,8 @@ static int key_uses_constant_blend(const RinGLPipelineKey* key)
 
 static float blend_constant_for_color_target(uint32_t color_format, float value)
 {
-    if (color_format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT)
+    if (color_format == RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT ||
+        color_format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT)
         return value;
     if (value <= 0.0f)
         return 0.0f;

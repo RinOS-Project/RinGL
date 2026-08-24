@@ -63,6 +63,7 @@ static int fake_create_image(void* session,
     assert(desc != NULL && image_out != NULL);
     assert(desc->width == 2u && desc->height == 2u);
     assert(desc->format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM ||
+           desc->format == RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT ||
            desc->format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT ||
            desc->format == RINGL_RIN_GPU_FORMAT_RGB565_UNORM ||
            desc->format == RINGL_RIN_GPU_FORMAT_RGBA4_UNORM ||
@@ -85,6 +86,8 @@ static int fake_upload_image(void* session, uint64_t image,
     uint32_t texel_bytes = backend->last_format ==
             RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT
         ? 16u
+        : backend->last_format == RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT
+            ? 8u
         : backend->last_format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM
             ? 4u : 2u;
 
@@ -333,16 +336,9 @@ int main(void)
         UINT16_C(0x4000), UINT16_C(0xc000), UINT16_C(0x3000), UINT16_C(0x3800),
         UINT16_C(0x3a00), UINT16_C(0x3900), UINT16_C(0x3600), UINT16_C(0x3400),
     };
-    const float expected_half_float_rgba_pixels[16] = {
-        -1.0f, 0.50f, 1.25f, 0.75f,
-        0.00f, 1.00f, 0.25f, 1.00f,
-        2.00f, -2.00f, 0.125f, 0.50f,
-        0.75f, 0.625f, 0.375f, 0.25f,
-    };
     const uint16_t half_float_patch[4] = {
         UINT16_C(0x3800), UINT16_C(0x3400), UINT16_C(0x3a00), UINT16_C(0x3d00),
     };
-    const float expected_half_float_patch[4] = { 0.50f, 0.25f, 0.75f, 1.25f };
     const uint16_t expected_rgb5_a1_mip_level2 = UINT16_C(0x8421);
     const uint16_t webgl_depth_u16[4] = {
         0u, UINT16_C(0x8000), UINT16_MAX, UINT16_C(0x4000),
@@ -557,9 +553,8 @@ int main(void)
     assert(color_attachment_is_float == RINGL_TRUE);
     ringl_bind_framebuffer(RINGL_FRAMEBUFFER, 0u);
 
-    /* HALF_FLOAT_OES is supplied as Uint16 payload bits, decoded without
-     * aliasing into the same RGBA32F RinGPU sampled storage. It has its own
-     * linear-completeness gate: enabling Float filtering must not grant it. */
+    /* HALF_FLOAT_OES remains native binary16 RinGPU storage. Its linear
+     * completeness gate is independent from Float32 texture filtering. */
     ringl_gen_textures(1, &half_float_texture);
     ringl_bind_texture(RINGL_TEXTURE_2D, half_float_texture);
     ringl_tex_image_2d_from_bytes(
@@ -573,10 +568,10 @@ int main(void)
     ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MAG_FILTER,
                          RINGL_NEAREST);
     assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
-    assert(backend.last_format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT);
-    assert(backend.last_upload_size == sizeof(expected_half_float_rgba_pixels));
-    assert(memcmp(backend.last_upload, expected_half_float_rgba_pixels,
-                  sizeof(expected_half_float_rgba_pixels)) == 0);
+    assert(backend.last_format == RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT);
+    assert(backend.last_upload_size == sizeof(half_float_rgba_pixels));
+    assert(memcmp(backend.last_upload, half_float_rgba_pixels,
+                  sizeof(half_float_rgba_pixels)) == 0);
     ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MIN_FILTER,
                          RINGL_LINEAR);
     ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MAG_FILTER,
@@ -590,16 +585,14 @@ int main(void)
         sizeof(half_float_patch) - 1u);
     assert(ringl_get_error() == RINGL_INVALID_VALUE);
     assert(memcmp(&context->textures[ringl_object_slot_index(half_float_texture)]
-                      .shadow_bytes[4u * sizeof(float)],
-                  &expected_half_float_rgba_pixels[4],
-                  4u * sizeof(float)) == 0);
+                      .shadow_bytes[4u * sizeof(uint16_t)],
+                  &half_float_rgba_pixels[4], 4u * sizeof(uint16_t)) == 0);
     ringl_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 1, 0, 1, 1, RINGL_RGBA,
                            RINGL_HALF_FLOAT_OES, half_float_patch);
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
-    assert(memcmp(backend.last_upload + 4u * sizeof(float),
-                  expected_half_float_patch,
-                  sizeof(expected_half_float_patch)) == 0);
+    assert(memcmp(backend.last_upload + 4u * sizeof(uint16_t),
+                  half_float_patch, sizeof(half_float_patch)) == 0);
     assert(ringl_texture_require_color_target(context, half_float_texture) ==
            0);
     ringl_gen_framebuffers(1, &half_float_framebuffer);

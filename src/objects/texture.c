@@ -444,6 +444,48 @@ static float texture_read_float_component(const uint8_t* source,
     }
 }
 
+static uint16_t texture_write_half_component(float value)
+{
+    uint32_t bits;
+    uint32_t sign;
+    uint32_t exponent;
+    uint32_t mantissa;
+    int32_t half_exponent;
+
+    memcpy(&bits, &value, sizeof(bits));
+    sign = (bits >> 16u) & 0x8000u;
+    exponent = (bits >> 23u) & 0xffu;
+    mantissa = bits & 0x007fffffu;
+    if (exponent == 0xffu)
+        return (uint16_t)(sign | 0x7bffu);
+    half_exponent = (int32_t)exponent - 127 + 15;
+    if (half_exponent >= 31)
+        return (uint16_t)(sign | 0x7bffu);
+    if (half_exponent <= 0) {
+        uint32_t shifted;
+        uint32_t round_bit;
+
+        if (half_exponent < -10)
+            return (uint16_t)sign;
+        mantissa |= 0x00800000u;
+        shifted = mantissa >> (uint32_t)(14 - half_exponent);
+        round_bit = UINT32_C(1) << (uint32_t)(13 - half_exponent);
+        if ((mantissa & round_bit) != 0u &&
+            ((mantissa & (round_bit - 1u)) != 0u || (shifted & 1u) != 0u))
+            ++shifted;
+        return (uint16_t)(sign | shifted);
+    }
+    mantissa += 0x00001000u;
+    if ((mantissa & 0x00800000u) != 0u) {
+        mantissa = 0u;
+        ++half_exponent;
+        if (half_exponent >= 31)
+            return (uint16_t)(sign | 0x7bffu);
+    }
+    return (uint16_t)(sign | ((uint32_t)half_exponent << 10u) |
+                      (mantissa >> 13u));
+}
+
 static void texture_copy_color_texels(uint8_t* destination,
                                       const uint8_t* source,
                                       uint32_t storage_format,
@@ -494,8 +536,18 @@ static void texture_copy_color_texels(uint8_t* destination,
                 components[3] = texture_read_float_component(
                     source_texel + component_bytes, type);
             }
-            memcpy(destination + (uint64_t)index * sizeof(components),
-                   components, sizeof(components));
+            if (type == RINGL_HALF_FLOAT_OES) {
+                uint16_t half_components[4];
+
+                for (uint32_t component = 0u; component < 4u; ++component)
+                    half_components[component] =
+                        texture_write_half_component(components[component]);
+                memcpy(destination + (uint64_t)index * sizeof(half_components),
+                       half_components, sizeof(half_components));
+            } else {
+                memcpy(destination + (uint64_t)index * sizeof(components),
+                       components, sizeof(components));
+            }
         }
         return;
     }
@@ -549,8 +601,10 @@ static uint32_t texture_storage_texel_bytes(uint32_t format,
 {
     if (format == RINGL_DEPTH24_STENCIL8)
         return 8u;
-    if (texture_color_component_is_float(color_component_type))
+    if (color_component_type == RINGL_FLOAT)
         return 4u * (uint32_t)sizeof(float);
+    if (color_component_type == RINGL_HALF_FLOAT_OES)
+        return 4u * (uint32_t)sizeof(uint16_t);
     return texture_packed_color_format(format) ? 2u : 4u;
 }
 
@@ -702,8 +756,10 @@ static void texture_copy_rgba_to_copy_image_storage(
 static uint32_t texture_ringpu_format(uint32_t format,
                                       uint32_t color_component_type)
 {
-    if (texture_color_component_is_float(color_component_type))
+    if (color_component_type == RINGL_FLOAT)
         return RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT;
+    if (color_component_type == RINGL_HALF_FLOAT_OES)
+        return RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT;
     if (format == RINGL_RGB565)
         return RINGL_RIN_GPU_FORMAT_RGB565_UNORM;
     if (format == RINGL_RGBA4)
@@ -1505,21 +1561,36 @@ static int texture_generate_color_mips(
                         float c_component;
                         float d_component;
                         float result;
+                        uint32_t component_bytes =
+                            texture->color_component_type == RINGL_FLOAT
+                            ? (uint32_t)sizeof(float)
+                            : (uint32_t)sizeof(uint16_t);
 
-                        memcpy(&a_component, a + component * sizeof(float),
-                               sizeof(a_component));
-                        memcpy(&b_component, b + component * sizeof(float),
-                               sizeof(b_component));
-                        memcpy(&c_component, c + component * sizeof(float),
-                               sizeof(c_component));
-                        memcpy(&d_component, d + component * sizeof(float),
-                               sizeof(d_component));
+                        a_component = texture_read_float_component(
+                            a + component * component_bytes,
+                            texture->color_component_type);
+                        b_component = texture_read_float_component(
+                            b + component * component_bytes,
+                            texture->color_component_type);
+                        c_component = texture_read_float_component(
+                            c + component * component_bytes,
+                            texture->color_component_type);
+                        d_component = texture_read_float_component(
+                            d + component * component_bytes,
+                            texture->color_component_type);
                         /* Scaling before summation avoids an intermediate
                          * overflow for representable finite Float32 texels. */
                         result = a_component * 0.25f + b_component * 0.25f +
                                  c_component * 0.25f + d_component * 0.25f;
-                        memcpy(output + component * sizeof(float), &result,
-                               sizeof(result));
+                        if (texture->color_component_type == RINGL_FLOAT) {
+                            memcpy(output + component * sizeof(float), &result,
+                                   sizeof(result));
+                        } else {
+                            uint16_t half = texture_write_half_component(result);
+
+                            memcpy(output + component * sizeof(half), &half,
+                                   sizeof(half));
+                        }
                     }
                 } else {
                     for (component = 0u; component < 4u; ++component) {

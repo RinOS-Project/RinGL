@@ -16,8 +16,9 @@ static float clamp_color(float value)
 
 static float clear_color_for_target(uint32_t format, float value)
 {
-    return format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT ? value
-                                                       : clamp_color(value);
+    return (format == RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT ||
+            format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT)
+        ? value : clamp_color(value);
 }
 
 int ringl_resolve_color_target(RinGLContext* context,
@@ -71,6 +72,9 @@ int ringl_resolve_color_target(RinGLContext* context,
         if (index >= RINGL_OBJECT_SLOT_COUNT)
             return -1;
         switch (context->renderbuffers[index].internal_format) {
+        case RINGL_RGBA16F:
+            target->format = RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT;
+            break;
         case RINGL_RGBA32F:
             target->format = RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT;
             break;
@@ -97,11 +101,10 @@ int ringl_resolve_color_target(RinGLContext* context,
             return -1;
         switch (context->textures[index].format) {
         case RINGL_RGBA:
-            target->format = (context->textures[index].color_component_type ==
-                    RINGL_FLOAT ||
-                context->textures[index].color_component_type ==
-                    RINGL_HALF_FLOAT_OES)
-                ? RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT
+            target->format = context->textures[index].color_component_type ==
+                    RINGL_FLOAT ? RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT
+                : context->textures[index].color_component_type ==
+                    RINGL_HALF_FLOAT_OES ? RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT
                 : RINGL_RIN_GPU_FORMAT_RGBA8_UNORM;
             break;
         case RINGL_RGB565:

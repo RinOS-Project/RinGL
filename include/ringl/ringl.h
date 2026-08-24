@@ -203,6 +203,9 @@ extern "C" {
 #define RINGL_RGBA4      0x8056u
 #define RINGL_RGB5_A1    0x8057u
 #define RINGL_RGB565     0x8d62u
+/* WEBGL_compressed_texture_etc1. RinGL validates and expands ETC1 blocks
+ * into its normal RGB8 texture storage before handing them to RinGPU. */
+#define RINGL_ETC1_RGB8_OES 0x8d64u
 #define RINGL_DEPTH_COMPONENT 0x1902u
 #define RINGL_LUMINANCE  0x1909u
 #define RINGL_LUMINANCE_ALPHA 0x190au
@@ -1289,8 +1292,9 @@ uint32_t ringl_context_dirty_bits(const RinGLContext* context);
  * Unsupported pnames return NULL and record INVALID_ENUM. */
 const char* ringl_get_string(uint32_t pname);
 /* Returns the number of compressed formats that RinGL can actually upload.
- * The current bounded profile has no compressed texture storage, so this is
- * zero. A missing context or null output fails without modifying `count`. */
+ * The bounded profile accepts ETC1 RGB8 and expands it into normal RGB8
+ * storage before RinGPU sees the image. A missing context or null output
+ * fails without modifying `count`. */
 int ringl_get_compressed_texture_format_count(size_t* count);
 /* Writes the complete integer result only when `value_count` is large enough.
  * It returns zero on success and -1 on an invalid query, missing context, or
@@ -1500,6 +1504,16 @@ void ringl_tex_image_2d_from_bytes(uint32_t target, int32_t level,
                                    int32_t height, int32_t border,
                                    uint32_t format, uint32_t type,
                                    const void* pixels, uint64_t pixels_size);
+/* WEBGL_compressed_texture_etc1 upload paths. Both commands require exact
+ * ETC1 block payload sizes, validate differential-mode blocks before changing
+ * a texture, and expand valid blocks to RGB8 through the normal RinGL/RinGPU
+ * texture path. No compressed storage is exposed below this API. */
+void ringl_compressed_tex_image_2d_from_bytes(uint32_t target, int32_t level,
+                                              uint32_t internal_format,
+                                              int32_t width, int32_t height,
+                                              int32_t border,
+                                              const void* data,
+                                              uint64_t data_size);
 /* Generates a complete 2D color mip chain from level zero using a
  * deterministic clamped 2x2 box filter.  It is failure-atomic: allocation or
  * a missing multi-mip backend leaves an existing generated chain unchanged.
@@ -1517,6 +1531,10 @@ void ringl_tex_sub_image_2d_from_bytes(uint32_t target, int32_t level,
                                        uint32_t format, uint32_t type,
                                        const void* pixels,
                                        uint64_t pixels_size);
+void ringl_compressed_tex_sub_image_2d_from_bytes(
+    uint32_t target, int32_t level, int32_t xoffset, int32_t yoffset,
+    int32_t width, int32_t height, uint32_t format, const void* data,
+    uint64_t data_size);
 /* Bounded copy path: snapshot the current complete color target into a
  * defined RGBA or RGB565/RGBA4/RGB5_A1 texture level. The packed forms are
  * quantized into native shadow storage after the source snapshot succeeds. */

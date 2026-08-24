@@ -112,6 +112,18 @@ their semantics.  `FRAGMENT_SHADER_DERIVATIVE_HINT` is observable only after
 the same context gate.  This is a bounded WebGL slice, not an OpenGL ES
 conformance claim.
 
+## WebGL ETC1 compressed textures
+
+`RINGL_ETC1_RGB8_OES` is a bounded WebGL-facing compressed-texture slice, not
+native compressed RinGPU storage. `ringl_compressed_tex_image_2d_from_bytes()`
+and `ringl_compressed_tex_sub_image_2d_from_bytes()` accept exactly the ETC1
+block span for the requested rectangle, decode valid blocks to RGB8 before
+using the ordinary RinGL texture upload path, and preserve the old definition
+on source, alignment, range, allocation, or decode failure. A browser exposes
+the format only after its `WEBGL_compressed_texture_etc1` extension object is
+acquired; RinGL/RinGPU and the private Aquamarine embedding therefore receive
+only normal RGB texture resources. Other compressed formats remain unavailable.
+
 ## RinGPU translation model
 
 OpenGL exposes mutable, implicit state while RinGPU is intentionally explicit. RinGL therefore maintains a context-side state machine and derives backend objects lazily.

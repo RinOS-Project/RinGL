@@ -65,10 +65,10 @@ int ringl_get_compressed_texture_format_count(size_t* count)
         return -1;
     }
 
-    /* Compressed image upload/storage is deliberately absent from the RSH1
-     * profile. Keep the authoritative empty list in RinGL so embeddings do
-     * not invent a browser-local texture capability. */
-    *count = 0u;
+    /* ETC1 is decoded to RGB8 in the frontend. RinGPU therefore remains
+     * agnostic of compressed storage while embeddings can report the one
+     * format the public RinGL entry points genuinely execute. */
+    *count = 1u;
     return 0;
 }
 

@@ -2074,6 +2074,290 @@ void ringl_tex_sub_image_2d_from_bytes(uint32_t target, int32_t level,
                                 height, format, type, pixels, pixels_size);
 }
 
+static uint32_t etc1_read_be32(const uint8_t* bytes)
+{
+    return ((uint32_t)bytes[0] << 24u) | ((uint32_t)bytes[1] << 16u) |
+           ((uint32_t)bytes[2] << 8u) | (uint32_t)bytes[3];
+}
+
+static int32_t etc1_sign_extend3(uint32_t value)
+{
+    return (value & 4u) != 0u ? (int32_t)value - 8 : (int32_t)value;
+}
+
+static uint8_t etc1_expand4(uint32_t value)
+{
+    return (uint8_t)((value << 4u) | value);
+}
+
+static uint8_t etc1_expand5(uint32_t value)
+{
+    return (uint8_t)((value << 3u) | (value >> 2u));
+}
+
+static uint8_t etc1_clamp_component(int32_t value)
+{
+    if (value < 0)
+        return 0u;
+    if (value > 255)
+        return UINT8_MAX;
+    return (uint8_t)value;
+}
+
+static int etc1_required_bytes(uint32_t width, uint32_t height,
+                               uint64_t* bytes_out)
+{
+    uint64_t block_count;
+
+    if (bytes_out == NULL)
+        return -1;
+    if (width == 0u || height == 0u) {
+        *bytes_out = 0u;
+        return 0;
+    }
+    block_count = ((uint64_t)width + 3u) / 4u;
+    block_count *= ((uint64_t)height + 3u) / 4u;
+    if (block_count > UINT64_MAX / 8u)
+        return -1;
+    *bytes_out = block_count * 8u;
+    return 0;
+}
+
+/* Decode one ETC1 RGB8 block according to the Khronos ETC1 bit layout. The
+ * low-word selector plane is column-major (x * 4 + y); keeping that detail
+ * local avoids transposing the visible texture during conversion. */
+static int etc1_decode_block(const uint8_t* source, uint8_t* destination,
+                             uint32_t destination_width,
+                             uint32_t destination_height,
+                             uint32_t origin_x, uint32_t origin_y)
+{
+    static const int16_t modifiers[8][4] = {
+        { 2, 8, -2, -8 }, { 5, 17, -5, -17 },
+        { 9, 29, -9, -29 }, { 13, 42, -13, -42 },
+        { 18, 60, -18, -60 }, { 24, 80, -24, -80 },
+        { 33, 106, -33, -106 }, { 47, 183, -47, -183 },
+    };
+    uint32_t high = etc1_read_be32(source);
+    uint32_t low = etc1_read_be32(source + 4u);
+    uint8_t base[2][3];
+    uint32_t tables[2];
+    uint32_t flip = high & 1u;
+    uint32_t x;
+    uint32_t y;
+
+    tables[0] = (high >> 5u) & 7u;
+    tables[1] = (high >> 2u) & 7u;
+    if ((high & 2u) != 0u) {
+        int32_t red0 = (int32_t)((high >> 27u) & 31u);
+        int32_t green0 = (int32_t)((high >> 19u) & 31u);
+        int32_t blue0 = (int32_t)((high >> 11u) & 31u);
+        int32_t red1 = red0 + etc1_sign_extend3((high >> 24u) & 7u);
+        int32_t green1 = green0 + etc1_sign_extend3((high >> 16u) & 7u);
+        int32_t blue1 = blue0 + etc1_sign_extend3((high >> 8u) & 7u);
+
+        if (red1 < 0 || red1 > 31 || green1 < 0 || green1 > 31 ||
+            blue1 < 0 || blue1 > 31) {
+            return -1;
+        }
+        base[0][0] = etc1_expand5((uint32_t)red0);
+        base[0][1] = etc1_expand5((uint32_t)green0);
+        base[0][2] = etc1_expand5((uint32_t)blue0);
+        base[1][0] = etc1_expand5((uint32_t)red1);
+        base[1][1] = etc1_expand5((uint32_t)green1);
+        base[1][2] = etc1_expand5((uint32_t)blue1);
+    } else {
+        base[0][0] = etc1_expand4((high >> 28u) & 15u);
+        base[1][0] = etc1_expand4((high >> 24u) & 15u);
+        base[0][1] = etc1_expand4((high >> 20u) & 15u);
+        base[1][1] = etc1_expand4((high >> 16u) & 15u);
+        base[0][2] = etc1_expand4((high >> 12u) & 15u);
+        base[1][2] = etc1_expand4((high >> 8u) & 15u);
+    }
+
+    for (y = 0u; y < 4u; ++y) {
+        for (x = 0u; x < 4u; ++x) {
+            uint32_t selector_bit = x * 4u + y;
+            uint32_t selector = ((low >> selector_bit) & 1u) |
+                                (((low >> (selector_bit + 16u)) & 1u) << 1u);
+            uint32_t subblock = flip != 0u ? (y >= 2u) : (x >= 2u);
+            int32_t modifier = modifiers[tables[subblock]][selector];
+            uint8_t* pixel;
+
+            if (origin_x + x >= destination_width ||
+                origin_y + y >= destination_height) {
+                continue;
+            }
+            pixel = destination + ((uint64_t)(origin_y + y) *
+                                   destination_width + origin_x + x) * 3u;
+            pixel[0] = etc1_clamp_component((int32_t)base[subblock][0] +
+                                             modifier);
+            pixel[1] = etc1_clamp_component((int32_t)base[subblock][1] +
+                                             modifier);
+            pixel[2] = etc1_clamp_component((int32_t)base[subblock][2] +
+                                             modifier);
+        }
+    }
+    return 0;
+}
+
+/* Returns 0 on success, -1 for malformed/short data, and -2 when the bounded
+ * RGB expansion cannot be allocated. `decoded_out` is owned by the caller. */
+static int etc1_decode_image(uint32_t width, uint32_t height,
+                             const void* data, uint64_t data_size,
+                             uint8_t** decoded_out)
+{
+    const uint8_t* source = data;
+    uint64_t required_bytes;
+    uint64_t decoded_size;
+    uint8_t* decoded;
+    uint32_t block_y;
+    uint32_t block_x;
+    uint32_t blocks_wide;
+
+    if (decoded_out == NULL || etc1_required_bytes(width, height,
+                                                   &required_bytes) != 0 ||
+        data_size != required_bytes || (required_bytes != 0u && data == NULL)) {
+        return -1;
+    }
+    *decoded_out = NULL;
+    if (required_bytes == 0u)
+        return 0;
+    decoded_size = (uint64_t)width * (uint64_t)height * 3u;
+    if (decoded_size > SIZE_MAX)
+        return -2;
+    decoded = malloc((size_t)decoded_size);
+    if (decoded == NULL)
+        return -2;
+    blocks_wide = (width + 3u) / 4u;
+    for (block_y = 0u; block_y < (height + 3u) / 4u; ++block_y) {
+        for (block_x = 0u; block_x < blocks_wide; ++block_x) {
+            uint64_t block_index = (uint64_t)block_y * blocks_wide + block_x;
+
+            if (etc1_decode_block(source + block_index * 8u, decoded, width,
+                                  height, block_x * 4u, block_y * 4u) != 0) {
+                free(decoded);
+                return -1;
+            }
+        }
+    }
+    *decoded_out = decoded;
+    return 0;
+}
+
+void ringl_compressed_tex_image_2d_from_bytes(uint32_t target, int32_t level,
+                                              uint32_t internal_format,
+                                              int32_t width, int32_t height,
+                                              int32_t border,
+                                              const void* data,
+                                              uint64_t data_size)
+{
+    RinGLContext* context = ringl_get_current_context();
+    uint8_t* decoded = NULL;
+    int decode_result;
+
+    if (context == NULL)
+        return;
+    if (internal_format != RINGL_ETC1_RGB8_OES ||
+        !texture_target_valid(target)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return;
+    }
+    if (level < 0 || (uint32_t)level >= RINGL_MAX_TEXTURE_MIP_LEVELS ||
+        border != 0 || width < 0 || height < 0 ||
+        (uint32_t)width > RINGL_MAX_TEXTURE_SIZE ||
+        (uint32_t)height > RINGL_MAX_TEXTURE_SIZE) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    decode_result = etc1_decode_image((uint32_t)width, (uint32_t)height,
+                                      data, data_size, &decoded);
+    if (decode_result != 0) {
+        ringl_context_record_error(context, decode_result == -2
+                                               ? RINGL_OUT_OF_MEMORY
+                                               : RINGL_INVALID_VALUE);
+        return;
+    }
+    ringl_tex_image_2d_from_bytes(target, level, RINGL_RGB, width, height,
+                                  border, RINGL_RGB, RINGL_UNSIGNED_BYTE,
+                                  decoded, (uint64_t)(uint32_t)width *
+                                               (uint32_t)height * 3u);
+    free(decoded);
+}
+
+void ringl_compressed_tex_sub_image_2d_from_bytes(
+    uint32_t target, int32_t level, int32_t xoffset, int32_t yoffset,
+    int32_t width, int32_t height, uint32_t format, const void* data,
+    uint64_t data_size)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLTextureObject* texture;
+    RinGLTextureMipStorage* mip_storage;
+    uint32_t level_width;
+    uint32_t level_height;
+    uint8_t* decoded = NULL;
+    int decode_result;
+
+    if (context == NULL)
+        return;
+    if (format != RINGL_ETC1_RGB8_OES || !texture_target_valid(target)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return;
+    }
+    if (level < 0 || (uint32_t)level >= RINGL_MAX_TEXTURE_MIP_LEVELS ||
+        xoffset < 0 || yoffset < 0 || width < 0 || height < 0) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    texture = bound_texture_2d(context);
+    if (texture == NULL || !texture_level0_storage_defined(texture) ||
+        texture->format != RINGL_RGB ||
+        texture->color_component_type != RINGL_UNSIGNED_BYTE) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    if (level == 0) {
+        level_width = texture->width;
+        level_height = texture->height;
+    } else {
+        mip_storage = texture_mip_storage(texture, (uint32_t)level);
+        if (!texture_level_storage_defined(texture, (uint32_t)level) ||
+            mip_storage == NULL) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return;
+        }
+        level_width = mip_storage->width;
+        level_height = mip_storage->height;
+    }
+    if ((uint32_t)xoffset > level_width || (uint32_t)yoffset > level_height ||
+        (uint32_t)width > level_width - (uint32_t)xoffset ||
+        (uint32_t)height > level_height - (uint32_t)yoffset) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if ((((uint32_t)xoffset | (uint32_t)yoffset) & 3u) != 0u ||
+        (((uint32_t)width & 3u) != 0u &&
+         (uint32_t)width != level_width - (uint32_t)xoffset) ||
+        (((uint32_t)height & 3u) != 0u &&
+         (uint32_t)height != level_height - (uint32_t)yoffset)) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    decode_result = etc1_decode_image((uint32_t)width, (uint32_t)height,
+                                      data, data_size, &decoded);
+    if (decode_result != 0) {
+        ringl_context_record_error(context, decode_result == -2
+                                               ? RINGL_OUT_OF_MEMORY
+                                               : RINGL_INVALID_VALUE);
+        return;
+    }
+    ringl_tex_sub_image_2d_from_bytes(target, level, xoffset, yoffset, width,
+                                      height, RINGL_RGB,
+                                      RINGL_UNSIGNED_BYTE, decoded,
+                                      (uint64_t)(uint32_t)width *
+                                          (uint32_t)height * 3u);
+    free(decoded);
+}
+
 void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
                              uint32_t internal_format, int32_t x, int32_t y,
                              int32_t width, int32_t height, int32_t border)

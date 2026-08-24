@@ -20,6 +20,9 @@ typedef enum TokenKind {
     TOK_VEC4,
     TOK_MAT4,
     TOK_INT,
+    TOK_IVEC2,
+    TOK_IVEC3,
+    TOK_IVEC4,
     TOK_SAMPLER2D,
     TOK_ATTRIBUTE,
     TOK_UNIFORM,
@@ -39,6 +42,7 @@ typedef enum TokenKind {
     TOK_MINUS,
     TOK_STAR,
     TOK_SLASH,
+    TOK_DOT,
     TOK_INVALID,
 } TokenKind;
 
@@ -52,6 +56,10 @@ typedef enum SymbolKind {
     SYMBOL_UNIFORM_VEC2 = 6,
     SYMBOL_UNIFORM_VEC3 = 7,
     SYMBOL_UNIFORM_MAT4 = 8,
+    SYMBOL_UNIFORM_INT = 9,
+    SYMBOL_UNIFORM_IVEC2 = 10,
+    SYMBOL_UNIFORM_IVEC3 = 11,
+    SYMBOL_UNIFORM_IVEC4 = 12,
 } SymbolKind;
 
 typedef struct Token {
@@ -137,6 +145,12 @@ static TokenKind keyword_kind(const char* begin, size_t length)
         return TOK_MAT4;
     if (length == 3u && memcmp(begin, "int", 3u) == 0)
         return TOK_INT;
+    if (length == 5u && memcmp(begin, "ivec2", 5u) == 0)
+        return TOK_IVEC2;
+    if (length == 5u && memcmp(begin, "ivec3", 5u) == 0)
+        return TOK_IVEC3;
+    if (length == 5u && memcmp(begin, "ivec4", 5u) == 0)
+        return TOK_IVEC4;
     if (length == 9u && memcmp(begin, "sampler2D", 9u) == 0)
         return TOK_SAMPLER2D;
     if (length == 9u && memcmp(begin, "attribute", 9u) == 0)
@@ -188,7 +202,9 @@ static void next_token(Parser* parser)
         return;
     }
 
-    if (isdigit((unsigned char)c) || c == '.') {
+    if (isdigit((unsigned char)c) ||
+        (c == '.' && parser->offset < parser->length &&
+         isdigit((unsigned char)parser->source[parser->offset]))) {
         size_t start = parser->offset - 1u;
         int dot_seen = c == '.';
         int exponent_seen = 0;
@@ -247,6 +263,7 @@ static void next_token(Parser* parser)
     case '-': token.kind = TOK_MINUS; break;
     case '*': token.kind = TOK_STAR; break;
     case '/': token.kind = TOK_SLASH; break;
+    case '.': token.kind = TOK_DOT; break;
     default: token.kind = TOK_INVALID; break;
     }
     parser->token = token;
@@ -315,8 +332,8 @@ static int expression(Parser* parser);
 static int constructor(Parser* parser, TokenKind kind)
 {
     uint32_t component_count = 0u;
-    uint32_t target_components = kind == TOK_VEC2 ? 2u :
-                                 kind == TOK_VEC3 ? 3u : 4u;
+    uint32_t target_components = kind == TOK_VEC2 || kind == TOK_IVEC2 ? 2u :
+                                 kind == TOK_VEC3 || kind == TOK_IVEC3 ? 3u : 4u;
 
     next_token(parser);
     if (!expect(parser, TOK_LPAREN, "expected '(' after vector constructor"))
@@ -457,8 +474,16 @@ static int primary(Parser* parser)
 {
     if (accept(parser, TOK_NUMBER))
         return 1;
+    if (parser->token.kind == TOK_FLOAT || parser->token.kind == TOK_INT) {
+        next_token(parser);
+        if (!expect(parser, TOK_LPAREN, "expected '(' after scalar conversion") ||
+            !expression(parser))
+            return 0;
+        return expect(parser, TOK_RPAREN, "expected ')' after scalar conversion");
+    }
     if (parser->token.kind == TOK_VEC2 || parser->token.kind == TOK_VEC3 ||
-        parser->token.kind == TOK_VEC4)
+        parser->token.kind == TOK_VEC4 || parser->token.kind == TOK_IVEC2 ||
+        parser->token.kind == TOK_IVEC3 || parser->token.kind == TOK_IVEC4)
         return constructor(parser, parser->token.kind);
     if (parser->token.kind == TOK_IDENT) {
         Token ident = parser->token;
@@ -471,6 +496,17 @@ static int primary(Parser* parser)
             return 0;
         }
         next_token(parser);
+        if (accept(parser, TOK_DOT)) {
+            if (parser->token.kind != TOK_IDENT || parser->token.length != 1u ||
+                (parser->token.begin[0] != 'x' && parser->token.begin[0] != 'y' &&
+                 parser->token.begin[0] != 'z' && parser->token.begin[0] != 'w' &&
+                 parser->token.begin[0] != 'r' && parser->token.begin[0] != 'g' &&
+                 parser->token.begin[0] != 'b' && parser->token.begin[0] != 'a')) {
+                fail(parser, "invalid vector component selection");
+                return 0;
+            }
+            next_token(parser);
+        }
         return 1;
     }
     if (accept(parser, TOK_LPAREN)) {
@@ -539,9 +575,13 @@ static int assignment(Parser* parser)
         }
         if (symbol->kind == SYMBOL_SAMPLER2D ||
             symbol->kind == SYMBOL_UNIFORM_FLOAT ||
+            symbol->kind == SYMBOL_UNIFORM_INT ||
             symbol->kind == SYMBOL_UNIFORM_VEC2 ||
+            symbol->kind == SYMBOL_UNIFORM_IVEC2 ||
             symbol->kind == SYMBOL_UNIFORM_VEC3 ||
+            symbol->kind == SYMBOL_UNIFORM_IVEC3 ||
             symbol->kind == SYMBOL_UNIFORM_VEC4 ||
+            symbol->kind == SYMBOL_UNIFORM_IVEC4 ||
             symbol->kind == SYMBOL_UNIFORM_MAT4) {
             fail(parser, "uniforms are read-only");
             return 0;
@@ -570,11 +610,19 @@ static int local_declaration(Parser* parser)
 
     if (parser->token.kind == TOK_FLOAT)
         width = 1u;
+    else if (parser->token.kind == TOK_INT)
+        width = 1u;
     else if (parser->token.kind == TOK_VEC2)
+        width = 2u;
+    else if (parser->token.kind == TOK_IVEC2)
         width = 2u;
     else if (parser->token.kind == TOK_VEC3)
         width = 3u;
+    else if (parser->token.kind == TOK_IVEC3)
+        width = 3u;
     else if (parser->token.kind == TOK_VEC4)
+        width = 4u;
+    else if (parser->token.kind == TOK_IVEC4)
         width = 4u;
     else {
         fail(parser, "expected scalar or vector type in local declaration");
@@ -618,9 +666,13 @@ static int main_function(Parser* parser)
 
     while (parser->token.kind != TOK_RBRACE && parser->token.kind != TOK_EOF) {
         if (parser->token.kind == TOK_FLOAT ||
+            parser->token.kind == TOK_INT ||
             parser->token.kind == TOK_VEC2 ||
+            parser->token.kind == TOK_IVEC2 ||
             parser->token.kind == TOK_VEC3 ||
-            parser->token.kind == TOK_VEC4) {
+            parser->token.kind == TOK_IVEC3 ||
+            parser->token.kind == TOK_VEC4 ||
+            parser->token.kind == TOK_IVEC4) {
             if (!local_declaration(parser))
                 return 0;
         } else if (!assignment(parser)) {
@@ -683,10 +735,12 @@ static int uniform_declaration(Parser* parser)
 
     next_token(parser);
     if (parser->token.kind != TOK_SAMPLER2D &&
-        parser->token.kind != TOK_FLOAT && parser->token.kind != TOK_VEC2 &&
-        parser->token.kind != TOK_VEC3 && parser->token.kind != TOK_VEC4 &&
+        parser->token.kind != TOK_FLOAT && parser->token.kind != TOK_INT &&
+        parser->token.kind != TOK_VEC2 && parser->token.kind != TOK_IVEC2 &&
+        parser->token.kind != TOK_VEC3 && parser->token.kind != TOK_IVEC3 &&
+        parser->token.kind != TOK_VEC4 && parser->token.kind != TOK_IVEC4 &&
         parser->token.kind != TOK_MAT4) {
-        fail(parser, "only uniform sampler2D, float, vec2, vec3, vec4, and mat4 are supported");
+        fail(parser, "only uniform sampler2D, float/int, vec/ivec2-4, and mat4 are supported");
         return 0;
     }
     {
@@ -701,15 +755,19 @@ static int uniform_declaration(Parser* parser)
     if (!add_symbol(parser, &name,
                     type == TOK_SAMPLER2D ? SYMBOL_SAMPLER2D
                     : type == TOK_FLOAT ? SYMBOL_UNIFORM_FLOAT
+                    : type == TOK_INT ? SYMBOL_UNIFORM_INT
                     : type == TOK_VEC2 ? SYMBOL_UNIFORM_VEC2
+                    : type == TOK_IVEC2 ? SYMBOL_UNIFORM_IVEC2
                     : type == TOK_VEC3 ? SYMBOL_UNIFORM_VEC3
+                    : type == TOK_IVEC3 ? SYMBOL_UNIFORM_IVEC3
                     : type == TOK_VEC4 ? SYMBOL_UNIFORM_VEC4
+                    : type == TOK_IVEC4 ? SYMBOL_UNIFORM_IVEC4
                                         : SYMBOL_UNIFORM_MAT4,
                     type == TOK_SAMPLER2D ? 0u
-                    : type == TOK_FLOAT ? 1u
-                    : type == TOK_VEC2 ? 2u
-                    : type == TOK_VEC3 ? 3u
-                    : type == TOK_VEC4 ? 4u : 16u))
+                    : type == TOK_FLOAT || type == TOK_INT ? 1u
+                    : type == TOK_VEC2 || type == TOK_IVEC2 ? 2u
+                    : type == TOK_VEC3 || type == TOK_IVEC3 ? 3u
+                    : type == TOK_VEC4 || type == TOK_IVEC4 ? 4u : 16u))
         return 0;
     if (type == TOK_SAMPLER2D) {
         if (parser->result->sampler_uniform_count >=
@@ -731,6 +789,14 @@ static int uniform_declaration(Parser* parser)
         memcpy(parser->result->float_uniform_names[index], name.begin,
                name.length);
         parser->result->float_uniform_names[index][name.length] = '\0';
+    } else if (type == TOK_INT) {
+        if (parser->result->int_uniform_count >= RINGL_GLSL_MAX_INT_UNIFORMS) {
+            fail(parser, "too many int uniforms");
+            return 0;
+        }
+        index = parser->result->int_uniform_count++;
+        memcpy(parser->result->int_uniform_names[index], name.begin, name.length);
+        parser->result->int_uniform_names[index][name.length] = '\0';
     } else if (type == TOK_VEC2) {
         if (parser->result->vec2_uniform_count >=
             RINGL_GLSL_MAX_VEC2_UNIFORMS) {
@@ -741,6 +807,14 @@ static int uniform_declaration(Parser* parser)
         memcpy(parser->result->vec2_uniform_names[index], name.begin,
                name.length);
         parser->result->vec2_uniform_names[index][name.length] = '\0';
+    } else if (type == TOK_IVEC2) {
+        if (parser->result->ivec2_uniform_count >= RINGL_GLSL_MAX_IVEC2_UNIFORMS) {
+            fail(parser, "too many ivec2 uniforms");
+            return 0;
+        }
+        index = parser->result->ivec2_uniform_count++;
+        memcpy(parser->result->ivec2_uniform_names[index], name.begin, name.length);
+        parser->result->ivec2_uniform_names[index][name.length] = '\0';
     } else if (type == TOK_VEC3) {
         if (parser->result->vec3_uniform_count >=
             RINGL_GLSL_MAX_VEC3_UNIFORMS) {
@@ -751,6 +825,14 @@ static int uniform_declaration(Parser* parser)
         memcpy(parser->result->vec3_uniform_names[index], name.begin,
                name.length);
         parser->result->vec3_uniform_names[index][name.length] = '\0';
+    } else if (type == TOK_IVEC3) {
+        if (parser->result->ivec3_uniform_count >= RINGL_GLSL_MAX_IVEC3_UNIFORMS) {
+            fail(parser, "too many ivec3 uniforms");
+            return 0;
+        }
+        index = parser->result->ivec3_uniform_count++;
+        memcpy(parser->result->ivec3_uniform_names[index], name.begin, name.length);
+        parser->result->ivec3_uniform_names[index][name.length] = '\0';
     } else if (type == TOK_VEC4) {
         if (parser->result->vec4_uniform_count >=
             RINGL_GLSL_MAX_VEC4_UNIFORMS) {
@@ -761,6 +843,14 @@ static int uniform_declaration(Parser* parser)
         memcpy(parser->result->vec4_uniform_names[index], name.begin,
                name.length);
         parser->result->vec4_uniform_names[index][name.length] = '\0';
+    } else if (type == TOK_IVEC4) {
+        if (parser->result->ivec4_uniform_count >= RINGL_GLSL_MAX_IVEC4_UNIFORMS) {
+            fail(parser, "too many ivec4 uniforms");
+            return 0;
+        }
+        index = parser->result->ivec4_uniform_count++;
+        memcpy(parser->result->ivec4_uniform_names[index], name.begin, name.length);
+        parser->result->ivec4_uniform_names[index][name.length] = '\0';
     } else {
         if (parser->result->mat4_uniform_count >=
             RINGL_GLSL_MAX_MAT4_UNIFORMS) {

@@ -303,16 +303,16 @@ the replacement executable. The query validates its ABI header and only writes
 the caller-owned structure after it has validated the program, so an invalid
 program cannot partially publish stale metadata.
 
-The current bounded uniform profile consists of linked `sampler2D` values,
-single `float`, `vec2`, `vec3`, and `vec4` values, and a vertex-only `mat4`
-position transform. `ringl_get_uniform_1i()` reads the selected texture unit;
-`ringl_get_uniform_1f()`, `ringl_get_uniform_2f()`,
-`ringl_get_uniform_3f()`, and `ringl_get_uniform_4f()` read the scalar or
-complete vector, while `ringl_get_uniform_matrix4f()` reads all sixteen
-column-major matrix values, for a specific linked program and location without
-depending on the current program binding. Each checks the complete input before
-writing caller-owned storage, so invalid programs or locations cannot expose a
-partially updated result.
+The current bounded uniform profile consists of linked `sampler2D`, scalar
+`float`/`int`, `vec2`/`vec3`/`vec4`, `ivec2`/`ivec3`/`ivec4`, and a
+vertex-only `mat4` position transform. `ringl_get_uniform_1i()` reads either a
+selected texture unit or scalar integer; `ringl_get_uniform_{2,3,4}i()` read
+complete integer vectors. The corresponding float getters and
+`ringl_get_uniform_matrix4f()` read the scalar/vector or all sixteen
+column-major matrix values for a specific linked program and location without
+depending on the current program binding. Each validates its complete input
+before writing caller-owned storage, so invalid programs or locations cannot
+expose a partially updated result.
 
 `ringl_uniform_1f()`, `ringl_uniform_2f()`, `ringl_uniform_3f()`,
 `ringl_uniform_4f()`, and `ringl_uniform_matrix4fv()` update a linked program
@@ -322,6 +322,17 @@ transposed matrix records `INVALID_VALUE` and leaves the published uniform and
 its derived executable unchanged. This lets embeddings preserve atomic
 WebGL-visible uniform state while the bounded RSH1 lowering path has no
 non-finite literal representation.
+
+`ringl_uniform_1i()` accepts the linked sampler or scalar-`int` location;
+`ringl_uniform_{2,3,4}i()` update the matching `ivec` location. Integer
+updates retain signed i32 values in RSH1 (`CONST_I32` plus integer arithmetic)
+until an explicit GLSL `float(...)` conversion emits `I32_TO_F32`; they never
+reinterpret the integer bit pattern as a float. All numeric setters stage a
+replacement program-owned module before publishing it, so a failed backend
+creation retains both the old integer values and executable. This profile
+supports single-component `.x/.y/.z/.w` (and color aliases) reads only; uniform
+arrays, multi-component swizzles, general integer control flow, and implicit
+numeric conversions remain unavailable.
 
 Program-owned uniform artifacts are stage-selective. A mutable vertex `mat4`
 does not force an unrelated fragment `sampler2D` shader back through the

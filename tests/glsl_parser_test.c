@@ -145,11 +145,21 @@ int main(void)
     assert(strstr(log, "fragment") != NULL);
 
     ringl_shader_source(fragment,
-        "uniform float invalid; void main() { gl_FragColor = 1.0; }", -1);
+        "uniform bool invalid; void main() { gl_FragColor = 1.0; }", -1);
     ringl_compile_shader(fragment);
     assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
     assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) > 0u);
     assert(strstr(log, "sampler2D") != NULL);
+
+    ringl_shader_source(fragment,
+        "uniform int scalar; uniform ivec2 pair; uniform ivec3 triple; "
+        "uniform ivec4 quad; void main() { "
+        "int total = scalar + pair.x + triple.y + quad.w; "
+        "gl_FragColor = vec4(float(total), float(pair.y), "
+        "float(triple.z), float(quad.x)); }", -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+    assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) == 0u);
 
     ringl_shader_source(fragment,
         "attribute float invalid; void main() { gl_FragColor = invalid; }", -1);

@@ -23,9 +23,13 @@
 #define RINGL_PROGRAM_LOG_MAX 160u
 #define RINGL_MAX_SAMPLER_UNIFORMS 8u
 #define RINGL_MAX_FLOAT_UNIFORMS 8u
+#define RINGL_MAX_INT_UNIFORMS 8u
 #define RINGL_MAX_VEC2_UNIFORMS 8u
 #define RINGL_MAX_VEC3_UNIFORMS 8u
 #define RINGL_MAX_VEC4_UNIFORMS 8u
+#define RINGL_MAX_IVEC2_UNIFORMS 8u
+#define RINGL_MAX_IVEC3_UNIFORMS 8u
+#define RINGL_MAX_IVEC4_UNIFORMS 8u
 #define RINGL_MAX_MAT4_UNIFORMS 4u
 #define RINGL_MAX_VARYINGS 8u
 #define RINGL_UNIFORM_NAME_MAX RINGL_ACTIVE_INFO_NAME_MAX
@@ -114,18 +118,26 @@ typedef struct RinGLShaderObject {
     uint32_t attribute_count;
     uint32_t sampler_uniform_count;
     uint32_t float_uniform_count;
+    uint32_t int_uniform_count;
     uint32_t vec2_uniform_count;
     uint32_t vec3_uniform_count;
     uint32_t vec4_uniform_count;
+    uint32_t ivec2_uniform_count;
+    uint32_t ivec3_uniform_count;
+    uint32_t ivec4_uniform_count;
     uint32_t mat4_uniform_count;
     uint32_t rsh1_sampler_binding_count;
     uint32_t varying_count;
     uint32_t delete_pending;
     char sampler_uniform_names[RINGL_MAX_SAMPLER_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char float_uniform_names[RINGL_MAX_FLOAT_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
+    char int_uniform_names[RINGL_MAX_INT_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char vec2_uniform_names[RINGL_MAX_VEC2_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char vec3_uniform_names[RINGL_MAX_VEC3_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char vec4_uniform_names[RINGL_MAX_VEC4_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
+    char ivec2_uniform_names[RINGL_MAX_IVEC2_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
+    char ivec3_uniform_names[RINGL_MAX_IVEC3_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
+    char ivec4_uniform_names[RINGL_MAX_IVEC4_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char mat4_uniform_names[RINGL_MAX_MAT4_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     uint32_t rsh1_sampler_binding_indices[RINGL_MAX_SAMPLER_UNIFORMS];
     char varying_names[RINGL_MAX_VARYINGS][RINGL_UNIFORM_NAME_MAX];
@@ -142,6 +154,11 @@ typedef struct RinGLProgramFloatUniform {
     char name[RINGL_UNIFORM_NAME_MAX];
     float value;
 } RinGLProgramFloatUniform;
+
+typedef struct RinGLProgramIntUniform {
+    char name[RINGL_UNIFORM_NAME_MAX];
+    int32_t value;
+} RinGLProgramIntUniform;
 
 typedef struct RinGLProgramVec2Uniform {
     char name[RINGL_UNIFORM_NAME_MAX];
@@ -161,6 +178,21 @@ typedef struct RinGLProgramVec4Uniform {
     char name[RINGL_UNIFORM_NAME_MAX];
     float values[4];
 } RinGLProgramVec4Uniform;
+
+typedef struct RinGLProgramIVec2Uniform {
+    char name[RINGL_UNIFORM_NAME_MAX];
+    int32_t values[2];
+} RinGLProgramIVec2Uniform;
+
+typedef struct RinGLProgramIVec3Uniform {
+    char name[RINGL_UNIFORM_NAME_MAX];
+    int32_t values[3];
+} RinGLProgramIVec3Uniform;
+
+typedef struct RinGLProgramIVec4Uniform {
+    char name[RINGL_UNIFORM_NAME_MAX];
+    int32_t values[4];
+} RinGLProgramIVec4Uniform;
 
 typedef struct RinGLProgramMat4Uniform {
     char name[RINGL_UNIFORM_NAME_MAX];
@@ -196,9 +228,13 @@ typedef struct RinGLProgramObject {
     uint32_t attribute_count;
     uint32_t sampler_uniform_count;
     uint32_t float_uniform_count;
+    uint32_t int_uniform_count;
     uint32_t vec2_uniform_count;
     uint32_t vec3_uniform_count;
     uint32_t vec4_uniform_count;
+    uint32_t ivec2_uniform_count;
+    uint32_t ivec3_uniform_count;
+    uint32_t ivec4_uniform_count;
     uint32_t mat4_uniform_count;
     uint32_t varying_count;
     RinGLProgramAttribute attributes[RINGL_MAX_VERTEX_ATTRIBS];
@@ -209,9 +245,13 @@ typedef struct RinGLProgramObject {
         attribute_bindings[RINGL_MAX_VERTEX_ATTRIBS];
     RinGLProgramSamplerUniform sampler_uniforms[RINGL_MAX_SAMPLER_UNIFORMS];
     RinGLProgramFloatUniform float_uniforms[RINGL_MAX_FLOAT_UNIFORMS];
+    RinGLProgramIntUniform int_uniforms[RINGL_MAX_INT_UNIFORMS];
     RinGLProgramVec2Uniform vec2_uniforms[RINGL_MAX_VEC2_UNIFORMS];
     RinGLProgramVec3Uniform vec3_uniforms[RINGL_MAX_VEC3_UNIFORMS];
     RinGLProgramVec4Uniform vec4_uniforms[RINGL_MAX_VEC4_UNIFORMS];
+    RinGLProgramIVec2Uniform ivec2_uniforms[RINGL_MAX_IVEC2_UNIFORMS];
+    RinGLProgramIVec3Uniform ivec3_uniforms[RINGL_MAX_IVEC3_UNIFORMS];
+    RinGLProgramIVec4Uniform ivec4_uniforms[RINGL_MAX_IVEC4_UNIFORMS];
     RinGLProgramMat4Uniform mat4_uniforms[RINGL_MAX_MAT4_UNIFORMS];
     uint8_t* vertex_uniform_rsh1;
     uint8_t* fragment_uniform_rsh1;

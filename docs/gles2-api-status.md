@@ -29,7 +29,7 @@ Status meanings:
 | `glBindTexture`, `glGenTextures`, `glDeleteTextures`, `glIsTexture` | B | `TEXTURE_2D` only. |
 | `glBlendColor`, `glBlendEquation`, `glBlendEquationSeparate`, `glBlendFunc`, `glBlendFuncSeparate` | B | Native RinGPU blend state; invalid factors/equations reject. |
 | `glClear`, `glClearColor`, `glClearDepthf`, `glClearStencil`, `glColorMask` | B | Current complete target; color/depth/stencil masks follow the bounded FBO profile. |
-| `glCompileShader`, `glCreateShader`, `glDeleteShader`, `glIsShader`, `glShaderSource` | B | GLSL ES source is compiled only by RinGL's bounded RSH1 profile; exact global `precision lowp`/`mediump`/`highp` declarations for `float`/`int`/`sampler2D` map to binary32 RSH1, and no-varying shaders execute local `vec2`/`vec3`/`vec4` values, same-width `+`/`-`, unary `-`, and scalar-broadcast `*`/`/`. |
+| `glCompileShader`, `glCreateShader`, `glDeleteShader`, `glIsShader`, `glShaderSource` | B | GLSL ES source is compiled only by RinGL's bounded RSH1 profile; exact global `precision lowp`/`mediump`/`highp` declarations for `float`/`int`/`sampler2D` map to binary32 RSH1. No-varying shaders execute local `float`/`int`, `vec2`/`vec3`/`vec4`, and `ivec2`/`ivec3`/`ivec4` values with same-type arithmetic, single-component swizzles, and explicit `int(...)`/`float(...)` conversion. |
 | `glCompressedTexImage2D`, `glCompressedTexSubImage2D` | N | Compressed texture storage is not implemented. |
 | `glCopyTexImage2D`, `glCopyTexSubImage2D` | B | Complete color target only; canonical/packed 2D formats and checked ranges. |
 | `glCullFace`, `glFrontFace` | B | Current native raster-state profile. |
@@ -39,7 +39,7 @@ Status meanings:
 | `glDrawArrays`, `glDrawElements` | B | All seven listed primitive topologies; bounded RSH1/linker and validated buffers. |
 | `glFinish`, `glFlush` | B | Immediate submission; `finish` uses the optional fenced-sync extension. |
 | `glGenerateMipmap` | B | Bounded 2D canonical/native packed color chains only. |
-| `glGetActiveAttrib`, `glGetActiveUniform` | P | Versioned `RinGLActiveInfoV1`; current linker exposes bounded attributes, `sampler2D`, and direct `vec4` uniforms. |
+| `glGetActiveAttrib`, `glGetActiveUniform` | P | Versioned `RinGLActiveInfoV1`; current linker exposes bounded attributes plus `sampler2D`, scalar/vector float and signed integer, and vertex `mat4` uniforms. |
 | `glGetAttachedShaders` | N | Raw RinGL has no attached-shader list API. |
 | `glGetBooleanv`, `glGetFloatv` | P | Dedicated state snapshots exist; no generic typed getter. |
 | `glGetBufferParameteriv` | P | `ringl_get_buffer_size` / `ringl_get_buffer_usage` only. |
@@ -53,9 +53,9 @@ Status meanings:
 | `glGetString` | N | Vendor/renderer/version/extensions strings are not fabricated. |
 | `glGetTexParameteriv` | P | Integer values for `MIN_FILTER`, `MAG_FILTER`, `WRAP_S`, `WRAP_T` only. |
 | `glGetTexParameterfv` | N | No floating tex-parameter getter. |
-| `glGetUniformiv` | P | `ringl_get_uniform_1i` for linked scalar `sampler2D` locations only. |
+| `glGetUniformiv` | P | `ringl_get_uniform_1i` for linked scalar `sampler2D` or `int`, plus `ringl_get_uniform_{2,3,4}i` for complete `ivec` values; no arrays. |
 | `glGetUniformfv` | P | `ringl_get_uniform_{1,2,3,4}f` for linked `float`/`vec2`/`vec3`/`vec4` locations, and `ringl_get_uniform_matrix4f` for the bounded vertex `mat4` profile. |
-| `glGetUniformLocation` | P | Linked `sampler2D`, `float`, `vec2`, `vec3`, `vec4`, and bounded vertex `mat4` uniforms only. |
+| `glGetUniformLocation` | P | Linked `sampler2D`, scalar/vector float and signed integer, and bounded vertex `mat4` uniforms only. |
 | `glGetVertexAttribfv`, `glGetVertexAttribiv`, `glGetVertexAttribPointerv` | P | Versioned attribute record/current-value copy; no generic GLES getter. |
 | `glHint` | P | Tracks accepted GLES hint enums; no general driver-quality control. |
 | `glLineWidth`, `glPolygonOffset`, `glSampleCoverage`, `glScissor`, `glViewport` | B | Bounded native raster state. |
@@ -66,11 +66,12 @@ Status meanings:
 | `glTexImage2D`, `glTexSubImage2D` | B | 2D canonical/packed color plus bounded depth formats; byte-span variants protect untrusted imports. |
 | `glTexParameterf`, `glTexParameterfv`, `glTexParameteriv` | N | Raw RinGL only has integer `ringl_tex_parameteri`; an embedding may accept a float only after exact integer conversion. |
 | `glTexParameteri` | P | Four sampler pnames only; all accepted values map to RinGPU sampler state. |
-| `glUniform1i` | P | Linked `sampler2D` locations only. |
+| `glUniform1i` | P | Linked `sampler2D` or scalar `int` location; no arrays. |
 | `glUniform1f`, `glUniform1fv`, `glUniform2f`, `glUniform2fv`, `glUniform3f`, `glUniform3fv`, `glUniform4f`, `glUniform4fv` | P | Finite scalar/vector values realize a program-owned RinGPU module only for stages that declare the updated uniform name, preserving independent sampler/varying modules. The bounded vertex-colored texture material may sample one UV/image pair, or add two pairs, then apply a `vec4` tint and scalar opacity in RSH1 (`(texture2D(...) + texture2D(...)) * vertexColor * tint * opacity`); an embedding may map each `*fv` form only when its single non-array value is complete. |
-| `glUniform1iv` | P | A linked scalar `sampler2D` value only; sampler arrays and integer GLSL uniforms are not implemented. |
+| `glUniform1iv` | P | One linked scalar `sampler2D` or `int` value; arrays are not implemented. |
 | `glUniformMatrix4fv` | P | One vertex-stage `uniform mat4` used as `mat4 * attribute vec4` for `gl_Position`, either in the no-varying vector-local/arithmetic profile or a transformed texture profile that copies one to four declared `attribute vec2` values into matching `varying vec2` pairs for fragment `texture2D`; `attribute vec2` position may be explicitly constructed as `vec4(position, 0.0, 1.0)`. Column-major finite values only, `transpose == false`, no uniform arrays. |
-| `glUniform2i`, `glUniform2iv`, `glUniform3i`, `glUniform3iv`, `glUniform4i`, `glUniform4iv`, `glUniformMatrix2fv`, `glUniformMatrix3fv` | N | Integer and remaining matrix uniform storage/lowering are not implemented. |
+| `glUniform2i`, `glUniform2iv`, `glUniform3i`, `glUniform3iv`, `glUniform4i`, `glUniform4iv` | P | One exact-width linked `ivec2`/`ivec3`/`ivec4` value; no arrays. Program-owned RSH1 replacement is atomic. |
+| `glUniformMatrix2fv`, `glUniformMatrix3fv` | N | Remaining matrix uniform storage/lowering is not implemented. |
 | `glVertexAttrib1f`, `glVertexAttrib2f`, `glVertexAttrib3f`, `glVertexAttrib4f` | B | Current generic values for disabled arrays. |
 | `glVertexAttrib1fv`, `glVertexAttrib2fv`, `glVertexAttrib3fv`, `glVertexAttrib4fv` | N | Raw pointer-vector forms are not exported; embeddings must bounds-check then use scalar setters. |
 
@@ -86,7 +87,7 @@ inventing unused aliases.
 | Buffer targets/usages and numeric vertex types | B | `ARRAY_BUFFER`/`ELEMENT_ARRAY_BUFFER`; supported scalar source formats are documented by `ringl_vertex_attrib_pointer`. |
 | 2D texture targets, canonical `ALPHA`/`RGB`/`RGBA`/`LUMINANCE`/`LUMINANCE_ALPHA`, native RGB565/RGBA4/RGB5_A1, filters and wraps | P | `TEXTURE_2D` only; no cube map, compressed formats, 3D, array, or immutable storage. |
 | Depth/stencil and renderbuffer formats | P | D16/D32/D24S8/S8 are bounded FBO formats; multisample/resolve and remaining attachment semantics are absent. |
-| Shader/program type and status tokens | P | Current GLSL/RSH1 subset exposes scalar/vector attributes, samplers, scalar/vector uniforms, and bounded vertex `mat4 * vec4` position profiles: up to four UV pairs, or one/two UV pairs plus an RGBA varying used by exact one-sample or two-sample-add `texture2D(...) * vertexColor` materials with optional `vec4` tint and scalar opacity; no general uniform type coverage. |
+| Shader/program type and status tokens | P | Current GLSL/RSH1 subset exposes scalar/vector attributes, samplers, scalar/vector float and signed-integer uniforms, and bounded vertex `mat4 * vec4` position profiles: up to four UV pairs, or one/two UV pairs plus an RGBA varying used by exact one-sample or two-sample-add `texture2D(...) * vertexColor` materials with optional `vec4` tint and scalar opacity; no general uniform type coverage. |
 | Query tokens | P | Only the exact `ringl_get_integerv_bounded` and dedicated-record names below are accepted. |
 | Cube-map, compressed-texture, shader-binary, precision, implementation/vendor/renderer/version/extension, multisample, and GLES 3.x tokens | N | They are not declared as successful RinGL capabilities. |
 

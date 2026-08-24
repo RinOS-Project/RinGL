@@ -32,6 +32,7 @@ extern "C" {
 #define RINGL_UNSIGNED_BYTE  0x1401u
 #define RINGL_SHORT          0x1402u
 #define RINGL_UNSIGNED_SHORT 0x1403u
+#define RINGL_INT            0x1404u
 #define RINGL_UNSIGNED_SHORT_4_4_4_4 0x8033u
 #define RINGL_UNSIGNED_SHORT_5_5_5_1 0x8034u
 #define RINGL_UNSIGNED_SHORT_5_6_5 0x8363u
@@ -40,6 +41,9 @@ extern "C" {
 #define RINGL_FLOAT_VEC2     0x8b50u
 #define RINGL_FLOAT_VEC3     0x8b51u
 #define RINGL_FLOAT_VEC4     0x8b52u
+#define RINGL_INT_VEC2       0x8b53u
+#define RINGL_INT_VEC3       0x8b54u
+#define RINGL_INT_VEC4       0x8b55u
 #define RINGL_FLOAT_MAT4     0x8b5cu
 #define RINGL_SAMPLER_2D     0x8b5eu
 
@@ -1411,8 +1415,8 @@ void ringl_link_program(uint32_t program);
 uint32_t ringl_get_program_link_status(uint32_t program);
 void ringl_validate_program(uint32_t program);
 int ringl_get_program_info(uint32_t program, RinGLProgramInfoV1* info);
-/* Return one active linked attribute or sampler/vec4 uniform into a versioned,
- * caller-owned record. Failures leave the record unchanged. */
+/* Return one active linked attribute or supported scalar/vector/matrix uniform
+ * into a versioned, caller-owned record. Failures leave the record unchanged. */
 int ringl_get_active_attrib(uint32_t program, uint32_t index,
                             RinGLActiveInfoV1* info);
 int ringl_get_active_uniform(uint32_t program, uint32_t index,
@@ -1432,10 +1436,22 @@ uint32_t ringl_get_current_program(void);
 int32_t ringl_get_attrib_location(uint32_t program, const char* name);
 int32_t ringl_get_uniform_location(uint32_t program, const char* name);
 void ringl_uniform_1i(int32_t location, int32_t value);
-/* Reads a linked sampler uniform without borrowing program storage. Invalid
- * program/location inputs leave value_out unchanged and record an error. */
+/* Applies to an active sampler or scalar int uniform. Scalar int values are
+ * lowered into a new program-owned RSH1 module before state is committed. */
+/* Reads a linked sampler or scalar int uniform without borrowing program
+ * storage. Invalid program/location inputs leave value_out unchanged. */
 int ringl_get_uniform_1i(uint32_t program, int32_t location,
                           int32_t* value_out);
+void ringl_uniform_2i(int32_t location, int32_t x, int32_t y);
+void ringl_uniform_3i(int32_t location, int32_t x, int32_t y, int32_t z);
+void ringl_uniform_4i(int32_t location, int32_t x, int32_t y, int32_t z,
+                      int32_t w);
+int ringl_get_uniform_2i(uint32_t program, int32_t location,
+                          int32_t values_out[2]);
+int ringl_get_uniform_3i(uint32_t program, int32_t location,
+                          int32_t values_out[3]);
+int ringl_get_uniform_4i(uint32_t program, int32_t location,
+                          int32_t values_out[4]);
 /* Bounded native GLSL lowering supports active scalar `float` values. The
  * setter applies only to the currently used program and replaces its
  * program-owned RinGPU shader modules atomically after finite-value checks. */

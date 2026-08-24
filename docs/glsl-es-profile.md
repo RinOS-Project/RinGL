@@ -9,7 +9,11 @@ The first frontend target is GLSL ES 1.00-style vertex and fragment shader sourc
 The current first-triangle slice supports:
 
 - `void main()` entry points;
-- scalar `float` declarations and arithmetic;
+- scalar `float`/`int` declarations and same-type arithmetic;
+- `vec2`/`vec3`/`vec4` and `ivec2`/`ivec3`/`ivec4` constructors, plus an
+  explicit scalar `int(...)` or `float(...)` conversion;
+- single-component `.x`, `.y`, `.z`, `.w` and `.r`, `.g`, `.b`, `.a` reads
+  from vector/ivector values;
 - vertex `attribute float` and `attribute vec2` inputs;
 - `vec2(...)` and `vec4(...)` constructors;
 - scalar or `vec4` writes to the stage output (`gl_Position` / `gl_FragColor`);
@@ -65,10 +69,11 @@ bindings for only those declarations. The direct-coordinate maximum is 69
 instructions and 64 registers; with an offset on every call it is 101
 instructions and 68 registers. Coordinates derived from locals or different
 varyings, other expressions, and larger chains are not yet accepted.
-Nonconstant coordinates in this profile, other arithmetic, vector locals,
-matrices, other uniform types, additional varying types, derivatives, loops,
-user functions, precision edge cases, and broader GLSL ES built-ins remain
-incremental work.
+Nonconstant coordinates in this profile, multi-component swizzles, implicit
+float/integer conversion, vector constructors with mixed scalar types,
+matrices beyond the documented vertex transform, uniform arrays, additional
+varying types, derivatives, loops, user functions, precision edge cases, and
+broader GLSL ES built-ins remain incremental work.
 
 ## Vertex input mapping
 

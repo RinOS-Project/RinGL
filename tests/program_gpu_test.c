@@ -41,10 +41,13 @@ typedef struct FakeBackend {
     uint32_t texture_fragment_modules;
     uint32_t tinted_texture_fragment_modules;
     uint32_t transformed_texture_vertex_modules;
+    uint32_t integer_fragment_modules;
     float expected_transform[16];
     float expected_tint[4];
     uint32_t validate_expected_transform;
     uint32_t validate_expected_tint;
+    int32_t expected_integer;
+    uint32_t validate_expected_integer;
     uint32_t reject_create;
 } FakeBackend;
 
@@ -139,6 +142,27 @@ static int fake_create_shader_module(void* session, const void* rsh1,
         }
         backend->transformed_texture_vertex_modules++;
     }
+    if (header.stage == 2u) {
+        const Rsh1Instruction* instructions =
+            (const Rsh1Instruction*)((const uint8_t*)rsh1 + sizeof(header));
+        uint32_t index;
+        uint32_t has_i32_constant = 0u;
+        uint32_t has_i32_to_f32 = 0u;
+
+        for (index = 0u; index < header.instruction_count; ++index) {
+            if (instructions[index].opcode == 1u) {
+                has_i32_constant = 1u;
+                if (backend->validate_expected_integer && !backend->reject_create)
+                    assert((int32_t)instructions[index].immediate == backend->expected_integer);
+            }
+            if (instructions[index].opcode == 43u)
+                has_i32_to_f32 = 1u;
+        }
+        if (has_i32_constant) {
+            assert(has_i32_to_f32);
+            backend->integer_fragment_modules++;
+        }
+    }
     backend->shader_creates++;
     if (backend->reject_create)
         return -1;
@@ -178,6 +202,9 @@ int main(void)
     uint32_t shared_uniform_vertex;
     uint32_t shared_uniform_fragment;
     uint32_t shared_uniform_program;
+    uint32_t integer_vertex;
+    uint32_t integer_fragment;
+    uint32_t integer_program;
     char log[192];
 
     assert(ringl_context_create(&desc, &context) == 0);
@@ -329,6 +356,43 @@ int main(void)
     ringl_link_program(program);
     assert(ringl_get_program_link_status(program) == RINGL_FALSE);
     assert(backend.shader_creates == 13u);
+    backend.reject_create = 0u;
+
+    /* The native integer path is a program-owned executable as well: changing
+     * `gain` creates a fresh fragment module whose i32 constant is converted
+     * explicitly for the float WebGL color output. */
+    integer_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+    integer_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+    integer_program = ringl_create_program();
+    assert(integer_vertex != 0u && integer_fragment != 0u && integer_program != 0u);
+    ringl_shader_source(integer_vertex,
+        "void main() { gl_Position = vec4(-1.0, -1.0, 0.0, 1.0); }", -1);
+    ringl_shader_source(integer_fragment,
+        "uniform int gain; void main() { "
+        "gl_FragColor = vec4(float(gain), 0.0, 0.0, 1.0); }", -1);
+    ringl_compile_shader(integer_vertex);
+    ringl_compile_shader(integer_fragment);
+    assert(ringl_get_shader_compile_status(integer_vertex) == RINGL_TRUE);
+    assert(ringl_get_shader_compile_status(integer_fragment) == RINGL_TRUE);
+    ringl_attach_shader(integer_program, integer_vertex);
+    ringl_attach_shader(integer_program, integer_fragment);
+    ringl_link_program(integer_program);
+    assert(ringl_get_program_link_status(integer_program) == RINGL_TRUE);
+    assert(backend.integer_fragment_modules == 1u);
+    ringl_use_program(integer_program);
+    assert(ringl_get_uniform_location(integer_program, "gain") == 0);
+    backend.expected_integer = -37;
+    backend.validate_expected_integer = 1u;
+    ringl_uniform_1i(0, backend.expected_integer);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(backend.integer_fragment_modules == 2u);
+    {
+        int32_t gain = 0;
+
+        assert(ringl_get_uniform_1i(integer_program, 0, &gain) == 0);
+        assert(gain == backend.expected_integer);
+    }
+    ringl_delete_program(integer_program);
 
     ringl_context_destroy(context);
     return 0;

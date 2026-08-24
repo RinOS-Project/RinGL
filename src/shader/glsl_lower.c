@@ -3,6 +3,7 @@
 #include "rsh1_abi.h"
 
 #include <ctype.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,6 +21,9 @@ typedef enum Tok {
     T_VEC4,
     T_MAT4,
     T_INT,
+    T_IVEC2,
+    T_IVEC3,
+    T_IVEC4,
     T_ATTRIBUTE,
     T_UNIFORM,
     T_PRECISION,
@@ -37,6 +41,7 @@ typedef enum Tok {
     T_MINUS,
     T_STAR,
     T_SLASH,
+    T_DOT,
     T_BAD
 } Tok;
 
@@ -50,6 +55,7 @@ typedef struct Value {
     uint16_t regs[16];
     uint8_t width;
     uint8_t matrix;
+    uint8_t is_i32;
 } Value;
 
 typedef struct Symbol {
@@ -61,6 +67,7 @@ typedef struct Symbol {
     uint8_t uniform;
     uint8_t initialized;
     uint8_t matrix;
+    uint8_t is_i32;
 } Symbol;
 
 typedef struct Lower {
@@ -144,6 +151,12 @@ static Tok keyword(const char* begin, size_t length)
         return T_MAT4;
     if (length == 3u && memcmp(begin, "int", 3u) == 0)
         return T_INT;
+    if (length == 5u && memcmp(begin, "ivec2", 5u) == 0)
+        return T_IVEC2;
+    if (length == 5u && memcmp(begin, "ivec3", 5u) == 0)
+        return T_IVEC3;
+    if (length == 5u && memcmp(begin, "ivec4", 5u) == 0)
+        return T_IVEC4;
     if (length == 9u && memcmp(begin, "attribute", 9u) == 0)
         return T_ATTRIBUTE;
     if (length == 7u && memcmp(begin, "uniform", 7u) == 0)
@@ -185,7 +198,9 @@ static void next(Lower* lower)
         lower->token = token;
         return;
     }
-    if (isdigit((unsigned char)c) || c == '.') {
+    if (isdigit((unsigned char)c) ||
+        (c == '.' && lower->offset < lower->length &&
+         isdigit((unsigned char)lower->source[lower->offset]))) {
         size_t start = lower->offset - 1u;
         int dot_seen = c == '.';
         while (lower->offset < lower->length) {
@@ -220,6 +235,7 @@ static void next(Lower* lower)
     case '-': token.kind = T_MINUS; break;
     case '*': token.kind = T_STAR; break;
     case '/': token.kind = T_SLASH; break;
+    case '.': token.kind = T_DOT; break;
     default: token.kind = T_BAD; break;
     }
     lower->token = token;
@@ -313,8 +329,10 @@ static int initialize_uniform(Lower* lower, Symbol* symbol,
                               const Token* name, uint32_t type)
 {
     const RinGLGlslUniformValue* uniform;
-    float zero_values[16] = { 0.0f };
-    const float* values = zero_values;
+    uint32_t zero_values[16] = { 0u };
+    const uint32_t* values = zero_values;
+    int is_i32 = type == RINGL_INT || type == RINGL_INT_VEC2 ||
+                 type == RINGL_INT_VEC3 || type == RINGL_INT_VEC4;
     uint32_t index;
 
     if (lower == NULL || symbol == NULL || name == NULL)
@@ -325,15 +343,16 @@ static int initialize_uniform(Lower* lower, Symbol* symbol,
         return 0;
     }
     if (uniform != NULL)
-        values = uniform->values;
+        values = is_i32 ? (const uint32_t*)uniform->i32_values
+                         : (const uint32_t*)uniform->values;
     symbol->uniform = 1u;
+    symbol->is_i32 = (uint8_t)is_i32;
     for (index = 0u; index < (symbol->matrix ? 16u : symbol->width); ++index) {
         uint16_t reg = new_reg(lower);
-        uint32_t bits;
+        uint32_t bits = values[index];
 
-        memcpy(&bits, &values[index], sizeof(bits));
         if (reg == RINGL_RSH1_UNUSED ||
-            !emit(lower, RINGL_RSH1_OP_CONST_F32, reg,
+            !emit(lower, is_i32 ? RINGL_RSH1_OP_CONST_I32 : RINGL_RSH1_OP_CONST_F32, reg,
                   RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED, bits)) {
             return 0;
         }
@@ -378,9 +397,10 @@ static Value number_value(Lower* lower)
     Value value = invalid_value();
     char temp[64];
     char* end = NULL;
-    float number;
     uint32_t bits;
     uint16_t reg;
+    int integer = 1;
+    size_t index;
 
     if (lower->token.length >= sizeof(temp)) {
         fail(lower, "numeric literal too long");
@@ -388,21 +408,41 @@ static Value number_value(Lower* lower)
     }
     memcpy(temp, lower->token.begin, lower->token.length);
     temp[lower->token.length] = '\0';
-    number = strtof(temp, &end);
-    if (end == temp || *end != '\0') {
-        fail(lower, "invalid numeric literal");
-        return value;
+    for (index = 0u; index < lower->token.length; ++index) {
+        if (temp[index] == '.') {
+            integer = 0;
+            break;
+        }
     }
-    memcpy(&bits, &number, sizeof(bits));
+    if (integer) {
+        long number = strtol(temp, &end, 10);
+        int32_t i32_number;
+        if (end == temp || *end != '\0' || number < INT32_MIN ||
+            number > INT32_MAX) {
+            fail(lower, "integer literal is out of range");
+            return value;
+        }
+        i32_number = (int32_t)number;
+        memcpy(&bits, &i32_number, sizeof(bits));
+    } else {
+        float number = strtof(temp, &end);
+        if (end == temp || *end != '\0') {
+            fail(lower, "invalid numeric literal");
+            return value;
+        }
+        memcpy(&bits, &number, sizeof(bits));
+    }
     next(lower);
     reg = new_reg(lower);
     if (reg == RINGL_RSH1_UNUSED ||
-        !emit(lower, RINGL_RSH1_OP_CONST_F32, reg, RINGL_RSH1_UNUSED,
+        !emit(lower, integer ? RINGL_RSH1_OP_CONST_I32 : RINGL_RSH1_OP_CONST_F32,
+              reg, RINGL_RSH1_UNUSED,
               RINGL_RSH1_UNUSED, bits)) {
         return value;
     }
     value.regs[0] = reg;
     value.width = 1u;
+    value.is_i32 = (uint8_t)integer;
     return value;
 }
 
@@ -420,6 +460,7 @@ static Value symbol_value(Lower* lower)
     next(lower);
     value.width = symbol->width;
     value.matrix = symbol->matrix;
+    value.is_i32 = symbol->is_i32;
     if (symbol->attribute) {
         for (index = 0u; index < symbol->width; ++index) {
             uint16_t reg = new_reg(lower);
@@ -435,10 +476,36 @@ static Value symbol_value(Lower* lower)
         for (index = 0u; index < (symbol->matrix ? 16u : symbol->width); ++index)
             value.regs[index] = symbol->regs[index];
     }
+    if (take(lower, T_DOT)) {
+        uint32_t component;
+
+        if (value.matrix || value.width == 1u || lower->token.kind != T_IDENT ||
+            lower->token.length != 1u) {
+            fail(lower, "invalid vector component selection");
+            return invalid_value();
+        }
+        switch (lower->token.begin[0]) {
+        case 'x': case 'r': component = 0u; break;
+        case 'y': case 'g': component = 1u; break;
+        case 'z': case 'b': component = 2u; break;
+        case 'w': case 'a': component = 3u; break;
+        default:
+            fail(lower, "unsupported vector component selection");
+            return invalid_value();
+        }
+        if (component >= value.width) {
+            fail(lower, "vector component is outside the declared width");
+            return invalid_value();
+        }
+        value.regs[0] = value.regs[component];
+        value.width = 1u;
+        next(lower);
+    }
     return value;
 }
 
-static Value constructor_value(Lower* lower, uint8_t target_width)
+static Value constructor_value(Lower* lower, uint8_t target_width,
+                               int target_is_i32)
 {
     Value result = invalid_value();
     uint32_t width = 0u;
@@ -455,6 +522,10 @@ static Value constructor_value(Lower* lower, uint8_t target_width)
         uint32_t index;
         if (argument.width == 0u || argument.matrix)
             return result;
+        if (argument.is_i32 != (uint8_t)target_is_i32) {
+            fail(lower, "vector constructor component type mismatch");
+            return result;
+        }
         if (width + argument.width > target_width) {
             fail(lower, "too many vector constructor components");
             return result;
@@ -471,7 +542,37 @@ static Value constructor_value(Lower* lower, uint8_t target_width)
         return invalid_value();
     }
     result.width = target_width;
+    result.is_i32 = (uint8_t)target_is_i32;
     return result;
+}
+
+static Value conversion_value(Lower* lower, int target_is_i32)
+{
+    Value value;
+    uint16_t result;
+
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after scalar conversion"))
+        return invalid_value();
+    value = expression(lower);
+    if (value.width == 0u || value.matrix || value.width != 1u) {
+        fail(lower, "scalar conversion requires a scalar value");
+        return invalid_value();
+    }
+    if (!need(lower, T_RPAREN, "expected ')' after scalar conversion"))
+        return invalid_value();
+    if (value.is_i32 == (uint8_t)target_is_i32)
+        return value;
+    result = new_reg(lower);
+    if (result == RINGL_RSH1_UNUSED ||
+        !emit(lower, target_is_i32 ? RINGL_RSH1_OP_F32_TO_I32
+                                   : RINGL_RSH1_OP_I32_TO_F32,
+              result, value.regs[0], RINGL_RSH1_UNUSED, 0u)) {
+        return invalid_value();
+    }
+    value.regs[0] = result;
+    value.is_i32 = (uint8_t)target_is_i32;
+    return value;
 }
 
 static Value primary(Lower* lower)
@@ -479,12 +580,22 @@ static Value primary(Lower* lower)
     Value value;
     if (lower->token.kind == T_NUMBER)
         return number_value(lower);
+    if (lower->token.kind == T_FLOAT)
+        return conversion_value(lower, 0);
+    if (lower->token.kind == T_INT)
+        return conversion_value(lower, 1);
     if (lower->token.kind == T_VEC2)
-        return constructor_value(lower, 2u);
+        return constructor_value(lower, 2u, 0);
     if (lower->token.kind == T_VEC3)
-        return constructor_value(lower, 3u);
+        return constructor_value(lower, 3u, 0);
     if (lower->token.kind == T_VEC4)
-        return constructor_value(lower, 4u);
+        return constructor_value(lower, 4u, 0);
+    if (lower->token.kind == T_IVEC2)
+        return constructor_value(lower, 2u, 1);
+    if (lower->token.kind == T_IVEC3)
+        return constructor_value(lower, 3u, 1);
+    if (lower->token.kind == T_IVEC4)
+        return constructor_value(lower, 4u, 1);
     if (lower->token.kind == T_IDENT)
         return symbol_value(lower);
     if (take(lower, T_LPAREN)) {
@@ -515,9 +626,13 @@ static Value unary(Lower* lower)
         uint16_t zero = new_reg(lower);
         uint16_t result = new_reg(lower);
         if (zero == RINGL_RSH1_UNUSED || result == RINGL_RSH1_UNUSED ||
-            !emit(lower, RINGL_RSH1_OP_CONST_F32, zero, RINGL_RSH1_UNUSED,
+            !emit(lower, value.is_i32 ? RINGL_RSH1_OP_CONST_I32
+                                      : RINGL_RSH1_OP_CONST_F32,
+                  zero, RINGL_RSH1_UNUSED,
                   RINGL_RSH1_UNUSED, 0u) ||
-            !emit(lower, RINGL_RSH1_OP_SUB_F32, result, zero, value.regs[index],
+            !emit(lower, value.is_i32 ? RINGL_RSH1_OP_SUB_I32
+                                      : RINGL_RSH1_OP_SUB_F32,
+                  result, zero, value.regs[index],
                   0u)) {
             return invalid_value();
         }
@@ -535,6 +650,10 @@ static Value matrix_times_vec4(Lower* lower, const Value* matrix,
     if (matrix == NULL || vector == NULL || !matrix->matrix ||
         vector->matrix || vector->width != 4u)
         return result;
+    if (matrix->is_i32 || vector->is_i32) {
+        fail(lower, "mat4 multiplication requires floating-point values");
+        return result;
+    }
     for (row = 0u; row < 4u; ++row) {
         uint16_t products[4];
         uint16_t left_sum;
@@ -589,6 +708,21 @@ static Value componentwise_binary(Lower* lower, const Value* left,
         fail(lower, "matrix arithmetic is not supported by this expression profile");
         return result;
     }
+    if (left->is_i32 != right->is_i32) {
+        fail(lower, "arithmetic operands must have matching scalar types");
+        return result;
+    }
+    if (left->is_i32) {
+        switch (opcode) {
+        case RINGL_RSH1_OP_ADD_F32: opcode = RINGL_RSH1_OP_ADD_I32; break;
+        case RINGL_RSH1_OP_SUB_F32: opcode = RINGL_RSH1_OP_SUB_I32; break;
+        case RINGL_RSH1_OP_MUL_F32: opcode = RINGL_RSH1_OP_MUL_I32; break;
+        case RINGL_RSH1_OP_DIV_F32: opcode = RINGL_RSH1_OP_DIV_I32; break;
+        default:
+            fail(lower, "unsupported integer arithmetic operation");
+            return result;
+        }
+    }
     if (left->width == right->width) {
         width = left->width;
     } else if (allow_scalar_broadcast && left->width == 1u) {
@@ -612,6 +746,7 @@ static Value componentwise_binary(Lower* lower, const Value* left,
         result.regs[index] = destination;
     }
     result.width = width;
+    result.is_i32 = left->is_i32;
     return result;
 }
 
@@ -655,7 +790,7 @@ static Value expression(Lower* lower)
     return left;
 }
 
-static int local_decl(Lower* lower, uint8_t width)
+static int local_decl(Lower* lower, uint8_t width, int is_i32)
 {
     Token name;
     Symbol* symbol;
@@ -672,10 +807,12 @@ static int local_decl(Lower* lower, uint8_t width)
     symbol = add_symbol(lower, &name, 0, width);
     if (symbol == NULL)
         return 0;
+    symbol->is_i32 = (uint8_t)is_i32;
     next(lower);
     if (take(lower, T_ASSIGN)) {
         Value value = expression(lower);
-        if (value.matrix || value.width != width) {
+        if (value.matrix || value.width != width ||
+            value.is_i32 != (uint8_t)is_i32) {
             fail(lower, "local initializer component count mismatch");
             return 0;
         }
@@ -731,7 +868,8 @@ static int assignment(Lower* lower)
     if (!need(lower, T_SEMI, "expected ';' after assignment"))
         return 0;
     if (output) {
-        if (value.matrix || (value.width != 1u && value.width != 4u)) {
+        if (value.matrix || value.is_i32 ||
+            (value.width != 1u && value.width != 4u)) {
             fail(lower, "shader output must be scalar or vec4");
             return 0;
         }
@@ -741,7 +879,7 @@ static int assignment(Lower* lower)
         fail(lower, "attribute or uniform is read-only");
         return 0;
     }
-    if (symbol->width != value.width) {
+    if (symbol->width != value.width || symbol->is_i32 != value.is_i32) {
         fail(lower, "assignment width mismatch");
         return 0;
     }
@@ -825,17 +963,25 @@ static int parse_all(Lower* lower)
 
             if (lower->token.kind == T_FLOAT) {
                 uniform_type = RINGL_FLOAT;
+            } else if (lower->token.kind == T_INT) {
+                uniform_type = RINGL_INT;
             } else if (lower->token.kind == T_VEC2) {
                 uniform_type = RINGL_FLOAT_VEC2;
+            } else if (lower->token.kind == T_IVEC2) {
+                uniform_type = RINGL_INT_VEC2;
             } else if (lower->token.kind == T_VEC3) {
                 uniform_type = RINGL_FLOAT_VEC3;
+            } else if (lower->token.kind == T_IVEC3) {
+                uniform_type = RINGL_INT_VEC3;
             } else if (lower->token.kind == T_VEC4) {
                 uniform_type = RINGL_FLOAT_VEC4;
+            } else if (lower->token.kind == T_IVEC4) {
+                uniform_type = RINGL_INT_VEC4;
             } else if (lower->token.kind == T_MAT4 &&
                        lower->shader_type == RINGL_VERTEX_SHADER) {
                 uniform_type = RINGL_FLOAT_MAT4;
             } else {
-                fail(lower, "only vertex uniform mat4 and uniform float/vec2/vec3/vec4 lowering are supported");
+                fail(lower, "only vertex mat4 and scalar/vector float or int uniforms are supported");
                 return 0;
             }
             next(lower);
@@ -846,10 +992,10 @@ static int parse_all(Lower* lower)
             name = lower->token;
             if (find_symbol(lower, &name) != NULL ||
                 (symbol = add_symbol(lower, &name, 0,
-                                     uniform_type == RINGL_FLOAT ? 1u
-                                     : uniform_type == RINGL_FLOAT_VEC2 ? 2u
-                                     : uniform_type == RINGL_FLOAT_VEC3 ? 3u
-                                     : uniform_type == RINGL_FLOAT_VEC4 ? 4u : 16u)) == NULL ||
+                                     uniform_type == RINGL_FLOAT || uniform_type == RINGL_INT ? 1u
+                                     : uniform_type == RINGL_FLOAT_VEC2 || uniform_type == RINGL_INT_VEC2 ? 2u
+                                     : uniform_type == RINGL_FLOAT_VEC3 || uniform_type == RINGL_INT_VEC3 ? 3u
+                                     : uniform_type == RINGL_FLOAT_VEC4 || uniform_type == RINGL_INT_VEC4 ? 4u : 16u)) == NULL ||
                 !initialize_uniform(lower, symbol, &name, uniform_type)) {
                 return 0;
             }
@@ -876,11 +1022,20 @@ static int parse_all(Lower* lower)
                 if (lower->token.kind == T_FLOAT ||
                     lower->token.kind == T_VEC2 ||
                     lower->token.kind == T_VEC3 ||
-                    lower->token.kind == T_VEC4) {
-                    uint8_t width = lower->token.kind == T_FLOAT ? 1u
-                        : lower->token.kind == T_VEC2 ? 2u
-                        : lower->token.kind == T_VEC3 ? 3u : 4u;
-                    if (!local_decl(lower, width))
+                    lower->token.kind == T_VEC4 ||
+                    lower->token.kind == T_INT ||
+                    lower->token.kind == T_IVEC2 ||
+                    lower->token.kind == T_IVEC3 ||
+                    lower->token.kind == T_IVEC4) {
+                    uint8_t width = lower->token.kind == T_FLOAT ||
+                                    lower->token.kind == T_INT ? 1u
+                        : lower->token.kind == T_VEC2 || lower->token.kind == T_IVEC2 ? 2u
+                        : lower->token.kind == T_VEC3 || lower->token.kind == T_IVEC3 ? 3u : 4u;
+                    int is_i32 = lower->token.kind == T_INT ||
+                                 lower->token.kind == T_IVEC2 ||
+                                 lower->token.kind == T_IVEC3 ||
+                                 lower->token.kind == T_IVEC4;
+                    if (!local_decl(lower, width, is_i32))
                         return 0;
                 } else if (!assignment(lower)) {
                     return 0;

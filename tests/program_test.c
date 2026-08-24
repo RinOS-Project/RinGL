@@ -36,6 +36,10 @@ int main(void)
     uint32_t vec3_fragment;
     uint32_t vec3_program;
     uint32_t vec3_peer_program;
+    uint32_t integer_vertex;
+    uint32_t integer_fragment;
+    uint32_t integer_program;
+    uint32_t integer_peer_program;
     uint32_t mat4_vertex;
     uint32_t mat4_fragment;
     uint32_t mat4_program;
@@ -389,6 +393,89 @@ int main(void)
     }
     ringl_delete_program(vec3_peer_program);
     ringl_delete_program(vec3_program);
+
+    /* Integer uniform state uses the same program-owned executable path as
+     * float uniforms, but remains i32 until an explicit GLSL float() cast.
+     * This exercises scalar and all integer vector widths, reflection,
+     * location validation, readback, and per-program zero defaults. */
+    integer_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+    integer_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+    integer_program = ringl_create_program();
+    integer_peer_program = ringl_create_program();
+    assert(integer_vertex != 0u && integer_fragment != 0u &&
+           integer_program != 0u && integer_peer_program != 0u);
+    ringl_shader_source(integer_vertex,
+                        "void main() { gl_Position = vec4(-1.0, -1.0, 0.0, 1.0); }",
+                        -1);
+    ringl_shader_source(integer_fragment,
+                        "uniform int scalar; uniform ivec2 pair; "
+                        "uniform ivec3 triple; uniform ivec4 quad; "
+                        "void main() { int total = scalar + pair.x + triple.y + quad.w; "
+                        "gl_FragColor = vec4(float(total), float(pair.y), "
+                        "float(triple.z), float(quad.x)); }",
+                        -1);
+    ringl_compile_shader(integer_vertex);
+    ringl_compile_shader(integer_fragment);
+    assert(ringl_get_shader_compile_status(integer_vertex) == RINGL_TRUE);
+    assert(ringl_get_shader_compile_status(integer_fragment) == RINGL_TRUE);
+    ringl_attach_shader(integer_program, integer_vertex);
+    ringl_attach_shader(integer_program, integer_fragment);
+    ringl_attach_shader(integer_peer_program, integer_vertex);
+    ringl_attach_shader(integer_peer_program, integer_fragment);
+    ringl_link_program(integer_program);
+    ringl_link_program(integer_peer_program);
+    assert(ringl_get_program_link_status(integer_program) == RINGL_TRUE);
+    assert(ringl_get_program_link_status(integer_peer_program) == RINGL_TRUE);
+    assert(ringl_get_program_info(integer_program, &info) == 0);
+    assert(info.active_uniform_count == 4u);
+    assert(ringl_get_active_uniform(integer_program, 0u, &active_info) == 0);
+    assert(active_info.type == RINGL_INT && strcmp(active_info.name, "scalar") == 0);
+    assert(ringl_get_active_uniform(integer_program, 1u, &active_info) == 0);
+    assert(active_info.type == RINGL_INT_VEC2 && strcmp(active_info.name, "pair") == 0);
+    assert(ringl_get_active_uniform(integer_program, 2u, &active_info) == 0);
+    assert(active_info.type == RINGL_INT_VEC3 && strcmp(active_info.name, "triple") == 0);
+    assert(ringl_get_active_uniform(integer_program, 3u, &active_info) == 0);
+    assert(active_info.type == RINGL_INT_VEC4 && strcmp(active_info.name, "quad") == 0);
+    {
+        int32_t scalar_location = ringl_get_uniform_location(integer_program, "scalar");
+        int32_t pair_location = ringl_get_uniform_location(integer_program, "pair");
+        int32_t triple_location = ringl_get_uniform_location(integer_program, "triple");
+        int32_t quad_location = ringl_get_uniform_location(integer_program, "quad");
+        int32_t scalar = -1;
+        int32_t pair[2] = { -1, -1 };
+        int32_t triple[3] = { -1, -1, -1 };
+        int32_t quad[4] = { -1, -1, -1, -1 };
+
+        assert(scalar_location == 0 && pair_location == 1 &&
+               triple_location == 2 && quad_location == 3);
+        assert(ringl_get_uniform_1i(integer_program, scalar_location, &scalar) == 0);
+        assert(ringl_get_uniform_2i(integer_program, pair_location, pair) == 0);
+        assert(ringl_get_uniform_3i(integer_program, triple_location, triple) == 0);
+        assert(ringl_get_uniform_4i(integer_program, quad_location, quad) == 0);
+        assert(scalar == 0 && pair[0] == 0 && pair[1] == 0 &&
+               triple[0] == 0 && triple[1] == 0 && triple[2] == 0 &&
+               quad[0] == 0 && quad[1] == 0 && quad[2] == 0 && quad[3] == 0);
+        ringl_use_program(integer_program);
+        ringl_uniform_1i(scalar_location, -3);
+        ringl_uniform_2i(pair_location, 4, -5);
+        ringl_uniform_3i(triple_location, 6, -7, 8);
+        ringl_uniform_4i(quad_location, -9, 10, -11, 12);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_1i(integer_program, scalar_location, &scalar) == 0);
+        assert(ringl_get_uniform_2i(integer_program, pair_location, pair) == 0);
+        assert(ringl_get_uniform_3i(integer_program, triple_location, triple) == 0);
+        assert(ringl_get_uniform_4i(integer_program, quad_location, quad) == 0);
+        assert(scalar == -3 && pair[0] == 4 && pair[1] == -5 &&
+               triple[0] == 6 && triple[1] == -7 && triple[2] == 8 &&
+               quad[0] == -9 && quad[1] == 10 && quad[2] == -11 && quad[3] == 12);
+        ringl_uniform_2i(scalar_location, 1, 2);
+        assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+        memset(pair, 0xff, sizeof(pair));
+        assert(ringl_get_uniform_2i(integer_peer_program, pair_location, pair) == 0);
+        assert(pair[0] == 0 && pair[1] == 0);
+    }
+    ringl_delete_program(integer_peer_program);
+    ringl_delete_program(integer_program);
 
     /* A vertex mat4 is lowered to a real column-major RSH1 matrix/vector
      * multiply. It is program-owned just like the scalar/vector profile. */

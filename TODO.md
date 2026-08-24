@@ -404,14 +404,19 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     browser-owned destinations. The bounded RGBA8 API rejects short spans
     before command submission, image-state transition, or destination writes;
     its raw-pointer predecessor is documented as trusted native-only.
-  - [x] Execute `WEBGL_compressed_texture_etc1` and
-    `WEBGL_compressed_texture_s3tc` through dedicated bounded upload APIs:
-    ETC1 plus RGB/RGBA DXT1, RGBA DXT3, and RGBA DXT5 exact block spans decode
-    to RGB/RGBA before the ordinary RinGL/RinGPU texture path, while
-    short/misaligned/out-of-range/failed decode input leaves the existing
-    texture unchanged. The focused texture test and the
-    RinGL→RinGPU→private-Aquamarine bridge verify real upload, alpha, and
-    readback; other compressed formats remain unimplemented.
+  - [x] Execute `WEBGL_compressed_texture_etc1`,
+    `WEBGL_compressed_texture_s3tc`, and
+    `WEBGL_compressed_texture_s3tc_srgb` through dedicated bounded upload
+    APIs: ETC1 plus linear/sRGB RGB/RGBA DXT1, RGBA DXT3, and RGBA DXT5 exact
+    block spans decode before the ordinary RinGL/RinGPU texture path. sRGB RGB
+    channels become deterministic linear Float32 values while alpha remains
+    linear; a decoded image remains logically compressed, so uncompressed
+    mutation, generated mipmaps, and color-FBO rendering are rejected. Short,
+    misaligned, out-of-range, or failed decode input leaves the existing
+    texture unchanged. Focused texture/framebuffer tests and the
+    RinGL→RinGPU→private-Aquamarine bridge verify real upload, linear sRGB
+    sample output, alpha, and readback; other compressed formats remain
+    unimplemented.
 - [ ] Ensure context loss can be propagated predictably to a browser implementation.
   - RinOS Ladybird WebGL 1 now translates sticky RinGL loss through command,
     present, and `isContextLost()` into a once-only `webglcontextlost` canvas

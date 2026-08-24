@@ -72,6 +72,10 @@ typedef struct RinGLTextureObject {
      * component type. FLOAT selects native RGBA32F shadow storage while the
      * public WebGL internal-format token remains unchanged. */
     uint32_t color_component_type;
+    /* Nonzero only for a texture defined by a compressed upload. It retains
+     * the logical format despite RinGL's decoded physical storage, preventing
+     * uncompressed mutation or falsely renderable FBO semantics. */
+    uint32_t compressed_format;
     uint32_t defined;
     uint32_t min_filter;
     uint32_t mag_filter;
@@ -481,6 +485,9 @@ struct RinGLContext {
     uint32_t vertex_array_binding;
     uint32_t active_texture_unit;
     uint32_t bound_texture_2d[RINGL_MAX_TEXTURE_UNITS];
+    /* Private marker used only while the bounded compressed wrapper invokes
+     * the ordinary texture install/update implementation. */
+    uint32_t pending_compressed_format;
     uint32_t framebuffer_binding;
     uint32_t renderbuffer_binding;
     uint32_t current_program;

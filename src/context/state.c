@@ -65,10 +65,11 @@ int ringl_get_compressed_texture_format_count(size_t* count)
         return -1;
     }
 
-    /* ETC1 and the four S3TC DXT forms are decoded in the frontend. RinGPU
-     * remains agnostic of compressed storage while embeddings report only
-     * formats the public RinGL upload entry points genuinely execute. */
-    *count = 5u;
+    /* ETC1 plus linear and sRGB variants of the four S3TC DXT forms are
+     * decoded in the frontend. RinGPU remains agnostic of compressed storage
+     * while embeddings report only formats the public upload entry points
+     * genuinely execute. */
+    *count = 9u;
     return 0;
 }
 

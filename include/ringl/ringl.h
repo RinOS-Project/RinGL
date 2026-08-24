@@ -212,6 +212,12 @@ extern "C" {
 #define RINGL_COMPRESSED_RGBA_S3TC_DXT1_EXT 0x83f1u
 #define RINGL_COMPRESSED_RGBA_S3TC_DXT3_EXT 0x83f2u
 #define RINGL_COMPRESSED_RGBA_S3TC_DXT5_EXT 0x83f3u
+/* WEBGL_compressed_texture_s3tc_srgb. RinGL decodes the compressed sRGB
+ * channels to linear Float32 before sampling; alpha remains linear. */
+#define RINGL_COMPRESSED_SRGB_S3TC_DXT1_EXT       0x8c4cu
+#define RINGL_COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT 0x8c4du
+#define RINGL_COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT 0x8c4eu
+#define RINGL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT 0x8c4fu
 #define RINGL_DEPTH_COMPONENT 0x1902u
 #define RINGL_LUMINANCE  0x1909u
 #define RINGL_LUMINANCE_ALPHA 0x190au
@@ -1298,9 +1304,10 @@ uint32_t ringl_context_dirty_bits(const RinGLContext* context);
  * Unsupported pnames return NULL and record INVALID_ENUM. */
 const char* ringl_get_string(uint32_t pname);
 /* Returns the number of compressed formats that RinGL can actually upload.
- * The bounded profile accepts ETC1 RGB8 and four S3TC DXT formats, expanding
- * them into normal RGB/RGBA storage before RinGPU sees the image. A missing
- * context or null output fails without modifying `count`. */
+ * The bounded profile accepts ETC1 RGB8, four linear S3TC DXT formats, and
+ * four sRGB S3TC DXT formats. Linear formats expand into normal RGB/RGBA
+ * storage; sRGB formats expand to linear Float32 before RinGPU sees the image.
+ * A missing context or null output fails without modifying `count`. */
 int ringl_get_compressed_texture_format_count(size_t* count);
 /* Writes the complete integer result only when `value_count` is large enough.
  * It returns zero on success and -1 on an invalid query, missing context, or
@@ -1510,10 +1517,12 @@ void ringl_tex_image_2d_from_bytes(uint32_t target, int32_t level,
                                    int32_t height, int32_t border,
                                    uint32_t format, uint32_t type,
                                    const void* pixels, uint64_t pixels_size);
-/* WEBGL_compressed_texture_etc1 and WEBGL_compressed_texture_s3tc upload
- * paths. Both commands require exact format-specific block payload sizes and
- * expand valid blocks to RGB/RGBA through the normal RinGL/RinGPU texture
- * path. No compressed storage is exposed below this API. */
+/* WEBGL_compressed_texture_etc1, WEBGL_compressed_texture_s3tc, and
+ * WEBGL_compressed_texture_s3tc_srgb upload paths. Commands require exact
+ * format-specific block payload sizes and expand valid blocks through the
+ * normal RinGL/RinGPU texture path. sRGB color channels are decoded to linear
+ * Float32 before sampling; alpha remains linear. No compressed native storage
+ * is exposed below this API. */
 void ringl_compressed_tex_image_2d_from_bytes(uint32_t target, int32_t level,
                                               uint32_t internal_format,
                                               int32_t width, int32_t height,

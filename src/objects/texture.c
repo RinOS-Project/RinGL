@@ -250,6 +250,7 @@ static int texture_level0_complete(const RinGLContext* context,
      * when, and only when, script has obtained its linear extension. Do not
      * expose a native sampler capability merely because RinGPU supports it. */
     if (((texture->color_component_type == RINGL_FLOAT &&
+          texture->compressed_format == 0u &&
           context->webgl_float_texture_linear_enabled == RINGL_FALSE) ||
          (texture->color_component_type == RINGL_HALF_FLOAT_OES &&
           context->webgl_half_float_texture_linear_enabled == RINGL_FALSE)) &&
@@ -1624,7 +1625,8 @@ void ringl_generate_mipmap(uint32_t target)
     }
     texture = bound_texture_2d(context);
     if (texture == NULL || !texture_level0_storage_defined(texture) ||
-        !texture_color_format(texture->format)) {
+        !texture_color_format(texture->format) ||
+        texture->compressed_format != 0u) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
@@ -1698,7 +1700,11 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
               requested_format == RINGL_DEPTH_COMPONENT32F ||
               requested_format == RINGL_DEPTH24_STENCIL8) ||
             texture->format != requested_format ||
-            texture->color_component_type != requested_color_component_type) {
+            texture->color_component_type != requested_color_component_type ||
+            (context->pending_compressed_format == 0u &&
+             texture->compressed_format != 0u) ||
+            (context->pending_compressed_format != 0u &&
+             texture->compressed_format != context->pending_compressed_format)) {
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return;
         }
@@ -1798,6 +1804,7 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
         texture->height = (uint32_t)height;
         texture->format = requested_format;
         texture->color_component_type = requested_color_component_type;
+        texture->compressed_format = context->pending_compressed_format;
         texture->defined = RINGL_TRUE;
     } else {
         free(mip_storage->shadow_bytes);
@@ -1858,7 +1865,11 @@ static void ringl_tex_sub_image_2d_impl(uint32_t target, int32_t level,
     }
 
     texture = bound_texture_2d(context);
-    if (texture == NULL || !texture_level0_storage_defined(texture)) {
+    if (texture == NULL || !texture_level0_storage_defined(texture) ||
+        (context->pending_compressed_format == 0u &&
+         texture->compressed_format != 0u) ||
+        (context->pending_compressed_format != 0u &&
+         texture->compressed_format != context->pending_compressed_format)) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
@@ -1973,7 +1984,8 @@ void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
     texture = bound_texture_2d(context);
     if (texture == NULL || !texture_level0_storage_defined(texture) ||
         !texture_color_format(texture->format) ||
-        texture_color_component_is_float(texture->color_component_type)) {
+        texture_color_component_is_float(texture->color_component_type) ||
+        texture->compressed_format != 0u) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
@@ -2260,10 +2272,13 @@ static uint8_t dxt_expand6(uint32_t value)
 }
 
 static int dxt_format_info(uint32_t format, uint32_t* block_bytes_out,
-                           uint32_t* output_format_out)
+                           uint32_t* output_format_out,
+                           uint32_t* srgb_out)
 {
     if (block_bytes_out == NULL || output_format_out == NULL)
         return -1;
+    if (srgb_out != NULL)
+        *srgb_out = RINGL_FALSE;
     switch (format) {
     case RINGL_COMPRESSED_RGB_S3TC_DXT1_EXT:
         *block_bytes_out = 8u;
@@ -2277,6 +2292,25 @@ static int dxt_format_info(uint32_t format, uint32_t* block_bytes_out,
     case RINGL_COMPRESSED_RGBA_S3TC_DXT5_EXT:
         *block_bytes_out = 16u;
         *output_format_out = RINGL_RGBA;
+        return 0;
+    case RINGL_COMPRESSED_SRGB_S3TC_DXT1_EXT:
+        *block_bytes_out = 8u;
+        *output_format_out = RINGL_RGB;
+        if (srgb_out != NULL)
+            *srgb_out = RINGL_TRUE;
+        return 0;
+    case RINGL_COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT:
+        *block_bytes_out = 8u;
+        *output_format_out = RINGL_RGBA;
+        if (srgb_out != NULL)
+            *srgb_out = RINGL_TRUE;
+        return 0;
+    case RINGL_COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT:
+    case RINGL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT:
+        *block_bytes_out = 16u;
+        *output_format_out = RINGL_RGBA;
+        if (srgb_out != NULL)
+            *srgb_out = RINGL_TRUE;
         return 0;
     default:
         return -1;
@@ -2351,14 +2385,16 @@ static void dxt_decode_block(const uint8_t* source, uint32_t format,
 
     for (y = 0u; y < 16u; ++y)
         alpha[y] = UINT8_MAX;
-    if (format == RINGL_COMPRESSED_RGBA_S3TC_DXT3_EXT) {
+    if (format == RINGL_COMPRESSED_RGBA_S3TC_DXT3_EXT ||
+        format == RINGL_COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT) {
         for (y = 0u; y < 4u; ++y) {
             uint16_t row = dxt_read_le16(source + y * 2u);
             for (x = 0u; x < 4u; ++x)
                 alpha[y * 4u + x] = (uint8_t)(((row >> (x * 4u)) & 15u) * 17u);
         }
         color_source = source + 8u;
-    } else if (format == RINGL_COMPRESSED_RGBA_S3TC_DXT5_EXT) {
+    } else if (format == RINGL_COMPRESSED_RGBA_S3TC_DXT5_EXT ||
+               format == RINGL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT) {
         uint8_t alpha_palette[8];
         uint64_t alpha_bits = 0u;
 
@@ -2383,8 +2419,10 @@ static void dxt_decode_block(const uint8_t* source, uint32_t format,
     } else {
         color_source = source;
     }
-    dxt_decode_color_block(color_source, palette,
-                           format == RINGL_COMPRESSED_RGBA_S3TC_DXT1_EXT);
+    dxt_decode_color_block(
+        color_source, palette,
+        format == RINGL_COMPRESSED_RGBA_S3TC_DXT1_EXT ||
+            format == RINGL_COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT);
     selectors = (uint32_t)color_source[4] | ((uint32_t)color_source[5] << 8u) |
                 ((uint32_t)color_source[6] << 16u) | ((uint32_t)color_source[7] << 24u);
     for (y = 0u; y < 4u; ++y) {
@@ -2401,7 +2439,8 @@ static void dxt_decode_block(const uint8_t* source, uint32_t format,
             pixel[0] = palette[selector][0];
             pixel[1] = palette[selector][1];
             pixel[2] = palette[selector][2];
-            pixel[3] = (format == RINGL_COMPRESSED_RGBA_S3TC_DXT1_EXT &&
+            pixel[3] = ((format == RINGL_COMPRESSED_RGBA_S3TC_DXT1_EXT ||
+                         format == RINGL_COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT) &&
                         palette[selector][3] == 0u) ? 0u : alpha[pixel_index];
         }
     }
@@ -2420,7 +2459,8 @@ static int dxt_decode_image(uint32_t width, uint32_t height, uint32_t format,
     uint32_t block_y;
     uint32_t block_x;
 
-    if (decoded_out == NULL || dxt_format_info(format, &block_bytes, &output_format) != 0 ||
+    if (decoded_out == NULL || dxt_format_info(format, &block_bytes, &output_format,
+                                                NULL) != 0 ||
         dxt_required_bytes(width, height, block_bytes, &required_bytes) != 0 ||
         data_size != required_bytes || (required_bytes != 0u && data == NULL))
         return -1;
@@ -2464,6 +2504,94 @@ static int dxt_decode_image(uint32_t width, uint32_t height, uint32_t format,
     return 0;
 }
 
+/* The IEC 61966-2-1 EOTF is stored as a 16-bit normalized lookup table so
+ * compressed sRGB uploads have deterministic linear values without linking a
+ * freestanding RinGL build against libm. */
+static float dxt_srgb_to_linear(uint8_t value)
+{
+    static const uint16_t srgb_to_linear[256] = {
++        0, 20, 40, 60, 80, 99, 119, 139,
+        159, 179, 199, 219, 241, 264, 288, 313,
+        340, 367, 396, 427, 458, 491, 526, 562,
+        599, 637, 677, 718, 761, 805, 851, 898,
+        947, 997, 1048, 1101, 1156, 1212, 1270, 1330,
+        1391, 1453, 1517, 1583, 1651, 1720, 1790, 1863,
+        1937, 2013, 2090, 2170, 2250, 2333, 2418, 2504,
+        2592, 2681, 2773, 2866, 2961, 3058, 3157, 3258,
+        3360, 3464, 3570, 3678, 3788, 3900, 4014, 4129,
+        4247, 4366, 4488, 4611, 4736, 4864, 4993, 5124,
+        5257, 5392, 5530, 5669, 5810, 5953, 6099, 6246,
+        6395, 6547, 6700, 6856, 7014, 7174, 7335, 7500,
+        7666, 7834, 8004, 8177, 8352, 8528, 8708, 8889,
+        9072, 9258, 9445, 9635, 9828, 10022, 10219, 10417,
+        10619, 10822, 11028, 11235, 11446, 11658, 11873, 12090,
+        12309, 12530, 12754, 12980, 13209, 13440, 13673, 13909,
+        14146, 14387, 14629, 14874, 15122, 15371, 15623, 15878,
+        16135, 16394, 16656, 16920, 17187, 17456, 17727, 18001,
+        18277, 18556, 18837, 19121, 19407, 19696, 19987, 20281,
+        20577, 20876, 21177, 21481, 21787, 22096, 22407, 22721,
+        23038, 23357, 23678, 24002, 24329, 24658, 24990, 25325,
+        25662, 26001, 26344, 26688, 27036, 27386, 27739, 28094,
+        28452, 28813, 29176, 29542, 29911, 30282, 30656, 31033,
+        31412, 31794, 32179, 32567, 32957, 33350, 33745, 34143,
+        34544, 34948, 35355, 35764, 36176, 36591, 37008, 37429,
+        37852, 38278, 38706, 39138, 39572, 40009, 40449, 40891,
+        41337, 41785, 42236, 42690, 43147, 43606, 44069, 44534,
+        45002, 45473, 45947, 46423, 46903, 47385, 47871, 48359,
+        48850, 49344, 49841, 50341, 50844, 51349, 51858, 52369,
+        52884, 53401, 53921, 54445, 54971, 55500, 56032, 56567,
+        57105, 57646, 58190, 58737, 59287, 59840, 60396, 60955,
+        61517, 62082, 62650, 63221, 63795, 64372, 64952, 65535,
+    };
+
+    return (float)srgb_to_linear[value] / 65535.0f;
+}
+
+static int dxt_srgb_decode_image(uint32_t width, uint32_t height,
+                                 uint32_t output_format,
+                                 const uint8_t* encoded,
+                                 uint8_t** decoded_out)
+{
+    uint32_t components;
+    uint64_t pixel_count;
+    uint64_t decoded_size;
+    uint8_t* decoded;
+    uint64_t pixel;
+
+    if (decoded_out == NULL ||
+        (output_format != RINGL_RGB && output_format != RINGL_RGBA))
+        return -1;
+    *decoded_out = NULL;
+    components = output_format == RINGL_RGB ? 3u : 4u;
+    pixel_count = (uint64_t)width * height;
+    if (pixel_count == 0u)
+        return 0;
+    if (encoded == NULL || pixel_count > UINT64_MAX / components ||
+        pixel_count * components > SIZE_MAX / sizeof(float))
+        return -2;
+    decoded_size = pixel_count * components * sizeof(float);
+    decoded = malloc((size_t)decoded_size);
+    if (decoded == NULL)
+        return -2;
+    for (pixel = 0u; pixel < pixel_count; ++pixel) {
+        uint8_t* destination = decoded + pixel * components * sizeof(float);
+        float red = dxt_srgb_to_linear(encoded[pixel * components]);
+        float green = dxt_srgb_to_linear(encoded[pixel * components + 1u]);
+        float blue = dxt_srgb_to_linear(encoded[pixel * components + 2u]);
+
+        memcpy(destination, &red, sizeof(red));
+        memcpy(destination + sizeof(float), &green, sizeof(green));
+        memcpy(destination + 2u * sizeof(float), &blue, sizeof(blue));
+        if (components == 4u) {
+            float alpha = (float)encoded[pixel * components + 3u] / 255.0f;
+
+            memcpy(destination + 3u * sizeof(float), &alpha, sizeof(alpha));
+        }
+    }
+    *decoded_out = decoded;
+    return 0;
+}
+
 void ringl_compressed_tex_image_2d_from_bytes(uint32_t target, int32_t level,
                                                uint32_t internal_format,
                                               int32_t width, int32_t height,
@@ -2475,6 +2603,8 @@ void ringl_compressed_tex_image_2d_from_bytes(uint32_t target, int32_t level,
     uint8_t* decoded = NULL;
     uint32_t block_bytes;
     uint32_t output_format;
+    uint32_t output_type = RINGL_UNSIGNED_BYTE;
+    uint32_t srgb = RINGL_FALSE;
     int decode_result;
 
     if (context == NULL)
@@ -2485,7 +2615,8 @@ void ringl_compressed_tex_image_2d_from_bytes(uint32_t target, int32_t level,
     }
     if (internal_format == RINGL_ETC1_RGB8_OES)
         output_format = RINGL_RGB;
-    else if (dxt_format_info(internal_format, &block_bytes, &output_format) != 0) {
+    else if (dxt_format_info(internal_format, &block_bytes, &output_format,
+                             &srgb) != 0) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
@@ -2508,11 +2639,32 @@ void ringl_compressed_tex_image_2d_from_bytes(uint32_t target, int32_t level,
                                                : RINGL_INVALID_VALUE);
         return;
     }
+    if (srgb != RINGL_FALSE) {
+        uint8_t* linear = NULL;
+
+        decode_result = dxt_srgb_decode_image((uint32_t)width,
+                                               (uint32_t)height,
+                                               output_format, decoded, &linear);
+        free(decoded);
+        decoded = NULL;
+        if (decode_result != 0) {
+            ringl_context_record_error(context, decode_result == -2
+                                                   ? RINGL_OUT_OF_MEMORY
+                                                   : RINGL_INVALID_VALUE);
+            return;
+        }
+        decoded = linear;
+        output_type = RINGL_FLOAT;
+    }
+    context->pending_compressed_format = internal_format;
     ringl_tex_image_2d_from_bytes(target, level, output_format, width, height,
-                                  border, output_format, RINGL_UNSIGNED_BYTE,
+                                  border, output_format, output_type,
                                   decoded, (uint64_t)(uint32_t)width *
                                                (uint32_t)height *
-                                               (output_format == RINGL_RGB ? 3u : 4u));
+                                               (output_format == RINGL_RGB ? 3u : 4u) *
+                                               (output_type == RINGL_FLOAT
+                                                    ? sizeof(float) : 1u));
+    context->pending_compressed_format = 0u;
     free(decoded);
 }
 
@@ -2528,6 +2680,8 @@ void ringl_compressed_tex_sub_image_2d_from_bytes(
     uint32_t level_height;
     uint32_t block_bytes;
     uint32_t output_format;
+    uint32_t output_type = RINGL_UNSIGNED_BYTE;
+    uint32_t srgb = RINGL_FALSE;
     uint8_t* decoded = NULL;
     int decode_result;
 
@@ -2539,7 +2693,7 @@ void ringl_compressed_tex_sub_image_2d_from_bytes(
     }
     if (format == RINGL_ETC1_RGB8_OES)
         output_format = RINGL_RGB;
-    else if (dxt_format_info(format, &block_bytes, &output_format) != 0) {
+    else if (dxt_format_info(format, &block_bytes, &output_format, &srgb) != 0) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
@@ -2551,7 +2705,10 @@ void ringl_compressed_tex_sub_image_2d_from_bytes(
     texture = bound_texture_2d(context);
     if (texture == NULL || !texture_level0_storage_defined(texture) ||
         texture->format != output_format ||
-        texture->color_component_type != RINGL_UNSIGNED_BYTE) {
+        texture->color_component_type != (srgb != RINGL_FALSE
+                                              ? RINGL_FLOAT
+                                              : RINGL_UNSIGNED_BYTE) ||
+        texture->compressed_format != format) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
@@ -2593,12 +2750,33 @@ void ringl_compressed_tex_sub_image_2d_from_bytes(
                                                : RINGL_INVALID_VALUE);
         return;
     }
+    if (srgb != RINGL_FALSE) {
+        uint8_t* linear = NULL;
+
+        decode_result = dxt_srgb_decode_image((uint32_t)width,
+                                               (uint32_t)height,
+                                               output_format, decoded, &linear);
+        free(decoded);
+        decoded = NULL;
+        if (decode_result != 0) {
+            ringl_context_record_error(context, decode_result == -2
+                                                   ? RINGL_OUT_OF_MEMORY
+                                                   : RINGL_INVALID_VALUE);
+            return;
+        }
+        decoded = linear;
+        output_type = RINGL_FLOAT;
+    }
+    context->pending_compressed_format = format;
     ringl_tex_sub_image_2d_from_bytes(target, level, xoffset, yoffset, width,
                                       height, output_format,
-                                      RINGL_UNSIGNED_BYTE, decoded,
+                                      output_type, decoded,
                                       (uint64_t)(uint32_t)width *
                                           (uint32_t)height *
-                                          (output_format == RINGL_RGB ? 3u : 4u));
+                                          (output_format == RINGL_RGB ? 3u : 4u) *
+                                          (output_type == RINGL_FLOAT
+                                               ? sizeof(float) : 1u));
+    context->pending_compressed_format = 0u;
     free(decoded);
 }
 
@@ -2644,7 +2822,8 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
         if (!texture_level0_storage_defined(texture) ||
             texture->format != internal_format ||
             (texture->color_component_type != RINGL_UNSIGNED_BYTE &&
-             !texture_packed_color_format(texture->format))) {
+             !texture_packed_color_format(texture->format)) ||
+            texture->compressed_format != 0u) {
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return;
         }
@@ -2718,6 +2897,7 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
         texture->height = (uint32_t)height;
         texture->format = internal_format;
         texture->color_component_type = RINGL_UNSIGNED_BYTE;
+        texture->compressed_format = 0u;
         texture->defined = RINGL_TRUE;
     } else {
         free(mip_storage->shadow_bytes);

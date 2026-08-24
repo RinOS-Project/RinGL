@@ -112,19 +112,23 @@ their semantics.  `FRAGMENT_SHADER_DERIVATIVE_HINT` is observable only after
 the same context gate.  This is a bounded WebGL slice, not an OpenGL ES
 conformance claim.
 
-## WebGL ETC1 compressed textures
+## WebGL compressed textures
 
-`RINGL_ETC1_RGB8_OES` and the four S3TC DXT formats are bounded WebGL-facing
-compressed-texture slices, not native compressed RinGPU storage.
+`RINGL_ETC1_RGB8_OES`, the four linear S3TC DXT formats, and the four sRGB
+S3TC DXT formats are bounded WebGL-facing compressed-texture slices, not
+native compressed RinGPU storage.
 `ringl_compressed_tex_image_2d_from_bytes()` and
 `ringl_compressed_tex_sub_image_2d_from_bytes()` accept exactly the format's
 block span, decode to normal RGB/RGBA before using the ordinary RinGL texture
 upload path, and preserve the old definition on source, alignment, range,
-allocation, or decode failure. A browser exposes them only after its
-`WEBGL_compressed_texture_etc1` or `WEBGL_compressed_texture_s3tc` extension
-object is acquired; RinGL/RinGPU and the private Aquamarine embedding therefore
-receive only normal texture resources. Other compressed formats remain
-unavailable.
+allocation, or decode failure. sRGB DXT turns only RGB through the IEC
+61966-2-1 EOTF into Float32 before sampling; alpha remains linear. The
+decoded resource retains its logical compressed format: it cannot receive an
+uncompressed update, generated mip chain, or renderable FBO attachment. A
+browser exposes the formats only after its corresponding ETC1, S3TC, or
+sRGB-S3TC extension object is acquired; RinGL/RinGPU and the private
+Aquamarine embedding therefore receive only normal texture resources. Other
+compressed formats remain unavailable.
 
 ## RinGPU translation model
 
@@ -210,9 +214,11 @@ RinGL, rather than the Ladybird embedding, owns the fixed profile values for
 `ALIASED_POINT_SIZE_RANGE`. Renderbuffers and drawable images are bounded to
 4096×4096; default-framebuffer installation and viewport mutation reject larger
 dimensions before they can change state. The private RinGPU/Aquamarine target
-is single-sample, and point draws rasterize one pixel. Compressed texture upload is not implemented, so
-`ringl_get_compressed_texture_format_count()` authoritatively reports an empty
-list for WebGL's `COMPRESSED_TEXTURE_FORMATS`; it does not synthesize support.
+is single-sample, and point draws rasterize one pixel.
+`ringl_get_compressed_texture_format_count()` authoritatively reports the
+nine executable ETC1/linear-S3TC/sRGB-S3TC formats; the browser still filters
+that ceiling through acquired extension objects before publishing
+`COMPRESSED_TEXTURE_FORMATS`.
 
 ## PACK_ALIGNMENT readback slice
 

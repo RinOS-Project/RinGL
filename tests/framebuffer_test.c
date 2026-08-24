@@ -68,6 +68,56 @@ static void test_native_separate_depth_stencil_profile(void)
     ringl_context_destroy(context);
 }
 
+static void test_decoded_compressed_textures_remain_sample_only(void)
+{
+    RinGLContext* context = NULL;
+    RinGLContextDescV1 desc = {
+        .struct_size = sizeof(desc),
+        .api_version = RINGL_API_VERSION,
+    };
+    uint32_t texture = 0u;
+    uint32_t framebuffer = 0u;
+    const uint8_t dxt1_red[8] = {
+        0x00u, 0xf8u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u,
+    };
+    const uint8_t uncompressed_texel[4] = { 0u, 0u, 0u, UINT8_MAX };
+
+    assert(ringl_context_create(&desc, &context) == 0);
+    assert(ringl_make_current(context) == 0);
+    ringl_gen_textures(1, &texture);
+    ringl_bind_texture(RINGL_TEXTURE_2D, texture);
+    ringl_compressed_tex_image_2d_from_bytes(
+        RINGL_TEXTURE_2D, 0, RINGL_COMPRESSED_SRGB_S3TC_DXT1_EXT, 4, 4, 0,
+        dxt1_red, sizeof(dxt1_red));
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+
+    ringl_gen_framebuffers(1, &framebuffer);
+    ringl_bind_framebuffer(RINGL_FRAMEBUFFER, framebuffer);
+    ringl_framebuffer_texture_2d(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT0,
+                                 RINGL_TEXTURE_2D, texture, 0);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
+           RINGL_FRAMEBUFFER_UNSUPPORTED);
+
+    ringl_bind_texture(RINGL_TEXTURE_2D, texture);
+    ringl_tex_sub_image_2d_from_bytes(RINGL_TEXTURE_2D, 0, 0, 0, 1, 1,
+                                      RINGL_RGBA, RINGL_UNSIGNED_BYTE,
+                                      uncompressed_texel,
+                                      sizeof(uncompressed_texel));
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    ringl_generate_mipmap(RINGL_TEXTURE_2D);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+
+    /* A successful ordinary base-level definition starts a new logical image
+     * and therefore restores the normal renderable texture rules. */
+    ringl_tex_image_2d_from_bytes(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 4, 4, 0,
+                                  RINGL_RGBA, RINGL_UNSIGNED_BYTE, NULL, 0u);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
+           RINGL_FRAMEBUFFER_COMPLETE);
+    ringl_context_destroy(context);
+}
+
 int main(void)
 {
     RinGLContext* context = NULL;
@@ -301,5 +351,6 @@ int main(void)
 
     ringl_context_destroy(context);
     test_native_separate_depth_stencil_profile();
+    test_decoded_compressed_textures_remain_sample_only();
     return 0;
 }

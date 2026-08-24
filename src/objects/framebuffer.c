@@ -911,6 +911,21 @@ uint32_t ringl_check_framebuffer_status(uint32_t target)
             RINGL_FRAMEBUFFER_ATTACHMENT_NONE) {
             continue;
         }
+        if (framebuffer->color_attachment_kind[attachment] ==
+            RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D) {
+            object_index = ringl_object_slot_index(
+                framebuffer->color_attachment_object[attachment]);
+            if (object_index >= RINGL_OBJECT_SLOT_COUNT)
+                return RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
+            /* Compressed uploads are decoded only to make their sampler
+             * contents executable. They remain logically compressed and are
+             * never a renderable WebGL color attachment. Check before the
+             * physical decoded-format validation so callers observe the
+             * deliberate unsupported result rather than an implementation
+             * accident. */
+            if (context->textures[object_index].compressed_format != 0u)
+                return RINGL_FRAMEBUFFER_UNSUPPORTED;
+        }
         if (color_attachment_dimensions(context, framebuffer, attachment,
                                         &width, &height) != 0 ||
             color_attachment_ringpu_format_for(context, framebuffer,

@@ -222,7 +222,7 @@ int main(void)
 
         assert(ringl_get_compressed_texture_format_count(
                    &compressed_format_count) == 0);
-        assert(compressed_format_count == 5u);
+        assert(compressed_format_count == 9u);
         assert(ringl_get_compressed_texture_format_count(NULL) == -1);
         assert(ringl_get_error() == RINGL_INVALID_OPERATION);
     }

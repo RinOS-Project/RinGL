@@ -247,7 +247,11 @@ The shared perspective-UV texture profile now executes one through eight
 left-to-right `texture2D()` calls with a coordinate of `uv` and finite
 component-wise `+`, `-`, `*`, or nonzero `/` `vec2` literals. Every operation
 is lowered directly to public RSH1 arithmetic before its real RinGPU sample;
-it is not folded into a host-side shortcut. The bounded two-UV profile maps
+it is not folded into a host-side shortcut. A coordinate may also use a
+full-width read-only `xy`/`yx`, `rg`/`gr`, or `st`/`ts` selector chain; RinGL
+uses that exact scalar-register permutation for the sample rather than
+rewriting a coordinate on the host. Partial-width, mixed-family, and
+out-of-range coordinate selectors are rejected. The bounded two-UV profile maps
 `firstUv` and `secondUv` to separate RSH1 perspective input pairs and also
 supports `firstUv + secondUv` and `firstUv - secondUv` as sampler coordinates.
 The same bounded two-UV operation may be named first as

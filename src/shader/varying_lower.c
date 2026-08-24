@@ -143,6 +143,8 @@ typedef struct VaryingTextureCall {
     uint32_t sampler_index;
     uint32_t coordinate_input_location;
     uint32_t secondary_coordinate_input_location;
+    uint32_t coordinate_components[4];
+    uint32_t secondary_coordinate_components[4];
     uint32_t coordinate_kind;
     float offset_u;
     float offset_v;
@@ -361,6 +363,10 @@ static int parse_varying_texture_call(const char** cursor,
     }
     call->coordinate_input_location =
         coordinate_input_locations[coordinate_index];
+    if (!parse_optional_read_swizzle(cursor, 2u, 2u,
+                                     call->coordinate_components)) {
+        return 0;
+    }
     if (call->coordinate_input_location != UINT32_MAX &&
         (call->coordinate_input_location > 6u ||
          (call->coordinate_input_location & 1u) != 0u)) {
@@ -382,6 +388,10 @@ static int parse_varying_texture_call(const char** cursor,
         }
         call->secondary_coordinate_input_location =
             coordinate_input_locations[secondary_index];
+        if (!parse_optional_read_swizzle(
+                cursor, 2u, 2u, call->secondary_coordinate_components)) {
+            return 0;
+        }
         if (call->coordinate_input_location == UINT32_MAX ||
             call->secondary_coordinate_input_location == UINT32_MAX ||
             call->secondary_coordinate_input_location > 6u ||
@@ -1936,13 +1946,19 @@ static int lower_fragment_texture_chain(
 
         if (calls[call_index].coordinate_input_location == UINT32_MAX ||
             (varying_count <= 2u && local_coordinate_count != 0u)) {
-            coordinate_u = local_coordinate_u;
-            coordinate_v = local_coordinate_v;
+            coordinate_u = local_coordinate_u +
+                calls[call_index].coordinate_components[0];
+            coordinate_v = local_coordinate_u +
+                calls[call_index].coordinate_components[1];
         } else {
             coordinate_u = calls[call_index].coordinate_input_location == 0u
                 ? 0u : padding_base +
                     calls[call_index].coordinate_input_location - 2u;
-            coordinate_v = coordinate_u + 1u;
+            coordinate_u += calls[call_index].coordinate_components[0];
+            coordinate_v = (calls[call_index].coordinate_input_location == 0u
+                ? 0u : padding_base +
+                    calls[call_index].coordinate_input_location - 2u) +
+                calls[call_index].coordinate_components[1];
         }
 
         if (calls[call_index].coordinate_kind !=
@@ -1956,7 +1972,15 @@ static int lower_fragment_texture_chain(
                     calls[call_index].secondary_coordinate_input_location == 0u
                     ? 0u : padding_base +
                         calls[call_index].secondary_coordinate_input_location - 2u;
-                uint32_t secondary_v = secondary_u + 1u;
+                uint32_t secondary_v;
+
+                secondary_u +=
+                    calls[call_index].secondary_coordinate_components[0];
+                secondary_v = (calls[call_index].secondary_coordinate_input_location ==
+                               0u
+                    ? 0u : padding_base +
+                        calls[call_index].secondary_coordinate_input_location - 2u) +
+                    calls[call_index].secondary_coordinate_components[1];
 
                 emit_varying_texture_coordinate_combine(
                     ins, &instruction_cursor, call_temp_base, coordinate_u,

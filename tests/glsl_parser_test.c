@@ -103,6 +103,26 @@ int main(void)
     assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
     assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) == 0u);
 
+    /* A texture coordinate remains vec2 after a same-width read swizzle.
+     * Chained selectors exercise the exact parser contract used by the RSH1
+     * coordinate-register permutation. */
+    ringl_shader_source(fragment,
+        "uniform sampler2D colorTexture; varying vec2 uv;\n"
+        "void main() { gl_FragColor = texture2D(colorTexture, uv.yx.st); }\n",
+        -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+    assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) == 0u);
+
+    ringl_shader_source(fragment,
+        "uniform sampler2D colorTexture; varying vec2 uv;\n"
+        "void main() { gl_FragColor = texture2D(colorTexture, uv.x); }\n",
+        -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
+    assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) > 0u);
+    assert(strstr(log, "vec2") != NULL);
+
     ringl_shader_source(fragment,
         "varying vec2 uv; void main() { uv = vec2(0.0, 1.0); gl_FragColor = 1.0; }",
         -1);

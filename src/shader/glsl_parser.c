@@ -398,6 +398,47 @@ static int finite_number(Parser* parser)
     return 1;
 }
 
+/* texture2D needs a vec2 after every read selector.  The bounded RSH1
+ * lowerer keeps the two selected components as scalar register sources, so
+ * accept only selectors that preserve vec2 width here. */
+static int texture2d_coordinate_swizzle(Parser* parser)
+{
+    while (accept(parser, TOK_DOT)) {
+        Token swizzle = parser->token;
+        uint8_t family = 0u;
+        size_t index;
+
+        if (swizzle.kind != TOK_IDENT || swizzle.length != 2u) {
+            fail(parser, "texture2D coordinate selection must be vec2");
+            return 0;
+        }
+        for (index = 0u; index < swizzle.length; ++index) {
+            uint8_t component_family;
+            uint32_t component_index;
+
+            switch (swizzle.begin[index]) {
+            case 'x': component_family = 1u; component_index = 0u; break;
+            case 'y': component_family = 1u; component_index = 1u; break;
+            case 'r': component_family = 2u; component_index = 0u; break;
+            case 'g': component_family = 2u; component_index = 1u; break;
+            case 's': component_family = 3u; component_index = 0u; break;
+            case 't': component_family = 3u; component_index = 1u; break;
+            default:
+                fail(parser, "texture2D coordinate selection is outside vec2");
+                return 0;
+            }
+            if ((family != 0u && family != component_family) ||
+                component_index >= 2u) {
+                fail(parser, "invalid texture2D coordinate selection");
+                return 0;
+            }
+            family = component_family;
+        }
+        next_token(parser);
+    }
+    return 1;
+}
+
 static int varying_vec2_offset(Parser* parser)
 {
     if (parser->token.kind != TOK_PLUS && parser->token.kind != TOK_MINUS)
@@ -412,6 +453,8 @@ static int varying_vec2_offset(Parser* parser)
             return 0;
         }
         next_token(parser);
+        if (!texture2d_coordinate_swizzle(parser))
+            return 0;
         return 1;
     }
     if (!expect(parser, TOK_VEC2,
@@ -469,6 +512,8 @@ static int texture2d_call(Parser* parser)
             return 0;
         }
         next_token(parser);
+        if (!texture2d_coordinate_swizzle(parser))
+            return 0;
         if (!varying_vec2_offset(parser))
             return 0;
     } else {

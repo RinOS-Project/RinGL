@@ -196,6 +196,11 @@ bytes into the caller's aligned rows. Consequently both a short output span and
 a native readback failure leave all caller bytes, including padding, unchanged.
 The browser embedding delegates both the `getParameter(PACK_ALIGNMENT)` query
 and `readPixels` destination layout to this RinGL boundary.
+
+Readback does not reinterpret packed UNORM color bytes as `FLOAT`: packed
+RGBA8/BGRA8 and 16-bit packed targets accept `RGBA/UNSIGNED_BYTE` only.
+`RGBA/FLOAT` remains limited to real RinGL float color targets, so a mismatched
+readback returns an error with the destination untouched.
 The sample coverage value enum is kept distinct from `SAMPLE_BUFFERS`, avoiding
 an accidental query alias at the public boundary.
 

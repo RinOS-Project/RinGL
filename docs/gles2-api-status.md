@@ -59,8 +59,8 @@ Status meanings:
 | `glGetVertexAttribfv`, `glGetVertexAttribiv`, `glGetVertexAttribPointerv` | P | Versioned attribute record/current-value copy; no generic GLES getter. |
 | `glHint` | P | Tracks accepted GLES hint enums; no general driver-quality control. |
 | `glLineWidth`, `glPolygonOffset`, `glSampleCoverage`, `glScissor`, `glViewport` | B | Bounded native raster state; viewport dimensions above the 4096 image limit reject without mutating state. |
-| `glPixelStorei` | P | `UNPACK_ALIGNMENT` values 1, 2, 4, 8 only. |
-| `glReadPixels` | P | Current complete color target, tightly packed `RGBA`/`UNSIGNED_BYTE`; bounded byte-span API required for untrusted callers. |
+| `glPixelStorei` | P | `PACK_ALIGNMENT` and `UNPACK_ALIGNMENT` values 1, 2, 4, 8 only. |
+| `glReadPixels` | P | Current complete color target, bounded `RGBA`/`UNSIGNED_BYTE` for UNORM/packed storage and `RGBA`/`FLOAT` only for real float storage; the byte-span API enforces PACK row padding for untrusted callers. |
 | `glReleaseShaderCompiler`, `glShaderBinary` | N | Shader compiler lifetime/binary shader formats are not implemented. |
 | `glStencilFunc`, `glStencilFuncSeparate`, `glStencilMask`, `glStencilMaskSeparate`, `glStencilOp`, `glStencilOpSeparate` | B | Bounded native D24S8/S8 paths; remaining attachment semantics stay outside the profile. |
 | `glTexImage2D`, `glTexSubImage2D` | B | 2D canonical/packed color plus bounded depth formats; exact canonical `FLOAT` color uploads use RGBA32F sampled storage with nearest-only completeness. Byte-span variants protect untrusted imports. |

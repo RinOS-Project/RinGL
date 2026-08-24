@@ -324,6 +324,11 @@ static int ringl_read_color_target_to_type(RinGLContext* context, int32_t x,
         return -1;
     total_bytes = row_bytes * (uint64_t)(uint32_t)height;
     if (packed_color_format(target.format)) {
+        /* Packed native targets expand only to WebGL's RGBA/UNSIGNED_BYTE
+         * readback form. Treating this as FLOAT would write byte channels
+         * into a float-sized destination. */
+        if (type != RINGL_UNSIGNED_BYTE)
+            return -1;
         native_row_bytes = (uint64_t)(uint32_t)width * sizeof(uint16_t);
         if ((uint64_t)(uint32_t)height > UINT64_MAX / native_row_bytes)
             return -1;

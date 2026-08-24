@@ -566,6 +566,7 @@ int main(void)
     uint8_t pixels[8] = {0};
     uint8_t fbo_pixels[8] = {0};
     uint8_t packed_pixels[12] = {0};
+    uint8_t invalid_float_pixels[16] = {0};
     const uint8_t expected_rgba[8] = {
         10u, 20u, 30u, 255u,
         40u, 50u, 60u, 128u,
@@ -603,6 +604,15 @@ int main(void)
     assert(backend.submits == 2u && backend.waits == 2u);
     assert(backend.readbacks == 1u);
     assert(memcmp(pixels, expected_rgba, sizeof(pixels)) == 0);
+
+    memset(invalid_float_pixels, 0xa5, sizeof(invalid_float_pixels));
+    ringl_read_pixels_to_bytes(1, 2, 1, 1, RINGL_RGBA, RINGL_FLOAT,
+                               invalid_float_pixels,
+                               sizeof(invalid_float_pixels));
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    assert(backend.readbacks == 1u);
+    for (index = 0u; index < sizeof(invalid_float_pixels); ++index)
+        assert(invalid_float_pixels[index] == 0xa5u);
 
     ringl_gen_textures(1, &texture);
     ringl_bind_texture(RINGL_TEXTURE_2D, texture);

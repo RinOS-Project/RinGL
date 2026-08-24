@@ -241,11 +241,16 @@ static int fake_readback(void* session, uint64_t image,
     assert((image == 700u || image == 701u || image == 702u) && readback != NULL &&
            destination != NULL);
     assert(readback->x == 1u && readback->y == 2u);
-    assert(readback->width == 2u && readback->height == 1u);
-    if (image == 702u) {
+    if (readback->width == 1u && readback->height == 2u) {
+        assert(image == 700u);
+        assert(readback->destination_row_pitch_bytes == 4u);
+        assert(destination_size == sizeof(expected_bgra));
+    } else if (image == 702u) {
+        assert(readback->width == 2u && readback->height == 1u);
         assert(readback->destination_row_pitch_bytes == sizeof(expected_rgba4));
         assert(destination_size == sizeof(expected_rgba4));
     } else {
+        assert(readback->width == 2u && readback->height == 1u);
         assert(readback->destination_row_pitch_bytes == 8u);
         assert(destination_size == sizeof(expected_bgra));
     }
@@ -555,10 +560,12 @@ int main(void)
     uint32_t submits_before_loss;
     uint32_t buffer = 0u;
     uint32_t index;
+    uint32_t pack_readbacks_before;
     const uint8_t buffer_data[4] = {1u, 2u, 3u, 4u};
     FakeBackend command_loss_backend = {0};
     uint8_t pixels[8] = {0};
     uint8_t fbo_pixels[8] = {0};
+    uint8_t packed_pixels[12] = {0};
     const uint8_t expected_rgba[8] = {
         10u, 20u, 30u, 255u,
         40u, 50u, 60u, 128u,
@@ -791,6 +798,41 @@ int main(void)
 
     ringl_bind_framebuffer(RINGL_FRAMEBUFFER, 0u);
     assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_pixel_storei(RINGL_PACK_ALIGNMENT, 8);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    pack_readbacks_before = backend.readbacks;
+    memset(packed_pixels, 0xa5, sizeof(packed_pixels));
+    ringl_read_pixels_to_bytes(1, 2, 1, 2, RINGL_RGBA,
+                               RINGL_UNSIGNED_BYTE, packed_pixels,
+                               sizeof(packed_pixels) - 1u);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    assert(backend.readbacks == pack_readbacks_before);
+    for (index = 0u; index < sizeof(packed_pixels); ++index)
+        assert(packed_pixels[index] == 0xa5u);
+
+    ringl_read_pixels_to_bytes(1, 2, 1, 2, RINGL_RGBA,
+                               RINGL_UNSIGNED_BYTE, packed_pixels,
+                               sizeof(packed_pixels));
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(backend.readbacks == pack_readbacks_before + 1u);
+    assert(memcmp(packed_pixels, expected_rgba, 4u) == 0);
+    for (index = 4u; index < 8u; ++index)
+        assert(packed_pixels[index] == 0xa5u);
+    assert(memcmp(packed_pixels + 8u, expected_rgba + 4u, 4u) == 0);
+
+    memset(packed_pixels, 0xa5, sizeof(packed_pixels));
+    backend.fail_next_readback = 1u;
+    ringl_read_pixels_to_bytes(1, 2, 1, 2, RINGL_RGBA,
+                               RINGL_UNSIGNED_BYTE, packed_pixels,
+                               sizeof(packed_pixels));
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    assert(backend.readbacks == pack_readbacks_before + 1u);
+    assert(backend.failed_readbacks == 2u);
+    for (index = 0u; index < sizeof(packed_pixels); ++index)
+        assert(packed_pixels[index] == 0xa5u);
+    ringl_pixel_storei(RINGL_PACK_ALIGNMENT, 4);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+
     texture_before_loss =
         context->bound_texture_2d[context->active_texture_unit];
     submits_before_loss = backend.submits;

@@ -45,7 +45,7 @@ Status meanings:
 | `glGetBufferParameteriv` | P | `ringl_get_buffer_size` / `ringl_get_buffer_usage` only. |
 | `glGetError` | B | `ringl_get_error`. |
 | `glGetFramebufferAttachmentParameteriv` | P | Versioned attachment record; supported attachments and fields only. |
-| `glGetIntegerv` | P | `ringl_get_integerv_bounded` accepts only the inventory below, including default drawing-buffer component/depth/stencil bit counts derived from real configured planes; `MAX_RENDERBUFFER_SIZE`/`MAX_VIEWPORT_DIMS`, single-sample counts, and the fixed one-pixel point range are actual bounded profile values. |
+| `glGetIntegerv` | P | `ringl_get_integerv_bounded` accepts only the inventory below, including default drawing-buffer component/depth/stencil bit counts derived from real configured planes; `PACK_ALIGNMENT`, `MAX_RENDERBUFFER_SIZE`/`MAX_VIEWPORT_DIMS`, single-sample counts, and the fixed one-pixel point range are actual bounded profile values. |
 | `glGetProgramiv`, `glGetShaderiv` | P | Versioned program record and dedicated shader-status/type calls; not every GLES pname. |
 | `glGetProgramInfoLog`, `glGetShaderInfoLog`, `glGetShaderSource` | B | Caller-owned bounded copies. |
 | `glGetRenderbufferParameteriv` | P | `RinGLRenderbufferInfoV1` supplies bounded storage metadata. |
@@ -106,7 +106,8 @@ failure. It accepts these exact pnames:
 - object/binding and limits: `ARRAY_BUFFER_BINDING`,
   `ELEMENT_ARRAY_BUFFER_BINDING`, `ACTIVE_TEXTURE`, `TEXTURE_BINDING_2D`,
   `FRAMEBUFFER_BINDING`, `RENDERBUFFER_BINDING`, `CURRENT_PROGRAM`,
-  `UNPACK_ALIGNMENT`, `MAX_TEXTURE_SIZE`, `MAX_TEXTURE_IMAGE_UNITS`,
+  `PACK_ALIGNMENT`, `UNPACK_ALIGNMENT`, `MAX_TEXTURE_SIZE`,
+  `MAX_TEXTURE_IMAGE_UNITS`,
   `MAX_COMBINED_TEXTURE_IMAGE_UNITS`, `MAX_VERTEX_ATTRIBS`;
 - default drawing-buffer component/plane counts: `RED_BITS`, `GREEN_BITS`,
   `BLUE_BITS`, `ALPHA_BITS`, `DEPTH_BITS`, `STENCIL_BITS`. Component counts

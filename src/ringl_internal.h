@@ -427,6 +427,7 @@ struct RinGLContext {
     float blend_constant_alpha;
     uint32_t color_write_mask;
     uint32_t unpack_alignment;
+    uint32_t pack_alignment;
 
     RinGLObjectSlot objects[RINGL_OBJECT_SLOT_COUNT];
     RinGLBufferObject buffers[RINGL_OBJECT_SLOT_COUNT];

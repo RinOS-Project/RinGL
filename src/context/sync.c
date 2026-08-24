@@ -439,25 +439,93 @@ int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
                                            RINGL_UNSIGNED_BYTE, pixels);
 }
 
-static int readback_required_bytes(int32_t width, int32_t height,
-                                    uint32_t type, uint64_t* bytes_out)
+static int readback_layout(int32_t width, int32_t height, uint32_t type,
+                           uint32_t alignment, uint64_t* tight_row_bytes_out,
+                           uint64_t* packed_row_bytes_out,
+                           uint64_t* tight_total_bytes_out,
+                           uint64_t* required_bytes_out)
 {
-    uint64_t row_bytes;
+    uint64_t tight_row_bytes;
+    uint64_t packed_row_bytes;
+    uint64_t height_u64;
 
-    if (bytes_out == NULL || width < 0 || height < 0 ||
-        (type != RINGL_UNSIGNED_BYTE && type != RINGL_FLOAT))
+    if (tight_row_bytes_out == NULL || packed_row_bytes_out == NULL ||
+        tight_total_bytes_out == NULL || required_bytes_out == NULL ||
+        width < 0 || height < 0 ||
+        (type != RINGL_UNSIGNED_BYTE && type != RINGL_FLOAT) ||
+        (alignment != 1u && alignment != 2u && alignment != 4u &&
+         alignment != 8u)) {
         return -1;
+    }
+
     if (width == 0 || height == 0) {
-        *bytes_out = 0u;
+        *tight_row_bytes_out = 0u;
+        *packed_row_bytes_out = 0u;
+        *tight_total_bytes_out = 0u;
+        *required_bytes_out = 0u;
         return 0;
     }
 
-    row_bytes = (uint64_t)(uint32_t)width *
-        (type == RINGL_FLOAT ? 4u * sizeof(float) : 4u);
-    if ((uint64_t)(uint32_t)height > UINT64_MAX / row_bytes)
+    if ((uint64_t)(uint32_t)width >
+        UINT64_MAX / (type == RINGL_FLOAT ? 4u * sizeof(float) : 4u)) {
         return -1;
-    *bytes_out = row_bytes * (uint64_t)(uint32_t)height;
+    }
+    tight_row_bytes = (uint64_t)(uint32_t)width *
+        (type == RINGL_FLOAT ? 4u * sizeof(float) : 4u);
+    if (tight_row_bytes > UINT64_MAX - (alignment - 1u))
+        return -1;
+    packed_row_bytes = (tight_row_bytes + alignment - 1u) &
+        ~((uint64_t)alignment - 1u);
+    height_u64 = (uint64_t)(uint32_t)height;
+    if (height_u64 > UINT64_MAX / tight_row_bytes ||
+        height_u64 - 1u >
+            (UINT64_MAX - tight_row_bytes) / packed_row_bytes) {
+        return -1;
+    }
+
+    *tight_row_bytes_out = tight_row_bytes;
+    *packed_row_bytes_out = packed_row_bytes;
+    *tight_total_bytes_out = tight_row_bytes * height_u64;
+    /* PACK_ALIGNMENT separates consecutive rows. The final row needs no
+     * trailing padding, matching GLES and WebGL readPixels storage. */
+    *required_bytes_out = packed_row_bytes * (height_u64 - 1u) +
+        tight_row_bytes;
     return 0;
+}
+
+/* Returns 1 only when allocation of the private staging buffer fails. A
+ * native readback failure is -1 and never exposes its partially written data
+ * to the caller. */
+static int ringl_read_pixels_packed(RinGLContext* context, int32_t x,
+                                    int32_t y, int32_t width, int32_t height,
+                                    uint32_t type, void* pixels,
+                                    uint64_t tight_row_bytes,
+                                    uint64_t packed_row_bytes,
+                                    uint64_t tight_total_bytes)
+{
+    uint8_t* tight_pixels;
+    uint64_t row;
+    int result;
+
+    if (tight_total_bytes == 0u)
+        return 0;
+    if (tight_total_bytes > SIZE_MAX)
+        return 1;
+    tight_pixels = malloc((size_t)tight_total_bytes);
+    if (tight_pixels == NULL)
+        return 1;
+
+    result = ringl_read_color_target_to_type(context, x, y, width, height,
+                                             type, tight_pixels);
+    if (result == 0) {
+        for (row = 0u; row < (uint64_t)(uint32_t)height; ++row) {
+            memcpy((uint8_t*)pixels + (size_t)(row * packed_row_bytes),
+                   tight_pixels + (size_t)(row * tight_row_bytes),
+                   (size_t)tight_row_bytes);
+        }
+    }
+    free(tight_pixels);
+    return result;
 }
 
 void ringl_read_pixels(int32_t x, int32_t y,
@@ -466,6 +534,11 @@ void ringl_read_pixels(int32_t x, int32_t y,
                        void* pixels)
 {
     RinGLContext* context = ringl_get_current_context();
+    uint64_t tight_row_bytes;
+    uint64_t packed_row_bytes;
+    uint64_t tight_total_bytes;
+    uint64_t required_bytes;
+    int result;
 
     if (context == NULL)
         return;
@@ -478,8 +551,26 @@ void ringl_read_pixels(int32_t x, int32_t y,
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
-    if (ringl_read_color_target_to_type(context, x, y, width, height, type,
-                                        pixels) != 0)
+    if (readback_layout(width, height, type, context->pack_alignment,
+                        &tight_row_bytes, &packed_row_bytes,
+                        &tight_total_bytes, &required_bytes) != 0) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if (required_bytes > SIZE_MAX) {
+        ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+        return;
+    }
+    if (required_bytes != 0u && pixels == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    result = ringl_read_pixels_packed(context, x, y, width, height, type,
+                                      pixels, tight_row_bytes,
+                                      packed_row_bytes, tight_total_bytes);
+    if (result == 1)
+        ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+    else if (result != 0)
         ringl_context_record_error(context,
                                    ringl_framebuffer_operation_error(context));
 }
@@ -490,7 +581,11 @@ void ringl_read_pixels_to_bytes(int32_t x, int32_t y,
                                 void* pixels, uint64_t pixels_size)
 {
     RinGLContext* context = ringl_get_current_context();
+    uint64_t tight_row_bytes;
+    uint64_t packed_row_bytes;
+    uint64_t tight_total_bytes;
     uint64_t required_bytes;
+    int result;
 
     if (context == NULL)
         return;
@@ -499,17 +594,23 @@ void ringl_read_pixels_to_bytes(int32_t x, int32_t y,
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
-    if (readback_required_bytes(width, height, type, &required_bytes) != 0) {
+    if (readback_layout(width, height, type, context->pack_alignment,
+                        &tight_row_bytes, &packed_row_bytes,
+                        &tight_total_bytes, &required_bytes) != 0) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
-    if ((required_bytes != 0u && pixels == NULL) ||
+    if ((required_bytes != 0u && pixels == NULL) || required_bytes > SIZE_MAX ||
         pixels_size < required_bytes) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
-    if (ringl_read_color_target_to_type(context, x, y, width, height, type,
-                                        pixels) != 0)
+    result = ringl_read_pixels_packed(context, x, y, width, height, type,
+                                      pixels, tight_row_bytes,
+                                      packed_row_bytes, tight_total_bytes);
+    if (result == 1)
+        ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+    else if (result != 0)
         ringl_context_record_error(context,
                                    ringl_framebuffer_operation_error(context));
 }

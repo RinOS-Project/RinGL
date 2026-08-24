@@ -75,17 +75,19 @@ void ringl_flush(void);
  * completed. */
 void ringl_finish(void);
 
-/* Initial GLES2 readback slice: the current complete color framebuffer,
- * RGBA/UNSIGNED_BYTE only. Destination rows are tightly packed. */
+/* Current complete color framebuffer, RGBA/UNSIGNED_BYTE or RGBA/FLOAT.
+ * The start of every destination row is separated by PACK_ALIGNMENT padding.
+ * This raw-pointer form remains for trusted native callers that can prove the
+ * destination capacity independently. */
 void ringl_read_pixels(int32_t x, int32_t y,
                        int32_t width, int32_t height,
                        uint32_t format, uint32_t type,
                        void* pixels);
-/* Bounded readback for untrusted destination spans. The supported
- * RGBA/UNSIGNED_BYTE result is tightly packed, so pixels_size must cover
- * width * height * 4 bytes. A short destination records INVALID_OPERATION
- * before command submission or destination writes. The raw-pointer entry
- * point above remains a trusted native compatibility API. */
+/* Bounded readback for untrusted destination spans. pixels_size must cover
+ * every RGBA row plus PACK_ALIGNMENT padding between rows (but not padding
+ * after the final row). A short destination records INVALID_OPERATION before
+ * command submission or destination writes. Native readback writes a private
+ * tight staging buffer; caller bytes are published only after it succeeds. */
 void ringl_read_pixels_to_bytes(int32_t x, int32_t y,
                                 int32_t width, int32_t height,
                                 uint32_t format, uint32_t type,

@@ -139,6 +139,7 @@ extern "C" {
 #define RINGL_COLOR_WRITEMASK 0x0c23u
 #define RINGL_SCISSOR_TEST   0x0c11u
 #define RINGL_UNPACK_ALIGNMENT 0x0cf5u
+#define RINGL_PACK_ALIGNMENT   0x0d05u
 
 #define RINGL_VIEWPORT                      0x0ba2u
 #define RINGL_MAX_VIEWPORT_DIMS             0x0d3au
@@ -1283,7 +1284,8 @@ void ringl_blend_equation(uint32_t mode);
 void ringl_blend_equation_separate(uint32_t mode_rgb, uint32_t mode_alpha);
 void ringl_color_mask(uint32_t red, uint32_t green, uint32_t blue,
                       uint32_t alpha);
-/* Supports WebGL 1 UNPACK_ALIGNMENT values 1, 2, 4, and 8. */
+/* Supports WebGL 1 PACK_ALIGNMENT and UNPACK_ALIGNMENT values 1, 2, 4,
+ * and 8. */
 void ringl_pixel_storei(uint32_t pname, int32_t param);
 
 int ringl_set_default_framebuffer(const RinGLDefaultFramebufferV1* framebuffer);

@@ -799,7 +799,7 @@ void ringl_pixel_storei(uint32_t pname, int32_t param)
 
     if (context == NULL)
         return;
-    if (pname != RINGL_UNPACK_ALIGNMENT) {
+    if (pname != RINGL_UNPACK_ALIGNMENT && pname != RINGL_PACK_ALIGNMENT) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
@@ -807,7 +807,10 @@ void ringl_pixel_storei(uint32_t pname, int32_t param)
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
-    context->unpack_alignment = (uint32_t)param;
+    if (pname == RINGL_UNPACK_ALIGNMENT)
+        context->unpack_alignment = (uint32_t)param;
+    else
+        context->pack_alignment = (uint32_t)param;
 }
 
 static size_t ringl_get_integerv_value_count(uint32_t pname)
@@ -827,6 +830,7 @@ static size_t ringl_get_integerv_value_count(uint32_t pname)
     case RINGL_FRAMEBUFFER_BINDING:
     case RINGL_RENDERBUFFER_BINDING:
     case RINGL_CURRENT_PROGRAM:
+    case RINGL_PACK_ALIGNMENT:
     case RINGL_UNPACK_ALIGNMENT:
     case RINGL_RED_BITS:
     case RINGL_GREEN_BITS:
@@ -1008,6 +1012,9 @@ int ringl_get_integerv_bounded(uint32_t pname, int32_t* values,
         return 0;
     case RINGL_UNPACK_ALIGNMENT:
         values[0] = (int32_t)context->unpack_alignment;
+        return 0;
+    case RINGL_PACK_ALIGNMENT:
+        values[0] = (int32_t)context->pack_alignment;
         return 0;
     case RINGL_RED_BITS:
     case RINGL_GREEN_BITS:

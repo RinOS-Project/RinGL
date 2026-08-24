@@ -184,6 +184,18 @@ dimensions before they can change state. The private RinGPU/Aquamarine target
 is single-sample, and point draws rasterize one pixel. Compressed texture upload is not implemented, so
 `ringl_get_compressed_texture_format_count()` authoritatively reports an empty
 list for WebGL's `COMPRESSED_TEXTURE_FORMATS`; it does not synthesize support.
+
+## PACK_ALIGNMENT readback slice
+
+`RINGL_PACK_ALIGNMENT` is tracked separately from `RINGL_UNPACK_ALIGNMENT` and
+accepts only the WebGL 1 values 1, 2, 4, and 8. `ringl_read_pixels_to_bytes()`
+computes the required destination span from the tight RGBA row size plus
+alignment padding between rows; the final row has no trailing padding. Readback
+always fills a private tight staging buffer first, then publishes just the pixel
+bytes into the caller's aligned rows. Consequently both a short output span and
+a native readback failure leave all caller bytes, including padding, unchanged.
+The browser embedding delegates both the `getParameter(PACK_ALIGNMENT)` query
+and `readPixels` destination layout to this RinGL boundary.
 The sample coverage value enum is kept distinct from `SAMPLE_BUFFERS`, avoiding
 an accidental query alias at the public boundary.
 

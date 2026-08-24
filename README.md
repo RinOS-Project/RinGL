@@ -391,7 +391,8 @@ fails lowering without publishing a truncated module.
 The same transformed route supports the common vertex-color texture form: an
 `attribute vec4` is copied into a following `varying vec4`, and the exact
 fragment expression `texture2D(texture, uv) * vertexColor` (or a full-width,
-read-only `xyzw`/`rgba`/`stpq` swizzle of that color) loads six
+read-only `xyzw`/`rgba`/`stpq` swizzle of that color and of an optional
+`uniform vec4` tint) loads six
 interpolated scalars, samples the typed image/sampler pair, and emits four RSH1
 component-wise multiplies. One or two UV pairs may accompany that color while
 the native interface remains within eight scalar varyings. With two pairs, the

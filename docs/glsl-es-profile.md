@@ -42,10 +42,11 @@ and `vec4(vertexColor.bgr, 1.0)` do not require a backend-specific vector
 instruction. Partial-width selectors and swizzle writes remain outside those
 structural profiles.
 
-The bounded `texture2D(colorTexture, uv) * vertexColor` material uses the same
-four scalar input-register permutation for a full-width `varying vec4` selector
-before its component-wise texture modulation. It does not introduce a general
-vector operation or broaden the accepted material grammar.
+The bounded `texture2D(colorTexture, uv) * vertexColor * tint` material uses
+the same four-component permutation for a full-width `varying vec4` selector
+and for its optional `uniform vec4` tint, before component-wise texture
+modulation. It does not introduce a general vector operation or broaden the
+accepted material grammar.
 
 The first visible-triangle shader can therefore take the standards-shaped form:
 

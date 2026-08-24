@@ -116,7 +116,9 @@ static int fake_create_shader_module(void* session, const void* rsh1,
             for (index = 0u; index < 4u; ++index) {
                 uint32_t expected_bits;
 
-                memcpy(&expected_bits, &backend->expected_vertex_color_tint[index],
+                memcpy(&expected_bits,
+                       &backend->expected_vertex_color_tint[
+                           swizzled_color_components[index]],
                        sizeof(expected_bits));
                 assert(instructions[tint_base + index].opcode == 16u &&
                        instructions[tint_base + index].immediate == expected_bits);
@@ -629,7 +631,8 @@ int main(void)
         "uniform sampler2D colorTexture; uniform vec4 tint; uniform float opacity; "
         "varying vec2 uv; "
         "varying vec4 vertexColor; void main() { gl_FragColor = "
-        "texture2D(colorTexture, uv) * vertexColor.stpq.bgra * tint * opacity; }",
+        "texture2D(colorTexture, uv) * vertexColor.stpq.bgra * tint.stpq.bgra * "
+        "opacity; }",
         -1);
     ringl_compile_shader(vertex_color_vertex);
     ringl_compile_shader(vertex_color_fragment);
@@ -709,8 +712,8 @@ int main(void)
         "uniform vec4 tint; uniform float opacity; varying vec2 firstUv; "
         "varying vec2 secondUv; varying vec4 vertexColor; void main() { "
         "gl_FragColor = (texture2D(firstTexture, firstUv) + "
-        "texture2D(secondTexture, secondUv)) * vertexColor.stpq.bgra * tint * "
-        "opacity; }",
+        "texture2D(secondTexture, secondUv)) * vertexColor.stpq.bgra * "
+        "tint.stpq.bgra * opacity; }",
         -1);
     ringl_compile_shader(two_texture_vertex_color_vertex);
     ringl_compile_shader(two_texture_vertex_color_fragment);

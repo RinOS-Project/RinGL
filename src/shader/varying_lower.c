@@ -1111,6 +1111,7 @@ static int lower_fragment_textured_vertex_color(
     uint32_t sample_base;
     uint32_t color_input_base;
     uint32_t color_components[4];
+    uint32_t tint_components[4] = {0u, 1u, 2u, 3u};
     uint32_t instruction_cursor;
     uint32_t next_register;
     uint32_t store_base;
@@ -1121,7 +1122,9 @@ static int lower_fragment_textured_vertex_color(
     size_t total;
     const char* color_cursor;
     const char* color_selector;
+    const char* tint_selector = NULL;
     size_t color_selector_length;
+    size_t tint_selector_length = 0u;
 
     if (source == NULL || result == NULL ||
         (uniform_count != 0u && uniforms == NULL) ||
@@ -1230,6 +1233,23 @@ static int lower_fragment_textured_vertex_color(
         return 1;
     }
     color_selector_length = (size_t)(color_cursor - color_selector);
+    if (has_tint) {
+        if (!consume_text(&color_cursor, "*") ||
+            !consume_text(&color_cursor, tint_name)) {
+            return 1;
+        }
+        tint_selector = color_cursor;
+        if (!parse_optional_read_swizzle(&color_cursor, 4u, 4u,
+                                         tint_components)) {
+            return 1;
+        }
+        tint_selector_length = (size_t)(color_cursor - tint_selector);
+    }
+    if (has_opacity &&
+        (!consume_text(&color_cursor, "*") ||
+         !consume_text(&color_cursor, opacity_name))) {
+        return 1;
+    }
     if (!append_compact_source(expected, sizeof(expected), &expected_length,
                                "*%s", color) ||
         (color_selector_length != 0u &&
@@ -1239,6 +1259,10 @@ static int lower_fragment_textured_vertex_color(
         (has_tint &&
          !append_compact_source(expected, sizeof(expected), &expected_length,
                                 "*%s", tint_name)) ||
+        (tint_selector_length != 0u &&
+         !append_compact_source(expected, sizeof(expected), &expected_length,
+                                "%.*s", (int)tint_selector_length,
+                                tint_selector)) ||
         (has_opacity &&
          !append_compact_source(expected, sizeof(expected), &expected_length,
                                 "*%s", opacity_name)) ||
@@ -1307,7 +1331,8 @@ static int lower_fragment_textured_vertex_color(
         for (component = 0u; component < 4u; ++component) {
             uint32_t tint_bits;
 
-            memcpy(&tint_bits, &tint[component], sizeof(tint_bits));
+            memcpy(&tint_bits, &tint[tint_components[component]],
+                   sizeof(tint_bits));
             init_instruction(&ins[instruction_cursor + component],
                              RINGL_RSH1_OP_CONST_F32);
             ins[instruction_cursor + component].destination =

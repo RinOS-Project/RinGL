@@ -130,6 +130,20 @@ sRGB-S3TC extension object is acquired; RinGL/RinGPU and the private
 Aquamarine embedding therefore receive only normal texture resources. Other
 compressed formats remain unavailable.
 
+## WebGL `EXT_sRGB`
+
+`RINGL_SRGB_EXT` and `RINGL_SRGB_ALPHA_EXT` are logical WebGL texture formats
+for exact `UNSIGNED_BYTE` image/subimage input. `RINGL_SRGB8_ALPHA8_EXT` is a
+logical renderbuffer-storage format only; it is intentionally not accepted by
+the texture upload APIs. RinGL decodes sRGB RGB through IEC 61966-2-1 into
+linear RGBA32F RinGPU storage while retaining linear alpha. Its framebuffer
+metadata therefore reports the logical sRGB encoding and unsigned-byte
+component type, and byte readback re-encodes only RGB. Mipmap generation for a
+logical sRGB texture rejects instead of creating a chain with unspecified
+transfer semantics. A browser must gate these tokens through its acquired
+`EXT_sRGB` object; RinGL itself remains on the RinGPU adapter/private
+Aquamarine embedding route.
+
 ## RinGPU translation model
 
 OpenGL exposes mutable, implicit state while RinGPU is intentionally explicit. RinGL therefore maintains a context-side state machine and derives backend objects lazily.

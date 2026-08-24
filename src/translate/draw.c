@@ -91,6 +91,7 @@ static int ringl_resolve_color_attachment_target(
             target->format = RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT;
             break;
         case RINGL_RGBA32F:
+        case RINGL_SRGB8_ALPHA8_EXT:
             target->format = RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT;
             break;
         case RINGL_RGB565:
@@ -106,6 +107,7 @@ static int ringl_resolve_color_attachment_target(
             target->format = RINGL_RIN_GPU_FORMAT_RGBA8_UNORM;
             break;
         }
+        target->srgb_encoding = context->renderbuffers[index].srgb_encoding;
     } else {
         return -1;
     }
@@ -117,6 +119,7 @@ static int ringl_resolve_color_attachment_target(
             return -1;
         switch (context->textures[index].format) {
         case RINGL_RGBA:
+        case RINGL_RGB:
             target->format = context->textures[index].color_component_type ==
                     RINGL_FLOAT ? RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT
                 : context->textures[index].color_component_type ==
@@ -136,6 +139,7 @@ static int ringl_resolve_color_attachment_target(
             target->format = RINGL_RIN_GPU_FORMAT_RGBA8_UNORM;
             break;
         }
+        target->srgb_encoding = context->textures[index].srgb_encoding;
     }
     return target->image != 0u && target->state != NULL &&
            target->width != 0u && target->height != 0u ? 0 : -1;

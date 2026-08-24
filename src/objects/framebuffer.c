@@ -28,6 +28,7 @@ static int color_attachment_format_valid(uint32_t format)
 {
     return format == RINGL_RGBA8 || format == RINGL_RGB565 ||
            format == RINGL_RGBA4 || format == RINGL_RGB5_A1 ||
+           format == RINGL_SRGB8_ALPHA8_EXT ||
            format == RINGL_RGB16F ||
            format == RINGL_RGBA16F ||
            format == RINGL_RGBA32F;
@@ -44,6 +45,8 @@ static uint32_t color_attachment_ringpu_format(uint32_t format)
     if (format == RINGL_RGB16F || format == RINGL_RGBA16F)
         return RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT;
     if (format == RINGL_RGBA32F)
+        return RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT;
+    if (format == RINGL_SRGB8_ALPHA8_EXT)
         return RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT;
     return RINGL_RIN_GPU_FORMAT_RGBA8_UNORM;
 }
@@ -223,6 +226,7 @@ static int color_attachment_dimensions(RinGLContext* context,
             return -1;
         texture = &context->textures[index];
         if ((texture->format != RINGL_RGBA &&
+             texture->srgb_encoding == 0u &&
             !color_attachment_format_valid(texture->format)) ||
             texture_attachment_dimensions(texture,
                                           framebuffer->color_attachment_level[
@@ -272,7 +276,7 @@ static int color_attachment_ringpu_format_for(
         RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D) {
         const RinGLTextureObject* texture = &context->textures[object_index];
 
-        if (texture->format == RINGL_RGBA) {
+        if (texture->format == RINGL_RGBA || texture->srgb_encoding != 0u) {
             *format_out = texture->color_component_type == RINGL_FLOAT
                 ? RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT
                 : texture->color_component_type == RINGL_HALF_FLOAT_OES
@@ -286,7 +290,9 @@ static int color_attachment_ringpu_format_for(
     if (framebuffer->color_attachment_kind[attachment_index] ==
         RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER) {
         *format_out = color_attachment_ringpu_format(
-            context->renderbuffers[object_index].internal_format);
+            context->renderbuffers[object_index].storage_format != 0u
+                ? context->renderbuffers[object_index].storage_format
+                : context->renderbuffers[object_index].internal_format);
         return 0;
     }
     return -1;
@@ -814,7 +820,10 @@ int ringl_framebuffer_color_attachment_component_type(uint32_t* type_out)
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return -1;
         }
-        component_type = texture->color_component_type;
+        /* EXT_sRGB is logically normalized 8-bit storage even though RinGL
+         * realizes a Float32 linear image for sampling and blending. */
+        component_type = texture->srgb_encoding != 0u
+            ? RINGL_UNSIGNED_BYTE : texture->color_component_type;
     } else if (framebuffer->color_attachment_kind[0] ==
                RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER) {
         RinGLRenderbufferObject* renderbuffer;
@@ -859,6 +868,61 @@ int ringl_framebuffer_color_attachment_is_float(uint32_t* is_float_out)
     }
     *is_float_out = component_type == RINGL_FLOAT ? RINGL_TRUE : RINGL_FALSE;
     return 0;
+}
+
+int ringl_framebuffer_color_attachment_is_srgb(uint32_t* is_srgb_out)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLFramebufferObject* framebuffer;
+    uint32_t index;
+
+    if (context == NULL)
+        return -1;
+    if (is_srgb_out == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+    *is_srgb_out = RINGL_FALSE;
+    if (context->framebuffer_binding == 0u)
+        return 0;
+    framebuffer = bound_framebuffer(context);
+    if (framebuffer == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    if (framebuffer->color_attachment_kind[0] ==
+        RINGL_FRAMEBUFFER_ATTACHMENT_NONE) {
+        return 0;
+    }
+    index = ringl_object_slot_index(framebuffer->color_attachment_object[0]);
+    if (index >= RINGL_OBJECT_SLOT_COUNT) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    if (framebuffer->color_attachment_kind[0] ==
+        RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D) {
+        if (ringl_object_lookup(context, framebuffer->color_attachment_object[0],
+                                RINGL_OBJECT_TEXTURE) == NULL) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return -1;
+        }
+        *is_srgb_out = context->textures[index].srgb_encoding != 0u
+            ? RINGL_TRUE : RINGL_FALSE;
+        return 0;
+    }
+    if (framebuffer->color_attachment_kind[0] ==
+        RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER) {
+        if (ringl_object_lookup(context, framebuffer->color_attachment_object[0],
+                                RINGL_OBJECT_RENDERBUFFER) == NULL) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return -1;
+        }
+        *is_srgb_out = context->renderbuffers[index].srgb_encoding != 0u
+            ? RINGL_TRUE : RINGL_FALSE;
+        return 0;
+    }
+    ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+    return -1;
 }
 
 uint32_t ringl_framebuffer_operation_error(const RinGLContext* context)
@@ -1153,6 +1217,11 @@ int ringl_get_renderbuffer_info(uint32_t target, RinGLRenderbufferInfoV1* info)
             result.green_size = 32u;
             result.blue_size = 32u;
             result.alpha_size = 32u;
+        } else if (renderbuffer->internal_format == RINGL_SRGB8_ALPHA8_EXT) {
+            result.red_size = 8u;
+            result.green_size = 8u;
+            result.blue_size = 8u;
+            result.alpha_size = 8u;
         } else if (renderbuffer->internal_format == RINGL_RGB16F) {
             result.red_size = 16u;
             result.green_size = 16u;
@@ -1206,6 +1275,7 @@ void ringl_renderbuffer_storage(uint32_t target, uint32_t internal_format,
     if (internal_format != RINGL_RGBA8 && internal_format != RINGL_RGB16F &&
         internal_format != RINGL_RGBA16F &&
         internal_format != RINGL_RGBA32F &&
+        internal_format != RINGL_SRGB8_ALPHA8_EXT &&
         internal_format != RINGL_RGB565 &&
         internal_format != RINGL_RGBA4 && internal_format != RINGL_RGB5_A1 &&
         internal_format != RINGL_DEPTH_COMPONENT16 &&
@@ -1230,6 +1300,10 @@ void ringl_renderbuffer_storage(uint32_t target, uint32_t internal_format,
     renderbuffer->ringpu_image = 0u;
     renderbuffer->ringpu_image_state = RINGL_RIN_GPU_IMAGE_UNDEFINED;
     renderbuffer->internal_format = internal_format;
+    renderbuffer->storage_format = internal_format == RINGL_SRGB8_ALPHA8_EXT
+        ? RINGL_RGBA32F : internal_format;
+    renderbuffer->srgb_encoding = internal_format == RINGL_SRGB8_ALPHA8_EXT
+        ? RINGL_TRUE : RINGL_FALSE;
     renderbuffer->width = (uint32_t)width;
     renderbuffer->height = (uint32_t)height;
     renderbuffer->defined = RINGL_TRUE;
@@ -1265,7 +1339,9 @@ int ringl_renderbuffer_realize_color_target(RinGLContext* context,
         memset(&desc, 0, sizeof(desc));
         desc.width = object->width;
         desc.height = object->height;
-        desc.format = color_attachment_ringpu_format(object->internal_format);
+        desc.format = color_attachment_ringpu_format(
+            object->storage_format != 0u ? object->storage_format
+                                         : object->internal_format);
         desc.usage = RINGL_RIN_GPU_IMAGE_USAGE_COLOR_TARGET |
                      RINGL_RIN_GPU_IMAGE_USAGE_COPY_SOURCE;
         if (ringl_backend_create_image_2d(context, &desc, &image) != 0 ||

@@ -225,6 +225,13 @@ extern "C" {
 #define RINGL_TEXTURE    0x1702u
 #define RINGL_DEPTH_STENCIL 0x84f9u
 #define RINGL_RGBA8      0x8058u
+/* WebGL EXT_sRGB tokens. SRGB_EXT/SRGB_ALPHA_EXT are texture formats;
+ * SRGB8_ALPHA8_EXT is renderbuffer storage only. RinGL keeps their public
+ * encoding distinct from the linear Float32 image it submits to RinGPU. */
+#define RINGL_SRGB_EXT                 0x8c40u
+#define RINGL_SRGB_ALPHA_EXT           0x8c42u
+#define RINGL_SRGB8_ALPHA8_EXT         0x8c43u
+#define RINGL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT 0x8210u
 /* EXT_color_buffer_half_float's binary16 renderbuffer storage token. */
 #define RINGL_RGBA16F    0x881au
 #define RINGL_RGB16F     0x881bu
@@ -1597,6 +1604,10 @@ int ringl_get_framebuffer_color_attachment(
  * slot report zero. It is an inspection API only: callers must still use
  * ringl_check_framebuffer_status() before issuing a render or readback. */
 int ringl_framebuffer_color_attachment_is_float(uint32_t* is_float_out);
+/* Reports whether COLOR_ATTACHMENT0 has the logical EXT_sRGB encoding. The
+ * physical target remains linear inside RinGL, so this is intentionally a
+ * separate query from the component-type inspection API. */
+int ringl_framebuffer_color_attachment_is_srgb(uint32_t* is_srgb_out);
 /* Reports the declared color component type of the currently bound FBO's
  * color attachment: RINGL_UNSIGNED_BYTE for normalized/default storage,
  * RINGL_FLOAT for Float32, or RINGL_HALF_FLOAT_OES for a half-float upload

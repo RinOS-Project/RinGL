@@ -189,3 +189,11 @@ sync_test = executable(
 )
 
 test('sync', sync_test)
+
+srgb_test = executable(
+  'ringl-srgb-test',
+  'srgb_test.c',
+  dependencies: ringl_dep,
+)
+
+test('srgb', srgb_test)

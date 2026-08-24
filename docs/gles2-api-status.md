@@ -38,17 +38,17 @@ Status meanings:
 | `glDisableVertexAttribArray`, `glEnableVertexAttribArray`, `glVertexAttribPointer` | B | Numeric array formats and checked captured buffers only. |
 | `glDrawArrays`, `glDrawElements` | B | All seven listed primitive topologies; bounded RSH1/linker and validated buffers. |
 | `glFinish`, `glFlush` | B | Immediate submission; `finish` uses the optional fenced-sync extension. |
-| `glGenerateMipmap` | B | Bounded 2D canonical/native packed color chains only. |
+| `glGenerateMipmap` | B | Bounded 2D canonical/native packed color chains only; logical `EXT_sRGB` textures reject rather than deriving an unspecified sRGB chain. |
 | `glGetActiveAttrib`, `glGetActiveUniform` | P | Versioned `RinGLActiveInfoV1`; current linker exposes bounded attributes plus `sampler2D`, scalar/vector float and signed integer, and vertex `mat2`/`mat3`/`mat4` uniforms. |
 | `glGetAttachedShaders` | B | `ringl_get_attached_shaders` copies the pending vertex/fragment names in deterministic order, including delete-pending shaders retained by a program. |
 | `glGetBooleanv`, `glGetFloatv` | P | Dedicated state snapshots exist; no generic typed getter. |
 | `glGetBufferParameteriv` | P | `ringl_get_buffer_size` / `ringl_get_buffer_usage` only. |
 | `glGetError` | B | `ringl_get_error`. |
-| `glGetFramebufferAttachmentParameteriv` | P | Versioned attachment record; supported attachments and fields only. |
+| `glGetFramebufferAttachmentParameteriv` | P | Versioned attachment record plus logical `EXT_sRGB` color-encoding state; supported attachments and fields only. |
 | `glGetIntegerv` | P | `ringl_get_integerv_bounded` and the target-sensitive `ringl_get_implementation_color_read_format_type` accept only the inventory below, including default drawing-buffer component/depth/stencil bit counts derived from real configured planes; `PACK_ALIGNMENT`, `IMPLEMENTATION_COLOR_READ_{FORMAT,TYPE}`, `MAX_RENDERBUFFER_SIZE`/`MAX_VIEWPORT_DIMS`, single-sample counts, and the fixed one-pixel point range are actual bounded profile values. |
 | `glGetProgramiv`, `glGetShaderiv` | P | Versioned program record and dedicated shader-status/type calls; not every GLES pname. |
 | `glGetProgramInfoLog`, `glGetShaderInfoLog`, `glGetShaderSource` | B | Caller-owned bounded copies. |
-| `glGetRenderbufferParameteriv` | P | `RinGLRenderbufferInfoV1` supplies bounded storage metadata. |
+| `glGetRenderbufferParameteriv` | P | `RinGLRenderbufferInfoV1` supplies bounded storage metadata, including logical `SRGB8_ALPHA8_EXT` renderbuffers. |
 | `glGetShaderPrecisionFormat` | B | `ringl_get_shader_precision_format` returns the executable RSH1 binary32 or signed-i32 profile through a validated versioned record. |
 | `glGetString` | P | `ringl_get_string` returns only RinGL's static vendor, renderer, bounded-profile version, and RSH1 language-profile strings; extension strings remain unavailable. |
 | `glGetTexParameteriv` | P | Integer values for `MIN_FILTER`, `MAG_FILTER`, `WRAP_S`, `WRAP_T` only. |
@@ -60,10 +60,10 @@ Status meanings:
 | `glHint` | P | `GENERATE_MIPMAP_HINT` is advisory. `FRAGMENT_SHADER_DERIVATIVE_HINT` is stored/queryable only after the WebGL `OES_standard_derivatives` context gate; it does not claim a general driver-quality control API. |
 | `glLineWidth`, `glPolygonOffset`, `glSampleCoverage`, `glScissor`, `glViewport` | B | Bounded native raster state; viewport dimensions above the 4096 image limit reject without mutating state. |
 | `glPixelStorei` | P | `PACK_ALIGNMENT` and `UNPACK_ALIGNMENT` values 1, 2, 4, 8 only. |
-| `glReadPixels` | P | Current complete color target, bounded `RGBA`/`UNSIGNED_BYTE` for UNORM/packed storage and `RGBA`/`FLOAT` only for real float storage; the byte-span API enforces PACK row padding, clips out-of-framebuffer rectangles, and preserves the corresponding destination bytes for untrusted callers. |
+| `glReadPixels` | P | Current complete color target, bounded `RGBA`/`UNSIGNED_BYTE` for UNORM/packed and logical sRGB storage, and `RGBA`/`FLOAT` only for real float storage; logical sRGB byte readback re-encodes RGB while retaining linear alpha. The byte-span API enforces PACK row padding, clips out-of-framebuffer rectangles, and preserves the corresponding destination bytes for untrusted callers. |
 | `glReleaseShaderCompiler`, `glShaderBinary` | N | Shader compiler lifetime/binary shader formats are not implemented. |
 | `glStencilFunc`, `glStencilFuncSeparate`, `glStencilMask`, `glStencilMaskSeparate`, `glStencilOp`, `glStencilOpSeparate` | B | Bounded native D24S8/S8 paths; remaining attachment semantics stay outside the profile. |
-| `glTexImage2D`, `glTexSubImage2D` | B | 2D canonical/packed color plus bounded depth formats; exact canonical `FLOAT` color uploads use RGBA32F sampled storage with nearest-only completeness. Byte-span variants protect untrusted imports. |
+| `glTexImage2D`, `glTexSubImage2D` | B | 2D canonical/packed color plus bounded depth formats; exact canonical `FLOAT` color uploads use RGBA32F sampled storage with nearest-only completeness. Logical `SRGB_EXT`/`SRGB_ALPHA_EXT` accept exact unsigned-byte input only and decode RGB into linear RGBA32F storage. Byte-span variants protect untrusted imports. |
 | `glTexParameterf`, `glTexParameterfv`, `glTexParameteriv` | N | Raw RinGL only has integer `ringl_tex_parameteri`; an embedding may accept a float only after exact integer conversion. |
 | `glTexParameteri` | P | Four sampler pnames only; all accepted values map to RinGPU sampler state. |
 | `glUniform1i` | P | Linked `sampler2D` or scalar `int` location; no arrays. |
@@ -85,7 +85,7 @@ inventing unused aliases.
 | --- | --- | --- |
 | Scalars, primitive modes, compare/stencil operations, blend factors/equations, face/cull, clear-mask bits | B | Public `RINGL_*` tokens map to validated state and RinGPU descriptors. |
 | Buffer targets/usages and numeric vertex types | B | `ARRAY_BUFFER`/`ELEMENT_ARRAY_BUFFER`; supported scalar source formats are documented by `ringl_vertex_attrib_pointer`. |
-| 2D texture targets, canonical `ALPHA`/`RGB`/`RGBA`/`LUMINANCE`/`LUMINANCE_ALPHA`, native RGB565/RGBA4/RGB5_A1, filters and wraps | P | `TEXTURE_2D` only. ETC1, four linear S3TC DXT, and four sRGB S3TC DXT formats are accepted only by dedicated bounded uploads and expanded to RGB/RGBA/linear Float32; no cube map, other compressed formats, 3D, array, or immutable storage. |
+| 2D texture targets, canonical `ALPHA`/`RGB`/`RGBA`/`LUMINANCE`/`LUMINANCE_ALPHA`, native RGB565/RGBA4/RGB5_A1, logical `SRGB_EXT`/`SRGB_ALPHA_EXT`, filters and wraps | P | `TEXTURE_2D` only. `SRGB8_ALPHA8_EXT` is renderbuffer storage, not a texture token. ETC1, four linear S3TC DXT, and four sRGB S3TC DXT formats are accepted only by dedicated bounded uploads and expanded to RGB/RGBA/linear Float32; no cube map, other compressed formats, 3D, array, or immutable storage. |
 | Depth/stencil and renderbuffer formats | P | D16/D32/D24S8/S8 are bounded FBO formats; multisample/resolve and remaining attachment semantics are absent. |
 | Shader/program type and status tokens | P | Current GLSL/RSH1 subset exposes scalar/vector attributes, samplers, scalar/vector float and signed-integer uniforms, and bounded vertex `mat2 * vec2`, `mat3 * vec3`, and `mat4 * vec4` position profiles. The transformed texture profile remains `mat4` only: up to four UV pairs, or one/two UV pairs plus an RGBA varying used by exact one-sample or two-sample-add `texture2D(...) * vertexColor` materials with optional `vec4` tint and scalar opacity; no general uniform type coverage. |
 | Query tokens | P | Only the exact `ringl_get_integerv_bounded` and dedicated-record names below are accepted. |

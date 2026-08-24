@@ -76,6 +76,9 @@ typedef struct RinGLTextureObject {
      * the logical format despite RinGL's decoded physical storage, preventing
      * uncompressed mutation or falsely renderable FBO semantics. */
     uint32_t compressed_format;
+    /* EXT_sRGB images retain their sRGB public encoding while the owned
+     * Float32 shadow and RinGPU image contain linear RGB. Alpha is linear. */
+    uint32_t srgb_encoding;
     uint32_t defined;
     uint32_t min_filter;
     uint32_t mag_filter;
@@ -112,6 +115,10 @@ typedef struct RinGLFramebufferObject {
 typedef struct RinGLRenderbufferObject {
     uint64_t ringpu_image;
     uint32_t internal_format;
+    /* Physical RinGPU format. It differs from internal_format only for
+     * SRGB8_ALPHA8_EXT, which is rendered as linear RGBA32F. */
+    uint32_t storage_format;
+    uint32_t srgb_encoding;
     uint32_t width;
     uint32_t height;
     uint32_t defined;
@@ -348,6 +355,9 @@ typedef struct RinGLResolvedVertexLayout {
 typedef struct RinGLColorTarget {
     uint64_t image;
     uint32_t format;
+    /* Nonzero when the physical image stores linear values for a logical
+     * EXT_sRGB attachment. Readback must encode RGB back to sRGB. */
+    uint32_t srgb_encoding;
     uint32_t width;
     uint32_t height;
     uint32_t mip_level;
@@ -504,6 +514,10 @@ int ringl_resolve_color_target(RinGLContext* context,
                                RinGLColorTarget* target);
 int ringl_resolve_color_targets(RinGLContext* context,
                                 RinGLColorTargets* targets);
+/* Deterministic IEC 61966-2-1 conversions shared by texture upload and
+ * readback. The encoder clamps non-finite/out-of-range inputs. */
+float ringl_srgb_decode_u8(uint8_t value);
+uint8_t ringl_srgb_encode_float(float value);
 uint32_t ringl_effective_color_write_mask(const RinGLContext* context);
 int ringl_resolve_depth_target(RinGLContext* context,
                                RinGLDepthTarget* target);

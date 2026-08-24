@@ -417,6 +417,13 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     RinGL→RinGPU→private-Aquamarine bridge verify real upload, linear sRGB
     sample output, alpha, and readback; other compressed formats remain
     unimplemented.
+  - [x] Execute the WebGL 1 `EXT_sRGB` slice through the browser's RinGL route:
+    `SRGB_EXT`/`SRGB_ALPHA_EXT` exact unsigned-byte texture input and
+    `SRGB8_ALPHA8_EXT` renderbuffer storage retain logical sRGB metadata while
+    using linear RGBA32F RinGPU storage. RGB is decoded on input and re-encoded
+    for byte readback; alpha stays linear; `generateMipmap` rejects logical
+    sRGB textures. Focused sRGB, texture, framebuffer, and sync tests cover
+    token scope, FBO metadata, physical storage, and transfer round-trip.
 - [ ] Ensure context loss can be propagated predictably to a browser implementation.
   - RinOS Ladybird WebGL 1 now translates sticky RinGL loss through command,
     present, and `isContextLost()` into a once-only `webglcontextlost` canvas

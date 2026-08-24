@@ -250,7 +250,7 @@ static int texture_level0_complete(const RinGLContext* context,
      * when, and only when, script has obtained its linear extension. Do not
      * expose a native sampler capability merely because RinGPU supports it. */
     if (((texture->color_component_type == RINGL_FLOAT &&
-          texture->compressed_format == 0u &&
+          texture->compressed_format == 0u && texture->srgb_encoding == 0u &&
           context->webgl_float_texture_linear_enabled == RINGL_FALSE) ||
          (texture->color_component_type == RINGL_HALF_FLOAT_OES &&
           context->webgl_half_float_texture_linear_enabled == RINGL_FALSE)) &&
@@ -297,6 +297,17 @@ static int texture_packed_color_format(uint32_t format)
 {
     return format == RINGL_RGB565 || format == RINGL_RGBA4 ||
            format == RINGL_RGB5_A1;
+}
+
+static int texture_srgb_internal_format(uint32_t internal_format)
+{
+    return internal_format == RINGL_SRGB_EXT ||
+           internal_format == RINGL_SRGB_ALPHA_EXT;
+}
+
+static uint32_t texture_srgb_storage_format(uint32_t internal_format)
+{
+    return internal_format == RINGL_SRGB_EXT ? RINGL_RGB : RINGL_RGBA;
 }
 
 static uint32_t texture_external_texel_bytes(uint32_t format, uint32_t type)
@@ -348,8 +359,10 @@ static uint32_t texture_external_texel_bytes(uint32_t format, uint32_t type)
     }
     switch (format) {
     case RINGL_RGBA:
+    case RINGL_SRGB_ALPHA_EXT:
         return 4u;
     case RINGL_RGB:
+    case RINGL_SRGB_EXT:
         return 3u;
     case RINGL_LUMINANCE_ALPHA:
         return 2u;
@@ -609,6 +622,38 @@ static uint32_t texture_storage_texel_bytes(uint32_t format,
     return texture_packed_color_format(format) ? 2u : 4u;
 }
 
+/* EXT_sRGB accepts normalized byte source data, but texture sampling and
+ * blending must see linear RGB. Keep alpha unmodified and always materialize
+ * four Float32 components so the normal RinGPU RGBA32_FLOAT path owns the
+ * physical image. */
+static void texture_copy_srgb_texels(uint8_t* destination,
+                                     const uint8_t* source,
+                                     uint32_t source_format,
+                                     uint32_t destination_has_alpha,
+                                     uint32_t texel_count)
+{
+    uint32_t index;
+    uint32_t source_texel_bytes = texture_external_texel_bytes(source_format,
+                                                                RINGL_UNSIGNED_BYTE);
+
+    for (index = 0u; index < texel_count; ++index) {
+        const uint8_t* source_texel = source + (uint64_t)index * source_texel_bytes;
+        float components[4] = {
+            ringl_srgb_decode_u8(source_texel[0]),
+            ringl_srgb_decode_u8(source_texel[1]),
+            ringl_srgb_decode_u8(source_texel[2]),
+            destination_has_alpha != RINGL_FALSE &&
+                    (source_format == RINGL_RGBA ||
+                     source_format == RINGL_SRGB_ALPHA_EXT)
+                ? (float)source_texel[3] / 255.0f
+                : 1.0f,
+        };
+
+        memcpy(destination + (uint64_t)index * sizeof(components), components,
+               sizeof(components));
+    }
+}
+
 /* Packed formats retain their native component precision in the shadow image.
  * GenerateMipmap therefore averages the stored component values and quantizes
  * only at the destination level. This is equivalent to averaging normalized
@@ -825,6 +870,13 @@ static int texture_upload_format_valid(const RinGLTextureObject* texture,
     if (texture == NULL)
         return 0;
     storage_format = texture->format;
+    if (texture->srgb_encoding != 0u) {
+        uint32_t expected_format = storage_format == RINGL_RGB
+            ? RINGL_SRGB_EXT : RINGL_SRGB_ALPHA_EXT;
+
+        return (storage_format == RINGL_RGB || storage_format == RINGL_RGBA) &&
+               expected_format == format && type == RINGL_UNSIGNED_BYTE;
+    }
     if (texture_color_component_is_float(texture->color_component_type))
         return texture_color_format(storage_format) &&
                !texture_packed_color_format(storage_format) &&
@@ -979,6 +1031,7 @@ static int texture_realize_image(RinGLContext* context,
              texture->format != RINGL_DEPTH24_STENCIL8) ||
             (texture->requires_color_target != 0u &&
              texture->format != RINGL_RGBA &&
+             texture->srgb_encoding == 0u &&
              !texture_packed_color_format(texture->format))) {
             return -1;
         }
@@ -1024,6 +1077,7 @@ static int texture_realize_image(RinGLContext* context,
             return -1;
         }
     } else if ((texture->format == RINGL_RGBA ||
+                texture->srgb_encoding != 0u ||
                 texture_packed_color_format(texture->format)) &&
                texture->requires_color_target) {
         memset(&color_target_desc, 0, sizeof(color_target_desc));
@@ -1626,7 +1680,7 @@ void ringl_generate_mipmap(uint32_t target)
     texture = bound_texture_2d(context);
     if (texture == NULL || !texture_level0_storage_defined(texture) ||
         !texture_color_format(texture->format) ||
-        texture->compressed_format != 0u) {
+        texture->compressed_format != 0u || texture->srgb_encoding != 0u) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
@@ -1667,14 +1721,27 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
     uint32_t storage_format;
     uint32_t requested_format;
     uint32_t requested_color_component_type;
+    uint32_t requested_srgb_encoding;
 
     if (context == NULL)
         return;
-    storage_format = texture_storage_format(internal_format, format, type);
-    requested_format = storage_format != 0u
-        ? storage_format
-        : texture_depth_storage_format(internal_format, format, type);
-    requested_color_component_type = storage_format != 0u ? type : 0u;
+    requested_srgb_encoding = texture_srgb_internal_format(internal_format)
+        ? RINGL_TRUE : RINGL_FALSE;
+    if (requested_srgb_encoding != RINGL_FALSE) {
+        storage_format = texture_srgb_storage_format(internal_format);
+        requested_format = storage_format;
+        requested_color_component_type = RINGL_FLOAT;
+        if (type != RINGL_UNSIGNED_BYTE || format != internal_format) {
+            ringl_context_record_error(context, RINGL_INVALID_ENUM);
+            return;
+        }
+    } else {
+        storage_format = texture_storage_format(internal_format, format, type);
+        requested_format = storage_format != 0u
+            ? storage_format
+            : texture_depth_storage_format(internal_format, format, type);
+        requested_color_component_type = storage_format != 0u ? type : 0u;
+    }
     if (!texture_target_valid(target) || requested_format == 0u) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
@@ -1701,6 +1768,7 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
               requested_format == RINGL_DEPTH24_STENCIL8) ||
             texture->format != requested_format ||
             texture->color_component_type != requested_color_component_type ||
+            texture->srgb_encoding != requested_srgb_encoding ||
             (context->pending_compressed_format == 0u &&
              texture->compressed_format != 0u) ||
             (context->pending_compressed_format != 0u &&
@@ -1733,8 +1801,9 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
     }
 
     size = (uint64_t)(uint32_t)width * (uint64_t)(uint32_t)height *
-           texture_storage_texel_bytes(
-               requested_format, storage_format != 0u ? type : 0u);
+            texture_storage_texel_bytes(
+                requested_format, storage_format != 0u
+                    ? requested_color_component_type : 0u);
     if (size > SIZE_MAX) {
         ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
         return;
@@ -1753,13 +1822,22 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
                     context->unpack_alignment);
 
                 for (row = 0u; row < (uint32_t)height; ++row) {
-                    texture_copy_color_texels(
-                        replacement + (uint64_t)row * (uint32_t)width *
-                            texture_storage_texel_bytes(
-                                storage_format,
-                                storage_format != 0u ? type : 0u),
-                        (const uint8_t*)pixels + row * source_row_pitch,
-                        storage_format, format, type, (uint32_t)width);
+                    uint8_t* destination = replacement +
+                        (uint64_t)row * (uint32_t)width *
+                        texture_storage_texel_bytes(
+                            storage_format, requested_color_component_type);
+                    const uint8_t* source = (const uint8_t*)pixels +
+                        row * source_row_pitch;
+
+                    if (requested_srgb_encoding != RINGL_FALSE) {
+                        texture_copy_srgb_texels(
+                            destination, source, format,
+                            storage_format == RINGL_RGBA, (uint32_t)width);
+                    } else {
+                        texture_copy_color_texels(destination, source,
+                                                  storage_format, format, type,
+                                                  (uint32_t)width);
+                    }
                 }
             } else if (requested_format == RINGL_DEPTH24_STENCIL8) {
                 uint32_t row;
@@ -1805,6 +1883,7 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
         texture->format = requested_format;
         texture->color_component_type = requested_color_component_type;
         texture->compressed_format = context->pending_compressed_format;
+        texture->srgb_encoding = requested_srgb_encoding;
         texture->defined = RINGL_TRUE;
     } else {
         free(mip_storage->shadow_bytes);
@@ -1927,10 +2006,17 @@ static void ringl_tex_sub_image_2d_impl(uint32_t target, int32_t level,
                                      context->unpack_alignment);
 
         if (texture_color_format(texture->format)) {
-            texture_copy_color_texels(
-                level_bytes + destination_offset,
-                (const uint8_t*)pixels + source_offset, texture->format,
-                format, type, (uint32_t)width);
+            if (texture->srgb_encoding != 0u) {
+                texture_copy_srgb_texels(
+                    level_bytes + destination_offset,
+                    (const uint8_t*)pixels + source_offset, format,
+                    texture->format == RINGL_RGBA, (uint32_t)width);
+            } else {
+                texture_copy_color_texels(
+                    level_bytes + destination_offset,
+                    (const uint8_t*)pixels + source_offset, texture->format,
+                    format, type, (uint32_t)width);
+            }
         } else if (texture->format == RINGL_DEPTH24_STENCIL8) {
             texture_copy_depth_stencil_texels(
                 level_bytes + destination_offset,
@@ -1984,7 +2070,8 @@ void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
     texture = bound_texture_2d(context);
     if (texture == NULL || !texture_level0_storage_defined(texture) ||
         !texture_color_format(texture->format) ||
-        texture_color_component_is_float(texture->color_component_type) ||
+        (texture_color_component_is_float(texture->color_component_type) &&
+         texture->srgb_encoding == 0u) ||
         texture->compressed_format != 0u) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
@@ -2051,10 +2138,18 @@ void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
              (uint32_t)xoffset) * texture_storage_texel_bytes(
                  texture->format, texture->color_component_type);
 
-        texture_copy_rgba_to_copy_image_storage(
-            level_bytes + destination_offset,
-            replacement + (uint64_t)row * (uint32_t)width * 4u,
-            texture->format, (uint32_t)width);
+        if (texture->srgb_encoding != 0u) {
+            texture_copy_srgb_texels(
+                level_bytes + destination_offset,
+                replacement + (uint64_t)row * (uint32_t)width * 4u,
+                RINGL_RGBA, texture->format == RINGL_RGBA,
+                (uint32_t)width);
+        } else {
+            texture_copy_rgba_to_copy_image_storage(
+                level_bytes + destination_offset,
+                replacement + (uint64_t)row * (uint32_t)width * 4u,
+                texture->format, (uint32_t)width);
+        }
     }
     free(replacement);
     texture_discard_image(context, texture);
@@ -2507,10 +2602,10 @@ static int dxt_decode_image(uint32_t width, uint32_t height, uint32_t format,
 /* The IEC 61966-2-1 EOTF is stored as a 16-bit normalized lookup table so
  * compressed sRGB uploads have deterministic linear values without linking a
  * freestanding RinGL build against libm. */
-static float dxt_srgb_to_linear(uint8_t value)
+float ringl_srgb_decode_u8(uint8_t value)
 {
     static const uint16_t srgb_to_linear[256] = {
-+        0, 20, 40, 60, 80, 99, 119, 139,
+        0, 20, 40, 60, 80, 99, 119, 139,
         159, 179, 199, 219, 241, 264, 288, 313,
         340, 367, 396, 427, 458, 491, 526, 562,
         599, 637, 677, 718, 761, 805, 851, 898,
@@ -2547,6 +2642,35 @@ static float dxt_srgb_to_linear(uint8_t value)
     return (float)srgb_to_linear[value] / 65535.0f;
 }
 
+uint8_t ringl_srgb_encode_float(float value)
+{
+    uint32_t low = 0u;
+    uint32_t high = UINT8_MAX;
+
+    if (!(value > 0.0f))
+        return 0u;
+    if (value >= 1.0f)
+        return UINT8_MAX;
+    /* The decode table is monotonic. Search it rather than linking libm into
+     * freestanding RinGL; choose the closest representable sRGB byte. */
+    while (low < high) {
+        uint32_t middle = low + (high - low) / 2u;
+
+        if (ringl_srgb_decode_u8((uint8_t)middle) < value)
+            low = middle + 1u;
+        else
+            high = middle;
+    }
+    if (low != 0u) {
+        float upper = ringl_srgb_decode_u8((uint8_t)low);
+        float lower = ringl_srgb_decode_u8((uint8_t)(low - 1u));
+
+        if (value - lower < upper - value)
+            return (uint8_t)(low - 1u);
+    }
+    return (uint8_t)low;
+}
+
 static int dxt_srgb_decode_image(uint32_t width, uint32_t height,
                                  uint32_t output_format,
                                  const uint8_t* encoded,
@@ -2575,9 +2699,9 @@ static int dxt_srgb_decode_image(uint32_t width, uint32_t height,
         return -2;
     for (pixel = 0u; pixel < pixel_count; ++pixel) {
         uint8_t* destination = decoded + pixel * components * sizeof(float);
-        float red = dxt_srgb_to_linear(encoded[pixel * components]);
-        float green = dxt_srgb_to_linear(encoded[pixel * components + 1u]);
-        float blue = dxt_srgb_to_linear(encoded[pixel * components + 2u]);
+        float red = ringl_srgb_decode_u8(encoded[pixel * components]);
+        float green = ringl_srgb_decode_u8(encoded[pixel * components + 1u]);
+        float blue = ringl_srgb_decode_u8(encoded[pixel * components + 2u]);
 
         memcpy(destination, &red, sizeof(red));
         memcpy(destination + sizeof(float), &green, sizeof(green));
@@ -2792,10 +2916,16 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
     uint64_t replacement_size;
     uint8_t* snapshot;
     uint8_t* replacement;
+    uint32_t storage_format;
+    uint32_t srgb_encoding;
 
     if (context == NULL)
         return;
-    if (!texture_target_valid(target) || !texture_color_format(internal_format)) {
+    srgb_encoding = texture_srgb_internal_format(internal_format)
+        ? RINGL_TRUE : RINGL_FALSE;
+    storage_format = srgb_encoding != RINGL_FALSE
+        ? texture_srgb_storage_format(internal_format) : internal_format;
+    if (!texture_target_valid(target) || !texture_color_format(storage_format)) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
@@ -2820,8 +2950,11 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
          * RGBA and packs back into that exact storage rather than requiring a
          * fabricated UNSIGNED_BYTE base type. */
         if (!texture_level0_storage_defined(texture) ||
-            texture->format != internal_format ||
+            texture->format != storage_format ||
+            texture->srgb_encoding != srgb_encoding ||
             (texture->color_component_type != RINGL_UNSIGNED_BYTE &&
+             !(srgb_encoding != RINGL_FALSE &&
+               texture->color_component_type == RINGL_FLOAT) &&
              !texture_packed_color_format(texture->format)) ||
             texture->compressed_format != 0u) {
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
@@ -2859,8 +2992,9 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
     snapshot_size = (uint64_t)(uint32_t)width * (uint64_t)(uint32_t)height *
                     4u;
     replacement_size = (uint64_t)(uint32_t)width * (uint64_t)(uint32_t)height *
-                       texture_storage_texel_bytes(internal_format,
-                                                   RINGL_UNSIGNED_BYTE);
+                       texture_storage_texel_bytes(
+                           storage_format, srgb_encoding != RINGL_FALSE
+                               ? RINGL_FLOAT : RINGL_UNSIGNED_BYTE);
     if (snapshot_size > SIZE_MAX || replacement_size > SIZE_MAX) {
         ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
         return;
@@ -2882,9 +3016,15 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
         ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
         return;
     }
-    texture_copy_rgba_to_copy_image_storage(
-        replacement, snapshot, internal_format,
-        (uint32_t)width * (uint32_t)height);
+    if (srgb_encoding != RINGL_FALSE) {
+        texture_copy_srgb_texels(replacement, snapshot, RINGL_RGBA,
+                                 storage_format == RINGL_RGBA,
+                                 (uint32_t)width * (uint32_t)height);
+    } else {
+        texture_copy_rgba_to_copy_image_storage(
+            replacement, snapshot, storage_format,
+            (uint32_t)width * (uint32_t)height);
+    }
     free(snapshot);
 
     texture_discard_image(context, texture);
@@ -2895,9 +3035,11 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
         texture->shadow_size = replacement_size;
         texture->width = (uint32_t)width;
         texture->height = (uint32_t)height;
-        texture->format = internal_format;
-        texture->color_component_type = RINGL_UNSIGNED_BYTE;
+        texture->format = storage_format;
+        texture->color_component_type = srgb_encoding != RINGL_FALSE
+            ? RINGL_FLOAT : RINGL_UNSIGNED_BYTE;
         texture->compressed_format = 0u;
+        texture->srgb_encoding = srgb_encoding;
         texture->defined = RINGL_TRUE;
     } else {
         free(mip_storage->shadow_bytes);

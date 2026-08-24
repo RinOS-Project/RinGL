@@ -132,6 +132,7 @@ typedef struct RinGLShaderObject {
     uint32_t mat4_uniform_count;
     uint32_t rsh1_sampler_binding_count;
     uint32_t varying_count;
+    uint32_t uses_standard_derivatives;
     uint32_t delete_pending;
     char sampler_uniform_names[RINGL_MAX_SAMPLER_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char float_uniform_names[RINGL_MAX_FLOAT_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
@@ -363,6 +364,7 @@ struct RinGLContext {
     uint32_t webgl_float_color_buffer_enabled;
     uint32_t webgl_half_float_color_buffer_enabled;
     uint32_t webgl_blend_minmax_enabled;
+    uint32_t webgl_standard_derivatives_enabled;
     uint64_t graphics_command_list;
     uint64_t graphics_bind_group;
     uint64_t finish_fence;
@@ -402,6 +404,7 @@ struct RinGLContext {
     float line_width;
     float sample_coverage_value;
     uint32_t sample_coverage_invert;
+    uint32_t fragment_shader_derivative_hint;
     uint32_t stencil_func;
     uint32_t stencil_reference;
     uint32_t stencil_value_mask;

@@ -43,6 +43,8 @@ typedef enum TokenKind {
     TOK_STAR,
     TOK_SLASH,
     TOK_DOT,
+    TOK_HASH,
+    TOK_COLON,
     TOK_INVALID,
 } TokenKind;
 
@@ -264,6 +266,8 @@ static void next_token(Parser* parser)
     case '*': token.kind = TOK_STAR; break;
     case '/': token.kind = TOK_SLASH; break;
     case '.': token.kind = TOK_DOT; break;
+    case '#': token.kind = TOK_HASH; break;
+    case ':': token.kind = TOK_COLON; break;
     default: token.kind = TOK_INVALID; break;
     }
     parser->token = token;
@@ -491,6 +495,26 @@ static int primary(Parser* parser)
         uint32_t value_width = symbol ? symbol->width : 0u;
         if (token_is_ident(&ident, "texture2D"))
             return texture2d_call(parser);
+        if (token_is_ident(&ident, "dFdx") ||
+            token_is_ident(&ident, "dFdy") ||
+            token_is_ident(&ident, "fwidth")) {
+            if (parser->shader_type != RINGL_FRAGMENT_SHADER) {
+                fail(parser, "derivatives are only supported in fragment shaders");
+                return 0;
+            }
+            if (parser->result->standard_derivatives_enabled == 0u) {
+                fail(parser, "derivatives require GL_OES_standard_derivatives");
+                return 0;
+            }
+            parser->result->uses_standard_derivatives = 1u;
+            next_token(parser);
+            if (!expect(parser, TOK_LPAREN, "expected '(' after derivative builtin") ||
+                !expression(parser) ||
+                !expect(parser, TOK_RPAREN, "expected ')' after derivative builtin")) {
+                return 0;
+            }
+            return 1;
+        }
         if (!token_is_ident(&ident, "gl_Position") &&
             !token_is_ident(&ident, "gl_FragColor") &&
             !symbol_exists(parser, &ident)) {
@@ -974,6 +998,43 @@ static int precision_declaration(Parser* parser)
     return 1;
 }
 
+/* This bounded parser admits exactly the extension directive whose execution
+ * path RinGL implements.  It deliberately does not treat arbitrary
+ * preprocessor text as a comment: silently ignoring an unsupported directive
+ * could make a WebGL shader appear to have a capability it does not have. */
+static int extension_directive(Parser* parser)
+{
+    if (parser->result->declaration_count != 0u || parser->main_seen != 0u) {
+        fail(parser, "#extension must precede declarations");
+        return 0;
+    }
+    next_token(parser);
+    if (!token_is_ident(&parser->token, "extension")) {
+        fail(parser, "only #extension is supported");
+        return 0;
+    }
+    next_token(parser);
+    if (!token_is_ident(&parser->token, "GL_OES_standard_derivatives")) {
+        fail(parser, "unsupported GLSL extension");
+        return 0;
+    }
+    next_token(parser);
+    if (!expect(parser, TOK_COLON, "expected ':' in #extension directive"))
+        return 0;
+    if (!token_is_ident(&parser->token, "enable") &&
+        !token_is_ident(&parser->token, "require")) {
+        fail(parser, "derivative extension must be enabled or required");
+        return 0;
+    }
+    if (parser->shader_type != RINGL_FRAGMENT_SHADER) {
+        fail(parser, "GL_OES_standard_derivatives requires a fragment shader");
+        return 0;
+    }
+    parser->result->standard_derivatives_enabled = 1u;
+    next_token(parser);
+    return 1;
+}
+
 int ringl_glsl_parse(uint32_t shader_type,
                      const char* source,
                      size_t source_length,
@@ -993,7 +1054,10 @@ int ringl_glsl_parse(uint32_t shader_type,
     next_token(&parser);
 
     while (parser.token.kind != TOK_EOF && result->diagnostic[0] == '\0') {
-        if (parser.token.kind == TOK_ATTRIBUTE) {
+        if (parser.token.kind == TOK_HASH) {
+            if (!extension_directive(&parser))
+                break;
+        } else if (parser.token.kind == TOK_ATTRIBUTE) {
             if (!attribute_declaration(&parser))
                 break;
         } else if (parser.token.kind == TOK_UNIFORM) {

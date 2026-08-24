@@ -230,6 +230,19 @@ int main(void)
     assert(ringl_get_error() == RINGL_NO_ERROR);
     ringl_hint(RINGL_FRAGMENT_SHADER_DERIVATIVE_HINT, RINGL_NICEST);
     assert(ringl_get_error() == RINGL_INVALID_ENUM);
+    values[0] = 123;
+    assert(ringl_get_integerv_bounded(
+               RINGL_FRAGMENT_SHADER_DERIVATIVE_HINT, values, 1u) == -1);
+    assert(values[0] == 123);
+    assert(ringl_get_error() == RINGL_INVALID_ENUM);
+    assert(ringl_enable_webgl_standard_derivatives() == 0);
+    assert(ringl_get_integerv_bounded(
+               RINGL_FRAGMENT_SHADER_DERIVATIVE_HINT, values, 1u) == 0);
+    assert(values[0] == (int32_t)RINGL_DONT_CARE);
+    ringl_hint(RINGL_FRAGMENT_SHADER_DERIVATIVE_HINT, RINGL_NICEST);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_get_integerv(RINGL_FRAGMENT_SHADER_DERIVATIVE_HINT, values);
+    assert(values[0] == (int32_t)RINGL_NICEST);
     {
         uint32_t nan_bits = 0x7fc00000u;
         float nan;

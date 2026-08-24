@@ -119,6 +119,28 @@ int main(void)
     assert(strstr(log, "varying vec2") != NULL);
 
     ringl_shader_source(fragment,
+        "#extension GL_OES_standard_derivatives : enable\n"
+        "varying vec2 uv;\n"
+        "void main() { gl_FragColor = vec4(dFdx(uv), fwidth(uv.x), 1.0); }\n",
+        -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
+    assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) > 0u);
+    assert(strstr(log, "not enabled") != NULL);
+    assert(ringl_enable_webgl_standard_derivatives() == 0);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+    assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) == 0u);
+
+    ringl_shader_source(fragment,
+        "varying vec2 uv;\n"
+        "void main() { gl_FragColor = vec4(dFdy(uv), 0.0, 1.0); }\n", -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
+    assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) > 0u);
+    assert(strstr(log, "require GL_OES_standard_derivatives") != NULL);
+
+    ringl_shader_source(fragment,
         "uniform sampler2D colorTexture;\n"
         "void main() { gl_FragColor = texture2D(missing, vec2(0.0, 1.0)); }\n",
         -1);

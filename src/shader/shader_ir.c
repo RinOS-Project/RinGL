@@ -38,7 +38,8 @@ int ringl_lower_shader_rsh1(uint32_t shader)
         return -1;
     }
 
-    if (strstr(object->source, "varying") != NULL) {
+    if (object->uses_standard_derivatives == 0u &&
+        strstr(object->source, "varying") != NULL) {
         rc = ringl_glsl_lower_varying_rsh1(
             object->shader_type, object->source,
             (size_t)object->source_length, &lowered);

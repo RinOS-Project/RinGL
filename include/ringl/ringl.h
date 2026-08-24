@@ -1272,7 +1272,8 @@ void ringl_sample_coverage(float value, uint32_t invert);
 int ringl_get_sample_coverage(RinGLSampleCoverageV1* coverage);
 /* GENERATE_MIPMAP_HINT is advisory.  The bounded renderer does not use it to
  * choose a sampler LOD; generated mip levels are created only by
- * ringl_generate_mipmap(). */
+ * ringl_generate_mipmap(). FRAGMENT_SHADER_DERIVATIVE_HINT becomes an
+ * observable advisory state only after OES_standard_derivatives is enabled. */
 void ringl_hint(uint32_t target, uint32_t mode);
 /* Applies GLES polygon offset to filled primitives. Both finite values are
  * carried in the dynamic RinGPU raster state; points and lines are unchanged. */
@@ -1418,6 +1419,10 @@ int ringl_enable_webgl_half_float_color_buffer(void);
  * The extension remains unavailable until the browser has acquired its WebGL
  * extension object. Returns zero only for a live current context. */
 int ringl_enable_webgl_blend_minmax(void);
+/* Enables OES_standard_derivatives for the current WebGL context after its
+ * browser extension object has been acquired. This gates GLSL dFdx/dFdy/
+ * fwidth compilation and FRAGMENT_SHADER_DERIVATIVE_HINT queries. */
+int ringl_enable_webgl_standard_derivatives(void);
 void ringl_tex_image_2d(uint32_t target, int32_t level,
                         uint32_t internal_format, int32_t width, int32_t height,
                         int32_t border, uint32_t format, uint32_t type,

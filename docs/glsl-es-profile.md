@@ -21,6 +21,9 @@ The current first-triangle slice supports:
 - `vec2(...)` and `vec4(...)` constructors;
 - scalar or `vec4` writes to the stage output (`gl_Position` / `gl_FragColor`);
 - constants and simple assignments;
+- context-gated fragment `#extension GL_OES_standard_derivatives : enable` or
+  `require`, with `dFdx`, `dFdy`, and `fwidth` over float/vecN values formed
+  from fragment varyings and the supported arithmetic;
 - a canonical `varying vec2` texture-coordinate path with one through eight
   `texture2D()` calls over one through eight `uniform sampler2D` declarations,
   where each coordinate is either the shared varying or that varying plus/minus
@@ -94,8 +97,24 @@ varyings, other expressions, and larger chains are not yet accepted.
 Nonconstant coordinates in this profile, swizzle writes, implicit float/integer
 conversion, vector constructors with mixed scalar types,
 matrices beyond the documented vertex transform, uniform arrays, additional
-varying types, derivatives, loops, user functions, precision edge cases, and
+varying types, loops, user functions, precision edge cases, and
 broader GLSL ES built-ins remain incremental work.
+
+## `OES_standard_derivatives` boundary
+
+The extension is deliberately two-gated.  The source must begin with the exact
+fragment directive `#extension GL_OES_standard_derivatives : enable` or
+`require`, and the current RinGL context must have been enabled by its WebGL
+embedding after `getExtension("OES_standard_derivatives")`.  A directive alone
+does not grant the capability.  `dFdx`, `dFdy`, and `fwidth` lower
+component-wise to RSH1 opcodes 56, 57, and 58; `fwidth(x)` is evaluated as
+`abs(dFdx(x)) + abs(dFdy(x))` by the executor.
+
+The bounded profile accepts finite scalar/vector values obtained from fragment
+varyings and supported arithmetic.  It does not implement derivatives through
+texture samples, control flow, or `dFdxFine`/`dFdyFine`/coarse variants.  Those
+forms fail compilation/linking before a draw is submitted; they are not mapped
+to a zero derivative or to a browser-local fallback.
 
 ## Vertex input mapping
 

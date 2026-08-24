@@ -58,6 +58,14 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     destruction.
 - [x] Implement a bounded GLSL ES lexer/parser with initial semantic validation.
 - [x] Lower the current scalar GLSL ES subset directly to RinShader RSH1.
+- [x] Implement the bounded WebGL `OES_standard_derivatives` slice through
+  RinGL rather than a browser-local or Aquamarine-direct backend. An acquired
+  extension object enables a context-local gate; exact fragment
+  `#extension GL_OES_standard_derivatives : enable`/`require` source lowers
+  `dFdx`/`dFdy`/`fwidth` on finite float/vecN varying/arithmetic values to RSH1
+  56/57/58. Parser/lower/state and real RinGPU/Aquamarine executor regressions
+  cover it. Texture-sample derivatives, control flow, and fine/coarse variants
+  remain explicitly unsupported and are rejected.
 - [x] Reuse RinShader validation through public `ringpu_create_shader_module()` before backend shader creation.
 - [x] Implement the initial vertex/fragment shader linking checks.
 - [x] Implement program object lifecycle and `glUseProgram`.

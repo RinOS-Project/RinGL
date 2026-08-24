@@ -435,14 +435,23 @@ void ringl_hint(uint32_t target, uint32_t mode)
 
     if (context == NULL)
         return;
-    if (target != RINGL_GENERATE_MIPMAP_HINT) {
+    if (target != RINGL_GENERATE_MIPMAP_HINT &&
+        target != RINGL_FRAGMENT_SHADER_DERIVATIVE_HINT) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return;
+    }
+    if (target == RINGL_FRAGMENT_SHADER_DERIVATIVE_HINT &&
+        context->webgl_standard_derivatives_enabled == RINGL_FALSE) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
     if (mode != RINGL_DONT_CARE && mode != RINGL_FASTEST &&
         mode != RINGL_NICEST) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return;
     }
+    if (target == RINGL_FRAGMENT_SHADER_DERIVATIVE_HINT)
+        context->fragment_shader_derivative_hint = mode;
 }
 
 void ringl_polygon_offset(float factor, float units)
@@ -752,6 +761,16 @@ int ringl_enable_webgl_blend_minmax(void)
     return 0;
 }
 
+int ringl_enable_webgl_standard_derivatives(void)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL || context->lost != RINGL_FALSE)
+        return -1;
+    context->webgl_standard_derivatives_enabled = RINGL_TRUE;
+    return 0;
+}
+
 void ringl_blend_equation_separate(uint32_t mode_rgb, uint32_t mode_alpha)
 {
     RinGLContext* context = ringl_get_current_context();
@@ -872,6 +891,7 @@ static size_t ringl_get_integerv_value_count(uint32_t pname)
     case RINGL_SAMPLE_BUFFERS:
     case RINGL_SAMPLES:
     case RINGL_SAMPLE_COVERAGE_INVERT:
+    case RINGL_FRAGMENT_SHADER_DERIVATIVE_HINT:
         return 1u;
     default:
         return 0u;
@@ -977,6 +997,11 @@ int ringl_get_integerv_bounded(uint32_t pname, int32_t* values,
         return -1;
     if (values == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    if (pname == RINGL_FRAGMENT_SHADER_DERIVATIVE_HINT &&
+        context->webgl_standard_derivatives_enabled == RINGL_FALSE) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return -1;
     }
 
@@ -1143,6 +1168,9 @@ int ringl_get_integerv_bounded(uint32_t pname, int32_t* values,
         return 0;
     case RINGL_SAMPLE_COVERAGE_INVERT:
         values[0] = (int32_t)context->sample_coverage_invert;
+        return 0;
+    case RINGL_FRAGMENT_SHADER_DERIVATIVE_HINT:
+        values[0] = (int32_t)context->fragment_shader_derivative_hint;
         return 0;
     case RINGL_COLOR_WRITEMASK:
         values[0] = (context->color_write_mask & 0x01u) != 0u;

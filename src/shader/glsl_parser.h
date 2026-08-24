@@ -23,6 +23,11 @@
 
 typedef struct RinGLGlslParseResult {
     uint32_t ok;
+    /* OES_standard_derivatives is an opt-in WebGL capability.  Keep its
+     * source-level declaration separate from actual builtin use so the
+     * context can reject a shader compiled before getExtension(). */
+    uint32_t standard_derivatives_enabled;
+    uint32_t uses_standard_derivatives;
     uint32_t declaration_count;
     uint32_t statement_count;
     uint32_t attribute_count;

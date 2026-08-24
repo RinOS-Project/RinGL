@@ -97,6 +97,21 @@ GLSL ES source -> RinGL GLSL frontend + linker
 
 This keeps RinShader IR as the common validated shader boundary while allowing each source language to preserve its own semantics.
 
+## WebGL standard derivatives
+
+`OES_standard_derivatives` is a context-local WebGL capability, not a separate
+surface backend.  A browser embedding enables it only after returning the
+extension object, then RinGL accepts the exact fragment-source directive
+`#extension GL_OES_standard_derivatives : enable` or `require`.  `dFdx`,
+`dFdy`, and `fwidth` lower to scalar RSH1 derivative opcodes and execute through
+the same RinGPU submission and private Aquamarine embedding as every other
+RinGL draw.  The implemented profile covers finite float/vecN values formed
+from fragment varyings and arithmetic; it rejects texture-sample derivative
+expressions, control flow, and fine/coarse variants rather than inventing
+their semantics.  `FRAGMENT_SHADER_DERIVATIVE_HINT` is observable only after
+the same context gate.  This is a bounded WebGL slice, not an OpenGL ES
+conformance claim.
+
 ## RinGPU translation model
 
 OpenGL exposes mutable, implicit state while RinGPU is intentionally explicit. RinGL therefore maintains a context-side state machine and derives backend objects lazily.

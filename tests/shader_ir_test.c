@@ -157,6 +157,15 @@ int main(void)
         "void main() {\n"
         "  gl_FragColor = vec4(1.0, 0.25, 0.0, 1.0);\n"
         "}\n";
+    const char* derivative_fragment_source =
+        "#extension GL_OES_standard_derivatives : enable\n"
+        "precision mediump float;\n"
+        "varying vec2 uv;\n"
+        "void main() {\n"
+        "  vec2 dx = dFdx(uv);\n"
+        "  vec2 dy = dFdy(uv);\n"
+        "  gl_FragColor = vec4(dx, fwidth(dy.x), 1.0);\n"
+        "}\n";
     const char* texture_source =
         "precision mediump float;\n"
         "precision lowp sampler2D;\n"
@@ -252,6 +261,7 @@ int main(void)
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
+    assert(ringl_enable_webgl_standard_derivatives() == 0);
 
     vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
     fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
@@ -310,6 +320,15 @@ int main(void)
     assert(header.input_count == 4u);
     assert(header.output_count == 4u);
     assert(header.instruction_count >= 5u);
+
+    /* Derivatives must be emitted into RSH1, not folded into a browser-side
+     * constant. The fragment ABI carries exactly the declared vec2 varying. */
+    header = lower_and_read_header(fragment, derivative_fragment_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 2u);
+    assert(header.output_count == 4u);
+    assert(header.instruction_count >= 12u);
 
     header = lower_and_read_header(fragment, texture_source, blob, sizeof(blob));
     assert(header.stage == 2u);

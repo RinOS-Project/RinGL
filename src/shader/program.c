@@ -955,7 +955,8 @@ static int ringl_program_lower_uniform_shader(
     *rsh1_out = NULL;
     *rsh1_size_out = 0u;
     *module_out = 0u;
-    if ((strstr(shader->source, "varying") != NULL
+    if (((shader->uses_standard_derivatives == 0u &&
+          strstr(shader->source, "varying") != NULL)
              ? ringl_glsl_lower_varying_rsh1_with_uniforms(
                    shader->shader_type, shader->source,
                    (size_t)shader->source_length, uniforms, uniform_count,

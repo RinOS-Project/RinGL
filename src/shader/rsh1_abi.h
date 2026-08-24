@@ -43,6 +43,9 @@ enum RinGLRsh1Opcode {
     RINGL_RSH1_OP_LOAD_INPUT_F32 = 45,
     RINGL_RSH1_OP_STORE_OUTPUT_F32 = 46,
     RINGL_RSH1_OP_SAMPLE_IMAGE_2D_F32 = 55,
+    RINGL_RSH1_OP_DFDX_F32 = 56,
+    RINGL_RSH1_OP_DFDY_F32 = 57,
+    RINGL_RSH1_OP_FWIDTH_F32 = 58,
 };
 
 typedef struct __attribute__((packed)) RinGLRsh1HeaderV1 {

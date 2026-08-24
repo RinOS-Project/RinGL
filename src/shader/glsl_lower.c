@@ -26,6 +26,7 @@ typedef enum Tok {
     T_IVEC4,
     T_ATTRIBUTE,
     T_UNIFORM,
+    T_VARYING,
     T_PRECISION,
     T_LOWP,
     T_MEDIUMP,
@@ -42,6 +43,8 @@ typedef enum Tok {
     T_STAR,
     T_SLASH,
     T_DOT,
+    T_HASH,
+    T_COLON,
     T_BAD
 } Tok;
 
@@ -85,6 +88,7 @@ typedef struct Lower {
     uint32_t ins_count;
     const RinGLGlslUniformValue* uniforms;
     uint32_t uniform_count;
+    uint32_t standard_derivatives_enabled;
     RinGLGlslLowerResult* result;
 } Lower;
 
@@ -161,6 +165,8 @@ static Tok keyword(const char* begin, size_t length)
         return T_ATTRIBUTE;
     if (length == 7u && memcmp(begin, "uniform", 7u) == 0)
         return T_UNIFORM;
+    if (length == 7u && memcmp(begin, "varying", 7u) == 0)
+        return T_VARYING;
     if (length == 9u && memcmp(begin, "precision", 9u) == 0)
         return T_PRECISION;
     if (length == 4u && memcmp(begin, "lowp", 4u) == 0)
@@ -236,6 +242,8 @@ static void next(Lower* lower)
     case '*': token.kind = T_STAR; break;
     case '/': token.kind = T_SLASH; break;
     case '.': token.kind = T_DOT; break;
+    case '#': token.kind = T_HASH; break;
+    case ':': token.kind = T_COLON; break;
     default: token.kind = T_BAD; break;
     }
     lower->token = token;
@@ -602,6 +610,39 @@ static Value conversion_value(Lower* lower, int target_is_i32)
     return value;
 }
 
+static Value derivative_value(Lower* lower, uint16_t opcode)
+{
+    Value value;
+    uint32_t index;
+
+    if (lower->shader_type != RINGL_FRAGMENT_SHADER ||
+        lower->standard_derivatives_enabled == 0u) {
+        fail(lower, "derivatives require enabled fragment GL_OES_standard_derivatives");
+        return invalid_value();
+    }
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after derivative builtin"))
+        return invalid_value();
+    value = expression(lower);
+    if (value.width == 0u || value.matrix || value.is_i32) {
+        fail(lower, "derivative builtin requires scalar or vector float");
+        return invalid_value();
+    }
+    if (!need(lower, T_RPAREN, "expected ')' after derivative builtin"))
+        return invalid_value();
+    for (index = 0u; index < value.width; ++index) {
+        uint16_t destination = new_reg(lower);
+
+        if (destination == RINGL_RSH1_UNUSED ||
+            !emit(lower, opcode, destination, value.regs[index],
+                  RINGL_RSH1_UNUSED, 0u)) {
+            return invalid_value();
+        }
+        value.regs[index] = destination;
+    }
+    return value;
+}
+
 static Value primary(Lower* lower)
 {
     Value value;
@@ -623,6 +664,12 @@ static Value primary(Lower* lower)
         return constructor_value(lower, 3u, 1);
     if (lower->token.kind == T_IVEC4)
         return constructor_value(lower, 4u, 1);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "dFdx"))
+        return derivative_value(lower, RINGL_RSH1_OP_DFDX_F32);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "dFdy"))
+        return derivative_value(lower, RINGL_RSH1_OP_DFDY_F32);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "fwidth"))
+        return derivative_value(lower, RINGL_RSH1_OP_FWIDTH_F32);
     if (lower->token.kind == T_IDENT)
         return symbol_value(lower);
     if (take(lower, T_LPAREN)) {
@@ -936,11 +983,45 @@ static int precision_decl(Lower* lower)
     return need(lower, T_SEMI, "expected ';' after precision declaration");
 }
 
+static int extension_decl(Lower* lower)
+{
+    next(lower);
+    if (!text_is(&lower->token, "extension")) {
+        fail(lower, "only #extension is supported");
+        return 0;
+    }
+    next(lower);
+    if (!text_is(&lower->token, "GL_OES_standard_derivatives")) {
+        fail(lower, "unsupported GLSL extension");
+        return 0;
+    }
+    next(lower);
+    if (!need(lower, T_COLON, "expected ':' in #extension directive"))
+        return 0;
+    if (!text_is(&lower->token, "enable") &&
+        !text_is(&lower->token, "require")) {
+        fail(lower, "derivative extension must be enabled or required");
+        return 0;
+    }
+    if (lower->shader_type != RINGL_FRAGMENT_SHADER) {
+        fail(lower, "GL_OES_standard_derivatives requires a fragment shader");
+        return 0;
+    }
+    lower->standard_derivatives_enabled = 1u;
+    next(lower);
+    return 1;
+}
+
 static int parse_all(Lower* lower)
 {
     int main_seen = 0;
     next(lower);
     while (lower->token.kind != T_EOF) {
+        if (lower->token.kind == T_HASH) {
+            if (!extension_decl(lower))
+                return 0;
+            continue;
+        }
         if (lower->token.kind == T_PRECISION) {
             if (!precision_decl(lower))
                 return 0;
@@ -1028,6 +1109,42 @@ static int parse_all(Lower* lower)
             }
             next(lower);
             if (!need(lower, T_SEMI, "expected ';' after uniform"))
+                return 0;
+            continue;
+        }
+        if (lower->token.kind == T_VARYING) {
+            Token name;
+            Symbol* symbol;
+            uint8_t width;
+
+            if (lower->shader_type != RINGL_FRAGMENT_SHADER) {
+                fail(lower, "generic varying lowering only supports fragment shaders");
+                return 0;
+            }
+            next(lower);
+            if (lower->token.kind == T_VEC2)
+                width = 2u;
+            else if (lower->token.kind == T_VEC3)
+                width = 3u;
+            else if (lower->token.kind == T_VEC4)
+                width = 4u;
+            else {
+                fail(lower, "expected varying vec2, vec3, or vec4");
+                return 0;
+            }
+            next(lower);
+            if (lower->token.kind != T_IDENT) {
+                fail(lower, "expected varying name");
+                return 0;
+            }
+            name = lower->token;
+            if (find_symbol(lower, &name) != NULL ||
+                (symbol = add_symbol(lower, &name, 1, width)) == NULL) {
+                return 0;
+            }
+            (void)symbol;
+            next(lower);
+            if (!need(lower, T_SEMI, "expected ';' after varying"))
                 return 0;
             continue;
         }

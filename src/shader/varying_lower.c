@@ -601,18 +601,26 @@ static int parse_varying_texture_color_operation(const char** cursor,
                                                  const char* uniform_name)
 {
     uint32_t component;
+    uint32_t components[4];
 
     if (!parse_varying_texture_color_operator(cursor, opcode)) {
         return 0;
     }
     if (!parse_varying_texture_color_literal(cursor, color)) {
         char name[64];
+        float uniform_color[4];
 
         if (uniform_name == NULL || !read_identifier(cursor, name,
                                                       sizeof(name)) ||
             strcmp(name, uniform_name) != 0) {
             return 0;
         }
+        memcpy(uniform_color, color, sizeof(uniform_color));
+        if (!parse_optional_read_swizzle(cursor, 4u, 4u, components)) {
+            return 0;
+        }
+        for (component = 0u; component < 4u; ++component)
+            color[component] = uniform_color[components[component]];
     }
     if (*opcode == RINGL_RSH1_OP_DIV_F32) {
         for (component = 0u; component < 4u; ++component) {

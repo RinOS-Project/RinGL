@@ -558,7 +558,7 @@ int main(void)
         "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
         "uniform vec4 tint; varying vec2 firstUv; varying vec2 secondUv; "
         "void main() { gl_FragColor = (texture2D(firstTexture, firstUv) + "
-        "texture2D(secondTexture, secondUv)) * tint; }",
+        "texture2D(secondTexture, secondUv)) * tint.stpq.bgra; }",
         -1);
     ringl_compile_shader(vertex);
     ringl_compile_shader(fragment);

@@ -98,7 +98,12 @@ static int fake_create_shader_module(void* session, const void* rsh1,
             for (index = 0u; index < 4u; ++index) {
                 uint32_t expected_bits;
 
-                memcpy(&expected_bits, &backend->expected_tint[index],
+                static const uint32_t swizzled_components[4] = {
+                    2u, 1u, 0u, 3u
+                };
+
+                memcpy(&expected_bits,
+                       &backend->expected_tint[swizzled_components[index]],
                        sizeof(expected_bits));
                 assert(instructions[8u + index].opcode == 16u &&
                        instructions[8u + index].immediate == expected_bits);
@@ -257,7 +262,7 @@ int main(void)
     ringl_shader_source(matrix_fragment,
         "precision mediump float; uniform sampler2D texture; uniform vec4 tint; "
         "varying vec2 uv; void main() { gl_FragColor = texture2D(texture, uv) "
-        "* tint; }",
+        "* tint.stpq.bgra; }",
         -1);
     ringl_compile_shader(matrix_vertex);
     ringl_compile_shader(matrix_fragment);

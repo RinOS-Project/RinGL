@@ -48,6 +48,11 @@ and for its optional `uniform vec4` tint, before component-wise texture
 modulation. It does not introduce a general vector operation or broaden the
 accepted material grammar.
 
+The general bounded varying-coordinate texture chain applies the same
+full-width rule to its sole `uniform vec4` color operand. Thus
+`texture2D(texture, uv) * tint.stpq.bgra` is scalar-constant permutation, not
+a general uniform-vector expression; partial-width selectors remain rejected.
+
 The first visible-triangle shader can therefore take the standards-shaped form:
 
 ```glsl

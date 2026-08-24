@@ -409,6 +409,11 @@ opacity across RGBA without rebuilding the matrix module. Updating either one
 replaces only the fragment executable. The image/sampler binding remains native
 throughout; no CPU pre-multiplied color is published.
 
+The bounded varying-coordinate texture chain also accepts a full-width,
+read-only selector on its optional `uniform vec4` color operation, such as
+`texture2D(texture, uv) * tint.stpq.bgra`. Its four RSH1 constants are
+permuted directly; it does not introduce a general uniform-vector expression.
+
 The no-varying RSH1 profile also lowers local `vec2`, `vec3`, and `vec4`
 values and component-wise vector arithmetic directly to scalar RSH1
 instructions. Same-width `+`/`-`, unary `-`, and vector/scalar `*` and `/`

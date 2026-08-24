@@ -274,6 +274,37 @@ static int unpack_rgba16f_to_rgba(const uint8_t* source, void* destination,
     return 0;
 }
 
+static int ringl_prepare_read_color_target(RinGLContext* context,
+                                           RinGLColorTarget* target)
+{
+    if (context == NULL || context->lost || !context->has_sync_ops ||
+        (context->framebuffer_binding != 0u &&
+         ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) !=
+             RINGL_FRAMEBUFFER_COMPLETE) ||
+        ringl_resolve_color_target(context, target) != 0 ||
+        (target->mip_level == 0u &&
+         context->sync_ops.readback_image_2d == NULL) ||
+        (target->mip_level != 0u &&
+         context->sync_ops.readback_image_2d_mip_v2 == NULL)) {
+        return -1;
+    }
+    return 0;
+}
+
+static int ringl_color_target_readback_type_supported(uint32_t format,
+                                                       uint32_t type)
+{
+    if (packed_color_format(format))
+        return type == RINGL_UNSIGNED_BYTE;
+    if (format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT ||
+        format == RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT) {
+        return type == RINGL_FLOAT;
+    }
+    return type == RINGL_UNSIGNED_BYTE &&
+        (format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM ||
+         format == RINGL_RIN_GPU_FORMAT_BGRA8_UNORM);
+}
+
 static int ringl_read_color_target_to_type(RinGLContext* context, int32_t x,
                                            int32_t y, int32_t width,
                                            int32_t height, uint32_t type,
@@ -298,11 +329,7 @@ static int ringl_read_color_target_to_type(RinGLContext* context, int32_t x,
     }
     if (width == 0 || height == 0)
         return 0;
-    if (!context->has_sync_ops || pixels == NULL ||
-        (context->framebuffer_binding != 0u &&
-         ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) !=
-             RINGL_FRAMEBUFFER_COMPLETE) ||
-        ringl_resolve_color_target(context, &target) != 0 ||
+    if (pixels == NULL || ringl_prepare_read_color_target(context, &target) != 0 ||
         x < 0 || y < 0 ||
         (uint64_t)(uint32_t)x + (uint64_t)(uint32_t)width >
             target.width ||
@@ -310,13 +337,9 @@ static int ringl_read_color_target_to_type(RinGLContext* context, int32_t x,
             target.height) {
         return -1;
     }
-    if ((target.mip_level == 0u &&
-         context->sync_ops.readback_image_2d == NULL) ||
-        (target.mip_level != 0u &&
-         context->sync_ops.readback_image_2d_mip_v2 == NULL)) {
-        return -1;
-    }
     if (type != RINGL_UNSIGNED_BYTE && type != RINGL_FLOAT)
+        return -1;
+    if (!ringl_color_target_readback_type_supported(target.format, type))
         return -1;
     row_bytes = (uint64_t)(uint32_t)width *
         (type == RINGL_FLOAT ? 4u * sizeof(float) : 4u);
@@ -324,11 +347,6 @@ static int ringl_read_color_target_to_type(RinGLContext* context, int32_t x,
         return -1;
     total_bytes = row_bytes * (uint64_t)(uint32_t)height;
     if (packed_color_format(target.format)) {
-        /* Packed native targets expand only to WebGL's RGBA/UNSIGNED_BYTE
-         * readback form. Treating this as FLOAT would write byte channels
-         * into a float-sized destination. */
-        if (type != RINGL_UNSIGNED_BYTE)
-            return -1;
         native_row_bytes = (uint64_t)(uint32_t)width * sizeof(uint16_t);
         if ((uint64_t)(uint32_t)height > UINT64_MAX / native_row_bytes)
             return -1;
@@ -339,13 +357,9 @@ static int ringl_read_color_target_to_type(RinGLContext* context, int32_t x,
         if (native_pixels == NULL)
             return -1;
     } else if (target.format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT) {
-        if (type != RINGL_FLOAT)
-            return -1;
         native_row_bytes = row_bytes;
         native_total_bytes = total_bytes;
     } else if (target.format == RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT) {
-        if (type != RINGL_FLOAT)
-            return -1;
         native_row_bytes = (uint64_t)(uint32_t)width * 4u * sizeof(uint16_t);
         if ((uint64_t)(uint32_t)height > UINT64_MAX / native_row_bytes)
             return -1;
@@ -355,9 +369,8 @@ static int ringl_read_color_target_to_type(RinGLContext* context, int32_t x,
         native_pixels = malloc((size_t)native_total_bytes);
         if (native_pixels == NULL)
             return -1;
-    } else if (type == RINGL_UNSIGNED_BYTE &&
-               (target.format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM ||
-                target.format == RINGL_RIN_GPU_FORMAT_BGRA8_UNORM)) {
+    } else if (target.format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM ||
+               target.format == RINGL_RIN_GPU_FORMAT_BGRA8_UNORM) {
         native_row_bytes = row_bytes;
         native_total_bytes = total_bytes;
     } else {
@@ -509,6 +522,21 @@ static int ringl_read_pixels_packed(RinGLContext* context, int32_t x,
                                     uint64_t tight_total_bytes)
 {
     uint8_t* tight_pixels;
+    uint8_t* clipped_pixels = NULL;
+    RinGLColorTarget target;
+    uint64_t component_bytes;
+    uint64_t clipped_x0;
+    uint64_t clipped_y0;
+    uint64_t clipped_x1;
+    uint64_t clipped_y1;
+    uint64_t clipped_width;
+    uint64_t clipped_height;
+    uint64_t clipped_row_bytes;
+    uint64_t clipped_total_bytes;
+    uint64_t destination_x;
+    uint64_t destination_y;
+    int64_t request_x1;
+    int64_t request_y1;
     uint64_t row;
     int result;
 
@@ -516,12 +544,76 @@ static int ringl_read_pixels_packed(RinGLContext* context, int32_t x,
         return 0;
     if (tight_total_bytes > SIZE_MAX)
         return 1;
+    if (pixels == NULL || ringl_prepare_read_color_target(context, &target) != 0 ||
+        !ringl_color_target_readback_type_supported(target.format, type)) {
+        return -1;
+    }
+
+    request_x1 = (int64_t)x + (int64_t)width;
+    request_y1 = (int64_t)y + (int64_t)height;
+    clipped_x0 = x < 0 ? 0u : (uint64_t)(uint32_t)x;
+    clipped_y0 = y < 0 ? 0u : (uint64_t)(uint32_t)y;
+    clipped_x1 = request_x1 <= 0 ? 0u : (uint64_t)request_x1;
+    clipped_y1 = request_y1 <= 0 ? 0u : (uint64_t)request_y1;
+    if (clipped_x0 > target.width)
+        clipped_x0 = target.width;
+    if (clipped_y0 > target.height)
+        clipped_y0 = target.height;
+    if (clipped_x1 > target.width)
+        clipped_x1 = target.width;
+    if (clipped_y1 > target.height)
+        clipped_y1 = target.height;
+    if (clipped_x1 <= clipped_x0 || clipped_y1 <= clipped_y0)
+        return 0;
+
+    clipped_width = clipped_x1 - clipped_x0;
+    clipped_height = clipped_y1 - clipped_y0;
+    component_bytes = tight_row_bytes / (uint64_t)(uint32_t)width;
+    if (clipped_width > UINT64_MAX / component_bytes ||
+        clipped_height > UINT64_MAX /
+            (clipped_width * component_bytes)) {
+        return 1;
+    }
+    clipped_row_bytes = clipped_width * component_bytes;
+    clipped_total_bytes = clipped_row_bytes * clipped_height;
+    if (clipped_total_bytes > SIZE_MAX)
+        return 1;
+    destination_x = (uint64_t)((int64_t)clipped_x0 - (int64_t)x);
+    destination_y = (uint64_t)((int64_t)clipped_y0 - (int64_t)y);
     tight_pixels = malloc((size_t)tight_total_bytes);
     if (tight_pixels == NULL)
         return 1;
 
-    result = ringl_read_color_target_to_type(context, x, y, width, height,
-                                             type, tight_pixels);
+    if (clipped_width == (uint64_t)(uint32_t)width &&
+        clipped_height == (uint64_t)(uint32_t)height) {
+        result = ringl_read_color_target_to_type(context, x, y, width, height,
+                                                 type, tight_pixels);
+    } else {
+        for (row = 0u; row < (uint64_t)(uint32_t)height; ++row) {
+            memcpy(tight_pixels + (size_t)(row * tight_row_bytes),
+                   (const uint8_t*)pixels +
+                       (size_t)(row * packed_row_bytes),
+                   (size_t)tight_row_bytes);
+        }
+        clipped_pixels = malloc((size_t)clipped_total_bytes);
+        if (clipped_pixels == NULL)
+            result = 1;
+        else {
+            result = ringl_read_color_target_to_type(
+                context, (int32_t)clipped_x0, (int32_t)clipped_y0,
+                (int32_t)clipped_width, (int32_t)clipped_height, type,
+                clipped_pixels);
+            if (result == 0) {
+                for (row = 0u; row < clipped_height; ++row) {
+                    memcpy(tight_pixels +
+                               (size_t)((destination_y + row) * tight_row_bytes +
+                                        destination_x * component_bytes),
+                           clipped_pixels + (size_t)(row * clipped_row_bytes),
+                           (size_t)clipped_row_bytes);
+                }
+            }
+        }
+    }
     if (result == 0) {
         for (row = 0u; row < (uint64_t)(uint32_t)height; ++row) {
             memcpy((uint8_t*)pixels + (size_t)(row * packed_row_bytes),
@@ -529,6 +621,7 @@ static int ringl_read_pixels_packed(RinGLContext* context, int32_t x,
                    (size_t)tight_row_bytes);
         }
     }
+    free(clipped_pixels);
     free(tight_pixels);
     return result;
 }

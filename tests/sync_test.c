@@ -240,16 +240,24 @@ static int fake_readback(void* session, uint64_t image,
     const uint16_t expected_rgba4[2] = { UINT16_C(0xf00f), UINT16_C(0x0f08) };
     assert((image == 700u || image == 701u || image == 702u) && readback != NULL &&
            destination != NULL);
-    assert(readback->x == 1u && readback->y == 2u);
-    if (readback->width == 1u && readback->height == 2u) {
+    assert(readback->y == 2u);
+    if (readback->x == 0u) {
+        assert(image == 700u);
+        assert(readback->width == 1u && readback->height == 1u);
+        assert(readback->destination_row_pitch_bytes == 4u);
+        assert(destination_size == 4u);
+    } else if (readback->width == 1u && readback->height == 2u) {
+        assert(readback->x == 1u);
         assert(image == 700u);
         assert(readback->destination_row_pitch_bytes == 4u);
         assert(destination_size == sizeof(expected_bgra));
     } else if (image == 702u) {
+        assert(readback->x == 1u);
         assert(readback->width == 2u && readback->height == 1u);
         assert(readback->destination_row_pitch_bytes == sizeof(expected_rgba4));
         assert(destination_size == sizeof(expected_rgba4));
     } else {
+        assert(readback->x == 1u);
         assert(readback->width == 2u && readback->height == 1u);
         assert(readback->destination_row_pitch_bytes == 8u);
         assert(destination_size == sizeof(expected_bgra));
@@ -266,6 +274,8 @@ static int fake_readback(void* session, uint64_t image,
     }
     if (image == 702u)
         memcpy(destination, expected_rgba4, sizeof(expected_rgba4));
+    else if (readback->x == 0u)
+        memcpy(destination, expected_bgra, 4u);
     else
         memcpy(destination, image == 700u ? expected_bgra : expected_rgba,
                sizeof(expected_bgra));
@@ -566,6 +576,7 @@ int main(void)
     uint8_t pixels[8] = {0};
     uint8_t fbo_pixels[8] = {0};
     uint8_t packed_pixels[12] = {0};
+    uint8_t clipped_pixels[8] = {0};
     uint8_t invalid_float_pixels[16] = {0};
     const uint8_t expected_rgba[8] = {
         10u, 20u, 30u, 255u,
@@ -808,6 +819,26 @@ int main(void)
 
     ringl_bind_framebuffer(RINGL_FRAMEBUFFER, 0u);
     assert(ringl_get_error() == RINGL_NO_ERROR);
+    pack_readbacks_before = backend.readbacks;
+    memset(clipped_pixels, 0xa5, sizeof(clipped_pixels));
+    ringl_read_pixels_to_bytes(-1, 2, 2, 1, RINGL_RGBA,
+                               RINGL_UNSIGNED_BYTE, clipped_pixels,
+                               sizeof(clipped_pixels));
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(backend.readbacks == pack_readbacks_before + 1u);
+    for (index = 0u; index < 4u; ++index)
+        assert(clipped_pixels[index] == 0xa5u);
+    assert(memcmp(clipped_pixels + 4u, expected_rgba, 4u) == 0);
+
+    memset(clipped_pixels, 0xa5, sizeof(clipped_pixels));
+    ringl_read_pixels_to_bytes(-9, 2, 1, 1, RINGL_RGBA,
+                               RINGL_UNSIGNED_BYTE, clipped_pixels,
+                               4u);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(backend.readbacks == pack_readbacks_before + 1u);
+    for (index = 0u; index < sizeof(clipped_pixels); ++index)
+        assert(clipped_pixels[index] == 0xa5u);
+
     ringl_pixel_storei(RINGL_PACK_ALIGNMENT, 8);
     assert(ringl_get_error() == RINGL_NO_ERROR);
     pack_readbacks_before = backend.readbacks;

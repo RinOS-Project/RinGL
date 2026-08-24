@@ -87,7 +87,9 @@ void ringl_read_pixels(int32_t x, int32_t y,
  * every RGBA row plus PACK_ALIGNMENT padding between rows (but not padding
  * after the final row). A short destination records INVALID_OPERATION before
  * command submission or destination writes. Native readback writes a private
- * tight staging buffer; caller bytes are published only after it succeeds. */
+ * tight staging buffer; caller bytes are published only after it succeeds.
+ * For rectangles extending outside the framebuffer, only the intersecting
+ * pixels are read; all corresponding caller bytes remain unchanged. */
 void ringl_read_pixels_to_bytes(int32_t x, int32_t y,
                                 int32_t width, int32_t height,
                                 uint32_t format, uint32_t type,

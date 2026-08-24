@@ -201,6 +201,11 @@ Readback does not reinterpret packed UNORM color bytes as `FLOAT`: packed
 RGBA8/BGRA8 and 16-bit packed targets accept `RGBA/UNSIGNED_BYTE` only.
 `RGBA/FLOAT` remains limited to real RinGL float color targets, so a mismatched
 readback returns an error with the destination untouched.
+
+Rectangles that extend beyond a framebuffer are clipped by RinGL, not by the
+browser. RinGL stages the requested logical rows, reads only their in-bounds
+intersection, and then publishes the result. Bytes corresponding to
+out-of-bounds pixels, as well as PACK padding, remain untouched.
 The sample coverage value enum is kept distinct from `SAMPLE_BUFFERS`, avoiding
 an accidental query alias at the public boundary.
 

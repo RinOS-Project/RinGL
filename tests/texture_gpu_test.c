@@ -24,7 +24,10 @@ typedef struct FakeBackend {
     uint32_t mip_upload_width[3];
     uint32_t mip_upload_height[3];
     uint64_t mip_upload_size[3];
-    uint8_t mip_upload[3][32];
+    uint8_t mip_upload[3][64];
+    uint32_t last_sampler_min_filter;
+    uint32_t last_sampler_mag_filter;
+    uint32_t last_sampler_mip_filter;
 } FakeBackend;
 
 static int fake_create_buffer(void* session, uint64_t size_bytes,
@@ -102,6 +105,8 @@ static int fake_create_mip_image(void* session,
     assert(desc != NULL && image_out != NULL);
     assert((desc->width == 3u && desc->height == 2u &&
             desc->format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM) ||
+           (desc->width == 2u && desc->height == 2u &&
+            desc->format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT) ||
            (desc->width == 4u && desc->height == 4u &&
             (desc->format == RINGL_RIN_GPU_FORMAT_RGB565_UNORM ||
              desc->format == RINGL_RIN_GPU_FORMAT_RGBA4_UNORM ||
@@ -109,7 +114,8 @@ static int fake_create_mip_image(void* session,
     assert(desc->usage == (RINGL_RIN_GPU_IMAGE_USAGE_COPY_DESTINATION |
                            RINGL_RIN_GPU_IMAGE_USAGE_SAMPLED));
     assert(desc->mip_levels ==
-           (desc->format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM ? 2u : 3u));
+           ((desc->format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM ||
+             desc->format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT) ? 2u : 3u));
     assert(desc->reserved0 == 0u);
     backend->mip_image_creates++;
     backend->mip_level_count = desc->mip_levels;
@@ -132,7 +138,8 @@ static int fake_upload_mip_image(void* session, uint64_t image,
     {
         uint32_t texel_bytes = backend->last_format ==
                 RINGL_RIN_GPU_FORMAT_RGBA8_UNORM
-            ? 4u : 2u;
+            ? 4u : backend->last_format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT
+                ? 16u : 2u;
 
         assert(upload->source_row_pitch_bytes ==
                (uint64_t)upload->width * texel_bytes);
@@ -164,6 +171,9 @@ static int fake_create_sampler(void* session,
     assert(desc->address_u == RINGL_RIN_GPU_ADDRESS_REPEAT ||
            desc->address_u == RINGL_RIN_GPU_ADDRESS_CLAMP);
     assert(desc->address_v == RINGL_RIN_GPU_ADDRESS_REPEAT);
+    backend->last_sampler_min_filter = desc->min_filter;
+    backend->last_sampler_mag_filter = desc->mag_filter;
+    backend->last_sampler_mip_filter = desc->mip_filter;
     backend->sampler_creates++;
     *sampler_out = ++backend->next_handle;
     return 0;
@@ -202,6 +212,7 @@ int main(void)
     uint32_t packed_mip_texture;
     uint32_t mip_texture;
     uint32_t float_texture;
+    uint32_t float_mip_texture;
     uint32_t float_framebuffer;
     uint32_t webgl_depth_texture;
     uint32_t webgl_depth_stencil_texture;
@@ -481,6 +492,18 @@ int main(void)
     assert(backend.last_upload_size == sizeof(float_rgba_pixels));
     assert(memcmp(backend.last_upload, float_rgba_pixels,
                   sizeof(float_rgba_pixels)) == 0);
+    /* A native sampler must not bypass the WebGL extension gate. Once the
+     * browser has acquired OES_texture_float_linear, the same Float texture
+     * realizes the real RinGPU linear sampler without reuploading as UNORM. */
+    ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MIN_FILTER,
+                         RINGL_LINEAR);
+    ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MAG_FILTER,
+                         RINGL_LINEAR);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) != 0);
+    assert(ringl_enable_webgl_float_texture_linear() == 0);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(backend.last_format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT);
     ringl_tex_sub_image_2d_from_bytes(
         RINGL_TEXTURE_2D, 0, 1, 0, 1, 1, RINGL_RGBA, RINGL_FLOAT,
         float_patch, sizeof(float_patch) - 1u);
@@ -515,8 +538,52 @@ int main(void)
     assert(color_attachment_is_float == RINGL_TRUE);
     ringl_bind_framebuffer(RINGL_FRAMEBUFFER, 0u);
 
+    /* OES_texture_float_linear extends the base nearest-only profile with
+     * every linear minification variant. Generated Float mips remain Float
+     * through the V2 RinGPU image descriptor; the recorded sampler proves
+     * that no mode was collapsed to a nearest-only substitute. */
+    ringl_gen_textures(1, &float_mip_texture);
+    ringl_bind_texture(RINGL_TEXTURE_2D, float_mip_texture);
+    ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MIN_FILTER,
+                         RINGL_NEAREST_MIPMAP_LINEAR);
+    ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MAG_FILTER,
+                         RINGL_LINEAR);
+    ringl_tex_image_2d_from_bytes(
+        RINGL_TEXTURE_2D, 0, RINGL_RGBA, 2, 2, 0, RINGL_RGBA, RINGL_FLOAT,
+        float_rgba_pixels, sizeof(float_rgba_pixels));
+    ringl_generate_mipmap(RINGL_TEXTURE_2D);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    backend.mip_image_creates = 0u;
+    backend.mip_uploads = 0u;
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(backend.last_format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT);
+    assert(backend.mip_image_creates == 1u && backend.mip_level_count == 2u &&
+           backend.mip_uploads == 2u);
+    assert(backend.last_sampler_min_filter == RINGL_RIN_GPU_SAMPLER_NEAREST);
+    assert(backend.last_sampler_mag_filter == RINGL_RIN_GPU_SAMPLER_LINEAR);
+    assert(backend.last_sampler_mip_filter == RINGL_RIN_GPU_SAMPLER_LINEAR);
+
+    ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MIN_FILTER,
+                         RINGL_LINEAR_MIPMAP_NEAREST);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(backend.last_sampler_min_filter == RINGL_RIN_GPU_SAMPLER_LINEAR);
+    assert(backend.last_sampler_mag_filter == RINGL_RIN_GPU_SAMPLER_LINEAR);
+    assert(backend.last_sampler_mip_filter == RINGL_RIN_GPU_SAMPLER_NEAREST);
+
+    ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MIN_FILTER,
+                         RINGL_LINEAR_MIPMAP_LINEAR);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(backend.last_sampler_min_filter == RINGL_RIN_GPU_SAMPLER_LINEAR);
+    assert(backend.last_sampler_mag_filter == RINGL_RIN_GPU_SAMPLER_LINEAR);
+    assert(backend.last_sampler_mip_filter == RINGL_RIN_GPU_SAMPLER_LINEAR);
+    // The existing later mip-chain cases use the fake backend's counters as
+    // per-case evidence, so restore their initially-zero fixture state.
+    backend.mip_image_creates = 0u;
+    backend.mip_uploads = 0u;
+
     /* Float inputs apply the same ALPHA/LUMINANCE expansion as U8 input but
      * preserve components outside the normalized range. */
+    ringl_bind_texture(RINGL_TEXTURE_2D, float_texture);
     ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_LUMINANCE_ALPHA, 2, 2, 0,
                        RINGL_LUMINANCE_ALPHA, RINGL_FLOAT,
                        float_luminance_alpha_pixels);

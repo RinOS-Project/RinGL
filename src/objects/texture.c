@@ -234,15 +234,18 @@ static int texture_level0_storage_defined(const RinGLTextureObject* texture)
     return texture_level_storage_defined(texture, 0u);
 }
 
-static int texture_level0_complete(const RinGLTextureObject* texture)
+static int texture_level0_complete(const RinGLContext* context,
+                                   const RinGLTextureObject* texture)
 {
-    if (!texture_level0_storage_defined(texture))
+    if (!context || !texture_level0_storage_defined(texture))
         return 0;
 
-    /* OES_texture_float only guarantees nearest filtering. The separate
-     * OES_texture_float_linear extension is not exposed until the complete
-     * linear/mipmap semantics are independently verified. */
+    /* OES_texture_float only guarantees nearest filters. The WebGL bridge
+     * flips this context-local bit when, and only when, script has obtained
+     * OES_texture_float_linear. Do not expose a native sampler capability
+     * merely because the RinGPU backend happens to support it. */
     if (texture->color_component_type == RINGL_FLOAT &&
+        context->webgl_float_texture_linear_enabled == RINGL_FALSE &&
         (texture->mag_filter != RINGL_NEAREST ||
          (texture->min_filter != RINGL_NEAREST &&
           texture->min_filter != RINGL_NEAREST_MIPMAP_NEAREST))) {
@@ -815,7 +818,7 @@ static int texture_realize_image(RinGLContext* context,
          texture->format == RINGL_DEPTH_COMPONENT32F ||
          texture->format == RINGL_DEPTH24_STENCIL8)
             ? !texture_level0_storage_defined(texture)
-            : !texture_level0_complete(texture))
+            : !texture_level0_complete(context, texture))
         return -1;
 
     mip_count = (texture->requires_color_target != 0u ||
@@ -1016,13 +1019,23 @@ int ringl_texture_realize_unit(RinGLContext* context, uint32_t unit,
     if (!(texture_color_format(texture->format) ||
           texture->format == RINGL_DEPTH_COMPONENT32F ||
           texture->format == RINGL_DEPTH24_STENCIL8) ||
-        !texture_level0_complete(texture) ||
+        !texture_level0_complete(context, texture) ||
         texture_realize_image(context, texture) != 0 ||
         texture_realize_sampler(context, texture) != 0) {
         return -1;
     }
     *image_out = texture->ringpu_image;
     *sampler_out = texture->ringpu_sampler;
+    return 0;
+}
+
+int ringl_enable_webgl_float_texture_linear(void)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL || context->lost != RINGL_FALSE)
+        return -1;
+    context->webgl_float_texture_linear_enabled = RINGL_TRUE;
     return 0;
 }
 

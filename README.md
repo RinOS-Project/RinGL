@@ -658,14 +658,21 @@ uses `COPY_DESTINATION|SAMPLED`; a color-renderable `RGBA/FLOAT` texture or
 native capability behind its WebGL extension object without mirroring RinGL
 attachment state. Float clear and fragment outputs retain finite components
 outside `[0,1]`; a Float color target reads back only as `RGBA/FLOAT`, never as
-silently quantized RGBA8. A Float texture is complete only with `NEAREST`
-magnification and `NEAREST` or `NEAREST_MIPMAP_NEAREST` minification. Linear
-filtering, CopyTex, and Float RGB/ALPHA/LUMINANCE color attachments remain
-unavailable, so RinGL does not claim `OES_texture_float_linear` or a full
-float-FBO profile. The generic software backend rejects a non-finite component
-before it changes its target. The Aquamarine embedding snapshots the same
-Float32 components into its RSH1 sampler table, and the product bridge test
-draws a Float texture through the full RinGL/RinGPU route into a Float FBO.
+silently quantized RGBA8. A Float texture is initially complete only with
+`NEAREST` magnification and `NEAREST` or `NEAREST_MIPMAP_NEAREST`
+minification. A browser that has actually granted `OES_texture_float_linear`
+calls the explicit context-local `ringl_enable_webgl_float_texture_linear()`
+gate; it then permits `LINEAR` magnification and `LINEAR`,
+`NEAREST_MIPMAP_LINEAR`, `LINEAR_MIPMAP_NEAREST`, or
+`LINEAR_MIPMAP_LINEAR` minification. The gate is deliberately not inferred
+from a capable native sampler, so a non-WebGL caller cannot make the browser
+extension visible accidentally. RinGL preserves the corresponding min/mag/mip
+descriptors through the RinGPU adapter and generated RGBA32F mip chain. CopyTex
+and Float RGB/ALPHA/LUMINANCE color attachments remain unavailable, so this is
+not a full float-FBO profile. The generic software backend rejects a non-finite
+component before it changes its target. The Aquamarine embedding snapshots the
+same Float32 components into its RSH1 sampler table, and the product bridge
+test draws a Float texture through the full RinGL/RinGPU route into a Float FBO.
 
 Embeddings handling browser-facing byte uploads must use
 `ringl_tex_image_2d_from_bytes()` and `ringl_tex_sub_image_2d_from_bytes()`.

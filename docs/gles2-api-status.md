@@ -45,7 +45,7 @@ Status meanings:
 | `glGetBufferParameteriv` | P | `ringl_get_buffer_size` / `ringl_get_buffer_usage` only. |
 | `glGetError` | B | `ringl_get_error`. |
 | `glGetFramebufferAttachmentParameteriv` | P | Versioned attachment record; supported attachments and fields only. |
-| `glGetIntegerv` | P | `ringl_get_integerv_bounded` accepts only the inventory below, including default drawing-buffer component/depth/stencil bit counts derived from real configured planes. |
+| `glGetIntegerv` | P | `ringl_get_integerv_bounded` accepts only the inventory below, including default drawing-buffer component/depth/stencil bit counts derived from real configured planes; `MAX_RENDERBUFFER_SIZE`/`MAX_VIEWPORT_DIMS`, single-sample counts, and the fixed one-pixel point range are actual bounded profile values. |
 | `glGetProgramiv`, `glGetShaderiv` | P | Versioned program record and dedicated shader-status/type calls; not every GLES pname. |
 | `glGetProgramInfoLog`, `glGetShaderInfoLog`, `glGetShaderSource` | B | Caller-owned bounded copies. |
 | `glGetRenderbufferParameteriv` | P | `RinGLRenderbufferInfoV1` supplies bounded storage metadata. |
@@ -58,7 +58,7 @@ Status meanings:
 | `glGetUniformLocation` | P | Linked `sampler2D`, scalar/vector float and signed integer, and bounded vertex `mat4` uniforms only. |
 | `glGetVertexAttribfv`, `glGetVertexAttribiv`, `glGetVertexAttribPointerv` | P | Versioned attribute record/current-value copy; no generic GLES getter. |
 | `glHint` | P | Tracks accepted GLES hint enums; no general driver-quality control. |
-| `glLineWidth`, `glPolygonOffset`, `glSampleCoverage`, `glScissor`, `glViewport` | B | Bounded native raster state. |
+| `glLineWidth`, `glPolygonOffset`, `glSampleCoverage`, `glScissor`, `glViewport` | B | Bounded native raster state; viewport dimensions above the 4096 image limit reject without mutating state. |
 | `glPixelStorei` | P | `UNPACK_ALIGNMENT` values 1, 2, 4, 8 only. |
 | `glReadPixels` | P | Current complete color target, tightly packed `RGBA`/`UNSIGNED_BYTE`; bounded byte-span API required for untrusted callers. |
 | `glReleaseShaderCompiler`, `glShaderBinary` | N | Shader compiler lifetime/binary shader formats are not implemented. |

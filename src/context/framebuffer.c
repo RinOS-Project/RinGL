@@ -14,7 +14,9 @@ static int framebuffer_valid(const RinGLDefaultFramebufferV1* framebuffer)
         return 0;
     }
     if (framebuffer->color_target == 0u || framebuffer->color_format == 0u ||
-        framebuffer->width == 0u || framebuffer->height == 0u) {
+        framebuffer->width == 0u || framebuffer->height == 0u ||
+        framebuffer->width > RINGL_MAX_TEXTURE_SIZE ||
+        framebuffer->height > RINGL_MAX_TEXTURE_SIZE) {
         return 0;
     }
     if ((framebuffer->depth_target == 0u) !=

@@ -141,6 +141,7 @@ extern "C" {
 #define RINGL_UNPACK_ALIGNMENT 0x0cf5u
 
 #define RINGL_VIEWPORT                      0x0ba2u
+#define RINGL_MAX_VIEWPORT_DIMS             0x0d3au
 #define RINGL_SCISSOR_BOX                   0x0c10u
 #define RINGL_VENDOR                        0x1f00u
 #define RINGL_RENDERER                      0x1f01u
@@ -154,6 +155,7 @@ extern "C" {
 #define RINGL_MAX_TEXTURE_SIZE_QUERY        0x0d33u
 #define RINGL_TEXTURE_BINDING_2D            0x8069u
 #define RINGL_ACTIVE_TEXTURE                0x84e0u
+#define RINGL_MAX_RENDERBUFFER_SIZE          0x84e8u
 #define RINGL_MAX_VERTEX_ATTRIBS_QUERY      0x8869u
 #define RINGL_MAX_TEXTURE_IMAGE_UNITS       0x8872u
 #define RINGL_ARRAY_BUFFER_BINDING          0x8894u
@@ -165,8 +167,11 @@ extern "C" {
 #define RINGL_CULL_FACE_MODE                0x0b45u
 #define RINGL_FRONT_FACE                    0x0b46u
 #define RINGL_DEPTH_RANGE                   0x0b70u
+#define RINGL_ALIASED_POINT_SIZE_RANGE       0x846du
 #define RINGL_ALIASED_LINE_WIDTH_RANGE       0x846eu
-#define RINGL_SAMPLE_COVERAGE_VALUE           0x80a8u
+#define RINGL_SAMPLE_BUFFERS                  0x80a8u
+#define RINGL_SAMPLES                         0x80a9u
+#define RINGL_SAMPLE_COVERAGE_VALUE           0x80aau
 #define RINGL_SAMPLE_COVERAGE_INVERT          0x80abu
 #define RINGL_GENERATE_MIPMAP_HINT             0x8192u
 #define RINGL_FRAGMENT_SHADER_DERIVATIVE_HINT  0x8b8bu
@@ -1212,6 +1217,10 @@ uint32_t ringl_context_dirty_bits(const RinGLContext* context);
  * profile. The result is valid until process exit and must not be freed.
  * Unsupported pnames return NULL and record INVALID_ENUM. */
 const char* ringl_get_string(uint32_t pname);
+/* Returns the number of compressed formats that RinGL can actually upload.
+ * The current bounded profile has no compressed texture storage, so this is
+ * zero. A missing context or null output fails without modifying `count`. */
+int ringl_get_compressed_texture_format_count(size_t* count);
 /* Writes the complete integer result only when `value_count` is large enough.
  * It returns zero on success and -1 on an invalid query, missing context, or
  * short/null output. Failures leave the caller's output unchanged. */

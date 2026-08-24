@@ -178,6 +178,10 @@ int main(void)
     assert(sample_coverage.enabled == RINGL_FALSE &&
            sample_coverage.value == 1.0f &&
            sample_coverage.invert == RINGL_FALSE);
+    assert(RINGL_SAMPLE_BUFFERS == 0x80a8u);
+    assert(RINGL_SAMPLES == 0x80a9u);
+    assert(RINGL_SAMPLE_COVERAGE_VALUE == 0x80aau);
+    assert(RINGL_SAMPLE_COVERAGE_VALUE != RINGL_SAMPLE_BUFFERS);
     ringl_enable(RINGL_SAMPLE_COVERAGE);
     ringl_sample_coverage(0.0f, RINGL_FALSE);
     assert(ringl_get_error() == RINGL_NO_ERROR);
@@ -197,6 +201,26 @@ int main(void)
            sample_coverage.invert == RINGL_TRUE);
     ringl_get_integerv(RINGL_SAMPLE_COVERAGE_INVERT, values);
     assert(values[0] == (int32_t)RINGL_TRUE);
+    ringl_get_integerv(RINGL_SAMPLE_BUFFERS, values);
+    assert(values[0] == 0);
+    ringl_get_integerv(RINGL_SAMPLES, values);
+    assert(values[0] == 0);
+    ringl_get_integerv(RINGL_MAX_RENDERBUFFER_SIZE, values);
+    assert(values[0] == (int32_t)RINGL_MAX_TEXTURE_SIZE);
+    ringl_get_integerv(RINGL_MAX_VIEWPORT_DIMS, values);
+    assert(values[0] == (int32_t)RINGL_MAX_TEXTURE_SIZE &&
+           values[1] == (int32_t)RINGL_MAX_TEXTURE_SIZE);
+    ringl_get_integerv(RINGL_ALIASED_POINT_SIZE_RANGE, values);
+    assert(values[0] == 1 && values[1] == 1);
+    {
+        size_t compressed_format_count = 1u;
+
+        assert(ringl_get_compressed_texture_format_count(
+                   &compressed_format_count) == 0);
+        assert(compressed_format_count == 0u);
+        assert(ringl_get_compressed_texture_format_count(NULL) == -1);
+        assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    }
     ringl_hint(RINGL_GENERATE_MIPMAP_HINT, RINGL_NICEST);
     assert(ringl_get_error() == RINGL_NO_ERROR);
     ringl_hint(RINGL_FRAGMENT_SHADER_DERIVATIVE_HINT, RINGL_NICEST);
@@ -230,6 +254,10 @@ int main(void)
     ringl_viewport(2, 3, -1, 10);
     assert(ringl_get_error() == RINGL_INVALID_VALUE);
     ringl_viewport(2, 3, 100, 80);
+    ringl_get_integerv(RINGL_VIEWPORT, values);
+    assert(values[0] == 2 && values[1] == 3 && values[2] == 100 && values[3] == 80);
+    ringl_viewport(2, 3, (int32_t)RINGL_MAX_TEXTURE_SIZE + 1, 80);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
     ringl_get_integerv(RINGL_VIEWPORT, values);
     assert(values[0] == 2 && values[1] == 3 && values[2] == 100 && values[3] == 80);
 
@@ -447,6 +475,17 @@ int main(void)
     assert(values[0] == 32);
     ringl_get_integerv(RINGL_STENCIL_BITS, values);
     assert(values[0] == 0);
+    framebuffer.width = RINGL_MAX_TEXTURE_SIZE + 1u;
+    assert(ringl_set_default_framebuffer(&framebuffer) == -1);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    framebuffer.width = 320u;
+    {
+        RinGLDefaultFramebufferV1 current_framebuffer = { 0 };
+
+        assert(ringl_get_default_framebuffer(&current_framebuffer) == 0);
+        assert(current_framebuffer.width == 320u &&
+               current_framebuffer.height == 200u);
+    }
     ringl_context_destroy(context);
     return 0;
 }

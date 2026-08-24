@@ -52,6 +52,24 @@ const char* ringl_get_string(uint32_t pname)
     }
 }
 
+int ringl_get_compressed_texture_format_count(size_t* count)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL)
+        return -1;
+    if (count == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+
+    /* Compressed image upload/storage is deliberately absent from the RSH1
+     * profile. Keep the authoritative empty list in RinGL so embeddings do
+     * not invent a browser-local texture capability. */
+    *count = 0u;
+    return 0;
+}
+
 static int depth_func_valid(uint32_t func)
 {
     return func >= RINGL_NEVER && func <= RINGL_ALWAYS;
@@ -177,7 +195,9 @@ void ringl_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
 
     if (context == NULL)
         return;
-    if (width < 0 || height < 0) {
+    if (width < 0 || height < 0 ||
+        (uint32_t)width > RINGL_MAX_TEXTURE_SIZE ||
+        (uint32_t)height > RINGL_MAX_TEXTURE_SIZE) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
@@ -793,6 +813,9 @@ void ringl_pixel_storei(uint32_t pname, int32_t param)
 static size_t ringl_get_integerv_value_count(uint32_t pname)
 {
     switch (pname) {
+    case RINGL_MAX_VIEWPORT_DIMS:
+    case RINGL_ALIASED_POINT_SIZE_RANGE:
+        return 2u;
     case RINGL_COLOR_WRITEMASK:
     case RINGL_VIEWPORT:
     case RINGL_SCISSOR_BOX:
@@ -812,6 +835,7 @@ static size_t ringl_get_integerv_value_count(uint32_t pname)
     case RINGL_DEPTH_BITS:
     case RINGL_STENCIL_BITS:
     case RINGL_MAX_TEXTURE_SIZE_QUERY:
+    case RINGL_MAX_RENDERBUFFER_SIZE:
     case RINGL_MAX_TEXTURE_IMAGE_UNITS:
     case RINGL_MAX_COMBINED_TEXTURE_IMAGE_UNITS:
     case RINGL_MAX_VERTEX_ATTRIBS_QUERY:
@@ -839,6 +863,8 @@ static size_t ringl_get_integerv_value_count(uint32_t pname)
     case RINGL_BLEND_DST_ALPHA:
     case RINGL_BLEND_EQUATION_RGB:
     case RINGL_BLEND_EQUATION_ALPHA:
+    case RINGL_SAMPLE_BUFFERS:
+    case RINGL_SAMPLES:
     case RINGL_SAMPLE_COVERAGE_INVERT:
         return 1u;
     default:
@@ -1008,7 +1034,18 @@ int ringl_get_integerv_bounded(uint32_t pname, int32_t* values,
             : 0;
         return 0;
     case RINGL_MAX_TEXTURE_SIZE_QUERY:
+    case RINGL_MAX_RENDERBUFFER_SIZE:
         values[0] = (int32_t)RINGL_MAX_TEXTURE_SIZE;
+        return 0;
+    case RINGL_MAX_VIEWPORT_DIMS:
+        values[0] = (int32_t)RINGL_MAX_TEXTURE_SIZE;
+        values[1] = (int32_t)RINGL_MAX_TEXTURE_SIZE;
+        return 0;
+    case RINGL_ALIASED_POINT_SIZE_RANGE:
+        /* The private Aquamarine/RinGPU target rasterizes exactly one pixel
+         * per point. RinGL exposes no programmable point-size state. */
+        values[0] = 1;
+        values[1] = 1;
         return 0;
     case RINGL_MAX_TEXTURE_IMAGE_UNITS:
     case RINGL_MAX_COMBINED_TEXTURE_IMAGE_UNITS:
@@ -1088,6 +1125,12 @@ int ringl_get_integerv_bounded(uint32_t pname, int32_t* values,
         return 0;
     case RINGL_BLEND_EQUATION_ALPHA:
         values[0] = (int32_t)context->blend_equation_alpha;
+        return 0;
+    case RINGL_SAMPLE_BUFFERS:
+    case RINGL_SAMPLES:
+        /* All native images used by this profile have sample_count == 1;
+         * there is no multisample attachment or resolve path. */
+        values[0] = 0;
         return 0;
     case RINGL_SAMPLE_COVERAGE_INVERT:
         values[0] = (int32_t)context->sample_coverage_invert;

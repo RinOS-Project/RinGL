@@ -174,6 +174,19 @@ allocation used to supply a stencil-only WebGL drawing buffer therefore reports
 zero depth bits and eight stencil bits; a hidden physical plane never becomes a
 browser-visible capability merely because RinGL owns its storage.
 
+## Fixed WebGL capability query slice
+
+RinGL, rather than the Ladybird embedding, owns the fixed profile values for
+`MAX_RENDERBUFFER_SIZE`, `MAX_VIEWPORT_DIMS`, `SAMPLE_BUFFERS`, `SAMPLES`, and
+`ALIASED_POINT_SIZE_RANGE`. Renderbuffers and drawable images are bounded to
+4096×4096; default-framebuffer installation and viewport mutation reject larger
+dimensions before they can change state. The private RinGPU/Aquamarine target
+is single-sample, and point draws rasterize one pixel. Compressed texture upload is not implemented, so
+`ringl_get_compressed_texture_format_count()` authoritatively reports an empty
+list for WebGL's `COMPRESSED_TEXTURE_FORMATS`; it does not synthesize support.
+The sample coverage value enum is kept distinct from `SAMPLE_BUFFERS`, avoiding
+an accidental query alias at the public boundary.
+
 ## Current packed-color texture slice
 
 `texImage2D`/`texSubImage2D` accept WebGL 1 `RGB`/

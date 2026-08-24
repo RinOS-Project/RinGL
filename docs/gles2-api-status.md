@@ -118,7 +118,10 @@ failure. It accepts these exact pnames:
   `DRAW_BUFFER0_WEBGL` through `DRAW_BUFFER3_WEBGL`. The returned mapping is
   stored per framebuffer; a zero-length custom list and default `[NONE]` use
   a zero effective color-write mask without suppressing a real depth/stencil
-  pass;
+  pass. A directive-free `gl_FragColor` program rejects an active nonzero slot
+  before backend submission when any color channel is writable; a zero channel
+  mask preserves its ordinary ABI for depth/stencil work. A `gl_FragData`
+  program uses the MRT ABI even with just one active attachment;
 - raster/depth/stencil/blend state: `CULL_FACE_MODE`, `FRONT_FACE`,
   `DEPTH_FUNC`, `DEPTH_WRITEMASK`, front/back stencil function/reference/masks
   and operations, blend source/destination/equation RGB/alpha, and

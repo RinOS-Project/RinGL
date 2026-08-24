@@ -5,6 +5,15 @@
 #include <limits.h>
 #include <string.h>
 
+static RinGLProgramObject* current_program(RinGLContext* context);
+static RinGLShaderObject* linked_fragment_shader(
+    RinGLContext* context, const RinGLProgramObject* program);
+static int current_fragment_uses_webgl_draw_buffers(RinGLContext* context);
+static int should_use_webgl_mrt_pass(RinGLContext* context,
+                                     const RinGLColorTargets* colors);
+static int draw_buffers_conflict_with_fragment_output(
+    RinGLContext* context, const RinGLColorTargets* colors);
+
 static float clamp_color(float value)
 {
     if (!(value >= 0.0f))
@@ -769,9 +778,8 @@ static int begin_color_pass(RinGLContext* context,
 
     if (target == NULL || target->image == 0u)
         return -1;
-    if (context != NULL && context->webgl_draw_buffers_enabled != RINGL_FALSE &&
-        ringl_resolve_color_targets(context, &targets) == 0 &&
-        targets.active_mask != 1u) {
+    if (context != NULL && ringl_resolve_color_targets(context, &targets) == 0 &&
+        should_use_webgl_mrt_pass(context, &targets)) {
         return begin_mrt_pass(context, command_list, &targets, NULL, load_op,
                               0u, 0u);
     }
@@ -817,9 +825,8 @@ static int begin_depth_pass(RinGLContext* context, uint64_t command_list,
     if (context == NULL || color_target == NULL || targets == NULL ||
         color_target->image == 0u)
         return -1;
-    if (context->webgl_draw_buffers_enabled != RINGL_FALSE &&
-        ringl_resolve_color_targets(context, &colors) == 0 &&
-        colors.active_mask != 1u) {
+    if (ringl_resolve_color_targets(context, &colors) == 0 &&
+        should_use_webgl_mrt_pass(context, &colors)) {
         return begin_mrt_pass(context, command_list, &colors, targets,
                               color_load_op, depth_load_op, stencil_load_op);
     }
@@ -1033,6 +1040,49 @@ static RinGLShaderObject* linked_fragment_shader(
     if (index >= RINGL_OBJECT_SLOT_COUNT)
         return NULL;
     return &context->shaders[index];
+}
+
+/* GL_EXT_draw_buffers changes the scalar RSH1 fragment ABI from one RGBA
+ * output to four. Keep that choice in RinGL, rather than letting a backend's
+ * output-count mismatch accidentally decide WebGL validation. */
+static int current_fragment_uses_webgl_draw_buffers(RinGLContext* context)
+{
+    RinGLProgramObject* program = current_program(context);
+    RinGLShaderObject* fragment = linked_fragment_shader(context, program);
+
+    return fragment != NULL &&
+           fragment->uses_webgl_draw_buffers != RINGL_FALSE;
+}
+
+static int should_use_webgl_mrt_pass(RinGLContext* context,
+                                     const RinGLColorTargets* colors)
+{
+    if (context == NULL || colors == NULL ||
+        context->webgl_draw_buffers_enabled == RINGL_FALSE)
+        return 0;
+    if (current_fragment_uses_webgl_draw_buffers(context))
+        return 1;
+
+    /* A masked-out gl_FragColor draw can still update depth/stencil. It must
+     * retain the regular one-output ABI, even when nonzero draw-buffer slots
+     * are selected. */
+    return colors->active_mask != 1u &&
+           ringl_effective_color_write_mask(context) != 0u;
+}
+
+static int draw_buffers_conflict_with_fragment_output(
+    RinGLContext* context, const RinGLColorTargets* colors)
+{
+    if (context == NULL || colors == NULL ||
+        context->webgl_draw_buffers_enabled == RINGL_FALSE ||
+        ringl_effective_color_write_mask(context) == 0u ||
+        current_fragment_uses_webgl_draw_buffers(context)) {
+        return 0;
+    }
+
+    /* A regular gl_FragColor shader has only DRAW_BUFFER0. WebGL requires a
+     * draw error whenever another output slot is enabled. */
+    return (colors->active_mask & ~UINT32_C(1)) != 0u;
 }
 
 static int program_sampler_index_for_name(const RinGLProgramObject* program,
@@ -1627,6 +1677,10 @@ static void ringl_draw_arrays_impl(uint32_t mode, int32_t first, int32_t count,
                                    ringl_framebuffer_operation_error(context));
         return;
     }
+    if (draw_buffers_conflict_with_fragment_output(context, &color_targets)) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
     for (uint32_t index = 0u; index < RINGL_MAX_COLOR_ATTACHMENTS; ++index) {
         if ((color_targets.active_mask & (UINT32_C(1) << index)) != 0u) {
             target = &color_targets.targets[index];
@@ -1862,6 +1916,10 @@ static void ringl_draw_elements_impl(uint32_t mode, int32_t count,
         ringl_resolve_color_targets(context, &color_targets) != 0 ||
         depth_status < 0 ||
         color_targets.active_mask == 0u) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    if (draw_buffers_conflict_with_fragment_output(context, &color_targets)) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }

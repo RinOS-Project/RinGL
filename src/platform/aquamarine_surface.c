@@ -1428,7 +1428,7 @@ static int backend_blend_pipeline_valid(
 {
     uint32_t bits;
 
-    if (!descriptor || descriptor->color_write_mask == 0u ||
+    if (!descriptor ||
         (descriptor->color_write_mask & ~RIN_GPU_COLOR_WRITE_ALL) != 0u) {
         return 0;
     }

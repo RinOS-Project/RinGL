@@ -558,8 +558,14 @@ After the context-local `WEBGL_draw_buffers` gate is enabled,
 only while an embedding has supplied its drawing buffer. `drawBuffersWEBGL([])`
 on a custom framebuffer and `[NONE]` on the default framebuffer are stored as
 zero color writes, while a present depth/stencil target still executes through
-the RinGL/RinGPU pass. Before the extension gate, every one of these pnames is
-rejected as `INVALID_ENUM` without changing the caller's output.
+the RinGL/RinGPU pass. A directive-free `gl_FragColor` program has only output
+zero: if another draw-buffer slot is enabled and any color channel is writable,
+RinGL records `INVALID_OPERATION` before submission. With every color channel
+masked off, that ordinary one-output ABI remains valid for a depth/stencil
+draw. A `GL_EXT_draw_buffers`/`gl_FragData` program instead uses the MRT ABI
+even if only one attachment is active. Before the extension gate, every one of
+these pnames is rejected as `INVALID_ENUM` without changing the caller's
+output.
 
 `RinGLBlendColorV1` separately snapshots the finite blend constant that RinGL
 resolves into RinGPU's V2 pipeline descriptor. It is normally clamped; after

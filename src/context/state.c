@@ -94,11 +94,12 @@ static int blend_source_factor_valid(uint32_t factor)
     return blend_factor_valid(factor) || factor == RINGL_SRC_ALPHA_SATURATE;
 }
 
-static int blend_equation_valid(uint32_t mode)
+static int blend_equation_valid(const RinGLContext* context, uint32_t mode)
 {
     return mode == RINGL_FUNC_ADD || mode == RINGL_FUNC_SUBTRACT ||
-           mode == RINGL_FUNC_REVERSE_SUBTRACT || mode == RINGL_MIN ||
-           mode == RINGL_MAX;
+           mode == RINGL_FUNC_REVERSE_SUBTRACT ||
+           (context != NULL && context->webgl_blend_minmax_enabled != RINGL_FALSE &&
+            (mode == RINGL_MIN || mode == RINGL_MAX));
 }
 
 static void set_capability(uint32_t capability, uint32_t enabled)
@@ -685,13 +686,24 @@ int ringl_enable_webgl_float_color_buffer(void)
     return 0;
 }
 
+int ringl_enable_webgl_blend_minmax(void)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL || context->lost != RINGL_FALSE)
+        return -1;
+    context->webgl_blend_minmax_enabled = RINGL_TRUE;
+    return 0;
+}
+
 void ringl_blend_equation_separate(uint32_t mode_rgb, uint32_t mode_alpha)
 {
     RinGLContext* context = ringl_get_current_context();
 
     if (context == NULL)
         return;
-    if (!blend_equation_valid(mode_rgb) || !blend_equation_valid(mode_alpha)) {
+    if (!blend_equation_valid(context, mode_rgb) ||
+        !blend_equation_valid(context, mode_alpha)) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }

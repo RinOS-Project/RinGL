@@ -210,6 +210,11 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   use a zero constant; a missing V2 path rejects the draw. The focused
   RinGL-to-RinGPU-to-Aquamarine test verifies component constant color, scalar
   constant alpha, and unclamped Float-target output.
+- [x] Gate `EXT_blend_minmax` behind the acquired WebGL extension object. The
+  context rejects `MIN`/`MAX` before `ringl_enable_webgl_blend_minmax()` and
+  preserves prior blend state; after the gate, the existing native RinGPU V2
+  pipeline executes minimum/maximum blending through Aquamarine. This is an
+  extension capability, not a direct-surface bypass.
 - [x] Expose a versioned snapshot of mutable clear values so an embedding can perform the WebGL default-buffer clear without overwriting application clear state.
 - [x] Add a state-neutral default-framebuffer clear for trusted presentation
   embeddings: it forces WebGL's color/depth/stencil defaults without observing

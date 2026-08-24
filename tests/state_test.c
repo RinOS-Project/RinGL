@@ -366,6 +366,13 @@ int main(void)
     ringl_get_integerv(RINGL_BLEND_EQUATION_ALPHA, values);
     assert(values[0] == (int32_t)RINGL_FUNC_SUBTRACT);
     ringl_blend_equation_separate(RINGL_FUNC_ADD, RINGL_MAX);
+    assert(ringl_get_error() == RINGL_INVALID_ENUM);
+    ringl_get_integerv(RINGL_BLEND_EQUATION_RGB, values);
+    assert(values[0] == (int32_t)RINGL_FUNC_SUBTRACT);
+    ringl_get_integerv(RINGL_BLEND_EQUATION_ALPHA, values);
+    assert(values[0] == (int32_t)RINGL_FUNC_SUBTRACT);
+    assert(ringl_enable_webgl_blend_minmax() == 0);
+    ringl_blend_equation_separate(RINGL_FUNC_ADD, RINGL_MAX);
     ringl_get_integerv(RINGL_BLEND_EQUATION_RGB, values);
     assert(values[0] == (int32_t)RINGL_FUNC_ADD);
     ringl_get_integerv(RINGL_BLEND_EQUATION_ALPHA, values);

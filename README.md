@@ -679,6 +679,12 @@ component before it changes its target. The Aquamarine embedding snapshots the
 same Float32 components into its RSH1 sampler table, and the product bridge
 test draws a Float texture through the full RinGL/RinGPU route into a Float FBO.
 
+`EXT_blend_minmax` follows the same policy: `MIN` and `MAX` are rejected until
+the embedding explicitly calls `ringl_enable_webgl_blend_minmax()` after the
+WebGL extension object is acquired. The existing native blend pipeline then
+executes the selected minimum or maximum through the RinGPU/Aquamarine route;
+there is no direct surface fallback.
+
 Embeddings handling browser-facing byte uploads must use
 `ringl_tex_image_2d_from_bytes()` and `ringl_tex_sub_image_2d_from_bytes()`.
 Those APIs take the source extent and

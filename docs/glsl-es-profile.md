@@ -51,7 +51,8 @@ accepted material grammar.
 The general bounded varying-coordinate texture chain applies the same
 full-width rule to its sole `uniform vec4` color operand. Thus
 `texture2D(texture, uv) * tint.stpq.bgra` is scalar-constant permutation, not
-a general uniform-vector expression; partial-width selectors remain rejected.
+a general uniform-vector expression; for one sample the same selector may lead
+the product. Partial-width selectors remain rejected.
 
 The first visible-triangle shader can therefore take the standards-shaped form:
 

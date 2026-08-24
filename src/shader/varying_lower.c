@@ -1485,6 +1485,7 @@ static int lower_fragment_texture_chain(
     uint32_t parenthesized_color_operation = 0u;
     uint32_t color_operation_enabled = 0u;
     uint32_t color_operation_on_left = 0u;
+    uint32_t leading_uniform_color = 0u;
     uint16_t color_operation = RINGL_RSH1_OP_MUL_F32;
     uint32_t local_temporary_register_count = 0u;
     uint32_t temporary_register_count = 0u;
@@ -1691,10 +1692,39 @@ static int lower_fragment_texture_chain(
     }
     if (!consume_text(&cursor, "gl_FragColor="))
         return 1;
-    if (strncmp(cursor, "vec4(", strlen("vec4(")) == 0) {
+    if (has_color_uniform) {
+        const char* uniform_cursor = cursor;
+        char uniform_name[64];
+
+        if (read_identifier(&uniform_cursor, uniform_name,
+                            sizeof(uniform_name)) &&
+            strcmp(uniform_name, color_uniform_name) == 0) {
+            leading_uniform_color = 1u;
+        }
+    }
+    if (strncmp(cursor, "vec4(", strlen("vec4(")) == 0 ||
+        leading_uniform_color) {
         if (!parse_varying_texture_color_literal(&cursor, color) ||
             !parse_varying_texture_color_operator(&cursor, &color_operation)) {
-            return 1;
+            float uniform_color[4];
+            char uniform_name[64];
+            uint32_t components[4];
+
+            if (!leading_uniform_color ||
+                !read_identifier(&cursor, uniform_name, sizeof(uniform_name)) ||
+                strcmp(uniform_name, color_uniform_name) != 0) {
+                return 1;
+            }
+            memcpy(uniform_color, color, sizeof(uniform_color));
+            if (!parse_optional_read_swizzle(&cursor, 4u, 4u, components)) {
+                return 1;
+            }
+            for (component = 0u; component < 4u; ++component)
+                color[component] = uniform_color[components[component]];
+            if (!parse_varying_texture_color_operator(&cursor,
+                                                      &color_operation)) {
+                return 1;
+            }
         }
         color_operation_enabled = 1u;
         color_operation_on_left = 1u;

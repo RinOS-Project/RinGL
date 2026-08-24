@@ -261,8 +261,8 @@ int main(void)
         -1);
     ringl_shader_source(matrix_fragment,
         "precision mediump float; uniform sampler2D texture; uniform vec4 tint; "
-        "varying vec2 uv; void main() { gl_FragColor = texture2D(texture, uv) "
-        "* tint.stpq.bgra; }",
+        "varying vec2 uv; void main() { gl_FragColor = tint.stpq.bgra * "
+        "texture2D(texture, uv); }",
         -1);
     ringl_compile_shader(matrix_vertex);
     ringl_compile_shader(matrix_fragment);

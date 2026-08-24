@@ -139,6 +139,8 @@ static int fake_create_image_2d(void* session,
                            RINGL_RIN_GPU_IMAGE_USAGE_COPY_SOURCE));
     if (desc->format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM)
         *image_out = 701u;
+    else if (desc->format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT)
+        *image_out = 703u;
     else {
         assert(desc->format == RINGL_RIN_GPU_FORMAT_RGBA4_UNORM);
         *image_out = 702u;
@@ -565,6 +567,8 @@ int main(void)
     uint32_t renderbuffer = 0u;
     uint32_t packed_renderbuffer = 0u;
     uint32_t packed_framebuffer = 0u;
+    uint32_t float_renderbuffer = 0u;
+    uint32_t float_framebuffer = 0u;
     uint32_t depth_renderbuffer = 0u;
     uint32_t texture_before_loss;
     uint32_t submits_before_loss;
@@ -823,6 +827,21 @@ int main(void)
     assert(memcmp(context->textures[ringl_object_slot_index(copied_texture)].shadow_bytes,
                   expected_packed_rgba, sizeof(expected_packed_rgba)) == 0);
 
+    ringl_gen_renderbuffers(1, &float_renderbuffer);
+    ringl_bind_renderbuffer(RINGL_RENDERBUFFER, float_renderbuffer);
+    ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_RGBA32F, 8, 8);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_gen_framebuffers(1, &float_framebuffer);
+    ringl_bind_framebuffer(RINGL_FRAMEBUFFER, float_framebuffer);
+    ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT0,
+                                   RINGL_RENDERBUFFER, float_renderbuffer);
+    assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
+           RINGL_FRAMEBUFFER_COMPLETE);
+    assert(ringl_get_implementation_color_read_format_type(
+               &implementation_read_format, &implementation_read_type) == 0);
+    assert(implementation_read_format == RINGL_RGBA);
+    assert(implementation_read_type == RINGL_FLOAT);
+
     ringl_bind_framebuffer(RINGL_FRAMEBUFFER, 0u);
     assert(ringl_get_error() == RINGL_NO_ERROR);
     pack_readbacks_before = backend.readbacks;
@@ -899,7 +918,7 @@ int main(void)
     assert(ringl_get_error() == RINGL_NO_ERROR);
 
     ringl_context_destroy(context);
-    assert(backend.destroys == 4u); /* two color images + command list + fence */
+    assert(backend.destroys == 5u); /* three color images + command list + fence */
 
     binding.session = &command_loss_backend;
     assert(ringl_context_create(&desc, &context) == 0);

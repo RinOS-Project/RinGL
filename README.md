@@ -389,6 +389,13 @@ the replacement executable. The query validates its ABI header and only writes
 the caller-owned structure after it has validated the program, so an invalid
 program cannot partially publish stale metadata.
 
+`ringl_get_attached_shaders()` exposes the corresponding pending shader names
+in deterministic vertex/fragment order through caller-owned storage. Its
+count-only form and its copying form are both failure-atomic; a shader marked
+for deletion remains listed while its program retains it for linking. Browser
+embeddings therefore query the same RinGL ownership state they execute rather
+than treating a local object cache as a second backend.
+
 The current bounded uniform profile consists of linked `sampler2D`, scalar
 `float`/`int`, `vec2`/`vec3`/`vec4`, `ivec2`/`ivec3`/`ivec4`, and a
 vertex-only `mat4` position transform. `ringl_get_uniform_1i()` reads either a

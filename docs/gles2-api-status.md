@@ -40,7 +40,7 @@ Status meanings:
 | `glFinish`, `glFlush` | B | Immediate submission; `finish` uses the optional fenced-sync extension. |
 | `glGenerateMipmap` | B | Bounded 2D canonical/native packed color chains only. |
 | `glGetActiveAttrib`, `glGetActiveUniform` | P | Versioned `RinGLActiveInfoV1`; current linker exposes bounded attributes plus `sampler2D`, scalar/vector float and signed integer, and vertex `mat4` uniforms. |
-| `glGetAttachedShaders` | N | Raw RinGL has no attached-shader list API. |
+| `glGetAttachedShaders` | B | `ringl_get_attached_shaders` copies the pending vertex/fragment names in deterministic order, including delete-pending shaders retained by a program. |
 | `glGetBooleanv`, `glGetFloatv` | P | Dedicated state snapshots exist; no generic typed getter. |
 | `glGetBufferParameteriv` | P | `ringl_get_buffer_size` / `ringl_get_buffer_usage` only. |
 | `glGetError` | B | `ringl_get_error`. |

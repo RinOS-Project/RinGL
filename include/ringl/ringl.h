@@ -1646,6 +1646,15 @@ void ringl_link_program(uint32_t program);
 uint32_t ringl_get_program_link_status(uint32_t program);
 void ringl_validate_program(uint32_t program);
 int ringl_get_program_info(uint32_t program, RinGLProgramInfoV1* info);
+/* Copies the pending attached shader names in deterministic vertex, fragment
+ * order. `shader_count_out` is required. Passing NULL/zero capacity is a
+ * count-only query; otherwise capacity must cover the complete result. Every
+ * failure leaves both caller outputs unchanged. Deleted-but-still-attached
+ * shaders remain observable until detach/program deletion, matching their
+ * retained linking lifetime. */
+int ringl_get_attached_shaders(uint32_t program, uint32_t* shaders,
+                               uint32_t capacity,
+                               uint32_t* shader_count_out);
 /* Return one active linked attribute or supported scalar/vector/matrix uniform
  * into a versioned, caller-owned record. Failures leave the record unchanged. */
 int ringl_get_active_attrib(uint32_t program, uint32_t index,

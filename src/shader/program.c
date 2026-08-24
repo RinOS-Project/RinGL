@@ -1385,6 +1385,37 @@ int ringl_get_program_info(uint32_t program, RinGLProgramInfoV1* info)
     return 0;
 }
 
+int ringl_get_attached_shaders(uint32_t program, uint32_t* shaders,
+                               uint32_t capacity,
+                               uint32_t* shader_count_out)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLProgramObject* object;
+    uint32_t result[2];
+    uint32_t count = 0u;
+
+    if (context == NULL || shader_count_out == NULL)
+        return -1;
+    object = ringl_program_object(context, program);
+    if (object == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+    if (object->vertex_shader != 0u)
+        result[count++] = object->vertex_shader;
+    if (object->fragment_shader != 0u)
+        result[count++] = object->fragment_shader;
+    if ((shaders == NULL && capacity != 0u) ||
+        (shaders != NULL && capacity < count)) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+    if (shaders != NULL && count != 0u)
+        memcpy(shaders, result, count * sizeof(result[0]));
+    *shader_count_out = count;
+    return 0;
+}
+
 static int ringl_active_info_header_valid(const RinGLActiveInfoV1* info)
 {
     return info != NULL && info->struct_size >= sizeof(*info) &&

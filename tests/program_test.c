@@ -44,6 +44,8 @@ int main(void)
     uint32_t mat4_fragment;
     uint32_t mat4_program;
     uint32_t mat4_peer_program;
+    uint32_t attached_shaders[2] = { 0u, 0u };
+    uint32_t attached_shader_count = 0u;
     int32_t location;
     int32_t uniform_value = -1;
     char log[160];
@@ -87,8 +89,24 @@ int main(void)
 
     /* A validation-only context may link the GL program and expose uniforms
      * even though the current shared RSH1 ABI cannot lower texture2D yet. */
+    assert(ringl_get_attached_shaders(program, NULL, 0u,
+                                      &attached_shader_count) == 0);
+    assert(attached_shader_count == 0u);
     ringl_attach_shader(program, vertex);
     ringl_attach_shader(program, fragment);
+    attached_shaders[0] = 0u;
+    attached_shaders[1] = 0u;
+    assert(ringl_get_attached_shaders(program, attached_shaders, 2u,
+                                      &attached_shader_count) == 0);
+    assert(attached_shader_count == 2u && attached_shaders[0] == vertex &&
+           attached_shaders[1] == fragment);
+    attached_shaders[0] = 0xfeedfaceu;
+    attached_shader_count = 0xfeedfaceu;
+    assert(ringl_get_attached_shaders(program, attached_shaders, 1u,
+                                      &attached_shader_count) == -1);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    assert(attached_shaders[0] == 0xfeedfaceu &&
+           attached_shader_count == 0xfeedfaceu);
     assert(ringl_get_program_info(program, &info) == 0);
     assert(info.link_status == RINGL_FALSE && info.validate_status == RINGL_FALSE &&
            info.attached_shader_count == 2u && info.active_attribute_count == 0u &&
@@ -638,6 +656,11 @@ int main(void)
      * program must retain it through a later link, then release it at detach. */
     ringl_delete_shader(retained_vertex);
     assert(!ringl_is_shader(retained_vertex));
+    assert(ringl_get_attached_shaders(retained_program, attached_shaders, 2u,
+                                      &attached_shader_count) == 0);
+    assert(attached_shader_count == 2u &&
+           attached_shaders[0] == retained_vertex &&
+           attached_shaders[1] == retained_fragment);
     ringl_compile_shader(retained_vertex);
     assert(ringl_get_error() == RINGL_INVALID_VALUE);
     ringl_link_program(retained_program);
@@ -646,6 +669,10 @@ int main(void)
     assert(ringl_get_error() == RINGL_INVALID_VALUE);
     ringl_detach_shader(retained_program, retained_vertex);
     assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_get_attached_shaders(retained_program, attached_shaders, 2u,
+                                      &attached_shader_count) == 0);
+    assert(attached_shader_count == 1u &&
+           attached_shaders[0] == retained_fragment);
     assert(ringl_get_program_link_status(retained_program) == RINGL_TRUE);
     ringl_use_program(retained_program);
     assert(ringl_get_error() == RINGL_NO_ERROR);

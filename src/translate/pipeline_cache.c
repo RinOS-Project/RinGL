@@ -380,7 +380,7 @@ int ringl_build_pipeline_key(RinGLContext* context,
         color_format, context->blend_constant_blue);
     result.blend_constant_alpha = blend_constant_for_color_target(
         color_format, context->blend_constant_alpha);
-    result.color_write_mask = context->color_write_mask;
+    result.color_write_mask = ringl_effective_color_write_mask(context);
     result.dither_enabled = context->dither_enabled;
     result.cull_mode = context->cull_face_enabled ? context->cull_face_mode : 0u;
     result.front_face = context->front_face;

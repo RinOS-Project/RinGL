@@ -113,6 +113,12 @@ failure. It accepts these exact pnames:
   `BLUE_BITS`, `ALPHA_BITS`, `DEPTH_BITS`, `STENCIL_BITS`. Component counts
   come from the configured native color format; depth/stencil counts are zero
   when the explicit browser-facing aspect contract hides that logical plane;
+- `WEBGL_draw_buffers` (only after its RinGL gate):
+  `MAX_DRAW_BUFFERS_WEBGL`, `MAX_COLOR_ATTACHMENTS_WEBGL`, and
+  `DRAW_BUFFER0_WEBGL` through `DRAW_BUFFER3_WEBGL`. The returned mapping is
+  stored per framebuffer; a zero-length custom list and default `[NONE]` use
+  a zero effective color-write mask without suppressing a real depth/stencil
+  pass;
 - raster/depth/stencil/blend state: `CULL_FACE_MODE`, `FRONT_FACE`,
   `DEPTH_FUNC`, `DEPTH_WRITEMASK`, front/back stencil function/reference/masks
   and operations, blend source/destination/equation RGB/alpha, and

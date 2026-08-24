@@ -191,17 +191,42 @@ int main(void)
     RinGLContext* context = NULL;
     uint32_t textures[RINGL_MAX_COLOR_ATTACHMENTS] = {0};
     uint32_t framebuffer = 0u;
+    uint32_t back = RINGL_BACK;
+    uint32_t none = RINGL_NONE;
     uint32_t buffers[RINGL_MAX_COLOR_ATTACHMENTS] = {
         RINGL_COLOR_ATTACHMENT0,
         RINGL_COLOR_ATTACHMENT1,
         RINGL_COLOR_ATTACHMENT2,
         RINGL_COLOR_ATTACHMENT3,
     };
+    uint32_t sparse_buffers[2] = {
+        RINGL_NONE,
+        RINGL_COLOR_ATTACHMENT1,
+    };
+    RinGLDefaultFramebufferV1 default_framebuffer = {
+        .struct_size = sizeof(default_framebuffer),
+        .api_version = RINGL_API_VERSION,
+        .color_target = UINT64_C(99),
+        .color_format = RINGL_RIN_GPU_FORMAT_RGBA8_UNORM,
+        .width = 2u,
+        .height = 2u,
+    };
+    int32_t query = 123;
     uint8_t pixels[16] = {0};
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
+    assert(ringl_get_integerv_bounded(RINGL_MAX_DRAW_BUFFERS_WEBGL, &query,
+                                      1u) == -1);
+    assert(query == 123);
+    assert(ringl_get_error() == RINGL_INVALID_ENUM);
     assert(ringl_enable_webgl_draw_buffers() == 0);
+    assert(ringl_get_integerv_bounded(RINGL_MAX_DRAW_BUFFERS_WEBGL, &query,
+                                      1u) == 0);
+    assert(query == (int32_t)RINGL_MAX_COLOR_ATTACHMENTS);
+    assert(ringl_get_integerv_bounded(RINGL_MAX_COLOR_ATTACHMENTS_WEBGL,
+                                      &query, 1u) == 0);
+    assert(query == (int32_t)RINGL_MAX_COLOR_ATTACHMENTS);
     ringl_gen_textures(RINGL_MAX_COLOR_ATTACHMENTS, textures);
     for (uint32_t index = 0u; index < RINGL_MAX_COLOR_ATTACHMENTS; ++index) {
         assert(textures[index] != 0u);
@@ -212,6 +237,12 @@ int main(void)
     }
     ringl_gen_framebuffers(1, &framebuffer);
     ringl_bind_framebuffer(RINGL_FRAMEBUFFER, framebuffer);
+    assert(ringl_get_integerv_bounded(RINGL_DRAW_BUFFER0_WEBGL, &query, 1u) ==
+           0);
+    assert(query == (int32_t)RINGL_COLOR_ATTACHMENT0);
+    assert(ringl_get_integerv_bounded(RINGL_DRAW_BUFFER1_WEBGL, &query, 1u) ==
+           0);
+    assert(query == (int32_t)RINGL_NONE);
     for (uint32_t index = 0u; index < RINGL_MAX_COLOR_ATTACHMENTS; ++index) {
         ringl_framebuffer_texture_2d(
             RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT0 + index,
@@ -220,6 +251,11 @@ int main(void)
     }
     ringl_draw_buffers(RINGL_MAX_COLOR_ATTACHMENTS, buffers);
     assert(ringl_get_error() == RINGL_NO_ERROR);
+    for (uint32_t index = 0u; index < RINGL_MAX_COLOR_ATTACHMENTS; ++index) {
+        assert(ringl_get_integerv_bounded(RINGL_DRAW_BUFFER0_WEBGL + index,
+                                          &query, 1u) == 0);
+        assert(query == (int32_t)(RINGL_COLOR_ATTACHMENT0 + index));
+    }
     assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
            RINGL_FRAMEBUFFER_COMPLETE);
 
@@ -230,6 +266,33 @@ int main(void)
     assert(backend.uploads == RINGL_MAX_COLOR_ATTACHMENTS);
     assert(backend.transitions == RINGL_MAX_COLOR_ATTACHMENTS);
     assert(backend.mrt_passes == 1u && backend.submissions == 1u);
+
+    ringl_draw_buffers(2, sparse_buffers);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_get_integerv_bounded(RINGL_DRAW_BUFFER0_WEBGL, &query, 1u) ==
+           0);
+    assert(query == (int32_t)RINGL_NONE);
+    assert(ringl_get_integerv_bounded(RINGL_DRAW_BUFFER1_WEBGL, &query, 1u) ==
+           0);
+    assert(query == (int32_t)RINGL_COLOR_ATTACHMENT1);
+    ringl_draw_buffers(0, NULL);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_get_integerv_bounded(RINGL_DRAW_BUFFER1_WEBGL, &query, 1u) ==
+           0);
+    assert(query == (int32_t)RINGL_NONE);
+
+    ringl_bind_framebuffer(RINGL_FRAMEBUFFER, 0u);
+    assert(ringl_set_default_framebuffer(&default_framebuffer) == 0);
+    assert(ringl_get_integerv_bounded(RINGL_DRAW_BUFFER0_WEBGL, &query, 1u) ==
+           0);
+    assert(query == (int32_t)RINGL_BACK);
+    ringl_draw_buffers(1, &none);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_get_integerv_bounded(RINGL_DRAW_BUFFER0_WEBGL, &query, 1u) ==
+           0);
+    assert(query == (int32_t)RINGL_NONE);
+    ringl_draw_buffers(1, &back);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
 
     ringl_context_destroy(context);
     return 0;

@@ -905,6 +905,12 @@ static size_t ringl_get_integerv_value_count(uint32_t pname)
     case RINGL_SAMPLES:
     case RINGL_SAMPLE_COVERAGE_INVERT:
     case RINGL_FRAGMENT_SHADER_DERIVATIVE_HINT:
+    case RINGL_DRAW_BUFFER0_WEBGL:
+    case RINGL_DRAW_BUFFER1_WEBGL:
+    case RINGL_DRAW_BUFFER2_WEBGL:
+    case RINGL_DRAW_BUFFER3_WEBGL:
+    case RINGL_MAX_DRAW_BUFFERS_WEBGL:
+    case RINGL_MAX_COLOR_ATTACHMENTS_WEBGL:
         return 1u;
     default:
         return 0u;
@@ -1017,6 +1023,16 @@ int ringl_get_integerv_bounded(uint32_t pname, int32_t* values,
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return -1;
     }
+    if ((pname == RINGL_DRAW_BUFFER0_WEBGL ||
+         pname == RINGL_DRAW_BUFFER1_WEBGL ||
+         pname == RINGL_DRAW_BUFFER2_WEBGL ||
+         pname == RINGL_DRAW_BUFFER3_WEBGL ||
+         pname == RINGL_MAX_DRAW_BUFFERS_WEBGL ||
+         pname == RINGL_MAX_COLOR_ATTACHMENTS_WEBGL) &&
+        context->webgl_draw_buffers_enabled == RINGL_FALSE) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
 
     required_values = ringl_get_integerv_value_count(pname);
     if (required_values == 0u) {
@@ -1080,6 +1096,44 @@ int ringl_get_integerv_bounded(uint32_t pname, int32_t* values,
             ? 8
             : 0;
         return 0;
+    case RINGL_MAX_DRAW_BUFFERS_WEBGL:
+    case RINGL_MAX_COLOR_ATTACHMENTS_WEBGL:
+        values[0] = (int32_t)RINGL_MAX_COLOR_ATTACHMENTS;
+        return 0;
+    case RINGL_DRAW_BUFFER0_WEBGL:
+    case RINGL_DRAW_BUFFER1_WEBGL:
+    case RINGL_DRAW_BUFFER2_WEBGL:
+    case RINGL_DRAW_BUFFER3_WEBGL: {
+        uint32_t index = pname - RINGL_DRAW_BUFFER0_WEBGL;
+
+        if (context->framebuffer_binding == 0u) {
+            values[0] = index == 0u && context->has_default_framebuffer != 0u
+                ? (int32_t)context->default_draw_buffer
+                : (int32_t)RINGL_NONE;
+            return 0;
+        }
+        {
+            uint32_t framebuffer_index =
+                ringl_object_slot_index(context->framebuffer_binding);
+            RinGLFramebufferObject* framebuffer;
+
+            if (ringl_object_lookup(context, context->framebuffer_binding,
+                                    RINGL_OBJECT_FRAMEBUFFER) == NULL ||
+                framebuffer_index >= RINGL_OBJECT_SLOT_COUNT) {
+                ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+                return -1;
+            }
+            framebuffer = &context->framebuffers[framebuffer_index];
+            values[0] = framebuffer->draw_buffer_state_initialized == RINGL_FALSE
+                    ? (index == 0u ? (int32_t)RINGL_COLOR_ATTACHMENT0
+                                   : (int32_t)RINGL_NONE)
+                    : ((framebuffer->draw_buffer_mask &
+                        (UINT32_C(1) << index)) != 0u
+                           ? (int32_t)(RINGL_COLOR_ATTACHMENT0 + index)
+                           : (int32_t)RINGL_NONE);
+            return 0;
+        }
+    }
     case RINGL_MAX_TEXTURE_SIZE_QUERY:
     case RINGL_MAX_RENDERBUFFER_SIZE:
         values[0] = (int32_t)RINGL_MAX_TEXTURE_SIZE;

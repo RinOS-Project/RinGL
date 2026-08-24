@@ -99,6 +99,7 @@ int ringl_context_create(const RinGLContextDescV1* desc,
     context->line_width = 1.0f;
     context->sample_coverage_value = 1.0f;
     context->fragment_shader_derivative_hint = RINGL_DONT_CARE;
+    context->default_draw_buffer = RINGL_BACK;
     context->clear_depth = 1.0f;
     context->stencil_func = RINGL_ALWAYS;
     context->stencil_value_mask = 0xffu;

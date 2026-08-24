@@ -162,6 +162,11 @@ int ringl_resolve_color_targets(RinGLContext* context,
         active_mask = context->webgl_draw_buffers_enabled != RINGL_FALSE &&
                 framebuffer->draw_buffer_state_initialized != RINGL_FALSE
             ? framebuffer->draw_buffer_mask : 1u;
+        /* A selected FBO may disable every color output. Keep attachment zero
+         * as the native pass anchor; its effective color-write mask is zero,
+         * so depth/stencil work still executes without exposing a color write. */
+        if (active_mask == 0u)
+            active_mask = 1u;
     }
     for (uint32_t index = 0u; index < RINGL_MAX_COLOR_ATTACHMENTS; ++index) {
         if ((active_mask & (UINT32_C(1) << index)) == 0u)
@@ -398,7 +403,8 @@ static int legacy_pipeline_state_supported(const RinGLContext* context,
 {
     return context != NULL && !context->blend_enabled &&
         !context->cull_face_enabled && context->front_face == RINGL_CCW &&
-        context->color_write_mask == RINGL_RIN_GPU_COLOR_WRITE_ALL &&
+        ringl_effective_color_write_mask(context) ==
+            RINGL_RIN_GPU_COLOR_WRITE_ALL &&
         stencil_test_enabled == 0u;
 }
 
@@ -470,7 +476,8 @@ static int draw_is_noop(const RinGLContext* context)
 {
     if (context == NULL)
         return 1;
-    if (context->color_write_mask == 0u && !context->depth_test_enabled &&
+    if (ringl_effective_color_write_mask(context) == 0u &&
+        !context->depth_test_enabled &&
         !context->stencil_test_enabled)
         return 1;
     if (context->cull_face_enabled &&
@@ -723,7 +730,7 @@ static int begin_mrt_pass(RinGLContext* context, uint64_t command_list,
                                                   context->clear_blue);
         pass.clear_alpha = clear_color_for_target(first->format,
                                                    context->clear_alpha);
-        pass.color_write_mask = context->color_write_mask;
+        pass.color_write_mask = ringl_effective_color_write_mask(context);
     }
     if (depth_targets != NULL && depth_targets->depth.has_depth != 0u) {
         pass.depth_target = depth_targets->depth.image;
@@ -781,7 +788,7 @@ static int begin_color_pass(RinGLContext* context,
                                                          context->clear_blue);
         render_pass.clear_alpha = clear_color_for_target(target->format,
                                                           context->clear_alpha);
-        render_pass.color_write_mask = context->color_write_mask;
+        render_pass.color_write_mask = ringl_effective_color_write_mask(context);
         configure_clear_region(context, target, &render_pass.clear_region);
     }
     if (target->mip_level == 0u)
@@ -841,7 +848,8 @@ static int begin_depth_pass(RinGLContext* context, uint64_t command_list,
                                                                context->clear_blue);
             separate_pass.clear_alpha = clear_color_for_target(color_target->format,
                                                                 context->clear_alpha);
-            separate_pass.color_write_mask = context->color_write_mask;
+            separate_pass.color_write_mask =
+                ringl_effective_color_write_mask(context);
         }
         if (depth_load_op == RINGL_RIN_GPU_RENDER_CLEAR)
             separate_pass.clear_depth = clamp_color(context->clear_depth);
@@ -908,7 +916,7 @@ static int begin_depth_pass(RinGLContext* context, uint64_t command_list,
                                                          context->clear_blue);
         render_pass.clear_alpha = clear_color_for_target(color_target->format,
                                                           context->clear_alpha);
-        render_pass.color_write_mask = context->color_write_mask;
+        render_pass.color_write_mask = ringl_effective_color_write_mask(context);
     }
     if (depth_load_op == RINGL_RIN_GPU_RENDER_CLEAR)
         render_pass.clear_depth = clamp_color(context->clear_depth);
@@ -1445,6 +1453,7 @@ int ringl_clear_default_framebuffer_for_embedding(uint32_t* error_out)
     uint32_t saved_dirty_bits;
     uint32_t saved_scissor_enabled;
     uint32_t saved_color_write_mask;
+    uint32_t saved_default_draw_buffer;
     uint32_t saved_depth_write_mask;
     uint32_t saved_stencil_write_mask;
     float saved_clear_red;
@@ -1465,6 +1474,7 @@ int ringl_clear_default_framebuffer_for_embedding(uint32_t* error_out)
     saved_dirty_bits = context->dirty_bits;
     saved_scissor_enabled = context->scissor_enabled;
     saved_color_write_mask = context->color_write_mask;
+    saved_default_draw_buffer = context->default_draw_buffer;
     saved_depth_write_mask = context->depth_write_mask;
     saved_stencil_write_mask = context->stencil_write_mask;
     saved_clear_red = context->clear_red;
@@ -1477,6 +1487,7 @@ int ringl_clear_default_framebuffer_for_embedding(uint32_t* error_out)
     context->framebuffer_binding = 0u;
     context->scissor_enabled = 0u;
     context->color_write_mask = RINGL_RIN_GPU_COLOR_WRITE_ALL;
+    context->default_draw_buffer = RINGL_BACK;
     context->depth_write_mask = RINGL_TRUE;
     context->stencil_write_mask = 0xffu;
     context->clear_red = 0.0f;
@@ -1494,6 +1505,7 @@ int ringl_clear_default_framebuffer_for_embedding(uint32_t* error_out)
     context->dirty_bits = saved_dirty_bits;
     context->scissor_enabled = saved_scissor_enabled;
     context->color_write_mask = saved_color_write_mask;
+    context->default_draw_buffer = saved_default_draw_buffer;
     context->depth_write_mask = saved_depth_write_mask;
     context->stencil_write_mask = saved_stencil_write_mask;
     context->clear_red = saved_clear_red;

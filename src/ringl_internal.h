@@ -368,6 +368,10 @@ struct RinGLContext {
     uint32_t has_default_framebuffer;
     uint32_t default_framebuffer_state;
     uint32_t default_depth_framebuffer_state;
+    /* WEBGL_draw_buffers owns the default framebuffer's only output slot.
+     * The initial BACK value is retained while an embedding replaces its
+     * native surface, whereas an absent surface is observed as NONE. */
+    uint32_t default_draw_buffer;
     uint32_t webgl_float_texture_linear_enabled;
     uint32_t webgl_half_float_texture_linear_enabled;
     uint32_t webgl_float_color_buffer_enabled;
@@ -473,6 +477,7 @@ int ringl_resolve_color_target(RinGLContext* context,
                                RinGLColorTarget* target);
 int ringl_resolve_color_targets(RinGLContext* context,
                                 RinGLColorTargets* targets);
+uint32_t ringl_effective_color_write_mask(const RinGLContext* context);
 int ringl_resolve_depth_target(RinGLContext* context,
                                RinGLDepthTarget* target);
 int ringl_resolve_depth_stencil_targets(RinGLContext* context,

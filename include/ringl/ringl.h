@@ -1541,8 +1541,9 @@ void ringl_framebuffer_texture_2d(uint32_t target, uint32_t attachment,
                                   uint32_t textarget, uint32_t texture,
                                   int32_t level);
 /* Configures WebGL's fixed output-to-attachment mapping for the current
- * framebuffer. The bounded implementation admits NONE or
- * COLOR_ATTACHMENTi in slot i, for i < RINGL_MAX_COLOR_ATTACHMENTS. */
+ * framebuffer. A custom framebuffer accepts an empty list (all outputs NONE)
+ * or NONE/COLOR_ATTACHMENTi in slot i. The default framebuffer accepts one
+ * BACK or NONE entry. DRAW_BUFFERi_WEBGL queries report this stored state. */
 void ringl_draw_buffers(int32_t count, const uint32_t* buffers);
 /* Describes COLOR_ATTACHMENT0, DEPTH_ATTACHMENT, STENCIL_ATTACHMENT, or
  * DEPTH_STENCIL_ATTACHMENT on the currently bound custom framebuffer. The

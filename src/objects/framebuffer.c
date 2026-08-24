@@ -540,16 +540,22 @@ void ringl_draw_buffers(int32_t count, const uint32_t* buffers)
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
-    if (count < 1 || (uint32_t)count > RINGL_MAX_COLOR_ATTACHMENTS ||
-        buffers == NULL) {
+    if (count < 0 || (uint32_t)count > RINGL_MAX_COLOR_ATTACHMENTS ||
+        (count > 0 && buffers == NULL)) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
     if (context->framebuffer_binding == 0u) {
-        if (count != 1 || buffers[0] != RINGL_BACK) {
+        if (count != 1 || (buffers[0] != RINGL_BACK &&
+                           buffers[0] != RINGL_NONE)) {
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return;
         }
+        if (context->default_draw_buffer == buffers[0])
+            return;
+        context->default_draw_buffer = buffers[0];
+        ringl_context_mark_dirty(context,
+                                 RINGL_DIRTY_FRAMEBUFFER | RINGL_DIRTY_PIPELINE);
         return;
     }
     framebuffer = bound_framebuffer(context);
@@ -568,7 +574,35 @@ void ringl_draw_buffers(int32_t count, const uint32_t* buffers)
     }
     framebuffer->draw_buffer_mask = mask;
     framebuffer->draw_buffer_state_initialized = RINGL_TRUE;
-    ringl_context_mark_dirty(context, RINGL_DIRTY_FRAMEBUFFER);
+    ringl_context_mark_dirty(context,
+                             RINGL_DIRTY_FRAMEBUFFER | RINGL_DIRTY_PIPELINE);
+}
+
+uint32_t ringl_effective_color_write_mask(const RinGLContext* context)
+{
+    const RinGLFramebufferObject* framebuffer;
+    uint32_t index;
+
+    if (context == NULL)
+        return 0u;
+    if (context->webgl_draw_buffers_enabled == RINGL_FALSE)
+        return context->color_write_mask;
+    if (context->framebuffer_binding == 0u) {
+        return context->default_draw_buffer == RINGL_BACK
+            ? context->color_write_mask
+            : 0u;
+    }
+    if (ringl_object_lookup_const(context, context->framebuffer_binding,
+                                  RINGL_OBJECT_FRAMEBUFFER) == NULL)
+        return 0u;
+    index = ringl_object_slot_index(context->framebuffer_binding);
+    if (index >= RINGL_OBJECT_SLOT_COUNT)
+        return 0u;
+    framebuffer = &context->framebuffers[index];
+    if (framebuffer->draw_buffer_state_initialized != RINGL_FALSE &&
+        framebuffer->draw_buffer_mask == 0u)
+        return 0u;
+    return context->color_write_mask;
 }
 
 void ringl_framebuffer_texture_2d(uint32_t target, uint32_t attachment,

@@ -550,6 +550,17 @@ records `INVALID_OPERATION`. The legacy `ringl_get_integerv()` remains for
 existing callers, but new browser-facing code uses the bounded entry point so
 viewport, scissor, and color-mask queries cannot overrun an output buffer.
 
+After the context-local `WEBGL_draw_buffers` gate is enabled,
+`ringl_get_integerv_bounded()` also reports the real four-target limit through
+`MAX_DRAW_BUFFERS_WEBGL` and `MAX_COLOR_ATTACHMENTS_WEBGL`, plus each supported
+`DRAW_BUFFERi_WEBGL` mapping. A newly bound custom framebuffer reports
+`COLOR_ATTACHMENT0` followed by `NONE`; the default framebuffer reports `BACK`
+only while an embedding has supplied its drawing buffer. `drawBuffersWEBGL([])`
+on a custom framebuffer and `[NONE]` on the default framebuffer are stored as
+zero color writes, while a present depth/stencil target still executes through
+the RinGL/RinGPU pass. Before the extension gate, every one of these pnames is
+rejected as `INVALID_ENUM` without changing the caller's output.
+
 `RinGLBlendColorV1` separately snapshots the finite blend constant that RinGL
 resolves into RinGPU's V2 pipeline descriptor. It is normally clamped; after
 the private Float-color gate, finite values outside `[0,1]` are retained only

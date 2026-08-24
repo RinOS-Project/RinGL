@@ -1319,7 +1319,7 @@ static int lower_fragment_texture_chain(
     RinGLRsh1InstructionV1 ins[RINGL_RSH1_MAX_INSTRUCTIONS];
     char sampler_names[RINGL_VARYING_TEXTURE_MAX_SAMPLERS][64];
     char color_uniform_name[64] = {0};
-    char varying_names[4][64];
+    char varying_names[4][64] = {{0}};
     char coordinate_names[5][64];
     char local_coordinate_names[RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES][64];
     uint32_t coordinate_input_locations[5] = {
@@ -1447,9 +1447,12 @@ static int lower_fragment_texture_chain(
         }
     }
     for (call_index = 0u; call_index < varying_count; ++call_index) {
-        (void)snprintf(coordinate_names[call_index],
-                       sizeof(coordinate_names[call_index]), "%s",
-                       varying_names[call_index]);
+        /* read_identifier() accepted this fixed-width name. Copy its complete
+         * bounded representation rather than routing a proven 63-byte string
+         * through snprintf(), whose generic truncation diagnostic obscures the
+         * parser invariant under -Werror. */
+        memcpy(coordinate_names[call_index], varying_names[call_index],
+               sizeof(coordinate_names[call_index]));
     }
     coordinate_name_count = varying_count;
     if (varying_count == 1u) {

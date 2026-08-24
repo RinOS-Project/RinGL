@@ -32,6 +32,17 @@ add_library(RinGL STATIC
     src/translate/vertex_layout.c
 )
 
+# This is an embedding layer, not a generic RinGL dependency. A host that
+# supplies RinGPU and Aquamarine backing storage enables it before adding the
+# RinGL subdirectory; the standalone library remains platform-neutral.
+option(RINGL_ENABLE_AQUAMARINE_SURFACE
+       "Build the caller-owned Aquamarine/RinGPU embedding surface" OFF)
+if (RINGL_ENABLE_AQUAMARINE_SURFACE)
+    target_sources(RinGL PRIVATE
+        src/platform/aquamarine_surface.c
+    )
+endif()
+
 add_library(RinGL::RinGL ALIAS RinGL)
 
 target_compile_features(RinGL PUBLIC c_std_11)

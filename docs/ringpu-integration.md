@@ -79,9 +79,9 @@ The WebEngine CMake integration is opt-in through `RIN_LADYBIRD_ENABLE_RINGL`.
 Its default `RIN_RINGL_SOURCE_ROOT` is the checked-out `libs/RinGL` tree and
 can be overridden only for an explicitly selected external checkout.
 
-OS-Core also contains `rin_webgl_ringl_bridge.{h,c}`. The bridge borrows the existing `RinWebGLRingPUSurfaceContext`, obtains its RinGPU core/graphics queue/color image through a private native view, creates a RinGL context using the adapter, and binds that image as RinGL's default framebuffer. The surface remains the owner of the RinGPU core, queue, image, and caller-provided pixel backing store.
+The opt-in `ringl_aquamarine_surface` embedding owns a caller-provided BGRA/D32/S8 target and exposes a private native view of its RinGPU core, graphics queue, and default images. OS-Core's `rin_webgl_ringl_bridge.{h,c}` creates a RinGL context using that view and binds the images as RinGL's default framebuffer. The embedding remains the owner of the core, queue, images, and caller-provided pixel backing store.
 
-During the initial bridge lifetime RinGL is the exclusive command producer for the borrowed surface. The legacy `rin_webgl_ringpu_surface_clear()` / `present()` helpers must not be interleaved with RinGL commands until shared image-state synchronization is generalized.
+During the bridge lifetime RinGL is the exclusive graphics command producer for the embedding. The embedding has no public clear/draw/present entry point: it only prepares the initial image state and records state after a successful RinGL submission.
 
 The bridge creates an unflagged native RinGL context. WebGL 1 attachment policy
 lives in the Ladybird embedding: it queries the live depth and stencil
@@ -324,7 +324,7 @@ RinGL reuses one graphics command list per context. Each new submission resets i
 
 ## Current visible-triangle status
 
-The selected `RinWebGLRingPUSurfaceContext` backend executes generic
+The selected `RinGLAquamarineSurfaceContext` backend executes generic
 `RIN_GPU_BACKEND_COMMAND_DRAW_VERTICES` into the caller-owned BGRA surface;
 the OS-Core surface test covers that native command path. RinGL's current
 vector position and initial texture/varying profiles lower through the same

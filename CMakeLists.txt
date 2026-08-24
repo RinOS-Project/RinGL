@@ -40,7 +40,7 @@ option(RINGL_ENABLE_AQUAMARINE_SURFACE
        "Build the caller-owned Aquamarine/RinGPU embedding surface" OFF)
 if (RINGL_ENABLE_AQUAMARINE_SURFACE)
     target_sources(RinGL PRIVATE
-        src/platform/aquamarine_surface.c
+        src/platform/aquamarine_ringpu_software_surface.c
     )
 endif()
 

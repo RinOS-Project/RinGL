@@ -368,6 +368,15 @@ tests/               unit and integration tests
 
 ## Status
 
+### Current Aquamarine/RinGPU embedding
+
+`ringl_aquamarine_surface` binds RinGPU core to the generic
+`ringpu_software_backend` V3. Its acquire callback validates caller-owned BGRA
+default-color and optional planar D32/S8 storage and binds only those
+role-tagged default images externally. Textures, offscreen FBOs, and multi-mip
+images stay in generic backend-private storage. There is no `AqSurface`
+renderer or direct Aquamarine clear/draw/present fallback.
+
 The bounded first-triangle and textured-triangle translation paths are
 implemented and covered by strict C11 mock-RinGPU tests. Level-zero RGBA8
 texture/renderbuffer color attachments are completeness-checked, realized as

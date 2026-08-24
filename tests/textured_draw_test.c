@@ -98,10 +98,20 @@ static int fake_create_shader_module(void* session, const void* rsh1,
         const Rsh1Instruction* instructions =
             (const Rsh1Instruction*)((const uint8_t*)rsh1 + sizeof(header));
         uint32_t tint_base = header.instruction_count == 32u ? 14u : 24u;
+        uint32_t color_multiply_base =
+            header.instruction_count == 32u ? 10u : 20u;
+        uint16_t color_input_base =
+            header.resource_count == 2u ? 2u : 4u;
+        static const uint16_t swizzled_color_components[4] = {2u, 1u, 0u, 3u};
         uint32_t index;
 
         assert(size_bytes == sizeof(header) +
                                  header.instruction_count * sizeof(*instructions));
+        for (index = 0u; index < 4u; ++index) {
+            assert(instructions[color_multiply_base + index].source1 ==
+                   (uint16_t)(color_input_base +
+                              swizzled_color_components[index]));
+        }
         if (backend->validate_vertex_color_tint) {
             for (index = 0u; index < 4u; ++index) {
                 uint32_t expected_bits;
@@ -699,7 +709,8 @@ int main(void)
         "uniform vec4 tint; uniform float opacity; varying vec2 firstUv; "
         "varying vec2 secondUv; varying vec4 vertexColor; void main() { "
         "gl_FragColor = (texture2D(firstTexture, firstUv) + "
-        "texture2D(secondTexture, secondUv)) * vertexColor * tint * opacity; }",
+        "texture2D(secondTexture, secondUv)) * vertexColor.stpq.bgra * tint * "
+        "opacity; }",
         -1);
     ringl_compile_shader(two_texture_vertex_color_vertex);
     ringl_compile_shader(two_texture_vertex_color_fragment);

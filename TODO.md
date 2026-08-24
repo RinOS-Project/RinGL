@@ -352,9 +352,15 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [ ] Ensure context loss can be propagated predictably to a browser implementation.
   - RinOS Ladybird WebGL 1 now translates sticky RinGL loss through command,
     present, and `isContextLost()` into a once-only `webglcontextlost` canvas
-    event with the browser lost flag set before handler re-entry. Surface
-    recreation, restoration, `webglcontextrestored`, WebGL 2, and browser
-    ISO/QEMU evidence remain unfinished, so this parent remains unchecked.
+    event with the browser lost flag set before handler re-entry. A cancelled
+    native loss queues only a fully initialized replacement RinGL context,
+    invalidates old native object handles by generation, resets WebGL state,
+    and then sends `webglcontextrestored`. `WEBGL_lose_context` destroys the
+    same RinGL bridge/private surface but deliberately waits for explicit
+    `restoreContext()` after the cancelled event; handler-time, uncancelled,
+    native-loss, and duplicate restore requests produce `INVALID_OPERATION`.
+    WebGL 2 and browser ISO/QEMU evidence remain unfinished, so this parent
+    remains unchecked.
 - [ ] Audit allocation limits and integer overflow paths for untrusted content.
 - [ ] Add WebGL-oriented negative tests for malformed state and shader input.
 

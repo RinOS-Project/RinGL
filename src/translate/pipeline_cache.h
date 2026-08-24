@@ -56,6 +56,10 @@ typedef struct RinGLPipelineKey {
     float blend_constant_blue;
     float blend_constant_alpha;
     uint32_t color_write_mask;
+    /* Quantization is dynamic backend raster state, but remains part of the
+     * logical pipeline identity so cached pipelines never cross a DITHER
+     * enable/disable transition. */
+    uint32_t dither_enabled;
     uint32_t cull_mode;
     uint32_t front_face;
     RinGLResolvedVertexAttribute

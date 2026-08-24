@@ -111,6 +111,7 @@ extern "C" {
 #define RINGL_CW             0x0900u
 #define RINGL_CCW            0x0901u
 #define RINGL_CULL_FACE      0x0b44u
+#define RINGL_DITHER         0x0bd0u
 #define RINGL_DEPTH_TEST     0x0b71u
 #define RINGL_POLYGON_OFFSET_FILL 0x8037u
 #define RINGL_SAMPLE_COVERAGE 0x80a0u
@@ -528,6 +529,14 @@ typedef struct RinGLRinGpuRasterStateV1 {
     uint32_t reserved0;
 } RinGLRinGpuRasterStateV1;
 
+/* A V1 backend has no way to represent a disabled DITHER state. RinGL uses
+ * this suffix only through the V8 backend callback below. */
+typedef struct RinGLRinGpuRasterStateV2 {
+    RinGLRinGpuRasterStateV1 base;
+    uint32_t dither_enabled;
+    uint32_t reserved0;
+} RinGLRinGpuRasterStateV2;
+
 typedef struct RinGLRinGpuGraphicsBindingV1 {
     uint32_t binding;
     uint32_t kind;
@@ -896,6 +905,9 @@ typedef int (*RinGLRinGpuBeginRenderPassDepthStencilMipV2Fn)(
 typedef int (*RinGLRinGpuSetRasterStateFn)(
     void* session, uint64_t command_list,
     const RinGLRinGpuRasterStateV1* state);
+typedef int (*RinGLRinGpuSetRasterStateV2Fn)(
+    void* session, uint64_t command_list,
+    const RinGLRinGpuRasterStateV2* state);
 typedef int (*RinGLRinGpuCreateGraphicsBindGroupFn)(
     void* session, uint64_t pipeline,
     const RinGLRinGpuGraphicsBindingV1* bindings,
@@ -1020,6 +1032,8 @@ typedef struct RinGLRinGpuOpsV1 {
         begin_render_pass_depth_stencil_mip_v2;
     /* Optional V7 tail: implicit-LOD sampled-image mip chains. */
     RinGLRinGpuCreateGraphicsBindGroupV2Fn create_graphics_bind_group_v2;
+    /* Optional V8 tail: dynamic fragment-output dither state. */
+    RinGLRinGpuSetRasterStateV2Fn set_raster_state_v2;
 } RinGLRinGpuOpsV1;
 
 typedef struct RinGLRinGpuBindingV1 {

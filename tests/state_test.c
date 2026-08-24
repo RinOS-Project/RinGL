@@ -54,6 +54,7 @@ int main(void)
 
     assert(!ringl_is_enabled(RINGL_SCISSOR_TEST));
     assert(!ringl_is_enabled(RINGL_CULL_FACE));
+    assert(ringl_is_enabled(RINGL_DITHER));
     assert(!ringl_is_enabled(RINGL_DEPTH_TEST));
     assert(!ringl_is_enabled(RINGL_POLYGON_OFFSET_FILL));
     assert(!ringl_is_enabled(RINGL_STENCIL_TEST));
@@ -163,6 +164,10 @@ int main(void)
     assert(ringl_is_enabled(RINGL_POLYGON_OFFSET_FILL));
     assert(ringl_is_enabled(RINGL_STENCIL_TEST));
     assert(ringl_is_enabled(RINGL_BLEND));
+    ringl_disable(RINGL_DITHER);
+    assert(!ringl_is_enabled(RINGL_DITHER));
+    ringl_enable(RINGL_DITHER);
+    assert(ringl_is_enabled(RINGL_DITHER));
     ringl_disable(RINGL_BLEND);
     assert(!ringl_is_enabled(RINGL_BLEND));
     ringl_polygon_offset(0.5f, -2.0f);

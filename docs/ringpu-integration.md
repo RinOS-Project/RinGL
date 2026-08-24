@@ -161,6 +161,25 @@ storage and create their matching RinGPU image format. The surface sample table
 expands texels only at execution time, with opaque RGB565 alpha and preserved
 RGBA4/RGB5_A1 alpha.
 
+## Dither raster state
+
+RinGL owns `RINGL_DITHER` as an OpenGL ES default-enabled capability. Its
+optional V8 operation-table suffix carries `RinGLRinGpuRasterStateV2`, which
+extends the existing raster-state prefix with `dither_enabled`. The OS-Core
+adapter maps that field to public `RinGpuRasterStateV5`; no reserved field is
+overloaded. A V1-only embedding may receive the compatible default-enabled
+prefix, but an explicit `ringl_disable(RINGL_DITHER)` fails the draw if the V8
+callback is unavailable rather than silently using an unknown backend default.
+
+The Aquamarine embedding applies a deterministic 4x4 ordered threshold only
+when a fragment is quantized into RGB565, RGBA4, or RGB5_A1 storage. The
+threshold uses the public lower-left pixel origin, RGB components only, and is
+applied after blend/color-mask resolution. Clear is deliberately uniform: the
+GLES clear operation does not dither. The generic RinGPU software executor
+uses the same state rule, while the real bridge regression verifies the
+enabled/disabled packed readback difference through RinGL and the private
+surface.
+
 ## Optional multi-mip image path
 
 `RinGLRinGpuOpsV1` has an optional V4 tail with paired

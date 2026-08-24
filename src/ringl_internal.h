@@ -387,6 +387,7 @@ struct RinGLContext {
     uint32_t scissor_height;
     uint32_t scissor_enabled;
     uint32_t cull_face_enabled;
+    uint32_t dither_enabled;
     uint32_t depth_test_enabled;
     uint32_t polygon_offset_fill_enabled;
     uint32_t sample_coverage_enabled;
@@ -577,9 +578,9 @@ int ringl_backend_begin_render_pass_depth_mip_v2(
 int ringl_backend_begin_render_pass_depth_stencil_mip_v2(
     RinGLContext* context, uint64_t command_list,
     const RinGLRinGpuRenderPassDepthStencilMipV2* render_pass);
-int ringl_backend_set_raster_state(RinGLContext* context,
-                                   uint64_t command_list,
-                                   const RinGLRinGpuRasterStateV1* state);
+int ringl_backend_set_raster_state_v2(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuRasterStateV2* state);
 int ringl_backend_create_graphics_bind_group(
     RinGLContext* context, uint64_t pipeline,
     const RinGLRinGpuGraphicsBindingV1* bindings,

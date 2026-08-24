@@ -126,6 +126,9 @@ int main(void)
     b.blend_enabled = 1u;
     assert(!ringl_pipeline_key_equal(&a, &b));
     b = a;
+    b.dither_enabled = 1u;
+    assert(!ringl_pipeline_key_equal(&a, &b));
+    b = a;
     b.varying_count = 1u;
     b.varyings[0].vertex_output_location = 4u;
     b.varyings[0].fragment_input_location = 0u;

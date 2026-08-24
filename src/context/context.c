@@ -89,6 +89,8 @@ int ringl_context_create(const RinGLContextDescV1* desc,
     context->pending_error = RINGL_NO_ERROR;
     context->dirty_bits = RINGL_DIRTY_ALL;
     context->cull_face_mode = RINGL_BACK;
+    /* OpenGL ES 2.0 enables DITHER at context creation. */
+    context->dither_enabled = RINGL_TRUE;
     context->front_face = RINGL_CCW;
     context->depth_func = RINGL_LESS;
     context->depth_write_mask = RINGL_TRUE;

@@ -425,16 +425,26 @@ int ringl_backend_begin_render_pass_depth_stencil(
                      context->ringpu.session, command_list, render_pass));
 }
 
-int ringl_backend_set_raster_state(RinGLContext* context,
-                                   uint64_t command_list,
-                                   const RinGLRinGpuRasterStateV1* state)
+int ringl_backend_set_raster_state_v2(
+    RinGLContext* context, uint64_t command_list,
+    const RinGLRinGpuRasterStateV2* state)
 {
     if (context == NULL || command_list == 0u || state == NULL ||
-        !context->has_ringpu_ops || context->ringpu_ops.set_raster_state == NULL)
+        !context->has_ringpu_ops)
+        return -1;
+    if (context->ringpu_ops.set_raster_state_v2 != NULL) {
+        return ringl_backend_result(
+            context, context->ringpu_ops.set_raster_state_v2(
+                         context->ringpu.session, command_list, state));
+    }
+    /* V1 has no DITHER member. Falling back is correct only for its GLES
+     * default (enabled); an explicit disable must fail rather than misdraw. */
+    if (state->dither_enabled == RINGL_FALSE ||
+        context->ringpu_ops.set_raster_state == NULL)
         return -1;
     return ringl_backend_result(
         context, context->ringpu_ops.set_raster_state(context->ringpu.session,
-                                                      command_list, state));
+                                                      command_list, &state->base));
 }
 
 int ringl_backend_create_graphics_bind_group(

@@ -239,6 +239,7 @@ typedef struct RinGLAquamarineSurfaceRasterState {
     uint32_t sample_coverage_enabled;
     float sample_coverage_value;
     uint32_t sample_coverage_invert;
+    uint32_t dither_enabled;
 } RinGLAquamarineSurfaceRasterState;
 
 typedef struct RinGLAquamarineSurfaceActiveRenderPass {
@@ -2446,6 +2447,8 @@ static int backend_prepare_software_context(
     }
     target.width = color_width;
     target.height = color_height;
+    if (raster_state->dither_enabled != 0u)
+        target.flags |= RIN_WEBGL_SOFTWARE_DITHER;
     if (pipeline->depth_enabled != 0u) {
         float* depth_storage;
         uint32_t depth_pitch;
@@ -2596,6 +2599,7 @@ static int backend_raster_state_from_command(
         source->polygon_offset_fill_enabled > 1u ||
         source->sample_coverage_enabled > 1u ||
         source->sample_coverage_invert > 1u ||
+        source->dither_enabled > 1u || source->reserved != 0u ||
         source->min_depth < 0.0f || source->min_depth > 1.0f ||
         source->max_depth < 0.0f || source->max_depth > 1.0f ||
         source->polygon_offset_factor != source->polygon_offset_factor ||
@@ -2633,6 +2637,7 @@ static int backend_raster_state_from_command(
     destination->sample_coverage_enabled = source->sample_coverage_enabled;
     destination->sample_coverage_value = source->sample_coverage_value;
     destination->sample_coverage_invert = source->sample_coverage_invert;
+    destination->dither_enabled = source->dither_enabled;
     if (source->scissor_enabled != 0u) {
         destination->scissor.x = source->scissor_x;
         destination->scissor.y = source->scissor_y;

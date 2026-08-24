@@ -14,6 +14,8 @@ static uint32_t* capability_field(RinGLContext* context, uint32_t capability)
         return &context->scissor_enabled;
     case RINGL_CULL_FACE:
         return &context->cull_face_enabled;
+    case RINGL_DITHER:
+        return &context->dither_enabled;
     case RINGL_DEPTH_TEST:
         return &context->depth_test_enabled;
     case RINGL_POLYGON_OFFSET_FILL:

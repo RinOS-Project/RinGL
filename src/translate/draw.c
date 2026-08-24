@@ -401,7 +401,8 @@ static int draw_state_supported(const RinGLContext* context,
     if (context->ringpu_ops.create_graphics_pipeline_native == NULL &&
         !legacy_pipeline_state_supported(context, stencil_test_enabled))
         return 0;
-    if (context->ringpu_ops.set_raster_state == NULL) {
+    if (context->ringpu_ops.set_raster_state == NULL &&
+        context->ringpu_ops.set_raster_state_v2 == NULL) {
         if (context->scissor_enabled)
             return 0;
         if (context->viewport_initialized &&
@@ -410,6 +411,9 @@ static int draw_state_supported(const RinGLContext* context,
              context->viewport_height != target->height))
             return 0;
     }
+    if (context->dither_enabled == RINGL_FALSE &&
+        context->ringpu_ops.set_raster_state_v2 == NULL)
+        return 0;
     return 1;
 }
 
@@ -768,30 +772,32 @@ static int begin_depth_pass(RinGLContext* context, uint64_t command_list,
 static int set_raster_state(RinGLContext* context, uint64_t command_list,
                             const RinGLColorTarget* target)
 {
-    RinGLRinGpuRasterStateV1 state;
+    RinGLRinGpuRasterStateV2 state;
     int64_t x0;
     int64_t y0;
     int64_t x1;
     int64_t y1;
 
     if (context == NULL || target == NULL ||
-        context->ringpu_ops.set_raster_state == NULL)
+        (context->ringpu_ops.set_raster_state == NULL &&
+         context->ringpu_ops.set_raster_state_v2 == NULL))
         return 0;
 
     memset(&state, 0, sizeof(state));
-    state.viewport_x = (float)context->viewport_x;
-    state.viewport_y = (float)context->viewport_y;
-    state.viewport_width = (float)context->viewport_width;
-    state.viewport_height = (float)context->viewport_height;
-    state.min_depth = context->depth_range_near;
-    state.max_depth = context->depth_range_far;
-    state.polygon_offset_fill_enabled = context->polygon_offset_fill_enabled;
-    state.polygon_offset_factor = context->polygon_offset_factor;
-    state.polygon_offset_units = context->polygon_offset_units;
-    state.line_width = context->line_width;
-    state.sample_coverage_enabled = context->sample_coverage_enabled;
-    state.sample_coverage_value = context->sample_coverage_value;
-    state.sample_coverage_invert = context->sample_coverage_invert;
+    state.base.viewport_x = (float)context->viewport_x;
+    state.base.viewport_y = (float)context->viewport_y;
+    state.base.viewport_width = (float)context->viewport_width;
+    state.base.viewport_height = (float)context->viewport_height;
+    state.base.min_depth = context->depth_range_near;
+    state.base.max_depth = context->depth_range_far;
+    state.base.polygon_offset_fill_enabled = context->polygon_offset_fill_enabled;
+    state.base.polygon_offset_factor = context->polygon_offset_factor;
+    state.base.polygon_offset_units = context->polygon_offset_units;
+    state.base.line_width = context->line_width;
+    state.base.sample_coverage_enabled = context->sample_coverage_enabled;
+    state.base.sample_coverage_value = context->sample_coverage_value;
+    state.base.sample_coverage_invert = context->sample_coverage_invert;
+    state.dither_enabled = context->dither_enabled;
 
     if (context->scissor_enabled) {
         x0 = context->scissor_x;
@@ -818,13 +824,13 @@ static int set_raster_state(RinGLContext* context, uint64_t command_list,
             x1 = x0;
         if (y1 < y0)
             y1 = y0;
-        state.scissor_x = (int32_t)x0;
-        state.scissor_y = (int32_t)y0;
-        state.scissor_width = (uint32_t)(x1 - x0);
-        state.scissor_height = (uint32_t)(y1 - y0);
-        state.scissor_enabled = 1u;
+        state.base.scissor_x = (int32_t)x0;
+        state.base.scissor_y = (int32_t)y0;
+        state.base.scissor_width = (uint32_t)(x1 - x0);
+        state.base.scissor_height = (uint32_t)(y1 - y0);
+        state.base.scissor_enabled = 1u;
     }
-    return ringl_backend_set_raster_state(context, command_list, &state);
+    return ringl_backend_set_raster_state_v2(context, command_list, &state);
 }
 
 static RinGLProgramObject* current_program(RinGLContext* context)

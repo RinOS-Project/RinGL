@@ -84,6 +84,11 @@ int main(void)
     assert(ringl_get_blend_color(&blend_color) == 0);
     assert(blend_color.red == 0.0f && blend_color.green == 0.5f &&
            blend_color.blue == 1.0f && blend_color.alpha == 1.0f);
+    assert(ringl_enable_webgl_float_color_buffer() == 0);
+    ringl_blend_color(-0.25f, 0.5f, 1.25f, 2.0f);
+    assert(ringl_get_blend_color(&blend_color) == 0);
+    assert(blend_color.red == -0.25f && blend_color.green == 0.5f &&
+           blend_color.blue == 1.25f && blend_color.alpha == 2.0f);
     blend_color.struct_size = sizeof(blend_color) - 1u;
     blend_color.red = -1.0f;
     assert(ringl_get_blend_color(&blend_color) == -1);

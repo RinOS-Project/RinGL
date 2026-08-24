@@ -140,6 +140,17 @@ static int key_uses_constant_blend(const RinGLPipelineKey* key)
             blend_factor_uses_constant(key->blend_destination_alpha));
 }
 
+static float blend_constant_for_color_target(uint32_t color_format, float value)
+{
+    if (color_format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT)
+        return value;
+    if (value <= 0.0f)
+        return 0.0f;
+    if (value >= 1.0f)
+        return 1.0f;
+    return value;
+}
+
 static uint32_t native_blend_op(uint32_t operation)
 {
     switch (operation) {
@@ -358,10 +369,14 @@ int ringl_build_pipeline_key(RinGLContext* context,
     result.blend_source_alpha = context->blend_source_alpha;
     result.blend_destination_alpha = context->blend_destination_alpha;
     result.blend_equation_alpha = context->blend_equation_alpha;
-    result.blend_constant_red = context->blend_constant_red;
-    result.blend_constant_green = context->blend_constant_green;
-    result.blend_constant_blue = context->blend_constant_blue;
-    result.blend_constant_alpha = context->blend_constant_alpha;
+    result.blend_constant_red = blend_constant_for_color_target(
+        color_format, context->blend_constant_red);
+    result.blend_constant_green = blend_constant_for_color_target(
+        color_format, context->blend_constant_green);
+    result.blend_constant_blue = blend_constant_for_color_target(
+        color_format, context->blend_constant_blue);
+    result.blend_constant_alpha = blend_constant_for_color_target(
+        color_format, context->blend_constant_alpha);
     result.color_write_mask = context->color_write_mask;
     result.cull_mode = context->cull_face_enabled ? context->cull_face_mode : 0u;
     result.front_face = context->front_face;

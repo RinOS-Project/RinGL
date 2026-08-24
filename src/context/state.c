@@ -605,13 +605,17 @@ static int blend_color_component(float value, float* result)
     memcpy(&bits, &value, sizeof(bits));
     if ((bits & 0x7f800000u) == 0x7f800000u)
         return 0;
-    if (value <= 0.0f)
-        *result = 0.0f;
-    else if (value >= 1.0f)
-        *result = 1.0f;
-    else
-        *result = value;
+    *result = value;
     return 1;
+}
+
+static float clamp_blend_color_component(float value)
+{
+    if (value <= 0.0f)
+        return 0.0f;
+    if (value >= 1.0f)
+        return 1.0f;
+    return value;
 }
 
 int ringl_get_blend_color(RinGLBlendColorV1* color)
@@ -638,31 +642,47 @@ int ringl_get_blend_color(RinGLBlendColorV1* color)
 void ringl_blend_color(float red, float green, float blue, float alpha)
 {
     RinGLContext* context = ringl_get_current_context();
-    float clamped_red;
-    float clamped_green;
-    float clamped_blue;
-    float clamped_alpha;
+    float next_red;
+    float next_green;
+    float next_blue;
+    float next_alpha;
 
     if (context == NULL)
         return;
-    if (!blend_color_component(red, &clamped_red) ||
-        !blend_color_component(green, &clamped_green) ||
-        !blend_color_component(blue, &clamped_blue) ||
-        !blend_color_component(alpha, &clamped_alpha)) {
+    if (!blend_color_component(red, &next_red) ||
+        !blend_color_component(green, &next_green) ||
+        !blend_color_component(blue, &next_blue) ||
+        !blend_color_component(alpha, &next_alpha)) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
-    if (context->blend_constant_red == clamped_red &&
-        context->blend_constant_green == clamped_green &&
-        context->blend_constant_blue == clamped_blue &&
-        context->blend_constant_alpha == clamped_alpha) {
+    if (context->webgl_float_color_buffer_enabled == RINGL_FALSE) {
+        next_red = clamp_blend_color_component(next_red);
+        next_green = clamp_blend_color_component(next_green);
+        next_blue = clamp_blend_color_component(next_blue);
+        next_alpha = clamp_blend_color_component(next_alpha);
+    }
+    if (context->blend_constant_red == next_red &&
+        context->blend_constant_green == next_green &&
+        context->blend_constant_blue == next_blue &&
+        context->blend_constant_alpha == next_alpha) {
         return;
     }
-    context->blend_constant_red = clamped_red;
-    context->blend_constant_green = clamped_green;
-    context->blend_constant_blue = clamped_blue;
-    context->blend_constant_alpha = clamped_alpha;
+    context->blend_constant_red = next_red;
+    context->blend_constant_green = next_green;
+    context->blend_constant_blue = next_blue;
+    context->blend_constant_alpha = next_alpha;
     ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
+}
+
+int ringl_enable_webgl_float_color_buffer(void)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL || context->lost != RINGL_FALSE)
+        return -1;
+    context->webgl_float_color_buffer_enabled = RINGL_TRUE;
+    return 0;
 }
 
 void ringl_blend_equation_separate(uint32_t mode_rgb, uint32_t mode_alpha)

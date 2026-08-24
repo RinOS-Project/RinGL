@@ -202,12 +202,14 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   component result.
 - [x] Add `CONSTANT_COLOR`/`ONE_MINUS_CONSTANT_COLOR` and
   `CONSTANT_ALPHA`/`ONE_MINUS_CONSTANT_ALPHA` with `ringl_blend_color()`.
-  RinGL clamps finite values to `[0,1]`, keeps state unchanged on NaN/Inf,
-  includes the RGBA value in the pipeline-cache key, and uses an additive V2
-  native descriptor/callback only when a constant factor is active. V1
-  bindings therefore cannot silently use a zero constant; a missing V2 path
-  rejects the draw. The focused RinGL-to-RinGPU-to-Aquamarine test verifies
-  both component constant color and scalar constant alpha output.
+  RinGL normally clamps finite values to `[0,1]` and keeps state unchanged on
+  NaN/Inf. After the private `WEBGL_color_buffer_float` gate, it retains finite
+  out-of-range components only in an RGBA32F pipeline key and clamps them again
+  for fixed-point targets. It uses an additive V2 native descriptor/callback
+  only when a constant factor is active. V1 bindings therefore cannot silently
+  use a zero constant; a missing V2 path rejects the draw. The focused
+  RinGL-to-RinGPU-to-Aquamarine test verifies component constant color, scalar
+  constant alpha, and unclamped Float-target output.
 - [x] Expose a versioned snapshot of mutable clear values so an embedding can perform the WebGL default-buffer clear without overwriting application clear state.
 - [x] Add a state-neutral default-framebuffer clear for trusted presentation
   embeddings: it forces WebGL's color/depth/stencil defaults without observing

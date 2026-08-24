@@ -1331,6 +1331,11 @@ int32_t ringl_get_tex_parameteri(uint32_t target, uint32_t pname);
  * been acquired. Returns zero only when a live current context accepted the
  * capability. */
 int ringl_enable_webgl_float_texture_linear(void);
+/* WEBGL_color_buffer_float enables unclamped blendColor state for the current
+ * context. RinGL retains finite components, then clamps them only while it
+ * builds a pipeline for a fixed-point target. Returns zero only when a live
+ * current context accepted the capability. */
+int ringl_enable_webgl_float_color_buffer(void);
 void ringl_tex_image_2d(uint32_t target, int32_t level,
                         uint32_t internal_format, int32_t width, int32_t height,
                         int32_t border, uint32_t format, uint32_t type,

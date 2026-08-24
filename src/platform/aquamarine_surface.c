@@ -1349,23 +1349,27 @@ static int backend_blend_pipeline_valid(
     }
     memcpy(&bits, &descriptor->blend_constant_red, sizeof(bits));
     if ((bits & 0x7f800000u) == 0x7f800000u ||
-        descriptor->blend_constant_red < 0.0f ||
-        descriptor->blend_constant_red > 1.0f)
+        (descriptor->color_format != RIN_GPU_FORMAT_RGBA32_FLOAT &&
+         (descriptor->blend_constant_red < 0.0f ||
+          descriptor->blend_constant_red > 1.0f)))
         return 0;
     memcpy(&bits, &descriptor->blend_constant_green, sizeof(bits));
     if ((bits & 0x7f800000u) == 0x7f800000u ||
-        descriptor->blend_constant_green < 0.0f ||
-        descriptor->blend_constant_green > 1.0f)
+        (descriptor->color_format != RIN_GPU_FORMAT_RGBA32_FLOAT &&
+         (descriptor->blend_constant_green < 0.0f ||
+          descriptor->blend_constant_green > 1.0f)))
         return 0;
     memcpy(&bits, &descriptor->blend_constant_blue, sizeof(bits));
     if ((bits & 0x7f800000u) == 0x7f800000u ||
-        descriptor->blend_constant_blue < 0.0f ||
-        descriptor->blend_constant_blue > 1.0f)
+        (descriptor->color_format != RIN_GPU_FORMAT_RGBA32_FLOAT &&
+         (descriptor->blend_constant_blue < 0.0f ||
+          descriptor->blend_constant_blue > 1.0f)))
         return 0;
     memcpy(&bits, &descriptor->blend_constant_alpha, sizeof(bits));
     if ((bits & 0x7f800000u) == 0x7f800000u ||
-        descriptor->blend_constant_alpha < 0.0f ||
-        descriptor->blend_constant_alpha > 1.0f)
+        (descriptor->color_format != RIN_GPU_FORMAT_RGBA32_FLOAT &&
+         (descriptor->blend_constant_alpha < 0.0f ||
+          descriptor->blend_constant_alpha > 1.0f)))
         return 0;
     if (descriptor->blend_enabled == 0u) {
         return descriptor->source_color_factor == 0u &&

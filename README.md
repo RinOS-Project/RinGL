@@ -101,7 +101,7 @@ This keeps RinShader IR as the common validated shader boundary while allowing e
 
 OpenGL exposes mutable, implicit state while RinGPU is intentionally explicit. RinGL therefore maintains a context-side state machine and derives backend objects lazily.
 
-For example, blend state, depth state, the linked program, vertex layout, attachment formats, and other draw-relevant state can form a pipeline-cache key. Changing `glEnable(GL_BLEND)` should invalidate the derived pipeline state rather than immediately emit a GPU command. The blend key includes the clamped RGBA `ringl_blend_color()` value. Constant blend factors use an additive native-pipeline V2 descriptor and optional callback tail, preserving the V1 descriptor for existing RinGPU embeddings; an embedding without that V2 path rejects the draw instead of substituting a zero blend constant.
+For example, blend state, depth state, the linked program, vertex layout, attachment formats, and other draw-relevant state can form a pipeline-cache key. Changing `glEnable(GL_BLEND)` should invalidate the derived pipeline state rather than immediately emit a GPU command. The blend key includes the RGBA `ringl_blend_color()` value after target-aware normalization: it retains finite values outside `[0,1]` only after the browser's Float-color gate and only for an RGBA32F target; fixed-point targets use the clamped value. Constant blend factors use an additive native-pipeline V2 descriptor and optional callback tail, preserving the V1 descriptor for existing RinGPU embeddings; an embedding without that V2 path rejects the draw instead of substituting a zero blend constant.
 
 OpenGL also has no explicit render-pass API. RinGL is expected to open and close RinGPU render passes around compatible framebuffer operations and end them when an incompatible operation requires it.
 
@@ -462,10 +462,12 @@ records `INVALID_OPERATION`. The legacy `ringl_get_integerv()` remains for
 existing callers, but new browser-facing code uses the bounded entry point so
 viewport, scissor, and color-mask queries cannot overrun an output buffer.
 
-`RinGLBlendColorV1` separately snapshots the finite, clamped blend constant
-that RinGL resolves into RinGPU's V2 pipeline descriptor. Its versioned input
-is validated before the complete snapshot is copied out, so a browser can
-answer `BLEND_COLOR` without reusing clear-color state or exposing internals.
+`RinGLBlendColorV1` separately snapshots the finite blend constant that RinGL
+resolves into RinGPU's V2 pipeline descriptor. It is normally clamped; after
+the private Float-color gate, finite values outside `[0,1]` are retained only
+for an RGBA32F pipeline. Its versioned input is validated before the complete
+snapshot is copied out, so a browser can answer `BLEND_COLOR` without reusing
+clear-color state or exposing internals.
 
 `ringl_depth_range()` retains the OpenGL depth-range state separately from the
 viewport. It rejects non-finite inputs without changing state, clamps each
@@ -657,8 +659,11 @@ uses `COPY_DESTINATION|SAMPLED`; a color-renderable `RGBA/FLOAT` texture or
 `ringl_framebuffer_color_attachment_is_float()` lets a browser gate that
 native capability behind its WebGL extension object without mirroring RinGL
 attachment state. Float clear and fragment outputs retain finite components
-outside `[0,1]`; a Float color target reads back only as `RGBA/FLOAT`, never as
-silently quantized RGBA8. A Float texture is initially complete only with
+outside `[0,1]`. `ringl_enable_webgl_float_color_buffer()` adds the same
+context-local WebGL gate for finite `blendColor` components: RGBA32F pipelines
+preserve them, while fixed-point pipelines still clamp them. A Float color
+target reads back only as `RGBA/FLOAT`, never as silently quantized RGBA8. A
+Float texture is initially complete only with
 `NEAREST` magnification and `NEAREST` or `NEAREST_MIPMAP_NEAREST`
 minification. A browser that has actually granted `OES_texture_float_linear`
 calls the explicit context-local `ringl_enable_webgl_float_texture_linear()`

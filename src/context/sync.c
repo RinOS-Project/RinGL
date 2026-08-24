@@ -312,7 +312,7 @@ int ringl_get_implementation_color_read_format_type(uint32_t* format_out,
     RinGLColorTarget target;
     uint32_t type;
 
-    if (context == NULL || format_out == NULL || type_out == NULL ||
+    if (context == NULL || context->lost || format_out == NULL || type_out == NULL ||
         (context->framebuffer_binding != 0u &&
          ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) !=
              RINGL_FRAMEBUFFER_COMPLETE) ||

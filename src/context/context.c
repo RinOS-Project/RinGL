@@ -117,8 +117,13 @@ int ringl_context_create(const RinGLContextDescV1* desc,
     context->blend_equation_alpha = RINGL_FUNC_ADD;
     context->color_write_mask = 0x0fu;
     context->unpack_alignment = 4u;
-    for (uint32_t index = 0u; index < RINGL_MAX_VERTEX_ATTRIBS; ++index)
+    for (uint32_t index = 0u; index < RINGL_MAX_VERTEX_ATTRIBS; ++index) {
+        context->vertex_attribs[index].size = 4u;
+        context->vertex_attribs[index].type = RINGL_FLOAT;
         context->vertex_attribs[index].current_value[3] = 1.0f;
+        context->default_vertex_array.vertex_attribs[index].size = 4u;
+        context->default_vertex_array.vertex_attribs[index].type = RINGL_FLOAT;
+    }
 
     if (desc != NULL) {
         if (desc->ringpu != NULL) {

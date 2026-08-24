@@ -86,6 +86,14 @@ vertex_attrib_test = executable(
 
 test('vertex-attrib', vertex_attrib_test)
 
+vertex_array_test = executable(
+  'ringl-vertex-array-test',
+  'vertex_array_test.c',
+  dependencies: ringl_dep,
+)
+
+test('vertex-array', vertex_array_test)
+
 shader_test = executable(
   'ringl-shader-test',
   'shader_test.c',

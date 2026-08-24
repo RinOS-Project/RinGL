@@ -193,22 +193,3 @@ int ringl_get_vertex_attrib_current(uint32_t index, float values[4])
     memcpy(values, attrib->current_value, sizeof(attrib->current_value));
     return 0;
 }
-
-void ringl_vertex_attrib_detach_buffer(RinGLContext* context, uint32_t buffer)
-{
-    uint32_t index;
-
-    if (context == NULL || buffer == 0u)
-        return;
-    for (index = 0; index < RINGL_MAX_VERTEX_ATTRIBS; ++index) {
-        RinGLVertexAttribState* attrib = &context->vertex_attribs[index];
-        if (attrib->buffer != buffer)
-            continue;
-        attrib->buffer = 0u;
-        attrib->offset = 0u;
-        attrib->stride = 0u;
-        attrib->enabled = RINGL_FALSE;
-        ringl_context_mark_dirty(context,
-                                 RINGL_DIRTY_PIPELINE | RINGL_DIRTY_BINDINGS);
-    }
-}

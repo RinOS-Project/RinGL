@@ -14,6 +14,7 @@ typedef enum RinGLObjectType {
     RINGL_OBJECT_TEXTURE = 4,
     RINGL_OBJECT_FRAMEBUFFER = 5,
     RINGL_OBJECT_RENDERBUFFER = 6,
+    RINGL_OBJECT_VERTEX_ARRAY = 7,
 } RinGLObjectType;
 
 typedef enum RinGLObjectState {

@@ -274,6 +274,15 @@ typedef struct RinGLVertexAttribState {
     float current_value[4];
 } RinGLVertexAttribState;
 
+/* A vertex-array object owns the array-descriptor fields and its element
+ * buffer binding. Current generic attribute values deliberately remain on
+ * the context: WebGL inherits the OpenGL ES rule that those values are not
+ * captured by a VAO. */
+typedef struct RinGLVertexArrayState {
+    uint32_t element_array_buffer;
+    RinGLVertexAttribState vertex_attribs[RINGL_MAX_VERTEX_ATTRIBS];
+} RinGLVertexArrayState;
+
 typedef struct RinGLResolvedVertexAttribute {
     uint32_t location;
     uint32_t format;
@@ -414,8 +423,11 @@ struct RinGLContext {
     RinGLRenderbufferObject renderbuffers[RINGL_OBJECT_SLOT_COUNT];
     RinGLShaderObject shaders[RINGL_OBJECT_SLOT_COUNT];
     RinGLProgramObject programs[RINGL_OBJECT_SLOT_COUNT];
+    RinGLVertexArrayState vertex_arrays[RINGL_OBJECT_SLOT_COUNT];
+    RinGLVertexArrayState default_vertex_array;
     uint32_t array_buffer;
     uint32_t element_array_buffer;
+    uint32_t vertex_array_binding;
     uint32_t active_texture_unit;
     uint32_t bound_texture_2d[RINGL_MAX_TEXTURE_UNITS];
     uint32_t framebuffer_binding;
@@ -647,7 +659,7 @@ void ringl_shader_release_if_delete_pending(RinGLContext* context,
 void ringl_program_objects_destroy_all(RinGLContext* context);
 void ringl_pipeline_cache_destroy(RinGLContext* context);
 void ringl_invalidate_graphics_artifacts(RinGLContext* context);
-void ringl_vertex_attrib_detach_buffer(RinGLContext* context, uint32_t buffer);
+void ringl_vertex_array_detach_buffer(RinGLContext* context, uint32_t buffer);
 int ringl_resolve_vertex_layout(const RinGLContext* context,
                                 RinGLResolvedVertexLayout* layout);
 int ringl_validate_vertex_fetch(const RinGLContext* context,

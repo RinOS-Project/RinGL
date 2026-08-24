@@ -147,6 +147,7 @@ extern "C" {
 #define RINGL_MAX_TEXTURE_IMAGE_UNITS       0x8872u
 #define RINGL_ARRAY_BUFFER_BINDING          0x8894u
 #define RINGL_ELEMENT_ARRAY_BUFFER_BINDING  0x8895u
+#define RINGL_VERTEX_ARRAY_BINDING_OES       0x85b5u
 #define RINGL_CURRENT_PROGRAM               0x8b8du
 #define RINGL_MAX_COMBINED_TEXTURE_IMAGE_UNITS 0x8b4du
 #define RINGL_CULL_FACE_MODE                0x0b45u
@@ -1293,6 +1294,15 @@ void ringl_buffer_sub_data_from_bytes(uint32_t target,
                                       uint64_t data_size);
 uint64_t ringl_get_buffer_size(uint32_t target);
 uint32_t ringl_get_buffer_usage(uint32_t target);
+
+/* WebGL 1 OES_vertex_array_object support. A generated name becomes an
+ * object when bound, matching the extension's isVertexArrayOES behavior.
+ * Binding zero restores the context's default vertex-array state. */
+void ringl_gen_vertex_arrays(int32_t count, uint32_t* arrays);
+void ringl_delete_vertex_arrays(int32_t count, const uint32_t* arrays);
+void ringl_bind_vertex_array(uint32_t array);
+int ringl_is_vertex_array(uint32_t array);
+uint32_t ringl_get_bound_vertex_array(void);
 
 void ringl_gen_textures(int32_t count, uint32_t* textures);
 void ringl_delete_textures(int32_t count, const uint32_t* textures);

@@ -319,6 +319,14 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   three-level texture.
 - [ ] Decide the boundary for OpenGL ES 3.x features.
 - [ ] Add VAOs, instancing, additional texture formats, MRT, and other GLES 3.x features only after the underlying RinGPU contracts are ready.
+  - [x] Add the WebGL 1 `OES_vertex_array_object` subset without admitting a
+    GLES backend. RinGL owns a default VAO plus bounded named VAO descriptors
+    for captured attribute-array state and `ELEMENT_ARRAY_BUFFER`; generic
+    current attribute values remain context state as required by WebGL. Buffer
+    deletion detaches matching descriptors in both active and inactive VAOs
+    before object-name reuse. The focused C11 test covers switching, default
+    restoration, current-value preservation, deletion, and stale-name
+    rejection. Instancing and the remaining GLES 3.x VAO surface remain open.
 
 ## Phase 9 — WebGL-facing readiness
 

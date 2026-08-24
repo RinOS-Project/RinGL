@@ -133,6 +133,17 @@ create context
 
 After that vertical slice is stable, indexed drawing, textures, framebuffer objects, blending/depth/stencil, synchronization, readback, and broader GLES compatibility can be added incrementally.
 
+## WebGL 1 vertex-array objects
+
+RinGL implements the state required by WebGL 1
+`OES_vertex_array_object`: a default unnamed VAO and bounded generated VAO
+names capture each generic attribute-array descriptor and the
+`ELEMENT_ARRAY_BUFFER` binding. The current generic attribute values stay on
+the context, so binding a VAO cannot alter `vertexAttrib[1-4]f` values. A
+deleted buffer is detached from active and inactive VAOs before its numeric
+name can be recycled. This is a WebGL 1 extension slice, not a claim of GLES
+3.x VAO or instancing support.
+
 ## Current packed-color framebuffer slice
 
 `RINGL_RGB565`, `RINGL_RGBA4`, and `RINGL_RGB5_A1` renderbuffers realize as

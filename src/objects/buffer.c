@@ -113,6 +113,12 @@ void ringl_delete_buffers(int32_t count, const uint32_t* buffers)
         if (context->element_array_buffer == name)
             context->element_array_buffer = 0u;
 
+        /* Attribute descriptors and element bindings can live in an
+         * inactive VAO. Detach every reference before the numeric name is
+         * released so a later allocation cannot turn stale state into a
+         * reference to an unrelated buffer. */
+        ringl_vertex_array_detach_buffer(context, name);
+
         slot_index = ringl_object_slot_index(name);
         if (slot_index < RINGL_OBJECT_SLOT_COUNT) {
             ringl_backend_destroy_object(context,

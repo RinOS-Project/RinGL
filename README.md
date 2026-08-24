@@ -401,18 +401,18 @@ embeddings therefore query the same RinGL ownership state they execute rather
 than treating a local object cache as a second backend.
 
 The current bounded uniform profile consists of linked `sampler2D`, scalar
-`float`/`int`, `vec2`/`vec3`/`vec4`, `ivec2`/`ivec3`/`ivec4`, and a
-vertex-only `mat4` position transform. `ringl_get_uniform_1i()` reads either a
+`float`/`int`, `vec2`/`vec3`/`vec4`, `ivec2`/`ivec3`/`ivec4`, and vertex-only
+`mat2`, `mat3`, or `mat4` position transforms. `ringl_get_uniform_1i()` reads either a
 selected texture unit or scalar integer; `ringl_get_uniform_{2,3,4}i()` read
 complete integer vectors. The corresponding float getters and
-`ringl_get_uniform_matrix4f()` read the scalar/vector or all sixteen
+`ringl_get_uniform_matrix{2,3,4}f()` read the scalar/vector or complete
 column-major matrix values for a specific linked program and location without
 depending on the current program binding. Each validates its complete input
 before writing caller-owned storage, so invalid programs or locations cannot
 expose a partially updated result.
 
 `ringl_uniform_1f()`, `ringl_uniform_2f()`, `ringl_uniform_3f()`,
-`ringl_uniform_4f()`, and `ringl_uniform_matrix4fv()` update a linked program
+`ringl_uniform_4f()`, and `ringl_uniform_matrix{2,3,4}fv()` update a linked program
 only after every supplied component is finite. The matrix setter requires
 `transpose == 0` and preserves WebGL's column-major order. A NaN, infinity, or
 transposed matrix records `INVALID_VALUE` and leaves the published uniform and
@@ -431,7 +431,7 @@ supports single-component `.x/.y/.z/.w` (and color aliases) reads only; uniform
 arrays, multi-component swizzles, general integer control flow, and implicit
 numeric conversions remain unavailable.
 
-Program-owned uniform artifacts are stage-selective. A mutable vertex `mat4`
+Program-owned uniform artifacts are stage-selective. A mutable vertex matrix
 does not force an unrelated fragment `sampler2D` shader back through the
 scalar/vector lowerer: RinGL retains the fragment's validated texture RSH1
 module and atomically replaces only the vertex module on a matrix update. The
@@ -460,8 +460,10 @@ fragment profile may combine the matching bounded texture calls and multiply
 their RGBA result by one linked `uniform vec4`; RinGL materializes the finite
 four-component value in the program-owned fragment RSH1 module and retains
 the sampler-resource metadata needed to bind every native image/sampler pair.
-Coordinate arithmetic and other matrix expressions remain outside this
-deliberately bounded shape. A fifth UV pair is outside the RSH1 interface and
+This specialized varying/texture shape deliberately remains `mat4` only. The
+new `mat2 * vec2` and `mat3 * vec3` forms execute only in the generic
+no-varying vertex profile; coordinate arithmetic and other matrix expressions
+remain outside both shapes. A fifth UV pair is outside the RSH1 interface and
 fails lowering without publishing a truncated module.
 
 The same transformed route supports the common vertex-color texture form: an
@@ -496,10 +498,11 @@ The no-varying RSH1 profile also lowers local `vec2`, `vec3`, and `vec4`
 values and component-wise vector arithmetic directly to scalar RSH1
 instructions. Same-width `+`/`-`, unary `-`, and vector/scalar `*` and `/`
 are executable rather than host-side constant folding. This covers common
-uniform color modulation and a matrix-transformed position plus a vector
-offset while retaining explicit RSH1 resource and register limits; swizzles,
-matrix arithmetic beyond `mat4 * vec4`, vector comparisons, and control flow
-are still outside the profile.
+uniform color modulation and matrix-transformed positions (`mat2 * vec2`,
+`mat3 * vec3`, or `mat4 * vec4`) plus a vector offset while retaining explicit
+RSH1 resource and register limits; swizzles, matrix arithmetic beyond one
+matching matrix/vector product, vector comparisons, and control flow are still
+outside the profile.
 
 The frontend accepts GLSL ES global `precision lowp|mediump|highp` declarations
 for `float`, `int`, and `sampler2D`. They are not ignored text: the compiler
@@ -625,8 +628,8 @@ Linked program reflection is also exposed without borrowing RinGL storage.
 `ringl_get_active_attrib()` and `ringl_get_active_uniform()` copy one bounded
 entry into `RinGLActiveInfoV1` only after validating its versioned output
 header. The current profile reports scalar/`vec2`/`vec3`/`vec4` float
-attributes and `sampler2D`, scalar `float`, `vec2`, `vec3`, `vec4`, and `mat4`
-uniforms; unlinked programs or out-of-range indices record the appropriate
+attributes and `sampler2D`, scalar `float`, `vec2`, `vec3`, `vec4`, `mat2`,
+`mat3`, and `mat4` uniforms; unlinked programs or out-of-range indices record the appropriate
 error and leave caller storage unchanged.
 
 `RINGL_POINTS`, `RINGL_LINES`, `RINGL_LINE_STRIP`, `RINGL_LINE_LOOP`,
@@ -958,17 +961,18 @@ unfinished. No API or ABI stability guarantee is made yet.
 
 The raw shader path now has a bounded scalar/vector/matrix uniform execution
 profile. A linked program retains `float`, `vec2`, `vec3`, `vec4`, and bounded
-`mat4` values independently from the shader objects it shares with other
+`mat2`/`mat3`/`mat4` values independently from the shader objects it shares with other
 programs. Each `ringl_uniform_{1,2,3,4}f()` or
-`ringl_uniform_matrix4fv()` update first lowers a new program-owned RSH1 pair
+`ringl_uniform_matrix{2,3,4}fv()` update first lowers a new program-owned RSH1 pair
 containing the corresponding Float32 `CONST_F32` instructions, asks RinGPU to
 validate/create both replacement modules, then invalidates the old pipeline
 and publishes the new executable. Thus an update affects the actual RinGPU
 draw without textual source replacement or a CPU color fallback. The accepted
 generic no-varying forms include `vec4(tint2, 0.0, 1.0)` for a `vec2`,
 `vec4(tint3, 1.0)` for a `vec3`, a direct `vec4` read, and vertex
-`gl_Position = transform * position` for one `uniform mat4` and
-`attribute vec4`, as well as bounded no-varying vector locals and
-component-wise arithmetic. Arrays, other matrix expressions, and vector
+`gl_Position = transform * position` for one matching `uniform mat2`/`mat3`/
+`mat4` and `attribute vec2`/`vec3`/`vec4`, as well as bounded no-varying vector
+locals and component-wise arithmetic. The generic form has no varyings and one
+matrix per type/location; arrays, other matrix expressions, and matrix/vector
 combinations with the specialized varying/texture profiles remain unavailable
 rather than being reported as successful GLES.

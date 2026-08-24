@@ -47,6 +47,8 @@ extern "C" {
 #define RINGL_INT_VEC2       0x8b53u
 #define RINGL_INT_VEC3       0x8b54u
 #define RINGL_INT_VEC4       0x8b55u
+#define RINGL_FLOAT_MAT2     0x8b5au
+#define RINGL_FLOAT_MAT3     0x8b5bu
 #define RINGL_FLOAT_MAT4     0x8b5cu
 #define RINGL_SAMPLER_2D     0x8b5eu
 
@@ -1724,12 +1726,21 @@ void ringl_uniform_4f(int32_t location, float x, float y, float z, float w);
  * an error. */
 int ringl_get_uniform_4f(uint32_t program, int32_t location,
                           float values_out[4]);
-/* The bounded matrix profile accepts a vertex-stage `uniform mat4` only when
- * it is multiplied by one vec4 attribute to produce gl_Position. Values use
- * WebGL's column-major order and transpose must be zero. */
+/* The bounded matrix profile accepts a vertex-stage square matrix only when
+ * it is multiplied by a same-width vector. RinGL lowers the product directly
+ * to scalar RSH1 arithmetic. Values use WebGL's column-major order and
+ * transpose must be zero. */
+void ringl_uniform_matrix2fv(int32_t location, uint32_t transpose,
+                             const float values[4]);
+void ringl_uniform_matrix3fv(int32_t location, uint32_t transpose,
+                             const float values[9]);
 void ringl_uniform_matrix4fv(int32_t location, uint32_t transpose,
                              const float values[16]);
-/* Reads an active mat4 uniform in WebGL column-major order. */
+/* Reads an active square matrix uniform in WebGL column-major order. */
+int ringl_get_uniform_matrix2f(uint32_t program, int32_t location,
+                                float values_out[4]);
+int ringl_get_uniform_matrix3f(uint32_t program, int32_t location,
+                                float values_out[9]);
 int ringl_get_uniform_matrix4f(uint32_t program, int32_t location,
                                 float values_out[16]);
 

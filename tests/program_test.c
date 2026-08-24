@@ -44,6 +44,9 @@ int main(void)
     uint32_t mat4_fragment;
     uint32_t mat4_program;
     uint32_t mat4_peer_program;
+    uint32_t matrix_vertex;
+    uint32_t matrix_fragment;
+    uint32_t matrix_program;
     uint32_t attached_shaders[2] = { 0u, 0u };
     uint32_t attached_shader_count = 0u;
     int32_t location;
@@ -568,6 +571,82 @@ int main(void)
     }
     ringl_delete_program(mat4_peer_program);
     ringl_delete_program(mat4_program);
+
+    /* Mat2/3 use the same program-owned RSH1 uniform path as mat4, but each
+     * multiplication has its real GLSL vector width and column-major layout. */
+    matrix_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+    matrix_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+    matrix_program = ringl_create_program();
+    assert(matrix_vertex != 0u && matrix_fragment != 0u && matrix_program != 0u);
+    ringl_shader_source(
+        matrix_vertex,
+        "attribute vec2 position; uniform mat2 transform2; uniform mat3 transform3; "
+        "void main() { vec2 rotated = transform2 * position; "
+        "vec3 translated = transform3 * vec3(rotated, 1.0); "
+        "gl_Position = vec4(translated, 1.0); }",
+        -1);
+    ringl_shader_source(
+        matrix_fragment,
+        "void main() { gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0); }", -1);
+    ringl_compile_shader(matrix_vertex);
+    ringl_compile_shader(matrix_fragment);
+    assert(ringl_get_shader_compile_status(matrix_vertex) == RINGL_TRUE);
+    assert(ringl_get_shader_compile_status(matrix_fragment) == RINGL_TRUE);
+    ringl_attach_shader(matrix_program, matrix_vertex);
+    ringl_attach_shader(matrix_program, matrix_fragment);
+    ringl_link_program(matrix_program);
+    assert(ringl_get_program_link_status(matrix_program) == RINGL_TRUE);
+    assert(ringl_get_program_info(matrix_program, &info) == 0);
+    assert(info.active_uniform_count == 2u);
+    {
+        int32_t matrix2_location =
+            ringl_get_uniform_location(matrix_program, "transform2");
+        int32_t matrix3_location =
+            ringl_get_uniform_location(matrix_program, "transform3");
+        float matrix2[4] = { 2.0f, 0.0f, 0.0f, 3.0f };
+        float matrix3[9] = {
+            1.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f,
+            0.5f, -0.25f, 1.0f,
+        };
+        float read2[4] = { -1.0f, -1.0f, -1.0f, -1.0f };
+        float read3[9] = { 0.0f };
+
+        assert(matrix2_location == 0 && matrix3_location == 1);
+        assert(ringl_get_active_uniform(matrix_program, 0u, &active_info) == 0);
+        assert(active_info.type == RINGL_FLOAT_MAT2 &&
+               strcmp(active_info.name, "transform2") == 0);
+        assert(ringl_get_active_uniform(matrix_program, 1u, &active_info) == 0);
+        assert(active_info.type == RINGL_FLOAT_MAT3 &&
+               strcmp(active_info.name, "transform3") == 0);
+        assert(ringl_get_uniform_matrix2f(matrix_program, matrix2_location,
+                                           read2) == 0);
+        assert(ringl_get_uniform_matrix3f(matrix_program, matrix3_location,
+                                           read3) == 0);
+        assert(read2[0] == 0.0f && read2[3] == 0.0f && read3[8] == 0.0f);
+        ringl_use_program(matrix_program);
+        ringl_uniform_matrix2fv(matrix2_location, RINGL_FALSE, matrix2);
+        ringl_uniform_matrix3fv(matrix3_location, RINGL_FALSE, matrix3);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_matrix2f(matrix_program, matrix2_location,
+                                           read2) == 0);
+        assert(ringl_get_uniform_matrix3f(matrix_program, matrix3_location,
+                                           read3) == 0);
+        assert(memcmp(read2, matrix2, sizeof(read2)) == 0);
+        assert(memcmp(read3, matrix3, sizeof(read3)) == 0);
+        matrix3[4] = NAN;
+        ringl_uniform_matrix3fv(matrix3_location, RINGL_FALSE, matrix3);
+        assert(ringl_get_error() == RINGL_INVALID_VALUE);
+        assert(ringl_get_uniform_matrix3f(matrix_program, matrix3_location,
+                                           read3) == 0);
+        assert(read3[4] == 1.0f);
+        matrix3[4] = 1.0f;
+        ringl_uniform_matrix2fv(matrix3_location, RINGL_FALSE, matrix2);
+        assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+        ringl_uniform_matrix3fv(matrix3_location, RINGL_TRUE, matrix3);
+        assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    }
+    ringl_delete_program(matrix_program);
 
     multi_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
     multi_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);

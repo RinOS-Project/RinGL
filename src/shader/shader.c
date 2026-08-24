@@ -107,6 +107,8 @@ static void ringl_shader_reset_compile_state(RinGLContext* context,
     object->ivec2_uniform_count = 0u;
     object->ivec3_uniform_count = 0u;
     object->ivec4_uniform_count = 0u;
+    object->mat2_uniform_count = 0u;
+    object->mat3_uniform_count = 0u;
     object->mat4_uniform_count = 0u;
     object->rsh1_sampler_binding_count = 0u;
     object->uses_standard_derivatives = 0u;
@@ -125,6 +127,8 @@ static void ringl_shader_reset_compile_state(RinGLContext* context,
     memset(object->ivec2_uniform_names, 0, sizeof(object->ivec2_uniform_names));
     memset(object->ivec3_uniform_names, 0, sizeof(object->ivec3_uniform_names));
     memset(object->ivec4_uniform_names, 0, sizeof(object->ivec4_uniform_names));
+    memset(object->mat2_uniform_names, 0, sizeof(object->mat2_uniform_names));
+    memset(object->mat3_uniform_names, 0, sizeof(object->mat3_uniform_names));
     memset(object->mat4_uniform_names, 0,
            sizeof(object->mat4_uniform_names));
     memset(object->rsh1_sampler_binding_indices, 0,
@@ -334,6 +338,12 @@ void ringl_compile_shader(uint32_t shader)
     object->ivec4_uniform_count = result.ivec4_uniform_count;
     memcpy(object->ivec4_uniform_names, result.ivec4_uniform_names,
            sizeof(object->ivec4_uniform_names));
+    object->mat2_uniform_count = result.mat2_uniform_count;
+    memcpy(object->mat2_uniform_names, result.mat2_uniform_names,
+           sizeof(object->mat2_uniform_names));
+    object->mat3_uniform_count = result.mat3_uniform_count;
+    memcpy(object->mat3_uniform_names, result.mat3_uniform_names,
+           sizeof(object->mat3_uniform_names));
     object->mat4_uniform_count = result.mat4_uniform_count;
     memcpy(object->mat4_uniform_names, result.mat4_uniform_names,
            sizeof(object->mat4_uniform_names));

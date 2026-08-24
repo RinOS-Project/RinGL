@@ -39,7 +39,7 @@ Status meanings:
 | `glDrawArrays`, `glDrawElements` | B | All seven listed primitive topologies; bounded RSH1/linker and validated buffers. |
 | `glFinish`, `glFlush` | B | Immediate submission; `finish` uses the optional fenced-sync extension. |
 | `glGenerateMipmap` | B | Bounded 2D canonical/native packed color chains only. |
-| `glGetActiveAttrib`, `glGetActiveUniform` | P | Versioned `RinGLActiveInfoV1`; current linker exposes bounded attributes plus `sampler2D`, scalar/vector float and signed integer, and vertex `mat4` uniforms. |
+| `glGetActiveAttrib`, `glGetActiveUniform` | P | Versioned `RinGLActiveInfoV1`; current linker exposes bounded attributes plus `sampler2D`, scalar/vector float and signed integer, and vertex `mat2`/`mat3`/`mat4` uniforms. |
 | `glGetAttachedShaders` | B | `ringl_get_attached_shaders` copies the pending vertex/fragment names in deterministic order, including delete-pending shaders retained by a program. |
 | `glGetBooleanv`, `glGetFloatv` | P | Dedicated state snapshots exist; no generic typed getter. |
 | `glGetBufferParameteriv` | P | `ringl_get_buffer_size` / `ringl_get_buffer_usage` only. |
@@ -54,8 +54,8 @@ Status meanings:
 | `glGetTexParameteriv` | P | Integer values for `MIN_FILTER`, `MAG_FILTER`, `WRAP_S`, `WRAP_T` only. |
 | `glGetTexParameterfv` | N | No floating tex-parameter getter. |
 | `glGetUniformiv` | P | `ringl_get_uniform_1i` for linked scalar `sampler2D` or `int`, plus `ringl_get_uniform_{2,3,4}i` for complete `ivec` values; no arrays. |
-| `glGetUniformfv` | P | `ringl_get_uniform_{1,2,3,4}f` for linked `float`/`vec2`/`vec3`/`vec4` locations, and `ringl_get_uniform_matrix4f` for the bounded vertex `mat4` profile. |
-| `glGetUniformLocation` | P | Linked `sampler2D`, scalar/vector float and signed integer, and bounded vertex `mat4` uniforms only. |
+| `glGetUniformfv` | P | `ringl_get_uniform_{1,2,3,4}f` for linked `float`/`vec2`/`vec3`/`vec4` locations, and `ringl_get_uniform_matrix{2,3,4}f` for bounded vertex square-matrix profiles. |
+| `glGetUniformLocation` | P | Linked `sampler2D`, scalar/vector float and signed integer, and bounded vertex `mat2`/`mat3`/`mat4` uniforms only. |
 | `glGetVertexAttribfv`, `glGetVertexAttribiv`, `glGetVertexAttribPointerv` | P | Versioned attribute record/current-value copy; no generic GLES getter. |
 | `glHint` | P | `GENERATE_MIPMAP_HINT` is advisory. `FRAGMENT_SHADER_DERIVATIVE_HINT` is stored/queryable only after the WebGL `OES_standard_derivatives` context gate; it does not claim a general driver-quality control API. |
 | `glLineWidth`, `glPolygonOffset`, `glSampleCoverage`, `glScissor`, `glViewport` | B | Bounded native raster state; viewport dimensions above the 4096 image limit reject without mutating state. |
@@ -69,9 +69,9 @@ Status meanings:
 | `glUniform1i` | P | Linked `sampler2D` or scalar `int` location; no arrays. |
 | `glUniform1f`, `glUniform1fv`, `glUniform2f`, `glUniform2fv`, `glUniform3f`, `glUniform3fv`, `glUniform4f`, `glUniform4fv` | P | Finite scalar/vector values realize a program-owned RinGPU module only for stages that declare the updated uniform name, preserving independent sampler/varying modules. The bounded vertex-colored texture material may sample one UV/image pair, or add two pairs, then apply a `vec4` tint and scalar opacity in RSH1 (`(texture2D(...) + texture2D(...)) * vertexColor * tint * opacity`); an embedding may map each `*fv` form only when its single non-array value is complete. |
 | `glUniform1iv` | P | One linked scalar `sampler2D` or `int` value; arrays are not implemented. |
+| `glUniformMatrix2fv`, `glUniformMatrix3fv` | P | One vertex-stage `uniform mat2`/`mat3` multiplied by a same-width `vec2`/`vec3` in the generic no-varying profile. RinGL materializes the column-major finite values as scalar RSH1 constants and executes the dot products in RinGPU; `transpose == false`, no uniform arrays, matrix arithmetic, or varying/texture-specialized matrix profiles. |
 | `glUniformMatrix4fv` | P | One vertex-stage `uniform mat4` used as `mat4 * attribute vec4` for `gl_Position`, either in the no-varying vector-local/arithmetic profile or a transformed texture profile that copies one to four declared `attribute vec2` values into matching `varying vec2` pairs for fragment `texture2D`; `attribute vec2` position may be explicitly constructed as `vec4(position, 0.0, 1.0)`. Column-major finite values only, `transpose == false`, no uniform arrays. |
 | `glUniform2i`, `glUniform2iv`, `glUniform3i`, `glUniform3iv`, `glUniform4i`, `glUniform4iv` | P | One exact-width linked `ivec2`/`ivec3`/`ivec4` value; no arrays. Program-owned RSH1 replacement is atomic. |
-| `glUniformMatrix2fv`, `glUniformMatrix3fv` | N | Remaining matrix uniform storage/lowering is not implemented. |
 | `glVertexAttrib1f`, `glVertexAttrib2f`, `glVertexAttrib3f`, `glVertexAttrib4f` | B | Current generic values for disabled arrays. |
 | `glVertexAttrib1fv`, `glVertexAttrib2fv`, `glVertexAttrib3fv`, `glVertexAttrib4fv` | N | Raw pointer-vector forms are not exported; embeddings must bounds-check then use scalar setters. |
 
@@ -87,7 +87,7 @@ inventing unused aliases.
 | Buffer targets/usages and numeric vertex types | B | `ARRAY_BUFFER`/`ELEMENT_ARRAY_BUFFER`; supported scalar source formats are documented by `ringl_vertex_attrib_pointer`. |
 | 2D texture targets, canonical `ALPHA`/`RGB`/`RGBA`/`LUMINANCE`/`LUMINANCE_ALPHA`, native RGB565/RGBA4/RGB5_A1, filters and wraps | P | `TEXTURE_2D` only; no cube map, compressed formats, 3D, array, or immutable storage. |
 | Depth/stencil and renderbuffer formats | P | D16/D32/D24S8/S8 are bounded FBO formats; multisample/resolve and remaining attachment semantics are absent. |
-| Shader/program type and status tokens | P | Current GLSL/RSH1 subset exposes scalar/vector attributes, samplers, scalar/vector float and signed-integer uniforms, and bounded vertex `mat4 * vec4` position profiles: up to four UV pairs, or one/two UV pairs plus an RGBA varying used by exact one-sample or two-sample-add `texture2D(...) * vertexColor` materials with optional `vec4` tint and scalar opacity; no general uniform type coverage. |
+| Shader/program type and status tokens | P | Current GLSL/RSH1 subset exposes scalar/vector attributes, samplers, scalar/vector float and signed-integer uniforms, and bounded vertex `mat2 * vec2`, `mat3 * vec3`, and `mat4 * vec4` position profiles. The transformed texture profile remains `mat4` only: up to four UV pairs, or one/two UV pairs plus an RGBA varying used by exact one-sample or two-sample-add `texture2D(...) * vertexColor` materials with optional `vec4` tint and scalar opacity; no general uniform type coverage. |
 | Query tokens | P | Only the exact `ringl_get_integerv_bounded` and dedicated-record names below are accepted. |
 | Cube-map, compressed-texture, shader-binary, precision, implementation/vendor/renderer/version/extension, multisample, and GLES 3.x tokens | N | They are not declared as successful RinGL capabilities. |
 

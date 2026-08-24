@@ -77,6 +77,13 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Add RSH1 lowering tests for header, stage, input/output counts, and IR invalidation.
 - [x] Add RinGPU shader-module realization and lifetime tests.
 - [x] Add linked-program reflection tests for the non-resource shader subset.
+  - [x] Execute bounded vertex `uniform mat2 * vec2` and `uniform mat3 * vec3`
+    through program-owned RSH1 modules, with active-uniform reflection,
+    locations, typed getters, finite column-major `transpose == false` setters,
+    and failure-atomic replacement. The generic profile has no varyings and one
+    non-array matrix at each location; matrix arithmetic, matrix arrays, and the
+    specialized transformed texture profile beyond its existing `mat4 * vec4`
+    form remain unsupported.
 - [x] Parse bounded `uniform sampler2D` declarations and retain names through shader compilation.
 - [x] Link sampler uniforms into program locations and implement `getUniformLocation`/`uniform1i`-style state.
 - [x] Report linked sampler uniforms through program reflection.
@@ -248,7 +255,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Execute finite `lineWidth` values in the inclusive `[1, 64]` range through RinGL's dynamic raster-state callback. RinGPU's V3 descriptor retains the V1/V2 one-pixel default, and Aquamarine rasterizes unique bounded coverage for line lists, strips, and loops with a deterministic half-open edge rule. Invalid values leave state unchanged. State and actual RinGL-to-RinGPU readback tests verify one- and two-pixel coverage.
 - [x] Expose the current line width and the finite `[1, 64]` aliased range through the failure-atomic `RinGLLineWidthV1` snapshot, so browser embeddings can answer `LINE_WIDTH` and `ALIASED_LINE_WIDTH_RANGE` without guessing backend state.
 - [x] Carry `SAMPLE_COVERAGE`, finite-clamped `sampleCoverage(value, invert)`, and a failure-atomic `RinGLSampleCoverageV1` snapshot through the dynamic raster-state callback. RinGPU's V4 suffix preserves V1--V3 full-coverage defaults, and the one-sample Aquamarine target executes the selected/inverted coverage bit before color/depth/stencil operations. State/core/surface and actual RinGL-to-RinGPU readback tests cover zero and inverted-zero coverage. `GENERATE_MIPMAP_HINT` with standard modes is an advisory no-op; derivative hints and multisample storage/resolve remain unsupported.
-- [x] Expose linked active attribute and bounded-uniform reflection through failure-atomic `RinGLActiveInfoV1` records. The current profile reports float scalar/vector attributes, `sampler2D`, and direct `vec4` uniforms; unlinked programs and invalid indices leave caller storage unchanged. The `vec4` setter owns a distinct RSH1/RinGPU executable per linked program so values cannot leak through shared shader objects.
+- [x] Expose linked active attribute and bounded-uniform reflection through failure-atomic `RinGLActiveInfoV1` records. The current profile reports float scalar/vector attributes, `sampler2D`, direct `vec4` uniforms, and bounded vertex `mat2`/`mat3`/`mat4` uniforms; unlinked programs and invalid indices leave caller storage unchanged. Numeric setters own distinct RSH1/RinGPU executables per linked program so values cannot leak through shared shader objects.
 - [x] Preserve no-op semantics for zero-area viewport, all-channel color mask off, and `CULL_FACE` with `FRONT_AND_BACK` in the current color-only profile.
 - [x] Map D32 clear and every GLES depth comparison (`NEVER`, `LESS`, `EQUAL`, `LEQUAL`, `GREATER`, `NOTEQUAL`, `GEQUAL`, `ALWAYS`) for an embedding-supplied default framebuffer through native RinGPU depth render passes.
 - [x] Map D32 custom depth-renderbuffer FBO attachments with matching RGBA8 color attachments to lazy RinGPU images, depth render-pass clear/load, and all eight depth-tested draw predicates; strict C11 and the RinOS surface integration test cover completeness, dimension mismatch rejection, clear, and draw behavior.

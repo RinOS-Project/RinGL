@@ -18,6 +18,8 @@ typedef enum TokenKind {
     TOK_VEC2,
     TOK_VEC3,
     TOK_VEC4,
+    TOK_MAT2,
+    TOK_MAT3,
     TOK_MAT4,
     TOK_INT,
     TOK_IVEC2,
@@ -59,11 +61,13 @@ typedef enum SymbolKind {
     SYMBOL_UNIFORM_FLOAT = 5,
     SYMBOL_UNIFORM_VEC2 = 6,
     SYMBOL_UNIFORM_VEC3 = 7,
-    SYMBOL_UNIFORM_MAT4 = 8,
-    SYMBOL_UNIFORM_INT = 9,
-    SYMBOL_UNIFORM_IVEC2 = 10,
-    SYMBOL_UNIFORM_IVEC3 = 11,
-    SYMBOL_UNIFORM_IVEC4 = 12,
+    SYMBOL_UNIFORM_MAT2 = 8,
+    SYMBOL_UNIFORM_MAT3 = 9,
+    SYMBOL_UNIFORM_MAT4 = 10,
+    SYMBOL_UNIFORM_INT = 11,
+    SYMBOL_UNIFORM_IVEC2 = 12,
+    SYMBOL_UNIFORM_IVEC3 = 13,
+    SYMBOL_UNIFORM_IVEC4 = 14,
 } SymbolKind;
 
 typedef struct Token {
@@ -145,6 +149,10 @@ static TokenKind keyword_kind(const char* begin, size_t length)
         return TOK_VEC3;
     if (length == 4u && memcmp(begin, "vec4", 4u) == 0)
         return TOK_VEC4;
+    if (length == 4u && memcmp(begin, "mat2", 4u) == 0)
+        return TOK_MAT2;
+    if (length == 4u && memcmp(begin, "mat3", 4u) == 0)
+        return TOK_MAT3;
     if (length == 4u && memcmp(begin, "mat4", 4u) == 0)
         return TOK_MAT4;
     if (length == 3u && memcmp(begin, "int", 3u) == 0)
@@ -701,6 +709,8 @@ static int assignment(Parser* parser)
             symbol->kind == SYMBOL_UNIFORM_IVEC3 ||
             symbol->kind == SYMBOL_UNIFORM_VEC4 ||
             symbol->kind == SYMBOL_UNIFORM_IVEC4 ||
+            symbol->kind == SYMBOL_UNIFORM_MAT2 ||
+            symbol->kind == SYMBOL_UNIFORM_MAT3 ||
             symbol->kind == SYMBOL_UNIFORM_MAT4) {
             fail(parser, "uniforms are read-only");
             return 0;
@@ -875,8 +885,9 @@ static int uniform_declaration(Parser* parser)
         parser->token.kind != TOK_VEC2 && parser->token.kind != TOK_IVEC2 &&
         parser->token.kind != TOK_VEC3 && parser->token.kind != TOK_IVEC3 &&
         parser->token.kind != TOK_VEC4 && parser->token.kind != TOK_IVEC4 &&
+        parser->token.kind != TOK_MAT2 && parser->token.kind != TOK_MAT3 &&
         parser->token.kind != TOK_MAT4) {
-        fail(parser, "only uniform sampler2D, float/int, vec/ivec2-4, and mat4 are supported");
+        fail(parser, "only uniform sampler2D, float/int, vec/ivec2-4, and mat2-4 are supported");
         return 0;
     }
     {
@@ -898,12 +909,15 @@ static int uniform_declaration(Parser* parser)
                     : type == TOK_IVEC3 ? SYMBOL_UNIFORM_IVEC3
                     : type == TOK_VEC4 ? SYMBOL_UNIFORM_VEC4
                     : type == TOK_IVEC4 ? SYMBOL_UNIFORM_IVEC4
+                    : type == TOK_MAT2 ? SYMBOL_UNIFORM_MAT2
+                    : type == TOK_MAT3 ? SYMBOL_UNIFORM_MAT3
                                         : SYMBOL_UNIFORM_MAT4,
                     type == TOK_SAMPLER2D ? 0u
                     : type == TOK_FLOAT || type == TOK_INT ? 1u
                     : type == TOK_VEC2 || type == TOK_IVEC2 ? 2u
                     : type == TOK_VEC3 || type == TOK_IVEC3 ? 3u
-                    : type == TOK_VEC4 || type == TOK_IVEC4 ? 4u : 16u))
+                    : type == TOK_VEC4 || type == TOK_IVEC4 ? 4u
+                    : type == TOK_MAT2 ? 4u : type == TOK_MAT3 ? 9u : 16u))
         return 0;
     if (type == TOK_SAMPLER2D) {
         if (parser->result->sampler_uniform_count >=
@@ -987,6 +1001,26 @@ static int uniform_declaration(Parser* parser)
         index = parser->result->ivec4_uniform_count++;
         memcpy(parser->result->ivec4_uniform_names[index], name.begin, name.length);
         parser->result->ivec4_uniform_names[index][name.length] = '\0';
+    } else if (type == TOK_MAT2) {
+        if (parser->result->mat2_uniform_count >=
+            RINGL_GLSL_MAX_MAT2_UNIFORMS) {
+            fail(parser, "too many mat2 uniforms");
+            return 0;
+        }
+        index = parser->result->mat2_uniform_count++;
+        memcpy(parser->result->mat2_uniform_names[index], name.begin,
+               name.length);
+        parser->result->mat2_uniform_names[index][name.length] = '\0';
+    } else if (type == TOK_MAT3) {
+        if (parser->result->mat3_uniform_count >=
+            RINGL_GLSL_MAX_MAT3_UNIFORMS) {
+            fail(parser, "too many mat3 uniforms");
+            return 0;
+        }
+        index = parser->result->mat3_uniform_count++;
+        memcpy(parser->result->mat3_uniform_names[index], name.begin,
+               name.length);
+        parser->result->mat3_uniform_names[index][name.length] = '\0';
     } else {
         if (parser->result->mat4_uniform_count >=
             RINGL_GLSL_MAX_MAT4_UNIFORMS) {

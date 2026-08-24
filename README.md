@@ -636,6 +636,17 @@ normalization, tightly-packed RGB image/sub-image data, padded D32 source rows,
 generated/manual mip upload, and the actual RinGPU bridge verifies a
 three-level texture selects its distinct level-one colour while rendering.
 
+The WebGL 1 `WEBGL_depth_texture` inputs use that same texture ownership
+boundary: `DEPTH_COMPONENT` with `UNSIGNED_SHORT` or `UNSIGNED_INT` is
+normalized into the native Float32 D32 shadow, and `DEPTH_STENCIL` with
+`UNSIGNED_INT_24_8` becomes the existing D32/S8 texture storage. Conversion
+uses unaligned-safe byte copies and happens only after the complete bounded
+source span has been validated. Unsupported formats, short uploads, and failed
+sub-image conversions retain the old definition rather than publishing a
+partial depth texture. The focused texture and RinOS bridge tests attach those
+textures to a real custom FBO and clear/read back its color target through the
+RinGL-to-RinGPU route.
+
 Embeddings handling browser-facing byte uploads must use
 `ringl_tex_image_2d_from_bytes()` and `ringl_tex_sub_image_2d_from_bytes()`.
 Those APIs take the source extent and

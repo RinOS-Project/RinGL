@@ -48,6 +48,14 @@ the previous definition. Browser/other untrusted embeddings must use these
 bounded APIs; the older raw-pointer forms are compatibility entry points for
 trusted native callers only.
 
+For RinOS WebGL 1, the same bounded path also normalizes
+`DEPTH_COMPONENT`/`UNSIGNED_SHORT` and `DEPTH_COMPONENT`/`UNSIGNED_INT`
+uploads into the internal Float32 D32 shadow, with unaligned source values read
+by byte copy before normalization. `DEPTH_STENCIL`/`UNSIGNED_INT_24_8` maps to
+the existing D32/S8 split storage. A short depth source, an unsupported type,
+or a failed conversion leaves the previous texture definition and realized
+RinGPU image intact; there is no fallback to a raw Aquamarine texture command.
+
 ## Bounded color-readback path
 
 `ringl_read_pixels_to_bytes()` accepts a destination capacity for the current

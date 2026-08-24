@@ -280,6 +280,16 @@ static int texture_packed_color_format(uint32_t format)
 
 static uint32_t texture_external_texel_bytes(uint32_t format, uint32_t type)
 {
+    if (format == RINGL_DEPTH_COMPONENT) {
+        if (type == RINGL_UNSIGNED_SHORT)
+            return 2u;
+        if (type == RINGL_UNSIGNED_INT || type == RINGL_FLOAT)
+            return 4u;
+    }
+    if (format == RINGL_DEPTH_STENCIL &&
+        type == RINGL_UNSIGNED_INT_24_8) {
+        return 4u;
+    }
     if (type == RINGL_UNSIGNED_SHORT_5_6_5 ||
         type == RINGL_UNSIGNED_SHORT_4_4_4_4 ||
         type == RINGL_UNSIGNED_SHORT_5_5_5_1) {
@@ -572,6 +582,31 @@ static uint32_t texture_storage_format(uint32_t internal_format,
     return 0u;
 }
 
+/* WebGL 1's WEBGL_depth_texture extension has unsized DEPTH_COMPONENT and
+ * DEPTH_STENCIL internal formats. Keep those public tokens at the browser
+ * boundary, but normalize their bounded native storage to the D32/D32S8
+ * representations consumed by the RinGPU image/FBO path. */
+static uint32_t texture_depth_storage_format(uint32_t internal_format,
+                                             uint32_t format, uint32_t type)
+{
+    if (format == RINGL_DEPTH_COMPONENT) {
+        if (internal_format == RINGL_DEPTH_COMPONENT &&
+            (type == RINGL_UNSIGNED_SHORT || type == RINGL_UNSIGNED_INT)) {
+            return RINGL_DEPTH_COMPONENT32F;
+        }
+        if (internal_format == RINGL_DEPTH_COMPONENT32F &&
+            type == RINGL_FLOAT) {
+            return RINGL_DEPTH_COMPONENT32F;
+        }
+    }
+    if (format == RINGL_DEPTH_STENCIL && type == RINGL_UNSIGNED_INT_24_8 &&
+        (internal_format == RINGL_DEPTH_STENCIL ||
+         internal_format == RINGL_DEPTH24_STENCIL8)) {
+        return RINGL_DEPTH24_STENCIL8;
+    }
+    return 0u;
+}
+
 static int texture_upload_format_valid(uint32_t storage_format,
                                        uint32_t format, uint32_t type)
 {
@@ -584,6 +619,48 @@ static int texture_upload_format_valid(uint32_t storage_format,
     return texture_color_format(storage_format) &&
            !texture_packed_color_format(storage_format) &&
            storage_format == format && type == RINGL_UNSIGNED_BYTE;
+}
+
+static int texture_depth_upload_format_valid(uint32_t storage_format,
+                                             uint32_t format, uint32_t type)
+{
+    if (storage_format == RINGL_DEPTH_COMPONENT32F) {
+        return format == RINGL_DEPTH_COMPONENT &&
+               (type == RINGL_UNSIGNED_SHORT || type == RINGL_UNSIGNED_INT ||
+                type == RINGL_FLOAT);
+    }
+    return storage_format == RINGL_DEPTH24_STENCIL8 &&
+           format == RINGL_DEPTH_STENCIL && type == RINGL_UNSIGNED_INT_24_8;
+}
+
+static void texture_copy_depth_texels(uint8_t* destination,
+                                      const uint8_t* source, uint32_t type,
+                                      uint32_t texel_count)
+{
+    uint32_t index;
+
+    for (index = 0u; index < texel_count; ++index) {
+        float depth;
+
+        if (type == RINGL_UNSIGNED_SHORT) {
+            uint16_t value;
+
+            memcpy(&value, source + (uint64_t)index * sizeof(value),
+                   sizeof(value));
+            depth = (float)value / 65535.0f;
+        } else if (type == RINGL_UNSIGNED_INT) {
+            uint32_t value;
+
+            memcpy(&value, source + (uint64_t)index * sizeof(value),
+                   sizeof(value));
+            depth = (float)value / 4294967295.0f;
+        } else {
+            memcpy(&depth, source + (uint64_t)index * sizeof(depth),
+                   sizeof(depth));
+        }
+        memcpy(destination + (uint64_t)index * sizeof(depth), &depth,
+               sizeof(depth));
+    }
 }
 
 static void texture_copy_depth_stencil_texels(uint8_t* destination,
@@ -1302,16 +1379,15 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
     uint8_t* replacement = NULL;
     uint64_t size;
     uint32_t storage_format;
+    uint32_t requested_format;
 
     if (context == NULL)
         return;
     storage_format = texture_storage_format(internal_format, format, type);
-    if (!texture_target_valid(target) ||
-        !(storage_format != 0u ||
-          (internal_format == RINGL_DEPTH_COMPONENT32F &&
-           format == RINGL_DEPTH_COMPONENT && type == RINGL_FLOAT) ||
-          (internal_format == RINGL_DEPTH24_STENCIL8 &&
-           format == RINGL_DEPTH_STENCIL && type == RINGL_UNSIGNED_INT_24_8))) {
+    requested_format = storage_format != 0u
+        ? storage_format
+        : texture_depth_storage_format(internal_format, format, type);
+    if (!texture_target_valid(target) || requested_format == 0u) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
@@ -1330,11 +1406,9 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
     }
     if (level != 0) {
         uint32_t mip_level = (uint32_t)level;
-        uint32_t requested_format = storage_format != 0u
-            ? storage_format : internal_format;
 
         if (!texture_level0_storage_defined(texture) ||
-            !((storage_format != 0u && texture_color_format(storage_format)) ||
+            !(texture_color_format(requested_format) ||
               requested_format == RINGL_DEPTH_COMPONENT32F ||
               requested_format == RINGL_DEPTH24_STENCIL8) ||
             texture->format != requested_format) {
@@ -1366,8 +1440,7 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
     }
 
     size = (uint64_t)(uint32_t)width * (uint64_t)(uint32_t)height *
-           texture_storage_texel_bytes(storage_format != 0u ? storage_format
-                                                             : internal_format);
+           texture_storage_texel_bytes(requested_format);
     if (size > SIZE_MAX) {
         ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
         return;
@@ -1392,7 +1465,7 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
                         (const uint8_t*)pixels + row * source_row_pitch,
                         storage_format, format, type, (uint32_t)width);
                 }
-            } else if (internal_format == RINGL_DEPTH24_STENCIL8) {
+            } else if (requested_format == RINGL_DEPTH24_STENCIL8) {
                 uint32_t row;
                 uint64_t source_row_pitch = texture_source_row_pitch(
                     (uint32_t)width, format, type,
@@ -1411,9 +1484,11 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
                     context->unpack_alignment);
 
                 for (row = 0u; row < (uint32_t)height; ++row) {
-                    memcpy(replacement + (uint64_t)row * (uint32_t)width * 4u,
-                           (const uint8_t*)pixels + row * source_row_pitch,
-                           (size_t)(uint32_t)width * 4u);
+                    texture_copy_depth_texels(
+                        replacement + (uint64_t)row * (uint32_t)width *
+                            sizeof(float),
+                        (const uint8_t*)pixels + row * source_row_pitch, type,
+                        (uint32_t)width);
                 }
             }
         } else {
@@ -1431,7 +1506,7 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
         texture->shadow_size = size;
         texture->width = (uint32_t)width;
         texture->height = (uint32_t)height;
-        texture->format = storage_format != 0u ? storage_format : internal_format;
+        texture->format = requested_format;
         texture->defined = RINGL_TRUE;
     } else {
         free(mip_storage->shadow_bytes);
@@ -1512,10 +1587,7 @@ static void ringl_tex_sub_image_2d_impl(uint32_t target, int32_t level,
         level_height = mip_storage->height;
     }
     if (!(texture_upload_format_valid(texture->format, format, type) ||
-          (texture->format == RINGL_DEPTH_COMPONENT32F &&
-           format == RINGL_DEPTH_COMPONENT && type == RINGL_FLOAT) ||
-          (texture->format == RINGL_DEPTH24_STENCIL8 &&
-           format == RINGL_DEPTH_STENCIL && type == RINGL_UNSIGNED_INT_24_8))) {
+          texture_depth_upload_format_valid(texture->format, format, type))) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
@@ -1561,9 +1633,9 @@ static void ringl_tex_sub_image_2d_impl(uint32_t target, int32_t level,
                 level_bytes + destination_offset,
                 (const uint8_t*)pixels + source_offset, (uint32_t)width);
         } else {
-            memcpy(level_bytes + destination_offset,
-                   (const uint8_t*)pixels + source_offset,
-                   (size_t)(uint32_t)width * 4u);
+            texture_copy_depth_texels(level_bytes + destination_offset,
+                                      (const uint8_t*)pixels + source_offset,
+                                      type, (uint32_t)width);
         }
     }
 

@@ -197,6 +197,9 @@ int main(void)
     uint32_t packed_texture;
     uint32_t packed_mip_texture;
     uint32_t mip_texture;
+    uint32_t webgl_depth_texture;
+    uint32_t webgl_depth_stencil_texture;
+    uint32_t webgl_depth_framebuffer;
     uint64_t image;
     uint64_t sampler;
     const uint8_t pixels[16] = {
@@ -293,6 +296,16 @@ int main(void)
         UINT16_C(0x8421), UINT16_C(0x8421), UINT16_C(0x8421), UINT16_C(0x8421),
     };
     const uint16_t expected_rgb5_a1_mip_level2 = UINT16_C(0x8421);
+    const uint16_t webgl_depth_u16[4] = {
+        0u, UINT16_C(0x8000), UINT16_MAX, UINT16_C(0x4000),
+    };
+    const uint32_t webgl_depth_u32[4] = {
+        UINT32_C(0x80000000), UINT32_MAX, 0u, UINT32_C(0x40000000),
+    };
+    const uint32_t webgl_depth_stencil[4] = {
+        UINT32_C(0x0000002a), UINT32_C(0x8000004b),
+        UINT32_C(0xffffff7c), UINT32_C(0x4000009d),
+    };
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
@@ -450,6 +463,97 @@ int main(void)
         assert(depth0 == 1.0f && depth1 == 0.5f);
     }
     ringl_pixel_storei(RINGL_UNPACK_ALIGNMENT, 4);
+
+    /* WEBGL_depth_texture uses WebGL's unsized DEPTH_COMPONENT token with
+     * unsigned source data. RinGL stores it as D32, so this is also a
+     * conversion boundary rather than an extension-name-only test. */
+    ringl_gen_textures(1, &webgl_depth_texture);
+    ringl_bind_texture(RINGL_TEXTURE_2D, webgl_depth_texture);
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_DEPTH_COMPONENT, 2, 2, 0,
+                       RINGL_DEPTH_COMPONENT, RINGL_UNSIGNED_SHORT,
+                       webgl_depth_u16);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    {
+        RinGLTextureObject* depth_texture =
+            &context->textures[ringl_object_slot_index(webgl_depth_texture)];
+        uint8_t before_short_upload[sizeof(float) * 4u];
+        float values[4];
+
+        assert(depth_texture->format == RINGL_DEPTH_COMPONENT32F);
+        assert(depth_texture->shadow_size == sizeof(values));
+        memcpy(values, depth_texture->shadow_bytes, sizeof(values));
+        assert(values[0] == 0.0f && values[2] == 1.0f);
+        assert(values[1] > 0.49f && values[1] < 0.51f);
+        assert(values[3] > 0.24f && values[3] < 0.26f);
+
+        memcpy(before_short_upload, depth_texture->shadow_bytes,
+               sizeof(before_short_upload));
+        ringl_tex_image_2d_from_bytes(
+            RINGL_TEXTURE_2D, 0, RINGL_DEPTH_COMPONENT, 2, 2, 0,
+            RINGL_DEPTH_COMPONENT, RINGL_UNSIGNED_SHORT, webgl_depth_u16,
+            sizeof(webgl_depth_u16) - 1u);
+        assert(ringl_get_error() == RINGL_INVALID_VALUE);
+        assert(memcmp(depth_texture->shadow_bytes, before_short_upload,
+                      sizeof(before_short_upload)) == 0);
+    }
+    ringl_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 2, 2,
+                           RINGL_DEPTH_COMPONENT, RINGL_UNSIGNED_INT,
+                           webgl_depth_u32);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    {
+        RinGLTextureObject* depth_texture =
+            &context->textures[ringl_object_slot_index(webgl_depth_texture)];
+        float values[4];
+
+        memcpy(values, depth_texture->shadow_bytes, sizeof(values));
+        assert(values[0] > 0.49f && values[0] < 0.51f);
+        assert(values[1] == 1.0f && values[2] == 0.0f);
+        assert(values[3] > 0.24f && values[3] < 0.26f);
+    }
+
+    /* The packed extension form keeps the exact 24-bit depth and stencil
+     * components in the existing D32/S8 split storage and can be attached to
+     * a same-size WebGL framebuffer. */
+    ringl_gen_textures(1, &webgl_depth_stencil_texture);
+    ringl_bind_texture(RINGL_TEXTURE_2D, webgl_depth_stencil_texture);
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_DEPTH_STENCIL, 2, 2, 0,
+                       RINGL_DEPTH_STENCIL, RINGL_UNSIGNED_INT_24_8,
+                       webgl_depth_stencil);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    {
+        RinGLTextureObject* depth_stencil_texture =
+            &context->textures[ringl_object_slot_index(
+                webgl_depth_stencil_texture)];
+        float values[4];
+        uint32_t depth_index;
+
+        assert(depth_stencil_texture->format == RINGL_DEPTH24_STENCIL8);
+        assert(depth_stencil_texture->shadow_size == sizeof(values) * 2u);
+        for (depth_index = 0u; depth_index < 4u; ++depth_index) {
+            memcpy(&values[depth_index],
+                   depth_stencil_texture->shadow_bytes +
+                       (uint64_t)depth_index * 8u,
+                   sizeof(values[depth_index]));
+        }
+        assert(values[0] == 0.0f && values[2] == 1.0f);
+        assert(values[1] > 0.49f && values[1] < 0.51f);
+        assert(values[3] > 0.24f && values[3] < 0.26f);
+        assert(depth_stencil_texture->shadow_bytes[4] == 0x2au);
+        assert(depth_stencil_texture->shadow_bytes[12] == 0x4bu);
+        assert(depth_stencil_texture->shadow_bytes[20] == 0x7cu);
+        assert(depth_stencil_texture->shadow_bytes[28] == 0x9du);
+    }
+    ringl_gen_framebuffers(1, &webgl_depth_framebuffer);
+    ringl_bind_framebuffer(RINGL_FRAMEBUFFER, webgl_depth_framebuffer);
+    ringl_framebuffer_texture_2d(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT0,
+                                 RINGL_TEXTURE_2D, texture, 0);
+    ringl_framebuffer_texture_2d(RINGL_FRAMEBUFFER,
+                                 RINGL_DEPTH_STENCIL_ATTACHMENT,
+                                 RINGL_TEXTURE_2D,
+                                 webgl_depth_stencil_texture, 0);
+    assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
+           RINGL_FRAMEBUFFER_COMPLETE);
+    ringl_bind_framebuffer(RINGL_FRAMEBUFFER, 0u);
 
     ringl_gen_textures(1, &mip_texture);
     ringl_bind_texture(RINGL_TEXTURE_2D, mip_texture);

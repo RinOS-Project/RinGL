@@ -811,10 +811,6 @@ static int texture_realize_image(RinGLContext* context,
 
     if (texture->ringpu_image != 0u)
         return 0;
-    if (texture->color_component_type == RINGL_FLOAT &&
-        texture->requires_color_target != 0u) {
-        return -1;
-    }
     if ((texture->requires_color_target ||
          texture->format == RINGL_DEPTH_COMPONENT32F ||
          texture->format == RINGL_DEPTH24_STENCIL8)
@@ -2051,10 +2047,6 @@ int ringl_texture_require_color_target(RinGLContext* context, uint32_t texture)
     if (index >= RINGL_OBJECT_SLOT_COUNT)
         return -1;
     object = &context->textures[index];
-    if (object->defined != 0u &&
-        object->color_component_type == RINGL_FLOAT) {
-        return -1;
-    }
     if (!object->requires_color_target) {
         object->requires_color_target = RINGL_TRUE;
         texture_discard_image(context, object);

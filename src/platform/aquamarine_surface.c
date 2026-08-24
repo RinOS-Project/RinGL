@@ -858,14 +858,10 @@ static int backend_create_image(void* opaque, const RinGpuImageDescV1* desc,
         /* A caller may supply separate D32 and S8 planes for its surface. */
         caller_owned_depth_stencil = 1;
     } else if ((desc->format == RIN_GPU_FORMAT_RGBA8_UNORM ||
+                desc->format == RIN_GPU_FORMAT_RGBA32_FLOAT ||
                 backend_packed_color_format(desc->format)) &&
                (desc->usage & RIN_GPU_IMAGE_PRESENT) == 0u) {
         /* Generic RinGPU color images back custom WebGL framebuffers. */
-    } else if (desc->format == RIN_GPU_FORMAT_RGBA32_FLOAT &&
-               desc->usage == (RIN_GPU_IMAGE_COPY_DESTINATION |
-                               RIN_GPU_IMAGE_SAMPLED)) {
-        /* Float RGBA is intentionally sampled-only. Do not accidentally turn
-         * OES_texture_float into an unsupported float color-target path. */
     } else if (desc->format == RIN_GPU_FORMAT_D32_FLOAT &&
                (desc->usage & RIN_GPU_IMAGE_PRESENT) == 0u &&
                (desc->usage & RIN_GPU_IMAGE_DEPTH_STENCIL) != 0u) {
@@ -1450,6 +1446,7 @@ static int backend_create_graphics_pipeline(
         !cookie ||
         (descriptor->color_format != RIN_GPU_FORMAT_BGRA8_UNORM &&
          descriptor->color_format != RIN_GPU_FORMAT_RGBA8_UNORM &&
+         descriptor->color_format != RIN_GPU_FORMAT_RGBA32_FLOAT &&
          !backend_packed_color_format(descriptor->color_format)) ||
         !backend_primitive_topology_valid(descriptor->primitive_topology) ||
         descriptor->flags != 0u || descriptor->reserved != 0u ||
@@ -2074,6 +2071,7 @@ static int clear_color_target(RinGLAquamarineSurfaceContext* context,
     uint32_t y;
     int bgra;
     int packed_color;
+    int float_color;
     uint32_t width;
     uint32_t height;
 
@@ -2106,12 +2104,26 @@ static int clear_color_target(RinGLAquamarineSurfaceContext* context,
         return RIN_GPU_ERROR_BACKEND;
     }
     packed_color = backend_packed_color_format(image->descriptor.format);
+    float_color = image->descriptor.format == RIN_GPU_FORMAT_RGBA32_FLOAT;
     for (y = y0; y < y1; ++y) {
         uint8_t* row = pixels + (uint64_t)y * pitch_bytes;
         uint32_t x;
         for (x = x0; x < x1; ++x) {
             uint8_t* pixel = row + (uint64_t)x *
-                (packed_color ? sizeof(uint16_t) : sizeof(uint32_t));
+                (float_color ? 4u * sizeof(float)
+                             : (packed_color ? sizeof(uint16_t)
+                                             : sizeof(uint32_t)));
+            if (float_color) {
+                const float components[4] = {red, green, blue, alpha};
+
+                for (uint32_t component = 0u; component < 4u; ++component) {
+                    if ((color_write_mask & (RIN_GPU_COLOR_WRITE_RED << component)) != 0u) {
+                        memcpy(pixel + (uint64_t)component * sizeof(float),
+                               &components[component], sizeof(float));
+                    }
+                }
+                continue;
+            }
             if (packed_color) {
                 AqColor stored;
                 uint16_t packed;
@@ -2296,6 +2308,9 @@ static int backend_prepare_software_context(
             break;
         case RIN_GPU_FORMAT_RGB5_A1_UNORM:
             target.pixel_format = RIN_WEBGL_SOFTWARE_PIXEL_FORMAT_RGB5_A1_UNORM;
+            break;
+        case RIN_GPU_FORMAT_RGBA32_FLOAT:
+            target.pixel_format = RIN_WEBGL_SOFTWARE_PIXEL_FORMAT_RGBA32_FLOAT;
             break;
         default:
             target.pixel_format = RIN_WEBGL_SOFTWARE_PIXEL_FORMAT_RGBA8_UNORM;
@@ -3835,7 +3850,11 @@ static int initialize_context(RinGLAquamarineSurfaceContext* context,
     image.usage = RIN_GPU_IMAGE_COPY_DESTINATION |
                   RIN_GPU_IMAGE_COPY_SOURCE |
                   RIN_GPU_IMAGE_COLOR_TARGET | RIN_GPU_IMAGE_PRESENT;
-    image.flags = RIN_GPU_IMAGE_CPU_VISIBLE | RIN_GPU_IMAGE_CPU_READABLE;
+    /* The Aquamarine owner supplies this physical target directly to the
+     * backend. It is not a CPU-upload allocation, so marking it
+     * CPU_VISIBLE would incorrectly require a synthetic upload before the
+     * first render pass. Readback remains an explicit supported operation. */
+    image.flags = RIN_GPU_IMAGE_CPU_READABLE;
     result = ringpu_create_image(&context->core, &image, &context->color_image);
     if (result != RIN_GPU_OK) goto fail;
 
@@ -3844,7 +3863,7 @@ static int initialize_context(RinGLAquamarineSurfaceContext* context,
             ? RIN_GPU_FORMAT_D32_FLOAT_S8_UINT : RIN_GPU_FORMAT_D32_FLOAT;
         image.usage = RIN_GPU_IMAGE_COPY_DESTINATION |
                       RIN_GPU_IMAGE_DEPTH_STENCIL;
-        image.flags = RIN_GPU_IMAGE_CPU_VISIBLE;
+        image.flags = 0u;
         result = ringpu_create_image(&context->core, &image,
                                      &context->depth_image);
         if (result != RIN_GPU_OK) goto fail;

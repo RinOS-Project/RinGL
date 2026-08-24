@@ -202,9 +202,11 @@ int main(void)
     uint32_t packed_mip_texture;
     uint32_t mip_texture;
     uint32_t float_texture;
+    uint32_t float_framebuffer;
     uint32_t webgl_depth_texture;
     uint32_t webgl_depth_stencil_texture;
     uint32_t webgl_depth_framebuffer;
+    uint32_t color_attachment_is_float;
     uint64_t image;
     uint64_t sampler;
     const uint8_t pixels[16] = {
@@ -492,7 +494,26 @@ int main(void)
     assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
     assert(memcmp(backend.last_upload + 4u * sizeof(float), float_patch,
                   sizeof(float_patch)) == 0);
-    assert(ringl_texture_require_color_target(context, float_texture) != 0);
+    /* Float textures are now genuine offscreen color attachments. The bridge
+     * exercises the rendered/readback path; this unit assertion catches a
+     * regression before the texture is rebound for later upload coverage. */
+    assert(ringl_texture_require_color_target(context, float_texture) == 0);
+    /* The browser must be able to distinguish a real Float attachment from
+     * the normalized default target before enabling WebGL's FBO extension. */
+    color_attachment_is_float = UINT32_MAX;
+    assert(ringl_framebuffer_color_attachment_is_float(
+               &color_attachment_is_float) == 0);
+    assert(color_attachment_is_float == RINGL_FALSE);
+    ringl_gen_framebuffers(1, &float_framebuffer);
+    ringl_bind_framebuffer(RINGL_FRAMEBUFFER, float_framebuffer);
+    ringl_framebuffer_texture_2d(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT0,
+                                 RINGL_TEXTURE_2D, float_texture, 0);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    color_attachment_is_float = RINGL_FALSE;
+    assert(ringl_framebuffer_color_attachment_is_float(
+               &color_attachment_is_float) == 0);
+    assert(color_attachment_is_float == RINGL_TRUE);
+    ringl_bind_framebuffer(RINGL_FRAMEBUFFER, 0u);
 
     /* Float inputs apply the same ALPHA/LUMINANCE expansion as U8 input but
      * preserve components outside the normalized range. */

@@ -185,6 +185,8 @@ extern "C" {
 #define RINGL_TEXTURE    0x1702u
 #define RINGL_DEPTH_STENCIL 0x84f9u
 #define RINGL_RGBA8      0x8058u
+/* WEBGL_color_buffer_float's RGBA32F_EXT storage token. */
+#define RINGL_RGBA32F    0x8814u
 #define RINGL_FLOAT       0x1406u
 #define RINGL_UNSIGNED_INT_24_8 0x84fau
 #define RINGL_TEXTURE_MAG_FILTER 0x2800u
@@ -1397,6 +1399,11 @@ int ringl_get_framebuffer_attachment(
  * and stencil state. */
 int ringl_get_framebuffer_color_attachment(
     RinGLFramebufferAttachmentInfoV1* attachment);
+/* Reports whether the bound framebuffer's COLOR_ATTACHMENT0 has native
+ * floating-point components. The default framebuffer and an unattached color
+ * slot report zero. It is an inspection API only: callers must still use
+ * ringl_check_framebuffer_status() before issuing a render or readback. */
+int ringl_framebuffer_color_attachment_is_float(uint32_t* is_float_out);
 uint32_t ringl_check_framebuffer_status(uint32_t target);
 
 void ringl_gen_renderbuffers(int32_t count, uint32_t* renderbuffers);

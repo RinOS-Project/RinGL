@@ -648,18 +648,24 @@ textures to a real custom FBO and clear/read back its color target through the
 RinGL-to-RinGPU route.
 
 The same bounded ownership path also carries Float32 color textures for the
-RinOS `OES_texture_float` embedding. Exact `RGBA`, `RGB`, `ALPHA`,
-`LUMINANCE`, and `LUMINANCE_ALPHA`/`FLOAT` uploads are converted with
-unaligned-safe reads into an RGBA32F shadow, then realized as a native
-`RIN_GPU_FORMAT_RGBA32_FLOAT` image with only `COPY_DESTINATION|SAMPLED`
-usage. A Float texture is complete only with `NEAREST` magnification and
-`NEAREST` or `NEAREST_MIPMAP_NEAREST` minification. Linear filtering,
-CopyTex, and color-target realization are rejected; RinGL therefore does not
-claim `OES_texture_float_linear` or float-FBO support. The generic software
-backend samples the single-mip format and rejects a non-finite component before
-it changes its target. The Aquamarine embedding snapshots the same Float32
-components into its RSH1 sampler table, and the product bridge test draws a
-Float texture through that route.
+RinOS `OES_texture_float` / `WEBGL_color_buffer_float` embedding. Exact
+`RGBA`, `RGB`, `ALPHA`, `LUMINANCE`, and `LUMINANCE_ALPHA`/`FLOAT` uploads are
+converted with unaligned-safe reads into an RGBA32F shadow. A sampled texture
+uses `COPY_DESTINATION|SAMPLED`; a color-renderable `RGBA/FLOAT` texture or
+`RGBA32F` renderbuffer additionally realizes the same native
+`RIN_GPU_FORMAT_RGBA32_FLOAT` storage with `COLOR_TARGET|COPY_SOURCE`.
+`ringl_framebuffer_color_attachment_is_float()` lets a browser gate that
+native capability behind its WebGL extension object without mirroring RinGL
+attachment state. Float clear and fragment outputs retain finite components
+outside `[0,1]`; a Float color target reads back only as `RGBA/FLOAT`, never as
+silently quantized RGBA8. A Float texture is complete only with `NEAREST`
+magnification and `NEAREST` or `NEAREST_MIPMAP_NEAREST` minification. Linear
+filtering, CopyTex, and Float RGB/ALPHA/LUMINANCE color attachments remain
+unavailable, so RinGL does not claim `OES_texture_float_linear` or a full
+float-FBO profile. The generic software backend rejects a non-finite component
+before it changes its target. The Aquamarine embedding snapshots the same
+Float32 components into its RSH1 sampler table, and the product bridge test
+draws a Float texture through the full RinGL/RinGPU route into a Float FBO.
 
 Embeddings handling browser-facing byte uploads must use
 `ringl_tex_image_2d_from_bytes()` and `ringl_tex_sub_image_2d_from_bytes()`.

@@ -14,6 +14,12 @@ static float clamp_color(float value)
     return value;
 }
 
+static float clear_color_for_target(uint32_t format, float value)
+{
+    return format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT ? value
+                                                       : clamp_color(value);
+}
+
 int ringl_resolve_color_target(RinGLContext* context,
                                RinGLColorTarget* target)
 {
@@ -65,6 +71,9 @@ int ringl_resolve_color_target(RinGLContext* context,
         if (index >= RINGL_OBJECT_SLOT_COUNT)
             return -1;
         switch (context->renderbuffers[index].internal_format) {
+        case RINGL_RGBA32F:
+            target->format = RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT;
+            break;
         case RINGL_RGB565:
             target->format = RINGL_RIN_GPU_FORMAT_RGB565_UNORM;
             break;
@@ -87,6 +96,12 @@ int ringl_resolve_color_target(RinGLContext* context,
         if (index >= RINGL_OBJECT_SLOT_COUNT)
             return -1;
         switch (context->textures[index].format) {
+        case RINGL_RGBA:
+            target->format = context->textures[index].color_component_type ==
+                    RINGL_FLOAT
+                ? RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT
+                : RINGL_RIN_GPU_FORMAT_RGBA8_UNORM;
+            break;
         case RINGL_RGB565:
             target->format = RINGL_RIN_GPU_FORMAT_RGB565_UNORM;
             break;
@@ -593,10 +608,14 @@ static int begin_color_pass(RinGLContext* context,
     render_pass.load_op = load_op;
     render_pass.store_op = RINGL_RIN_GPU_RENDER_STORE;
     if (load_op == RINGL_RIN_GPU_RENDER_CLEAR) {
-        render_pass.clear_red = clamp_color(context->clear_red);
-        render_pass.clear_green = clamp_color(context->clear_green);
-        render_pass.clear_blue = clamp_color(context->clear_blue);
-        render_pass.clear_alpha = clamp_color(context->clear_alpha);
+        render_pass.clear_red = clear_color_for_target(target->format,
+                                                        context->clear_red);
+        render_pass.clear_green = clear_color_for_target(target->format,
+                                                          context->clear_green);
+        render_pass.clear_blue = clear_color_for_target(target->format,
+                                                         context->clear_blue);
+        render_pass.clear_alpha = clear_color_for_target(target->format,
+                                                          context->clear_alpha);
         render_pass.color_write_mask = context->color_write_mask;
         configure_clear_region(context, target, &render_pass.clear_region);
     }
@@ -642,10 +661,14 @@ static int begin_depth_pass(RinGLContext* context, uint64_t command_list,
         separate_pass.stencil_load_op = stencil_load_op;
         separate_pass.stencil_store_op = RINGL_RIN_GPU_RENDER_STORE;
         if (color_load_op == RINGL_RIN_GPU_RENDER_CLEAR) {
-            separate_pass.clear_red = clamp_color(context->clear_red);
-            separate_pass.clear_green = clamp_color(context->clear_green);
-            separate_pass.clear_blue = clamp_color(context->clear_blue);
-            separate_pass.clear_alpha = clamp_color(context->clear_alpha);
+            separate_pass.clear_red = clear_color_for_target(color_target->format,
+                                                              context->clear_red);
+            separate_pass.clear_green = clear_color_for_target(color_target->format,
+                                                                context->clear_green);
+            separate_pass.clear_blue = clear_color_for_target(color_target->format,
+                                                               context->clear_blue);
+            separate_pass.clear_alpha = clear_color_for_target(color_target->format,
+                                                                context->clear_alpha);
             separate_pass.color_write_mask = context->color_write_mask;
         }
         if (depth_load_op == RINGL_RIN_GPU_RENDER_CLEAR)
@@ -705,10 +728,14 @@ static int begin_depth_pass(RinGLContext* context, uint64_t command_list,
         return -1;
     }
     if (color_load_op == RINGL_RIN_GPU_RENDER_CLEAR) {
-        render_pass.clear_red = clamp_color(context->clear_red);
-        render_pass.clear_green = clamp_color(context->clear_green);
-        render_pass.clear_blue = clamp_color(context->clear_blue);
-        render_pass.clear_alpha = clamp_color(context->clear_alpha);
+        render_pass.clear_red = clear_color_for_target(color_target->format,
+                                                        context->clear_red);
+        render_pass.clear_green = clear_color_for_target(color_target->format,
+                                                          context->clear_green);
+        render_pass.clear_blue = clear_color_for_target(color_target->format,
+                                                         context->clear_blue);
+        render_pass.clear_alpha = clear_color_for_target(color_target->format,
+                                                          context->clear_alpha);
         render_pass.color_write_mask = context->color_write_mask;
     }
     if (depth_load_op == RINGL_RIN_GPU_RENDER_CLEAR)

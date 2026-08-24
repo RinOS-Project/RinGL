@@ -24,8 +24,8 @@ Status meanings:
 | `glAttachShader`, `glDetachShader`, `glCreateProgram`, `glDeleteProgram`, `glIsProgram`, `glLinkProgram`, `glUseProgram`, `glValidateProgram` | B | Matching program lifecycle and validation calls. |
 | `glBindAttribLocation`, `glGetAttribLocation` | B | Matching linked-attribute APIs. |
 | `glBindBuffer`, `glGenBuffers`, `glDeleteBuffers`, `glIsBuffer`, `glBufferData`, `glBufferSubData` | B | Array/element buffers; replacement upload is transactional. |
-| `glBindFramebuffer`, `glGenFramebuffers`, `glDeleteFramebuffers`, `glIsFramebuffer`, `glCheckFramebufferStatus`, `glFramebufferTexture2D`, `glFramebufferRenderbuffer` | B | One complete bounded FBO profile; 2D texture attachments only. |
-| `glBindRenderbuffer`, `glGenRenderbuffers`, `glDeleteRenderbuffers`, `glIsRenderbuffer`, `glRenderbufferStorage` | B | Bounded RGBA8/native packed/D32/D24S8/S8 storage. |
+| `glBindFramebuffer`, `glGenFramebuffers`, `glDeleteFramebuffers`, `glIsFramebuffer`, `glCheckFramebufferStatus`, `glFramebufferTexture2D`, `glFramebufferRenderbuffer` | B | One complete bounded FBO profile; 2D attachments only, including RGBA/FLOAT and RGBA32F only when an embedding has explicitly enabled its WebGL Float-FBO policy. |
+| `glBindRenderbuffer`, `glGenRenderbuffers`, `glDeleteRenderbuffers`, `glIsRenderbuffer`, `glRenderbufferStorage` | B | Bounded RGBA8/RGBA32F/native packed/D32/D24S8/S8 storage. |
 | `glBindTexture`, `glGenTextures`, `glDeleteTextures`, `glIsTexture` | B | `TEXTURE_2D` only. |
 | `glBlendColor`, `glBlendEquation`, `glBlendEquationSeparate`, `glBlendFunc`, `glBlendFuncSeparate` | B | Native RinGPU blend state; invalid factors/equations reject. |
 | `glClear`, `glClearColor`, `glClearDepthf`, `glClearStencil`, `glColorMask` | B | Current complete target; color/depth/stencil masks follow the bounded FBO profile. |

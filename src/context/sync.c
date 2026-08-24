@@ -212,8 +212,10 @@ static int packed_color_format(uint32_t format)
            format == RINGL_RIN_GPU_FORMAT_RGB5_A1_UNORM;
 }
 
-int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
-                                 int32_t width, int32_t height, void* pixels)
+static int ringl_read_color_target_to_type(RinGLContext* context, int32_t x,
+                                           int32_t y, int32_t width,
+                                           int32_t height, uint32_t type,
+                                           void* pixels)
 {
     RinGLRinGpuImageReadback2DV1 readback;
     RinGLRinGpuImageReadback2DMipV2 mip_readback;
@@ -252,7 +254,12 @@ int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
          context->sync_ops.readback_image_2d_mip_v2 == NULL)) {
         return -1;
     }
-    row_bytes = (uint64_t)(uint32_t)width * 4u;
+    if (type != RINGL_UNSIGNED_BYTE && type != RINGL_FLOAT)
+        return -1;
+    row_bytes = (uint64_t)(uint32_t)width *
+        (type == RINGL_FLOAT ? 4u * sizeof(float) : 4u);
+    if ((uint64_t)(uint32_t)height > UINT64_MAX / row_bytes)
+        return -1;
     total_bytes = row_bytes * (uint64_t)(uint32_t)height;
     if (packed_color_format(target.format)) {
         native_row_bytes = (uint64_t)(uint32_t)width * sizeof(uint16_t);
@@ -264,8 +271,14 @@ int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
         native_pixels = malloc((size_t)native_total_bytes);
         if (native_pixels == NULL)
             return -1;
-    } else if (target.format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM ||
-               target.format == RINGL_RIN_GPU_FORMAT_BGRA8_UNORM) {
+    } else if (target.format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT) {
+        if (type != RINGL_FLOAT)
+            return -1;
+        native_row_bytes = row_bytes;
+        native_total_bytes = total_bytes;
+    } else if (type == RINGL_UNSIGNED_BYTE &&
+               (target.format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM ||
+                target.format == RINGL_RIN_GPU_FORMAT_BGRA8_UNORM)) {
         native_row_bytes = row_bytes;
         native_total_bytes = total_bytes;
     } else {
@@ -339,19 +352,28 @@ int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
     return 0;
 }
 
+int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
+                                  int32_t width, int32_t height, void* pixels)
+{
+    return ringl_read_color_target_to_type(context, x, y, width, height,
+                                           RINGL_UNSIGNED_BYTE, pixels);
+}
+
 static int readback_required_bytes(int32_t width, int32_t height,
-                                   uint64_t* bytes_out)
+                                    uint32_t type, uint64_t* bytes_out)
 {
     uint64_t row_bytes;
 
-    if (bytes_out == NULL || width < 0 || height < 0)
+    if (bytes_out == NULL || width < 0 || height < 0 ||
+        (type != RINGL_UNSIGNED_BYTE && type != RINGL_FLOAT))
         return -1;
     if (width == 0 || height == 0) {
         *bytes_out = 0u;
         return 0;
     }
 
-    row_bytes = (uint64_t)(uint32_t)width * 4u;
+    row_bytes = (uint64_t)(uint32_t)width *
+        (type == RINGL_FLOAT ? 4u * sizeof(float) : 4u);
     if ((uint64_t)(uint32_t)height > UINT64_MAX / row_bytes)
         return -1;
     *bytes_out = row_bytes * (uint64_t)(uint32_t)height;
@@ -367,7 +389,8 @@ void ringl_read_pixels(int32_t x, int32_t y,
 
     if (context == NULL)
         return;
-    if (format != RINGL_RGBA || type != RINGL_UNSIGNED_BYTE) {
+    if (format != RINGL_RGBA ||
+        (type != RINGL_UNSIGNED_BYTE && type != RINGL_FLOAT)) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
@@ -375,7 +398,8 @@ void ringl_read_pixels(int32_t x, int32_t y,
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
-    if (ringl_read_color_target_rgba(context, x, y, width, height, pixels) != 0)
+    if (ringl_read_color_target_to_type(context, x, y, width, height, type,
+                                        pixels) != 0)
         ringl_context_record_error(context,
                                    ringl_framebuffer_operation_error(context));
 }
@@ -390,11 +414,12 @@ void ringl_read_pixels_to_bytes(int32_t x, int32_t y,
 
     if (context == NULL)
         return;
-    if (format != RINGL_RGBA || type != RINGL_UNSIGNED_BYTE) {
+    if (format != RINGL_RGBA ||
+        (type != RINGL_UNSIGNED_BYTE && type != RINGL_FLOAT)) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
-    if (readback_required_bytes(width, height, &required_bytes) != 0) {
+    if (readback_required_bytes(width, height, type, &required_bytes) != 0) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
@@ -403,7 +428,8 @@ void ringl_read_pixels_to_bytes(int32_t x, int32_t y,
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
-    if (ringl_read_color_target_rgba(context, x, y, width, height, pixels) != 0)
+    if (ringl_read_color_target_to_type(context, x, y, width, height, type,
+                                        pixels) != 0)
         ringl_context_record_error(context,
                                    ringl_framebuffer_operation_error(context));
 }

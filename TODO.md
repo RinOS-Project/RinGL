@@ -307,6 +307,11 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   i32 GLES range. Invalid stage/token/header inputs leave the caller record
   unchanged, and Ladybird's WebGL `getShaderPrecisionFormat()` now consumes
   this RinGL result rather than duplicating precision constants.
+- [x] Expose the actual bounded-profile identity through
+  `ringl_get_string(VENDOR|RENDERER|VERSION|SHADING_LANGUAGE_VERSION)`.
+  The static strings identify RinGL/RSH1 without claiming a host driver or
+  full GLES conformance; unknown names fail with `INVALID_ENUM`, and Ladybird
+  forwards only these RinGL-owned values for WebGL `getParameter()`.
 - [x] Implement WebGL generic attribute constants for disabled active arrays:
   active values use the default `(0, 0, 0, 1)` or `vertexAttrib[1-4]f` state as
   explicit Float32 RinGPU descriptors, while an embedding without the declared

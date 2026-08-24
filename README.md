@@ -448,6 +448,12 @@ classes report RSH1's signed i32 GLES range `[31, 30]` with zero fraction bits.
 The query validates the stage, precision token, and output header before it
 updates caller storage, so a browser need not fabricate shader precision.
 
+`ringl_get_string()` exposes four static descriptions owned by this core:
+`VENDOR`, `RENDERER`, `VERSION`, and `SHADING_LANGUAGE_VERSION`. The strings
+identify RinGL and its bounded RSH1 GLSL ES 1.00 subset, rather than claiming a
+specific host GPU driver or full OpenGL ES conformance. They require a current
+context, have process lifetime, and unknown pnames fail with `INVALID_ENUM`.
+
 `ringl_get_renderbuffer_info()` exposes the current renderbuffer's dimensions,
 internal format, component bit counts, and zero sample count through a
 versioned caller-owned snapshot. An allocated renderbuffer reports zero-sized

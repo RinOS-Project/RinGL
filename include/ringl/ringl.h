@@ -142,6 +142,9 @@ extern "C" {
 
 #define RINGL_VIEWPORT                      0x0ba2u
 #define RINGL_SCISSOR_BOX                   0x0c10u
+#define RINGL_VENDOR                        0x1f00u
+#define RINGL_RENDERER                      0x1f01u
+#define RINGL_VERSION                       0x1f02u
 #define RINGL_RED_BITS                      0x0d52u
 #define RINGL_GREEN_BITS                    0x0d53u
 #define RINGL_BLUE_BITS                     0x0d54u
@@ -157,6 +160,7 @@ extern "C" {
 #define RINGL_ELEMENT_ARRAY_BUFFER_BINDING  0x8895u
 #define RINGL_VERTEX_ARRAY_BINDING_OES       0x85b5u
 #define RINGL_CURRENT_PROGRAM               0x8b8du
+#define RINGL_SHADING_LANGUAGE_VERSION      0x8b8cu
 #define RINGL_MAX_COMBINED_TEXTURE_IMAGE_UNITS 0x8b4du
 #define RINGL_CULL_FACE_MODE                0x0b45u
 #define RINGL_FRONT_FACE                    0x0b46u
@@ -1204,6 +1208,10 @@ RinGLContext* ringl_get_current_context(void);
 uint32_t ringl_get_error(void);
 uint32_t ringl_context_is_lost(const RinGLContext* context);
 uint32_t ringl_context_dirty_bits(const RinGLContext* context);
+/* Returns a static, NUL-terminated description of the actual RinGL bounded
+ * profile. The result is valid until process exit and must not be freed.
+ * Unsupported pnames return NULL and record INVALID_ENUM. */
+const char* ringl_get_string(uint32_t pname);
 /* Writes the complete integer result only when `value_count` is large enough.
  * It returns zero on success and -1 on an invalid query, missing context, or
  * short/null output. Failures leave the caller's output unchanged. */

@@ -29,6 +29,29 @@ static uint32_t* capability_field(RinGLContext* context, uint32_t capability)
     }
 }
 
+const char* ringl_get_string(uint32_t pname)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL)
+        return NULL;
+    switch (pname) {
+    case RINGL_VENDOR:
+        return "RinOS Project";
+    case RINGL_RENDERER:
+        /* The public core does not claim a specific native driver: a RinGL
+         * embedding may select a different RinGPU implementation. */
+        return "RinGL";
+    case RINGL_VERSION:
+        return "RinGL v1 bounded profile";
+    case RINGL_SHADING_LANGUAGE_VERSION:
+        return "RinGL RSH1 (GLSL ES 1.00 subset)";
+    default:
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return NULL;
+    }
+}
+
 static int depth_func_valid(uint32_t func)
 {
     return func >= RINGL_NEVER && func <= RINGL_ALWAYS;

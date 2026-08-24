@@ -50,7 +50,7 @@ Status meanings:
 | `glGetProgramInfoLog`, `glGetShaderInfoLog`, `glGetShaderSource` | B | Caller-owned bounded copies. |
 | `glGetRenderbufferParameteriv` | P | `RinGLRenderbufferInfoV1` supplies bounded storage metadata. |
 | `glGetShaderPrecisionFormat` | B | `ringl_get_shader_precision_format` returns the executable RSH1 binary32 or signed-i32 profile through a validated versioned record. |
-| `glGetString` | N | Vendor/renderer/version/extensions strings are not fabricated. |
+| `glGetString` | P | `ringl_get_string` returns only RinGL's static vendor, renderer, bounded-profile version, and RSH1 language-profile strings; extension strings remain unavailable. |
 | `glGetTexParameteriv` | P | Integer values for `MIN_FILTER`, `MAG_FILTER`, `WRAP_S`, `WRAP_T` only. |
 | `glGetTexParameterfv` | N | No floating tex-parameter getter. |
 | `glGetUniformiv` | P | `ringl_get_uniform_1i` for linked scalar `sampler2D` or `int`, plus `ringl_get_uniform_{2,3,4}i` for complete `ivec` values; no arrays. |
@@ -120,7 +120,8 @@ failure. It accepts these exact pnames:
 Dedicated versioned records provide depth range, line width/range, sample
 coverage, blend color, clear values, shader precision, renderbuffer metadata,
 framebuffer attachment metadata, program status, active names, and
-vertex-attribute state.
+vertex-attribute state. `ringl_get_string()` separately provides only the four
+explicit core identity strings; it does not fabricate extension support.
 Every other GLES query must remain unavailable until it has an equally explicit
 RinGL representation and test coverage.
 

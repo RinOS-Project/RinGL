@@ -58,6 +58,14 @@ int main(void)
     assert(!ringl_is_enabled(RINGL_POLYGON_OFFSET_FILL));
     assert(!ringl_is_enabled(RINGL_STENCIL_TEST));
     assert(!ringl_is_enabled(RINGL_BLEND));
+    assert(strcmp(ringl_get_string(RINGL_VENDOR), "RinOS Project") == 0);
+    assert(strcmp(ringl_get_string(RINGL_RENDERER), "RinGL") == 0);
+    assert(strcmp(ringl_get_string(RINGL_VERSION),
+                  "RinGL v1 bounded profile") == 0);
+    assert(strcmp(ringl_get_string(RINGL_SHADING_LANGUAGE_VERSION),
+                  "RinGL RSH1 (GLSL ES 1.00 subset)") == 0);
+    assert(ringl_get_string(0xdeadbeefu) == NULL);
+    assert(ringl_get_error() == RINGL_INVALID_ENUM);
 
     assert(ringl_get_clear_values(&clear_values) == 0);
     assert(clear_values.red == 0.0f && clear_values.green == 0.0f &&

@@ -1850,6 +1850,15 @@ static void backend_destroy_graphics_bind_group(void* opaque, uint64_t cookie)
 
 static uint8_t clear_component(float component)
 {
+    /* The default Aquamarine target is UNORM. OpenGL permits values outside
+     * [0, 1] in clear state, but conversion at a normalized target must clamp
+     * before narrowing. In particular, casting a negative Float32 directly
+     * to uint8_t is undefined behaviour. Treat NaN like other invalid
+     * normalized input and saturate it to zero. */
+    if (!(component >= 0.0f))
+        return 0u;
+    if (component >= 1.0f)
+        return UINT8_MAX;
     return (uint8_t)(component * 255.0f + 0.5f);
 }
 

@@ -91,7 +91,8 @@ int main(void)
     ringl_gen_buffers(1, &buffer);
     ringl_bind_buffer(RINGL_ARRAY_BUFFER, buffer);
 
-    ringl_buffer_data(RINGL_ARRAY_BUFFER, 4, initial_data, RINGL_STATIC_DRAW);
+    ringl_buffer_data_from_bytes(RINGL_ARRAY_BUFFER, 4, initial_data,
+                                 sizeof(initial_data), RINGL_STATIC_DRAW);
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(ringl_get_buffer_size(RINGL_ARRAY_BUFFER) == 4u);
     assert(ringl_get_buffer_usage(RINGL_ARRAY_BUFFER) == RINGL_STATIC_DRAW);
@@ -99,7 +100,8 @@ int main(void)
     assert(backend.uploads == 1);
     assert(backend.destroys == 0);
 
-    ringl_buffer_sub_data(RINGL_ARRAY_BUFFER, 1, 2, sub_data);
+    ringl_buffer_sub_data_from_bytes(RINGL_ARRAY_BUFFER, 1, 2, sub_data,
+                                     sizeof(sub_data));
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(ringl_get_buffer_size(RINGL_ARRAY_BUFFER) == 4u);
     assert(ringl_get_buffer_usage(RINGL_ARRAY_BUFFER) == RINGL_STATIC_DRAW);
@@ -112,6 +114,22 @@ int main(void)
     assert(backend.last_upload_data[1] == 8u);
     assert(backend.last_upload_data[2] == 9u);
     assert(backend.last_upload_data[3] == 4u);
+
+    ringl_buffer_data_from_bytes(RINGL_ARRAY_BUFFER, 4, initial_data,
+                                 sizeof(initial_data) - 1u,
+                                 RINGL_STATIC_DRAW);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    assert(ringl_get_buffer_size(RINGL_ARRAY_BUFFER) == 4u);
+    assert(backend.creates == 2);
+    assert(backend.uploads == 2);
+    assert(backend.destroys == 1);
+
+    ringl_buffer_sub_data_from_bytes(RINGL_ARRAY_BUFFER, 1, 2, sub_data,
+                                     sizeof(sub_data) - 1u);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    assert(backend.creates == 2);
+    assert(backend.uploads == 2);
+    assert(backend.destroys == 1);
 
     ringl_buffer_sub_data(RINGL_ARRAY_BUFFER, 3, 2, sub_data);
     assert(ringl_get_error() == RINGL_INVALID_VALUE);

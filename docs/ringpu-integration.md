@@ -26,6 +26,16 @@ ringpu_upload_buffer()
 published as GL buffer storage
 ```
 
+Browser and other untrusted embeddings use
+`ringl_buffer_data_from_bytes()` and
+`ringl_buffer_sub_data_from_bytes()`, not the raw-pointer forms. Each call
+carries the source span length. A non-null source shorter than its requested GL
+range, or a null source with a nonzero span length, reports `INVALID_VALUE`
+before allocating/replacing the CPU shadow or calling RinGPU. The staged
+replacement then makes the backend observe only RinGL-owned validated bytes.
+The original pointer-only APIs remain compatibility entry points for trusted
+native callers.
+
 ## Bounded texture-import path
 
 `ringl_tex_image_2d_from_bytes()` and

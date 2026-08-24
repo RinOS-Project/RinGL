@@ -1265,13 +1265,32 @@ void ringl_buffer_data(uint32_t target,
                        int64_t size_bytes,
                        const void* data,
                        uint32_t usage);
+/* Bounded buffer-import path for browser and other untrusted embeddings.
+ * `data_size` must cover `size_bytes` whenever data is non-NULL. A NULL
+ * source is permitted only with data_size zero and defines zero-filled
+ * storage. Short or incoherent source descriptors report INVALID_VALUE before
+ * allocation, backend upload, or replacement of the current buffer. The raw
+ * pointer entry point above remains for trusted native callers. */
+void ringl_buffer_data_from_bytes(uint32_t target,
+                                  int64_t size_bytes,
+                                  const void* data,
+                                  uint64_t data_size,
+                                  uint32_t usage);
 /* Replaces a range of an initialized buffer. The update is staged in a
  * replacement RinGPU buffer, so an allocation/upload failure preserves the
  * previous logical buffer contents and binding-visible storage. */
 void ringl_buffer_sub_data(uint32_t target,
-                           int64_t offset_bytes,
-                           int64_t size_bytes,
-                           const void* data);
+                            int64_t offset_bytes,
+                            int64_t size_bytes,
+                            const void* data);
+/* Bounded counterpart of ringl_buffer_sub_data(). A non-empty replacement
+ * requires a non-NULL source that covers size_bytes; all extent checks happen
+ * before CPU-shadow allocation or a RinGPU operation. */
+void ringl_buffer_sub_data_from_bytes(uint32_t target,
+                                      int64_t offset_bytes,
+                                      int64_t size_bytes,
+                                      const void* data,
+                                      uint64_t data_size);
 uint64_t ringl_get_buffer_size(uint32_t target);
 uint32_t ringl_get_buffer_usage(uint32_t target);
 

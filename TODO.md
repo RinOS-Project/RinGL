@@ -337,7 +337,14 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     the WebGL contract from a shared physical D32/S8 allocation. Focused
     bridge tests prove full, depth-only, and stencil-only targets without a
     direct surface command path.
-- [ ] Ensure robust buffer/texture access independent of backend behavior.
+- [x] Ensure robust buffer/texture access independent of backend behavior.
+  - Browser-facing buffer and texture imports now carry explicit source byte
+    extents. `*_from_bytes` validates the whole source before allocating,
+    replacing CPU shadow storage, or issuing a RinGPU callback; short buffers,
+    rows, and subranges leave prior GL state intact. Ladybird uses only these
+    bounded imports for `BufferSource`, typed-array texture, and converted
+    image-source paths, while raw-pointer entry points are documented as
+    trusted native-only compatibility APIs.
   - [x] Add a capacity-checked `readPixels` import/export boundary for
     browser-owned destinations. The bounded RGBA8 API rejects short spans
     before command submission, image-state transition, or destination writes;

@@ -184,10 +184,12 @@ uint32_t ringl_get_bound_buffer(uint32_t target)
     return context->element_array_buffer;
 }
 
-void ringl_buffer_data(uint32_t target,
-                       int64_t size_bytes,
-                       const void* data,
-                       uint32_t usage)
+static void ringl_buffer_data_impl(uint32_t target,
+                                   int64_t size_bytes,
+                                   const void* data,
+                                   uint64_t data_size,
+                                   int data_size_known,
+                                   uint32_t usage)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLBufferObject* object;
@@ -210,6 +212,12 @@ void ringl_buffer_data(uint32_t target,
     }
     if ((uint64_t)size_bytes > (uint64_t)SIZE_MAX) {
         ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+        return;
+    }
+    if (data_size_known &&
+        ((data == NULL && data_size != 0u) ||
+         (data != NULL && (uint64_t)size_bytes > data_size))) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
 
@@ -258,10 +266,29 @@ void ringl_buffer_data(uint32_t target,
     ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
 }
 
-void ringl_buffer_sub_data(uint32_t target,
-                           int64_t offset_bytes,
-                           int64_t size_bytes,
-                           const void* data)
+void ringl_buffer_data(uint32_t target,
+                       int64_t size_bytes,
+                       const void* data,
+                       uint32_t usage)
+{
+    ringl_buffer_data_impl(target, size_bytes, data, 0u, 0, usage);
+}
+
+void ringl_buffer_data_from_bytes(uint32_t target,
+                                  int64_t size_bytes,
+                                  const void* data,
+                                  uint64_t data_size,
+                                  uint32_t usage)
+{
+    ringl_buffer_data_impl(target, size_bytes, data, data_size, 1, usage);
+}
+
+static void ringl_buffer_sub_data_impl(uint32_t target,
+                                       int64_t offset_bytes,
+                                       int64_t size_bytes,
+                                       const void* data,
+                                       uint64_t data_size,
+                                       int data_size_known)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLBufferObject* object;
@@ -279,6 +306,12 @@ void ringl_buffer_sub_data(uint32_t target,
         return;
     }
     if (size_bytes > 0 && data == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if (data_size_known &&
+        ((data == NULL && data_size != 0u) ||
+         (data != NULL && (uint64_t)size_bytes > data_size))) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
@@ -335,6 +368,24 @@ void ringl_buffer_sub_data(uint32_t target,
     object->ringpu_handle = replacement_handle;
     object->shadow_bytes = replacement_shadow;
     ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
+}
+
+void ringl_buffer_sub_data(uint32_t target,
+                            int64_t offset_bytes,
+                            int64_t size_bytes,
+                            const void* data)
+{
+    ringl_buffer_sub_data_impl(target, offset_bytes, size_bytes, data, 0u, 0);
+}
+
+void ringl_buffer_sub_data_from_bytes(uint32_t target,
+                                      int64_t offset_bytes,
+                                      int64_t size_bytes,
+                                      const void* data,
+                                      uint64_t data_size)
+{
+    ringl_buffer_sub_data_impl(target, offset_bytes, size_bytes, data,
+                               data_size, 1);
 }
 
 uint64_t ringl_get_buffer_size(uint32_t target)

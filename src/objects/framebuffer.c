@@ -588,11 +588,11 @@ uint32_t ringl_effective_color_write_mask(const RinGLContext* context)
 {
     const RinGLFramebufferObject* framebuffer;
     uint32_t index;
+    uint32_t active_mask;
+    uint32_t mask;
 
     if (context == NULL)
         return 0u;
-    if (context->webgl_draw_buffers_enabled == RINGL_FALSE)
-        return context->color_write_mask;
     if (context->framebuffer_binding == 0u) {
         return context->default_draw_buffer == RINGL_BACK
             ? context->color_write_mask
@@ -605,10 +605,33 @@ uint32_t ringl_effective_color_write_mask(const RinGLContext* context)
     if (index >= RINGL_OBJECT_SLOT_COUNT)
         return 0u;
     framebuffer = &context->framebuffers[index];
-    if (framebuffer->draw_buffer_state_initialized != RINGL_FALSE &&
-        framebuffer->draw_buffer_mask == 0u)
+    active_mask = context->webgl_draw_buffers_enabled != RINGL_FALSE &&
+            framebuffer->draw_buffer_state_initialized != RINGL_FALSE
+        ? framebuffer->draw_buffer_mask : 1u;
+    if (active_mask == 0u)
         return 0u;
-    return context->color_write_mask;
+    mask = context->color_write_mask;
+    for (uint32_t attachment = 0u;
+         attachment < RINGL_MAX_COLOR_ATTACHMENTS; ++attachment) {
+        uint32_t object_index;
+
+        if ((active_mask & (UINT32_C(1) << attachment)) == 0u)
+            continue;
+        if (framebuffer->color_attachment_kind[attachment] !=
+            RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D)
+            continue;
+        object_index = ringl_object_slot_index(
+            framebuffer->color_attachment_object[attachment]);
+        if (object_index >= RINGL_OBJECT_SLOT_COUNT ||
+            ringl_object_lookup_const(
+                context, framebuffer->color_attachment_object[attachment],
+                RINGL_OBJECT_TEXTURE) == NULL) {
+            return 0u;
+        }
+        if (context->textures[object_index].format == RINGL_RGB)
+            mask &= ~RINGL_RIN_GPU_COLOR_WRITE_ALPHA;
+    }
+    return mask;
 }
 
 void ringl_framebuffer_texture_2d(uint32_t target, uint32_t attachment,

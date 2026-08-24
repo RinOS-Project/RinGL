@@ -654,6 +654,17 @@ static void texture_copy_srgb_texels(uint8_t* destination,
     }
 }
 
+static void texture_initialize_srgb_rgb_alpha(uint8_t* destination,
+                                               uint64_t texel_count)
+{
+    float alpha = 1.0f;
+
+    for (uint64_t index = 0u; index < texel_count; ++index) {
+        memcpy(destination + (index * 4u + 3u) * sizeof(alpha), &alpha,
+               sizeof(alpha));
+    }
+}
+
 /* Packed formats retain their native component precision in the shadow image.
  * GenerateMipmap therefore averages the stored component values and quantizes
  * only at the destination level. This is equivalent to averaging normalized
@@ -1865,9 +1876,14 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
                         (uint32_t)width);
                 }
             }
-        } else {
-            memset(replacement, 0, (size_t)size);
+    } else {
+        memset(replacement, 0, (size_t)size);
+        if (requested_srgb_encoding != RINGL_FALSE &&
+            storage_format == RINGL_RGB) {
+            texture_initialize_srgb_rgb_alpha(
+                replacement, (uint64_t)(uint32_t)width * (uint32_t)height);
         }
+    }
     }
 
     texture_discard_image(context, texture);

@@ -211,6 +211,7 @@ int main(void)
     uint32_t texture = 0u;
     uint32_t rgb_texture = 0u;
     uint32_t framebuffer = 0u;
+    uint32_t rgb_framebuffer = 0u;
     uint32_t renderbuffer = 0u;
     uint32_t renderbuffer_framebuffer = 0u;
     uint32_t is_srgb = RINGL_FALSE;
@@ -300,6 +301,34 @@ int main(void)
         assert(alpha == 1.0f);
     }
 
+    ringl_gen_framebuffers(1, &rgb_framebuffer);
+    ringl_bind_framebuffer(RINGL_FRAMEBUFFER, rgb_framebuffer);
+    ringl_framebuffer_texture_2d(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT0,
+                                 RINGL_TEXTURE_2D, rgb_texture, 0);
+    assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
+           RINGL_FRAMEBUFFER_COMPLETE);
+    assert(ringl_framebuffer_color_attachment_is_srgb(&is_srgb) == 0);
+    assert(is_srgb == RINGL_TRUE);
+    assert(ringl_effective_color_write_mask(context) ==
+           (RINGL_RIN_GPU_COLOR_WRITE_ALL &
+            ~RINGL_RIN_GPU_COLOR_WRITE_ALPHA));
+    {
+        RinGLColorTarget target;
+        float physical_alpha = 0.25f;
+
+        assert(ringl_resolve_color_target(context, &target) == 0);
+        assert(target.srgb_encoding == RINGL_TRUE);
+        assert(target.has_alpha == RINGL_FALSE);
+        memcpy(backend.uploaded + 3u * sizeof(physical_alpha),
+               &physical_alpha, sizeof(physical_alpha));
+        assert(ringl_read_color_target_rgba(context, 0, 0, 1, 1,
+                                             readback) == 0);
+        assert(readback[0] == rgb_pixels[0]);
+        assert(readback[1] == rgb_pixels[1]);
+        assert(readback[2] == rgb_pixels[2]);
+        assert(readback[3] == UINT8_MAX);
+    }
+
     ringl_tex_image_2d_from_bytes(
         RINGL_TEXTURE_2D, 0, RINGL_SRGB8_ALPHA8_EXT, 1, 1, 0,
         RINGL_SRGB8_ALPHA8_EXT, RINGL_UNSIGNED_BYTE, pixels, sizeof(pixels));
@@ -327,7 +356,7 @@ int main(void)
         assert(target.format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT);
         assert(target.srgb_encoding == RINGL_TRUE);
     }
-    assert(backend.image_creates == 2u);
+    assert(backend.image_creates == 3u);
 
     ringl_context_destroy(context);
     return 0;

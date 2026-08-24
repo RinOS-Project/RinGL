@@ -421,7 +421,8 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     `SRGB_EXT`/`SRGB_ALPHA_EXT` exact unsigned-byte texture input and
     `SRGB8_ALPHA8_EXT` renderbuffer storage retain logical sRGB metadata while
     using linear RGBA32F RinGPU storage. RGB is decoded on input and re-encoded
-    for byte readback; alpha stays linear; `generateMipmap` rejects logical
+    for byte readback; `SRGB_ALPHA_EXT` alpha stays linear while alpha-less
+    `SRGB_EXT` keeps alpha one; `generateMipmap` rejects logical
     sRGB textures. Focused sRGB, texture, framebuffer, and sync tests cover
     token scope, FBO metadata, physical storage, and transfer round-trip.
 - [ ] Ensure context loss can be propagated predictably to a browser implementation.

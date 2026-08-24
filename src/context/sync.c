@@ -354,7 +354,8 @@ static uint8_t ringl_linear_alpha_to_unorm8(float value)
 
 static void ringl_encode_linear_rgba_to_srgb(const uint8_t* source,
                                                uint8_t* destination,
-                                               uint64_t pixel_count)
+                                               uint64_t pixel_count,
+                                               uint32_t has_alpha)
 {
     uint64_t pixel;
 
@@ -371,7 +372,8 @@ static void ringl_encode_linear_rgba_to_srgb(const uint8_t* source,
         destination[pixel * 4u + 0u] = ringl_srgb_encode_float(red);
         destination[pixel * 4u + 1u] = ringl_srgb_encode_float(green);
         destination[pixel * 4u + 2u] = ringl_srgb_encode_float(blue);
-        destination[pixel * 4u + 3u] = ringl_linear_alpha_to_unorm8(alpha);
+        destination[pixel * 4u + 3u] = has_alpha != RINGL_FALSE
+            ? ringl_linear_alpha_to_unorm8(alpha) : UINT8_MAX;
     }
 }
 
@@ -509,7 +511,8 @@ static int ringl_read_color_target_to_type(RinGLContext* context, int32_t x,
     if (target.srgb_encoding != 0u) {
         ringl_encode_linear_rgba_to_srgb(
             native_pixels != NULL ? native_pixels : (const uint8_t*)pixels,
-            (uint8_t*)pixels, (uint64_t)(uint32_t)width * (uint32_t)height);
+            (uint8_t*)pixels, (uint64_t)(uint32_t)width * (uint32_t)height,
+            target.has_alpha);
     } else if (target.format == RINGL_RIN_GPU_FORMAT_BGRA8_UNORM) {
         swizzle_bgra_to_rgba((uint8_t*)pixels,
                              (uint64_t)(uint32_t)width * (uint32_t)height);

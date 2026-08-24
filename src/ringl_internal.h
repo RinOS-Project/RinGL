@@ -358,6 +358,9 @@ typedef struct RinGLColorTarget {
     /* Nonzero when the physical image stores linear values for a logical
      * EXT_sRGB attachment. Readback must encode RGB back to sRGB. */
     uint32_t srgb_encoding;
+    /* RGB/sRGB-RGB targets use an RGBA physical image, but alpha is logically
+     * absent: it must remain one and no pipeline may write it. */
+    uint32_t has_alpha;
     uint32_t width;
     uint32_t height;
     uint32_t mip_level;

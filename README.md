@@ -136,9 +136,10 @@ compressed formats remain unavailable.
 for exact `UNSIGNED_BYTE` image/subimage input. `RINGL_SRGB8_ALPHA8_EXT` is a
 logical renderbuffer-storage format only; it is intentionally not accepted by
 the texture upload APIs. RinGL decodes sRGB RGB through IEC 61966-2-1 into
-linear RGBA32F RinGPU storage while retaining linear alpha. Its framebuffer
-metadata therefore reports the logical sRGB encoding and unsigned-byte
-component type, and byte readback re-encodes only RGB. Mipmap generation for a
+linear RGBA32F RinGPU storage. `SRGB_ALPHA_EXT` retains linear alpha, whereas
+alpha-less `SRGB_EXT` keeps the physical alpha one and never exposes it. Its
+framebuffer metadata therefore reports the logical sRGB encoding and
+unsigned-byte component type, and byte readback re-encodes only RGB. Mipmap generation for a
 logical sRGB texture rejects instead of creating a chain with unspecified
 transfer semantics. A browser must gate these tokens through its acquired
 `EXT_sRGB` object; RinGL itself remains on the RinGPU adapter/private

@@ -48,6 +48,7 @@ static int ringl_resolve_color_attachment_target(
             return -1;
         target->image = context->default_framebuffer.color_target;
         target->format = context->default_framebuffer.color_format;
+        target->has_alpha = RINGL_TRUE;
         target->width = context->default_framebuffer.width;
         target->height = context->default_framebuffer.height;
         target->mip_level = 0u;
@@ -108,6 +109,8 @@ static int ringl_resolve_color_attachment_target(
             break;
         }
         target->srgb_encoding = context->renderbuffers[index].srgb_encoding;
+        target->has_alpha = context->renderbuffers[index].internal_format !=
+                RINGL_RGB565 ? RINGL_TRUE : RINGL_FALSE;
     } else {
         return -1;
     }
@@ -140,6 +143,8 @@ static int ringl_resolve_color_attachment_target(
             break;
         }
         target->srgb_encoding = context->textures[index].srgb_encoding;
+        target->has_alpha = context->textures[index].format != RINGL_RGB
+            ? RINGL_TRUE : RINGL_FALSE;
     }
     return target->image != 0u && target->state != NULL &&
            target->width != 0u && target->height != 0u ? 0 : -1;
@@ -187,6 +192,16 @@ int ringl_resolve_color_targets(RinGLContext* context,
         if (ringl_resolve_color_attachment_target(context, index,
                                                   &targets->targets[index]) != 0)
             return -1;
+        for (uint32_t prior = 0u; prior < index; ++prior) {
+            if ((active_mask & (UINT32_C(1) << prior)) != 0u &&
+                targets->targets[prior].has_alpha !=
+                    targets->targets[index].has_alpha) {
+                /* The current RinGPU MRT ABI has one component-write mask.
+                 * Do not silently let an RGB target corrupt or observe a
+                 * physical alpha channel beside an RGBA target. */
+                return -1;
+            }
+        }
     }
     targets->active_mask = active_mask;
     return active_mask != 0u ? 0 : 1;
@@ -724,7 +739,8 @@ static int begin_mrt_pass(RinGLContext* context, uint64_t command_list,
         if (target->image == 0u || target->state == NULL ||
             (first != NULL && (target->width != first->width ||
                                target->height != first->height ||
-                               target->format != first->format))) {
+                               target->format != first->format ||
+                               target->has_alpha != first->has_alpha))) {
             return -1;
         }
         if (first == NULL)

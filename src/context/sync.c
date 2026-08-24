@@ -305,6 +305,35 @@ static int ringl_color_target_readback_type_supported(uint32_t format,
          format == RINGL_RIN_GPU_FORMAT_BGRA8_UNORM);
 }
 
+int ringl_get_implementation_color_read_format_type(uint32_t* format_out,
+                                                     uint32_t* type_out)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLColorTarget target;
+    uint32_t type;
+
+    if (context == NULL || format_out == NULL || type_out == NULL ||
+        (context->framebuffer_binding != 0u &&
+         ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) !=
+             RINGL_FRAMEBUFFER_COMPLETE) ||
+        ringl_resolve_color_target(context, &target) != 0) {
+        if (context != NULL)
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    type = (target.format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT ||
+            target.format == RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT)
+        ? RINGL_FLOAT
+        : RINGL_UNSIGNED_BYTE;
+    if (!ringl_color_target_readback_type_supported(target.format, type)) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    *format_out = RINGL_RGBA;
+    *type_out = type;
+    return 0;
+}
+
 static int ringl_read_color_target_to_type(RinGLContext* context, int32_t x,
                                            int32_t y, int32_t width,
                                            int32_t height, uint32_t type,

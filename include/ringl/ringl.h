@@ -140,6 +140,8 @@ extern "C" {
 #define RINGL_SCISSOR_TEST   0x0c11u
 #define RINGL_UNPACK_ALIGNMENT 0x0cf5u
 #define RINGL_PACK_ALIGNMENT   0x0d05u
+#define RINGL_IMPLEMENTATION_COLOR_READ_TYPE   0x8b9au
+#define RINGL_IMPLEMENTATION_COLOR_READ_FORMAT 0x8b9bu
 
 #define RINGL_VIEWPORT                      0x0ba2u
 #define RINGL_MAX_VIEWPORT_DIMS             0x0d3au

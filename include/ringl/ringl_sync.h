@@ -67,6 +67,11 @@ typedef struct RinGLRinGpuSyncOpsV1 {
 int ringl_context_set_sync_ops(RinGLContext* context,
                                const RinGLRinGpuSyncOpsV1* ops);
 
+/* Returns the actual supported WebGL implementation color-read pair for the
+ * current complete color target. The output is unchanged on failure. */
+int ringl_get_implementation_color_read_format_type(uint32_t* format_out,
+                                                     uint32_t* type_out);
+
 /* Current RinGL draw/clear operations submit immediately, so flush is an
  * ordering boundary without an additional native submission. */
 void ringl_flush(void);

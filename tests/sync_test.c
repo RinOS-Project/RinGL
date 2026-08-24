@@ -571,6 +571,8 @@ int main(void)
     uint32_t buffer = 0u;
     uint32_t index;
     uint32_t pack_readbacks_before;
+    uint32_t implementation_read_format = 0u;
+    uint32_t implementation_read_type = 0u;
     const uint8_t buffer_data[4] = {1u, 2u, 3u, 4u};
     FakeBackend command_loss_backend = {0};
     uint8_t pixels[8] = {0};
@@ -591,6 +593,10 @@ int main(void)
     assert(ringl_context_set_sync_ops(context, &sync_ops) == 0);
     assert(ringl_make_current(context) == 0);
     assert(ringl_set_default_framebuffer(&framebuffer) == 0);
+    assert(ringl_get_implementation_color_read_format_type(
+               &implementation_read_format, &implementation_read_type) == 0);
+    assert(implementation_read_format == RINGL_RGBA);
+    assert(implementation_read_type == RINGL_UNSIGNED_BYTE);
 
     ringl_flush();
     assert(ringl_get_error() == RINGL_NO_ERROR);

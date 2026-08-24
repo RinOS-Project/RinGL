@@ -206,6 +206,11 @@ Rectangles that extend beyond a framebuffer are clipped by RinGL, not by the
 browser. RinGL stages the requested logical rows, reads only their in-bounds
 intersection, and then publishes the result. Bytes corresponding to
 out-of-bounds pixels, as well as PACK padding, remain untouched.
+
+`ringl_get_implementation_color_read_format_type()` exposes the pair actually
+accepted by that target: `RGBA/UNSIGNED_BYTE` for UNORM and packed color
+storage, and `RGBA/FLOAT` only for native float color storage. Ladybird passes
+this query through for WebGL's implementation color-read parameters.
 The sample coverage value enum is kept distinct from `SAMPLE_BUFFERS`, avoiding
 an accidental query alias at the public boundary.
 

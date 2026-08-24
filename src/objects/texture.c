@@ -2108,9 +2108,15 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
     if (level != 0) {
         uint32_t mip_level = (uint32_t)level;
 
+        /* A packed base image retains its packed upload type so later
+         * sub-image validation can preserve its native representation.  A
+         * same-format copy-defined mip is nevertheless valid: it snapshots
+         * RGBA and packs back into that exact storage rather than requiring a
+         * fabricated UNSIGNED_BYTE base type. */
         if (!texture_level0_storage_defined(texture) ||
             texture->format != internal_format ||
-            texture->color_component_type != RINGL_UNSIGNED_BYTE) {
+            (texture->color_component_type != RINGL_UNSIGNED_BYTE &&
+             !texture_packed_color_format(texture->format))) {
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return;
         }

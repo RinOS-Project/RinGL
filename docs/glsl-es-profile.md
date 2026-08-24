@@ -12,8 +12,11 @@ The current first-triangle slice supports:
 - scalar `float`/`int` declarations and same-type arithmetic;
 - `vec2`/`vec3`/`vec4` and `ivec2`/`ivec3`/`ivec4` constructors, plus an
   explicit scalar `int(...)` or `float(...)` conversion;
-- single-component `.x`, `.y`, `.z`, `.w` and `.r`, `.g`, `.b`, `.a` reads
-  from vector/ivector values;
+- read-only one-through-four-component vector/ivector swizzles using exactly
+  one of the `xyzw`, `rgba`, or `stpq` alphabets, including repeated and
+  chained selectors such as `.stpq.bgra`;
+- component-wise `+`, `-`, `*`, and `/` with same-width vectors or one scalar
+  broadcast across a vector;
 - vertex `attribute float` and `attribute vec2` inputs;
 - `vec2(...)` and `vec4(...)` constructors;
 - scalar or `vec4` writes to the stage output (`gl_Position` / `gl_FragColor`);
@@ -69,8 +72,8 @@ bindings for only those declarations. The direct-coordinate maximum is 69
 instructions and 64 registers; with an offset on every call it is 101
 instructions and 68 registers. Coordinates derived from locals or different
 varyings, other expressions, and larger chains are not yet accepted.
-Nonconstant coordinates in this profile, multi-component swizzles, implicit
-float/integer conversion, vector constructors with mixed scalar types,
+Nonconstant coordinates in this profile, swizzle writes, implicit float/integer
+conversion, vector constructors with mixed scalar types,
 matrices beyond the documented vertex transform, uniform arrays, additional
 varying types, derivatives, loops, user functions, precision edge cases, and
 broader GLSL ES built-ins remain incremental work.

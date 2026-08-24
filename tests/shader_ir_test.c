@@ -145,6 +145,12 @@ int main(void)
         "  vec4 shifted = scaled + vec4(0.25, 0.0, 0.0, 0.0);\n"
         "  gl_Position = shifted / 2.0 - vec4(0.0, 0.25, 0.0, 0.0);\n"
         "}\n";
+    const char* swizzle_arithmetic_source =
+        "attribute vec2 position;\n"
+        "void main() {\n"
+        "  vec2 reflected = position.yx;\n"
+        "  gl_Position = vec4(reflected.yx, 0.0, 1.0) + 0.0;\n"
+        "}\n";
     const char* fragment_source =
         "precision mediump float;\n"
         "precision highp int;\n"
@@ -286,6 +292,17 @@ int main(void)
     assert(header.output_count == 8u);
     assert(header.instruction_count >= 40u);
     assert(header.register_count >= 32u);
+
+    /* A multi-component swizzle is a register permutation, not a separate
+     * shader profile. vecN + scalar must still lower as one scalar operation
+     * per component so the executable RSH1 module preserves GLSL order. */
+    header = lower_and_read_header(vertex, swizzle_arithmetic_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 2u);
+    assert(header.output_count == 8u);
+    assert(header.instruction_count >= 17u);
+    assert(header.register_count >= 11u);
 
     header = lower_and_read_header(fragment, fragment_source, blob, sizeof(blob));
     assert(header.stage == 2u);

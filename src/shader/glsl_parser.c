@@ -487,6 +487,8 @@ static int primary(Parser* parser)
         return constructor(parser, parser->token.kind);
     if (parser->token.kind == TOK_IDENT) {
         Token ident = parser->token;
+        Symbol* symbol = find_symbol(parser, &ident);
+        uint32_t value_width = symbol ? symbol->width : 0u;
         if (token_is_ident(&ident, "texture2D"))
             return texture2d_call(parser);
         if (!token_is_ident(&ident, "gl_Position") &&
@@ -496,15 +498,51 @@ static int primary(Parser* parser)
             return 0;
         }
         next_token(parser);
-        if (accept(parser, TOK_DOT)) {
-            if (parser->token.kind != TOK_IDENT || parser->token.length != 1u ||
-                (parser->token.begin[0] != 'x' && parser->token.begin[0] != 'y' &&
-                 parser->token.begin[0] != 'z' && parser->token.begin[0] != 'w' &&
-                 parser->token.begin[0] != 'r' && parser->token.begin[0] != 'g' &&
-                 parser->token.begin[0] != 'b' && parser->token.begin[0] != 'a')) {
+        while (accept(parser, TOK_DOT)) {
+            Token swizzle = parser->token;
+            uint8_t family = 0u;
+            size_t index;
+
+            /* Keep compile-time admission aligned with the RSH1 lowerer.
+             * Mixed selector families are not legal GLSL, even though their
+             * individual letters are valid in another family. */
+            if (swizzle.kind != TOK_IDENT || swizzle.length == 0u ||
+                swizzle.length > 4u) {
                 fail(parser, "invalid vector component selection");
                 return 0;
             }
+            for (index = 0u; index < swizzle.length; ++index) {
+                uint8_t component_family;
+                uint32_t component_index;
+
+                switch (swizzle.begin[index]) {
+                case 'x': component_family = 1u; component_index = 0u; break;
+                case 'y': component_family = 1u; component_index = 1u; break;
+                case 'z': component_family = 1u; component_index = 2u; break;
+                case 'w': component_family = 1u; component_index = 3u; break;
+                case 'r': component_family = 2u; component_index = 0u; break;
+                case 'g': component_family = 2u; component_index = 1u; break;
+                case 'b': component_family = 2u; component_index = 2u; break;
+                case 'a': component_family = 2u; component_index = 3u; break;
+                case 's': component_family = 3u; component_index = 0u; break;
+                case 't': component_family = 3u; component_index = 1u; break;
+                case 'p': component_family = 3u; component_index = 2u; break;
+                case 'q': component_family = 3u; component_index = 3u; break;
+                default:
+                    fail(parser, "invalid vector component selection");
+                    return 0;
+                }
+                if (family != 0u && family != component_family) {
+                    fail(parser, "mixed vector component selection");
+                    return 0;
+                }
+                family = component_family;
+                if (value_width != 0u && component_index >= value_width) {
+                    fail(parser, "vector component is outside the declared width");
+                    return 0;
+                }
+            }
+            value_width = (uint32_t)swizzle.length;
             next_token(parser);
         }
         return 1;

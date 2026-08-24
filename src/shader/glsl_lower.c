@@ -476,29 +476,56 @@ static Value symbol_value(Lower* lower)
         for (index = 0u; index < (symbol->matrix ? 16u : symbol->width); ++index)
             value.regs[index] = symbol->regs[index];
     }
-    if (take(lower, T_DOT)) {
-        uint32_t component;
+    while (take(lower, T_DOT)) {
+        Token swizzle = lower->token;
+        uint16_t selected[4];
+        uint8_t family = 0u;
+        uint32_t index;
 
-        if (value.matrix || value.width == 1u || lower->token.kind != T_IDENT ||
-            lower->token.length != 1u) {
+        /* GLSL permits a read-only swizzle of one through four components,
+         * including repeated components (for example xx and bgra).  The
+         * selector must use exactly one of xyzw, rgba, or stpq: accepting a
+         * mixed alphabet would assign a meaning that GLSL deliberately does
+         * not give it.  Keep this as register selection rather than emitting
+         * fake vector instructions; RSH1 remains a scalar IR. */
+        if (value.matrix || value.width == 1u || swizzle.kind != T_IDENT ||
+            swizzle.length == 0u || swizzle.length > 4u) {
             fail(lower, "invalid vector component selection");
             return invalid_value();
         }
-        switch (lower->token.begin[0]) {
-        case 'x': case 'r': component = 0u; break;
-        case 'y': case 'g': component = 1u; break;
-        case 'z': case 'b': component = 2u; break;
-        case 'w': case 'a': component = 3u; break;
-        default:
-            fail(lower, "unsupported vector component selection");
-            return invalid_value();
+        for (index = 0u; index < swizzle.length; ++index) {
+            char component = swizzle.begin[index];
+            uint8_t component_family;
+            uint32_t component_index;
+
+            switch (component) {
+            case 'x': component_family = 1u; component_index = 0u; break;
+            case 'y': component_family = 1u; component_index = 1u; break;
+            case 'z': component_family = 1u; component_index = 2u; break;
+            case 'w': component_family = 1u; component_index = 3u; break;
+            case 'r': component_family = 2u; component_index = 0u; break;
+            case 'g': component_family = 2u; component_index = 1u; break;
+            case 'b': component_family = 2u; component_index = 2u; break;
+            case 'a': component_family = 2u; component_index = 3u; break;
+            case 's': component_family = 3u; component_index = 0u; break;
+            case 't': component_family = 3u; component_index = 1u; break;
+            case 'p': component_family = 3u; component_index = 2u; break;
+            case 'q': component_family = 3u; component_index = 3u; break;
+            default:
+                fail(lower, "invalid vector component selection");
+                return invalid_value();
+            }
+            if ((family != 0u && family != component_family) ||
+                component_index >= value.width) {
+                fail(lower, "vector component is outside the declared width");
+                return invalid_value();
+            }
+            family = component_family;
+            selected[index] = value.regs[component_index];
         }
-        if (component >= value.width) {
-            fail(lower, "vector component is outside the declared width");
-            return invalid_value();
-        }
-        value.regs[0] = value.regs[component];
-        value.width = 1u;
+        for (index = 0u; index < swizzle.length; ++index)
+            value.regs[index] = selected[index];
+        value.width = (uint8_t)swizzle.length;
         next(lower);
     }
     return value;
@@ -692,9 +719,9 @@ static Value matrix_times_vec4(Lower* lower, const Value* matrix,
 /* GLSL scalar/vector arithmetic is represented as scalar RSH1 instructions.
  * Keep the expansion at this frontend boundary: the RSH1 ABI has no hidden
  * vector operation and the generated module must remain independently
- * executable by every RinGPU backend. Addition/subtraction require matching
- * vector widths, while multiplication/division additionally permit the GLES
- * scalar broadcast form. */
+ * executable by every RinGPU backend. GLSL ES applies a scalar operand to
+ * every component of the other operand for all four arithmetic operators;
+ * retain that rule here instead of rejecting valid vecN +/- scalar shaders. */
 static Value componentwise_binary(Lower* lower, const Value* left,
                                   const Value* right, uint16_t opcode,
                                   int allow_scalar_broadcast)
@@ -785,7 +812,7 @@ static Value expression(Lower* lower)
         left = componentwise_binary(
             lower, &left, &right,
             operation == T_PLUS ? RINGL_RSH1_OP_ADD_F32 : RINGL_RSH1_OP_SUB_F32,
-            0);
+            1);
     }
     return left;
 }

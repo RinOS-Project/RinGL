@@ -161,6 +161,33 @@ int main(void)
     assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
     assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) == 0u);
 
+    /* Full read swizzles are ordinary source-language vector values. The
+     * executable lowerer checks source width; this parser coverage protects
+     * the preceding compile admission from rejecting legal selector families
+     * before they reach it. */
+    ringl_shader_source(fragment,
+        "void main() { vec4 color = vec4(0.125, 0.25, 0.75, 1.0); "
+        "gl_FragColor = color.stpq.bgra + 0.0; }", -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+    assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) == 0u);
+
+    ringl_shader_source(fragment,
+        "void main() { vec4 color = vec4(0.0); gl_FragColor = color.rgxy; }",
+        -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
+    assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) > 0u);
+    assert(strstr(log, "mixed") != NULL);
+
+    ringl_shader_source(fragment,
+        "void main() { vec2 uv = vec2(0.0); gl_FragColor = vec4(uv.z); }",
+        -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
+    assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) > 0u);
+    assert(strstr(log, "outside") != NULL);
+
     ringl_shader_source(fragment,
         "attribute float invalid; void main() { gl_FragColor = invalid; }", -1);
     ringl_compile_shader(fragment);

@@ -12,6 +12,7 @@ static void ringl_vertex_array_copy_descriptor(RinGLVertexAttribState* to,
     to->type = from->type;
     to->normalized = from->normalized;
     to->stride = from->stride;
+    to->divisor = from->divisor;
     to->buffer = from->buffer;
     to->offset = from->offset;
 }

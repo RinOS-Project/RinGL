@@ -588,23 +588,20 @@ static int backend_unpack_vertex_values_v2(
     const RinGLAquamarineSurfacePipeline* pipeline,
     const RinGpuBackendVertexBufferBindingV1* bindings,
     uint32_t binding_count, uint32_t first_vertex, uint32_t vertex_count,
-    float** values_out)
+    uint32_t first_instance, uint32_t instance_index, float* values)
 {
     uint64_t value_count;
-    float* values;
 
-    if (!context || !pipeline || !values_out || pipeline->input_count == 0u ||
+    if (!context || !pipeline || !values || pipeline->input_count == 0u ||
         pipeline->input_count > RIN_GPU_MAX_VERTEX_ATTRIBUTES ||
         binding_count != pipeline->vertex_binding_count ||
         (binding_count != 0u && bindings == NULL)) {
         return RIN_GPU_ERROR_INVALID_ARGUMENT;
     }
-    *values_out = NULL;
     value_count = (uint64_t)vertex_count * pipeline->input_count;
     if (value_count == 0u || value_count > SIZE_MAX / sizeof(*values))
         return RIN_GPU_ERROR_LIMIT;
-    values = calloc((size_t)value_count, sizeof(*values));
-    if (!values) return RIN_GPU_ERROR_NO_MEMORY;
+    memset(values, 0, (size_t)value_count * sizeof(*values));
 
     for (uint32_t vertex = 0u; vertex < vertex_count; ++vertex) {
         for (uint32_t attribute = 0u; attribute < pipeline->input_count;
@@ -616,19 +613,18 @@ static int backend_unpack_vertex_values_v2(
             const RinGpuBackendVertexBufferBindingV1* binding;
             const RinGpuVertexBufferLayoutV1* binding_layout;
             const RinGLAquamarineSurfaceBuffer* buffer;
+            uint64_t element_index;
             uint64_t vertex_base;
             uint64_t offset;
             int result;
 
             if (layout->location >= pipeline->input_count ||
                 component_bytes == 0u) {
-                free(values);
                 return RIN_GPU_ERROR_INVALID_ARGUMENT;
             }
             if (layout->flags == RIN_GPU_VERTEX_ATTRIBUTE_CONSTANT_FLOAT32) {
                 if (layout->format != RIN_GPU_VERTEX_FLOAT32 ||
                     layout->binding != 0u) {
-                    free(values);
                     return RIN_GPU_ERROR_INVALID_ARGUMENT;
                 }
                 memcpy(&values[(size_t)vertex * pipeline->input_count +
@@ -640,35 +636,35 @@ static int backend_unpack_vertex_values_v2(
             }
             if (layout->flags != 0u || layout->binding >= binding_count ||
                 layout->binding >= pipeline->vertex_binding_count) {
-                free(values);
                 return RIN_GPU_ERROR_INVALID_ARGUMENT;
             }
             binding = &bindings[layout->binding];
             binding_layout = &pipeline->vertex_bindings[layout->binding];
             buffer = (const RinGLAquamarineSurfaceBuffer*)(uintptr_t)
                 binding->buffer_cookie;
+            element_index = binding_layout->flags == 0u
+                ? (uint64_t)first_vertex + vertex
+                : ((uint64_t)first_instance + instance_index) /
+                      binding_layout->flags;
             if (binding->binding != layout->binding || !buffer ||
                 buffer->owner != context || !buffer->bytes ||
                 binding_layout->binding != layout->binding ||
                 binding_layout->stride == 0u ||
                 layout->offset > binding_layout->stride - component_bytes ||
-                (first_vertex + vertex != 0u &&
+                (element_index != 0u &&
                  (uint64_t)binding_layout->stride >
                      (UINT64_MAX - binding->offset) /
-                         (first_vertex + vertex))) {
-                free(values);
+                         element_index)) {
                 return RIN_GPU_ERROR_BOUNDS;
             }
             vertex_base = binding->offset +
-                (uint64_t)(first_vertex + vertex) * binding_layout->stride;
+                element_index * binding_layout->stride;
             if (layout->offset > UINT64_MAX - vertex_base) {
-                free(values);
                 return RIN_GPU_ERROR_BOUNDS;
             }
             offset = vertex_base + layout->offset;
             if (offset > buffer->size_bytes ||
                 component_bytes > buffer->size_bytes - offset) {
-                free(values);
                 return RIN_GPU_ERROR_BOUNDS;
             }
             result = backend_decode_vertex_component(
@@ -676,12 +672,10 @@ static int backend_unpack_vertex_values_v2(
                 &values[(size_t)vertex * pipeline->input_count +
                         layout->location]);
             if (result != RIN_GPU_OK) {
-                free(values);
                 return result;
             }
         }
     }
-    *values_out = values;
     return RIN_GPU_OK;
 }
 
@@ -1500,7 +1494,7 @@ static int backend_create_graphics_pipeline(
                 &descriptor->vertex_bindings[binding];
             if (layout->binding != binding || layout->stride == 0u ||
                 layout->stride > RIN_GPU_MAX_VERTEX_STRIDE ||
-                layout->flags != 0u || layout->reserved != 0u) {
+                layout->reserved != 0u) {
                 return RIN_GPU_ERROR_INVALID_ARGUMENT;
             }
         }
@@ -2597,12 +2591,12 @@ static int backend_vertex_bindings_valid(
     RinGLAquamarineSurfaceContext* context,
     const RinGLAquamarineSurfacePipeline* pipeline,
     const RinGpuBackendVertexBufferBindingV1* bindings,
-    uint32_t binding_count, uint32_t first_vertex, uint32_t vertex_count)
+    uint32_t binding_count, uint32_t first_vertex, uint32_t vertex_count,
+    uint32_t first_instance, uint32_t instance_count)
 {
-    uint64_t vertex_end = (uint64_t)first_vertex + vertex_count;
-
     if (!context || !pipeline ||
         binding_count != pipeline->vertex_binding_count ||
+        instance_count == 0u ||
         (binding_count != 0u && bindings == NULL)) {
         return RIN_GPU_ERROR_BACKEND;
     }
@@ -2613,12 +2607,18 @@ static int backend_vertex_bindings_valid(
         const RinGLAquamarineSurfaceBuffer* buffer =
             (const RinGLAquamarineSurfaceBuffer*)(uintptr_t)
                 source->buffer_cookie;
+        uint64_t element_end;
         uint64_t required_bytes;
+
+        element_end = layout->flags == 0u
+            ? (uint64_t)first_vertex + vertex_count
+            : ((uint64_t)first_instance + instance_count - 1u) /
+                    layout->flags + 1u;
 
         if (source->binding != binding || source->reserved != 0u ||
             !buffer || buffer->owner != context || !buffer->bytes ||
             layout->binding != binding || layout->stride == 0u ||
-            !backend_multiply_u64(vertex_end, layout->stride, &required_bytes) ||
+            !backend_multiply_u64(element_end, layout->stride, &required_bytes) ||
             source->offset > buffer->size_bytes ||
             required_bytes > buffer->size_bytes - source->offset) {
             return RIN_GPU_ERROR_BOUNDS;
@@ -2642,7 +2642,9 @@ static int backend_draw_vertices_valid_v2(
         draw->mip_level != active_pass->color_mip_level ||
         draw->array_layer != 0u || draw->vertex_count == 0u ||
         draw->vertex_count > RIN_WEBGL_SOFTWARE_MAX_VERTICES ||
-        draw->instance_count != 1u || draw->first_instance != 0u ||
+        draw->instance_count == 0u ||
+        draw->instance_count > RIN_GPU_MAX_DRAW_INSTANCES ||
+        draw->first_instance > UINT32_MAX - draw->instance_count ||
         draw->vertex_binding_count > RIN_GPU_MAX_VERTEX_BUFFER_BINDINGS ||
         draw->reserved != 0u) {
         return RIN_GPU_ERROR_UNSUPPORTED;
@@ -2670,7 +2672,8 @@ static int backend_draw_vertices_valid_v2(
     }
     return backend_vertex_bindings_valid(
         context, pipeline, draw->vertex_buffers, draw->vertex_binding_count,
-        draw->first_vertex, draw->vertex_count);
+        draw->first_vertex, draw->vertex_count, draw->first_instance,
+        draw->instance_count);
 }
 
 static int backend_execute_software_draw(
@@ -2904,17 +2907,28 @@ static int backend_draw_vertices_v2(
     RinWebGLSoftwareVertexBufferV1 vertices;
     float* values = NULL;
     uint64_t byte_length;
+    uint32_t instance;
     int result;
 
-    result = backend_unpack_vertex_values_v2(
-        context, pipeline, draw->vertex_buffers, draw->vertex_binding_count,
-        draw->first_vertex, draw->vertex_count, &values);
-    if (result != RIN_GPU_OK) return result;
     byte_length = (uint64_t)draw->vertex_count * pipeline->input_count *
         sizeof(*values);
-    if (byte_length > UINT32_MAX) {
-        free(values);
+    if (byte_length == 0u || byte_length > UINT32_MAX ||
+        byte_length > SIZE_MAX) {
         return RIN_GPU_ERROR_LIMIT;
+    }
+    values = calloc(1u, (size_t)byte_length);
+    if (!values) return RIN_GPU_ERROR_NO_MEMORY;
+    /* Validate every instance before the first raster write. The values array
+     * is reused below, so this does not make instance count scale memory use. */
+    for (instance = 0u; instance < draw->instance_count; ++instance) {
+        result = backend_unpack_vertex_values_v2(
+            context, pipeline, draw->vertex_buffers, draw->vertex_binding_count,
+            draw->first_vertex, draw->vertex_count, draw->first_instance,
+            instance, values);
+        if (result != RIN_GPU_OK) {
+            free(values);
+            return result;
+        }
     }
     memset(&vertices, 0, sizeof(vertices));
     vertices.struct_size = sizeof(vertices);
@@ -2923,14 +2937,21 @@ static int backend_draw_vertices_v2(
     vertices.input_count = pipeline->input_count;
     vertices.vertex_count = draw->vertex_count;
     vertices.byte_length = (uint32_t)byte_length;
-    result = backend_execute_software_draw(context, pipeline, color_target,
-                                           active_pass->color_mip_level,
-                                           depth_target,
-                                           active_pass->depth_mip_level,
-                                           stencil_target,
-                                           active_pass->stencil_mip_level,
-                                           &vertices, NULL,
-                                           raster_state, bind_group);
+    for (instance = 0u; instance < draw->instance_count; ++instance) {
+        result = backend_unpack_vertex_values_v2(
+            context, pipeline, draw->vertex_buffers, draw->vertex_binding_count,
+            draw->first_vertex, draw->vertex_count, draw->first_instance,
+            instance, values);
+        if (result == RIN_GPU_OK) {
+            result = backend_execute_software_draw(
+                context, pipeline, color_target, active_pass->color_mip_level,
+                depth_target, active_pass->depth_mip_level, stencil_target,
+                active_pass->stencil_mip_level, &vertices, NULL,
+                raster_state, bind_group);
+        }
+        if (result != RIN_GPU_OK)
+            break;
+    }
     free(values);
     return result;
 }
@@ -3147,7 +3168,9 @@ static int backend_draw_indexed_valid_v2(
         draw->index_count > RIN_WEBGL_SOFTWARE_MAX_INDICES ||
         draw->vertex_count == 0u ||
         draw->vertex_count > RIN_WEBGL_SOFTWARE_MAX_VERTICES ||
-        draw->instance_count != 1u || draw->first_instance != 0u ||
+        draw->instance_count == 0u ||
+        draw->instance_count > RIN_GPU_MAX_DRAW_INSTANCES ||
+        draw->first_instance > UINT32_MAX - draw->instance_count ||
         draw->vertex_binding_count > RIN_GPU_MAX_VERTEX_BUFFER_BINDINGS ||
         draw->reserved != 0u) {
         return RIN_GPU_ERROR_UNSUPPORTED;
@@ -3182,7 +3205,8 @@ static int backend_draw_indexed_valid_v2(
     {
         int vertex_result = backend_vertex_bindings_valid(
             context, pipeline, draw->vertex_buffers, draw->vertex_binding_count,
-            0u, draw->vertex_count);
+            0u, draw->vertex_count, draw->first_instance,
+            draw->instance_count);
         if (vertex_result != RIN_GPU_OK)
             return vertex_result;
     }
@@ -3243,18 +3267,26 @@ static int backend_draw_indexed_v2(
     RinWebGLSoftwareIndexBufferV1 indices;
     float* values = NULL;
     uint64_t byte_length;
+    uint32_t instance;
     int result;
 
     if (!native_indices) return RIN_GPU_ERROR_BACKEND;
-    result = backend_unpack_vertex_values_v2(
-        context, pipeline, draw->vertex_buffers, draw->vertex_binding_count,
-        0u, draw->vertex_count, &values);
-    if (result != RIN_GPU_OK) return result;
     byte_length = (uint64_t)draw->vertex_count * pipeline->input_count *
         sizeof(*values);
-    if (byte_length > UINT32_MAX) {
-        free(values);
+    if (byte_length == 0u || byte_length > UINT32_MAX ||
+        byte_length > SIZE_MAX) {
         return RIN_GPU_ERROR_LIMIT;
+    }
+    values = calloc(1u, (size_t)byte_length);
+    if (!values) return RIN_GPU_ERROR_NO_MEMORY;
+    for (instance = 0u; instance < draw->instance_count; ++instance) {
+        result = backend_unpack_vertex_values_v2(
+            context, pipeline, draw->vertex_buffers, draw->vertex_binding_count,
+            0u, draw->vertex_count, draw->first_instance, instance, values);
+        if (result != RIN_GPU_OK) {
+            free(values);
+            return result;
+        }
     }
     memset(&vertices, 0, sizeof(vertices));
     vertices.struct_size = sizeof(vertices);
@@ -3269,14 +3301,20 @@ static int backend_draw_indexed_v2(
     indices.values = native_indices;
     indices.index_count = draw->index_count;
     indices.byte_length = draw->index_count * sizeof(*native_indices);
-    result = backend_execute_software_draw(context, pipeline, color_target,
-                                           active_pass->color_mip_level,
-                                           depth_target,
-                                           active_pass->depth_mip_level,
-                                           stencil_target,
-                                           active_pass->stencil_mip_level,
-                                           &vertices, &indices,
-                                           raster_state, bind_group);
+    for (instance = 0u; instance < draw->instance_count; ++instance) {
+        result = backend_unpack_vertex_values_v2(
+            context, pipeline, draw->vertex_buffers, draw->vertex_binding_count,
+            0u, draw->vertex_count, draw->first_instance, instance, values);
+        if (result == RIN_GPU_OK) {
+            result = backend_execute_software_draw(
+                context, pipeline, color_target, active_pass->color_mip_level,
+                depth_target, active_pass->depth_mip_level, stencil_target,
+                active_pass->stencil_mip_level, &vertices, &indices,
+                raster_state, bind_group);
+        }
+        if (result != RIN_GPU_OK)
+            break;
+    }
     free(values);
     return result;
 }

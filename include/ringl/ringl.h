@@ -261,6 +261,8 @@ extern "C" {
 #define RINGL_VERTEX_ATTRIB_ARRAY_NORMALIZED        0x886au
 #define RINGL_VERTEX_ATTRIB_ARRAY_POINTER           0x8645u
 #define RINGL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING    0x889fu
+/* WebGL 1 ANGLE_instanced_arrays uses the same token as core GL instancing. */
+#define RINGL_VERTEX_ATTRIB_ARRAY_DIVISOR            0x88feu
 
 #define RINGL_DIRTY_PIPELINE    0x00000001u
 #define RINGL_DIRTY_BINDINGS    0x00000002u
@@ -1255,6 +1257,13 @@ int ringl_clear_default_framebuffer_for_embedding(uint32_t* error_out);
 void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count);
 void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
                          uint64_t offset);
+/* WebGL 1 ANGLE_instanced_arrays entry points. A positive instance count is
+ * required; zero is a successful no-op as required by the extension. */
+void ringl_draw_arrays_instanced(uint32_t mode, int32_t first, int32_t count,
+                                 int32_t instance_count);
+void ringl_draw_elements_instanced(uint32_t mode, int32_t count,
+                                   uint32_t type, uint64_t offset,
+                                   int32_t instance_count);
 int ringl_present(void);
 
 void ringl_gen_buffers(int32_t count, uint32_t* buffers);
@@ -1410,6 +1419,8 @@ void ringl_vertex_attrib_pointer(uint32_t index,
                                  uint32_t normalized,
                                  int32_t stride,
                                  uint64_t offset);
+void ringl_vertex_attrib_divisor(uint32_t index, uint32_t divisor);
+uint32_t ringl_get_vertex_attrib_divisor(uint32_t index);
 /* Set the current generic attribute value used when the corresponding array
  * is disabled. Like WebGL/OpenGL ES, 1f/2f/3f fill omitted components with
  * 0, 0, and 1 respectively. */

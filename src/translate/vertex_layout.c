@@ -57,6 +57,7 @@ static uint32_t ringl_native_vertex_format_bytes(uint32_t format)
 
 static int ringl_vertex_binding_for(RinGLResolvedVertexLayout* layout,
                                     uint32_t buffer, uint32_t stride,
+                                    uint32_t divisor,
                                     uint32_t* binding_out)
 {
     uint32_t binding;
@@ -65,7 +66,8 @@ static int ringl_vertex_binding_for(RinGLResolvedVertexLayout* layout,
         return -1;
     for (binding = 0u; binding < layout->binding_count; ++binding) {
         if (layout->bindings[binding].buffer == buffer &&
-            layout->bindings[binding].stride == stride) {
+            layout->bindings[binding].stride == stride &&
+            layout->bindings[binding].divisor == divisor) {
             *binding_out = binding;
             return 0;
         }
@@ -75,6 +77,7 @@ static int ringl_vertex_binding_for(RinGLResolvedVertexLayout* layout,
     binding = layout->binding_count++;
     layout->bindings[binding].buffer = buffer;
     layout->bindings[binding].stride = stride;
+    layout->bindings[binding].divisor = divisor;
     *binding_out = binding;
     return 0;
 }
@@ -139,6 +142,7 @@ static int ringl_append_vertex_attrib(
         return -1;
     }
     if (ringl_vertex_binding_for(layout, attrib->buffer, effective_stride,
+                                 attrib->divisor,
                                  &binding) != 0) {
         return -1;
     }
@@ -215,7 +219,8 @@ int ringl_resolve_vertex_layout(const RinGLContext* context,
         }
     }
 
-    if (layout->binding_count == 1u) {
+    if (layout->binding_count == 1u &&
+        layout->bindings[0].divisor == 0u) {
         layout->buffer = layout->bindings[0].buffer;
         layout->stride = layout->bindings[0].stride;
     }
@@ -227,15 +232,29 @@ int ringl_validate_vertex_fetch(const RinGLContext* context,
                                 uint32_t vertex_count,
                                 RinGLResolvedVertexLayout* layout)
 {
+    return ringl_validate_vertex_fetch_instanced(context, first_vertex,
+                                                 vertex_count, 0u, 1u,
+                                                 layout);
+}
+
+int ringl_validate_vertex_fetch_instanced(const RinGLContext* context,
+                                          uint32_t first_vertex,
+                                          uint32_t vertex_count,
+                                          uint32_t first_instance,
+                                          uint32_t instance_count,
+                                          RinGLResolvedVertexLayout* layout)
+{
     uint32_t index;
     uint64_t last_vertex;
 
     if (ringl_resolve_vertex_layout(context, layout) != 0)
         return -1;
-    if (vertex_count == 0u || layout->attribute_count == 0u)
+    if (instance_count == 0u || vertex_count == 0u ||
+        layout->attribute_count == 0u)
         return 0;
     last_vertex = (uint64_t)first_vertex + (uint64_t)vertex_count - 1u;
-    if (last_vertex > UINT32_MAX)
+    if (last_vertex > UINT32_MAX ||
+        first_instance > UINT32_MAX - instance_count)
         return -1;
 
     for (index = 0; index < layout->attribute_count; ++index) {
@@ -244,6 +263,7 @@ int ringl_validate_vertex_fetch(const RinGLContext* context,
         const RinGLBufferObject* buffer;
         uint32_t component_bytes;
         uint32_t slot_index;
+        uint64_t element_index;
         uint64_t stride_bytes;
         uint64_t end;
 
@@ -270,13 +290,17 @@ int ringl_validate_vertex_fetch(const RinGLContext* context,
         component_bytes = ringl_native_vertex_format_bytes(attrib->format);
         if (component_bytes == 0u)
             return -1;
-        if (last_vertex != 0u &&
+        element_index = binding->divisor == 0u
+            ? last_vertex
+            : ((uint64_t)first_instance + instance_count - 1u) /
+                    binding->divisor;
+        if (element_index != 0u &&
             (uint64_t)binding->stride >
                 (UINT64_MAX - (uint64_t)attrib->offset - component_bytes) /
-                    last_vertex) {
+                    element_index) {
             return -1;
         }
-        stride_bytes = last_vertex * (uint64_t)binding->stride;
+        stride_bytes = element_index * (uint64_t)binding->stride;
         end = (uint64_t)attrib->offset + stride_bytes + component_bytes;
         if (end > buffer->size_bytes)
             return -1;

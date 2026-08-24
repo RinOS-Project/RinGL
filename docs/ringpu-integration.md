@@ -238,7 +238,12 @@ The adapter's V1 `create_graphics_pipeline` callback maps directly to
 multi-stream layouts to `ringpu_create_graphics_pipeline_vertex_bindings()` or
 the native-state counterpart, converting each `RinGLRinGpuVertexAttributeV2`
 and dense `RinGLRinGpuVertexBufferLayoutV1` while preserving linked shader
-module handles.
+module handles. `RinGLRinGpuVertexBufferLayoutV1.flags` is a binding divisor:
+zero advances per vertex, otherwise fetch uses `floor(instance / flags)`. A
+single stream with a nonzero divisor deliberately uses this V2 layout rather
+than the legacy one-buffer ABI, so the adapter copies the divisor into
+`RinGpuVertexBufferLayoutV1.flags` and the RinGPU backend can validate the
+last required instance element before submission.
 
 The binding must advertise `RINGL_RIN_GPU_VERTEX_INPUT_CONSTANT_FLOAT32` before
 RinGL emits a disabled active generic attribute. RinGL then marks the scalar

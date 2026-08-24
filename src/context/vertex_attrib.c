@@ -128,6 +128,40 @@ void ringl_vertex_attrib_pointer(uint32_t index,
                              RINGL_DIRTY_PIPELINE | RINGL_DIRTY_BINDINGS);
 }
 
+void ringl_vertex_attrib_divisor(uint32_t index, uint32_t divisor)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLVertexAttribState* attrib;
+
+    if (context == NULL)
+        return;
+    attrib = ringl_vertex_attrib(context, index);
+    if (attrib == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if (attrib->divisor != divisor) {
+        attrib->divisor = divisor;
+        ringl_context_mark_dirty(context,
+                                 RINGL_DIRTY_PIPELINE | RINGL_DIRTY_BINDINGS);
+    }
+}
+
+uint32_t ringl_get_vertex_attrib_divisor(uint32_t index)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLVertexAttribState* attrib;
+
+    if (context == NULL)
+        return 0u;
+    attrib = ringl_vertex_attrib(context, index);
+    if (attrib == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return 0u;
+    }
+    return attrib->divisor;
+}
+
 void ringl_vertex_attrib1f(uint32_t index, float x)
 {
     ringl_vertex_attrib_set_current(ringl_get_current_context(), index, x,

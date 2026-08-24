@@ -133,7 +133,7 @@ create context
 
 After that vertical slice is stable, indexed drawing, textures, framebuffer objects, blending/depth/stencil, synchronization, readback, and broader GLES compatibility can be added incrementally.
 
-## WebGL 1 vertex-array objects
+## WebGL 1 vertex arrays and instancing
 
 RinGL implements the state required by WebGL 1
 `OES_vertex_array_object`: a default unnamed VAO and bounded generated VAO
@@ -141,8 +141,18 @@ names capture each generic attribute-array descriptor and the
 `ELEMENT_ARRAY_BUFFER` binding. The current generic attribute values stay on
 the context, so binding a VAO cannot alter `vertexAttrib[1-4]f` values. A
 deleted buffer is detached from active and inactive VAOs before its numeric
-name can be recycled. This is a WebGL 1 extension slice, not a claim of GLES
-3.x VAO or instancing support.
+name can be recycled.
+
+The same descriptor now captures a per-attribute divisor. A zero divisor
+selects the vertex index; a nonzero divisor selects
+`floor(instance / divisor)`. `ringl_draw_arrays_instanced()` and
+`ringl_draw_elements_instanced()` retain that metadata in the V2 RinGPU vertex
+binding layout—even when there is only one source buffer—so it cannot be lost
+through the legacy one-buffer draw ABI. The private Aquamarine embedding
+preflights every instance's vertex fetch before rasterization and executes the
+actual direct and indexed instance loops. This enables the bounded WebGL 1
+`ANGLE_instanced_arrays` route; it is not a claim of GLES 3.x instancing or
+complete WebGL conformance.
 
 ## Current packed-color framebuffer slice
 

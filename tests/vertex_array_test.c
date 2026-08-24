@@ -34,12 +34,14 @@ int main(void)
     info = vertex_attrib_info();
     assert(info.enabled == RINGL_FALSE && info.size == 4u &&
            info.type == RINGL_FLOAT && info.buffer == 0u);
+    assert(ringl_get_vertex_attrib_divisor(0u) == 0u);
     ringl_vertex_attrib4f(0u, 1.0f, 2.0f, 3.0f, 4.0f);
 
     ringl_gen_buffers(1, &default_buffer);
     ringl_bind_buffer(RINGL_ARRAY_BUFFER, default_buffer);
     ringl_vertex_attrib_pointer(0u, 2, RINGL_FLOAT, RINGL_FALSE, 8, 0u);
     ringl_enable_vertex_attrib_array(0u);
+    ringl_vertex_attrib_divisor(0u, 3u);
     ringl_bind_buffer(RINGL_ELEMENT_ARRAY_BUFFER, default_buffer);
 
     ringl_gen_vertex_arrays(1, &array);
@@ -50,6 +52,7 @@ int main(void)
     info = vertex_attrib_info();
     assert(info.enabled == RINGL_FALSE && info.size == 4u &&
            info.type == RINGL_FLOAT && info.buffer == 0u);
+    assert(ringl_get_vertex_attrib_divisor(0u) == 0u);
     assert(ringl_get_bound_buffer(RINGL_ELEMENT_ARRAY_BUFFER) == 0u);
     assert(ringl_get_vertex_attrib_current(0u, current) == 0);
     assert(current[0] == 1.0f && current[1] == 2.0f &&
@@ -59,6 +62,7 @@ int main(void)
     ringl_bind_buffer(RINGL_ARRAY_BUFFER, array_buffer);
     ringl_vertex_attrib_pointer(0u, 3, RINGL_FLOAT, RINGL_FALSE, 12, 4u);
     ringl_enable_vertex_attrib_array(0u);
+    ringl_vertex_attrib_divisor(0u, 2u);
     ringl_bind_buffer(RINGL_ELEMENT_ARRAY_BUFFER, array_buffer);
 
     ringl_bind_vertex_array(0u);
@@ -66,6 +70,7 @@ int main(void)
     info = vertex_attrib_info();
     assert(info.enabled == RINGL_TRUE && info.size == 2u &&
            info.buffer == default_buffer && info.offset == 0u);
+    assert(ringl_get_vertex_attrib_divisor(0u) == 3u);
     assert(ringl_get_bound_buffer(RINGL_ELEMENT_ARRAY_BUFFER) == default_buffer);
     assert(ringl_get_vertex_attrib_current(0u, current) == 0);
     assert(current[0] == 1.0f && current[1] == 2.0f &&
@@ -75,6 +80,7 @@ int main(void)
     info = vertex_attrib_info();
     assert(info.enabled == RINGL_TRUE && info.size == 3u &&
            info.buffer == array_buffer && info.offset == 4u);
+    assert(ringl_get_vertex_attrib_divisor(0u) == 2u);
     assert(ringl_get_bound_buffer(RINGL_ELEMENT_ARRAY_BUFFER) == array_buffer);
 
     /* Buffer deletion must invalidate active and inactive VAO references,
@@ -82,6 +88,7 @@ int main(void)
     ringl_delete_buffers(1, &array_buffer);
     info = vertex_attrib_info();
     assert(info.enabled == RINGL_FALSE && info.buffer == 0u);
+    assert(ringl_get_vertex_attrib_divisor(0u) == 2u);
     assert(ringl_get_bound_buffer(RINGL_ELEMENT_ARRAY_BUFFER) == 0u);
     ringl_bind_vertex_array(0u);
     assert(ringl_get_bound_buffer(RINGL_ELEMENT_ARRAY_BUFFER) == default_buffer);

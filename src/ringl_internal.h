@@ -269,6 +269,8 @@ typedef struct RinGLVertexAttribState {
     uint32_t type;
     uint32_t normalized;
     uint32_t stride;
+    /* Zero is per-vertex; a non-zero value is the WebGL instance divisor. */
+    uint32_t divisor;
     uint32_t buffer;
     uint64_t offset;
     float current_value[4];
@@ -294,6 +296,7 @@ typedef struct RinGLResolvedVertexAttribute {
 typedef struct RinGLResolvedVertexBinding {
     uint32_t buffer;
     uint32_t stride;
+    uint32_t divisor;
 } RinGLResolvedVertexBinding;
 
 typedef struct RinGLResolvedVertexLayout {
@@ -666,6 +669,12 @@ int ringl_validate_vertex_fetch(const RinGLContext* context,
                                 uint32_t first_vertex,
                                 uint32_t vertex_count,
                                 RinGLResolvedVertexLayout* layout);
+int ringl_validate_vertex_fetch_instanced(const RinGLContext* context,
+                                          uint32_t first_vertex,
+                                          uint32_t vertex_count,
+                                          uint32_t first_instance,
+                                          uint32_t instance_count,
+                                          RinGLResolvedVertexLayout* layout);
 int ringl_validate_index_fetch(const RinGLContext* context,
                                uint32_t index_type,
                                uint64_t offset,

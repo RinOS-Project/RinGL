@@ -2711,6 +2711,22 @@ static int conditional_output(Lower* lower)
     return 1;
 }
 
+/* Keep discard a terminal fragment instruction. This slice deliberately does
+ * not admit it inside the bounded if/else form, which requires complete
+ * outputs along both branch paths. */
+static int discard_statement(Lower* lower)
+{
+    if (lower->shader_type != RINGL_FRAGMENT_SHADER) {
+        fail(lower, "discard is only available in fragment shaders");
+        return 0;
+    }
+    next(lower);
+    if (!need(lower, T_SEMI, "expected ';' after discard"))
+        return 0;
+    return emit(lower, RINGL_RSH1_OP_DISCARD, RINGL_RSH1_UNUSED,
+                RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED, 0u);
+}
+
 /* The RSH1 execution domain for this bounded GLES profile is binary32. GLSL
  * ES default precision statements are still parsed as source-language
  * declarations, but do not create an unobservable alternate lowering path. */
@@ -3076,6 +3092,46 @@ static int append_draw_buffer_defaults(Lower* lower)
     return 1;
 }
 
+/* A fragment shader consisting of `discard;` has no color assignment, yet
+ * still needs the ordinary four-component output ABI so that it can be linked
+ * into a WebGL draw pipeline.  Materialize zero stores after DISCARD: the
+ * executor terminates at DISCARD, while the canonical unreachable tail keeps
+ * the RSH1 validator and pipeline interface explicit.  Do not grant this
+ * special ABI to an empty/non-discard shader. */
+static int append_discard_output_defaults(Lower* lower)
+{
+    uint16_t zero;
+    uint32_t index;
+    int saw_discard = 0;
+
+    if (lower->shader_type != RINGL_FRAGMENT_SHADER ||
+        lower->output_count != 0u || lower->uses_draw_buffers != 0u) {
+        return 1;
+    }
+    for (index = 0u; index < lower->ins_count; ++index) {
+        if (lower->ins[index].opcode == RINGL_RSH1_OP_DISCARD) {
+            saw_discard = 1;
+            break;
+        }
+    }
+    if (!saw_discard)
+        return 1;
+    zero = new_reg(lower);
+    if (zero == RINGL_RSH1_UNUSED ||
+        !emit(lower, RINGL_RSH1_OP_CONST_F32, zero, RINGL_RSH1_UNUSED,
+              RINGL_RSH1_UNUSED, 0u)) {
+        return 0;
+    }
+    for (index = 0u; index < 4u; ++index) {
+        if (!emit(lower, RINGL_RSH1_OP_STORE_OUTPUT_F32,
+                  RINGL_RSH1_UNUSED, zero, RINGL_RSH1_UNUSED, index)) {
+            return 0;
+        }
+    }
+    lower->output_count = 4u;
+    return 1;
+}
+
 /* Emit type-bearing loads for the fixed interpolant ABI.  They are unused by
  * constant fragment shaders, but RinGPU validates every declared input when
  * it builds a native graphics pipeline. */
@@ -3131,6 +3187,8 @@ int ringl_glsl_lower_rsh1_with_uniforms(
     if (!parse_all(&lower))
         return 1;
     if (!append_draw_buffer_defaults(&lower))
+        return 1;
+    if (!append_discard_output_defaults(&lower))
         return 1;
     if (!append_raster_defaults(&lower))
         return 1;

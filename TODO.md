@@ -167,6 +167,11 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     mixed-type conditions, local mutation, nested branches, partial outputs,
     and loops remain rejected. Strict IR covers Float/i32 branches and invalid
     forms; the Ladybird→RinGL→RinGPU bridge reads both red and blue targets.
+  - [x] Lower standalone fragment `discard;` to RSH1 `DISCARD` and terminate
+    the generic RinGPU fragment before output validation or depth/stencil/color
+    publication. Strict IR covers output-less fragment discard and vertex
+    rejection; the Ladybird→RinGL→RinGPU bridge keeps a cleared green target.
+    Conditional discard, loops, and general control flow remain rejected.
 - [x] Parse bounded `uniform sampler2D` declarations and retain names through shader compilation.
 - [x] Link sampler uniforms into program locations and implement `getUniformLocation`/`uniform1i`-style state.
 - [x] Report linked sampler uniforms through program reflection.

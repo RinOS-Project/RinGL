@@ -613,6 +613,12 @@ tests its i32 result against zero, and uses only forward RSH1 branches. The
 generic RinGPU backend, not Ladybird or Aquamarine, evaluates the branch.
 Nested/local-mutating branches, partial outputs, and loops remain rejected.
 
+Standalone fragment `discard;` lowers to RSH1 `DISCARD`. The generic RinGPU
+backend terminates that fragment before output validation and depth, stencil, or
+color publication; it is not a surface-side clear or Aquamarine command.
+Vertex `discard`, conditional `discard`, loops, and general control flow remain
+rejected by this bounded profile.
+
 The frontend accepts GLSL ES global `precision lowp|mediump|highp` declarations
 for `float`, `int`, and `sampler2D`. They are not ignored text: the compiler
 validates the complete declaration before lowering, and the accepted numeric

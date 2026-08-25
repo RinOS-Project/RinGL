@@ -985,6 +985,16 @@ static int conditional_statement(Parser* parser)
     return 1;
 }
 
+static int discard_statement(Parser* parser)
+{
+    if (parser->shader_type != RINGL_FRAGMENT_SHADER) {
+        fail(parser, "discard is only available in fragment shaders");
+        return 0;
+    }
+    next_token(parser);
+    return expect(parser, TOK_SEMI, "expected ';' after discard");
+}
+
 static int local_declaration(Parser* parser)
 {
     Token name;
@@ -1068,6 +1078,10 @@ static int main_function(Parser* parser)
                 return 0;
         } else if (parser->token.kind == TOK_IF) {
             if (!conditional_statement(parser))
+                return 0;
+        } else if (parser->token.kind == TOK_IDENT &&
+                   token_is_ident(&parser->token, "discard")) {
+            if (!discard_statement(parser))
                 return 0;
         } else if (!assignment(parser)) {
             return 0;

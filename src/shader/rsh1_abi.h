@@ -65,6 +65,7 @@ enum RinGLRsh1Opcode {
      * builtin loads explicit instead of lowering point-sprite coordinates to
      * synthetic varyings: the rasterizer owns their per-fragment values. */
     RINGL_RSH1_OP_LOAD_BUILTIN_F32 = 52,
+    RINGL_RSH1_OP_DISCARD = 53,
     RINGL_RSH1_OP_SAMPLE_IMAGE_2D_F32 = 55,
     RINGL_RSH1_OP_DFDX_F32 = 56,
     RINGL_RSH1_OP_DFDY_F32 = 57,

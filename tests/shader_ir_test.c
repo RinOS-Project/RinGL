@@ -49,6 +49,7 @@ typedef struct __attribute__((packed)) Instruction {
 #define RSH1_OP_CMP_EQ_I32 UINT16_C(31)
 #define RSH1_OP_CMP_NE_I32 UINT16_C(32)
 #define RSH1_OP_CMP_LT_F32 UINT16_C(39)
+#define RSH1_OP_DISCARD UINT16_C(53)
 #define RSH1_OP_I32_TO_F32 UINT16_C(43)
 #define RSH1_OP_FLOOR_F32 UINT16_C(59)
 #define RSH1_OP_SQRT_F32 UINT16_C(60)
@@ -369,6 +370,10 @@ int main(void)
         "  } else {\n"
         "    gl_FragColor = vec4(0.0, 0.0, 1.0, 1.0);\n"
         "  }\n"
+        "}\n";
+    const char* discard_fragment_source =
+        "void main() {\n"
+        "  discard;\n"
         "}\n";
     const char* fragment_source =
         "precision mediump float;\n"
@@ -705,6 +710,12 @@ int main(void)
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP_IF));
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP));
 
+    header = lower_and_read_header(fragment, discard_fragment_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_DISCARD));
+
     header = lower_and_read_header(fragment, conditional_i32_fragment_source,
                                    blob, sizeof(blob));
     assert(header.stage == 2u);
@@ -727,6 +738,12 @@ int main(void)
     ringl_shader_source(vertex,
                         "void main() { if (1.0 < 2.0) { "
                         "gl_Position = vec4(0.0); } }", -1);
+    ringl_compile_shader(vertex);
+    assert(ringl_get_shader_compile_status(vertex) == RINGL_FALSE);
+
+    ringl_shader_source(vertex,
+                        "void main() { discard; "
+                        "gl_Position = vec4(0.0); }", -1);
     ringl_compile_shader(vertex);
     assert(ringl_get_shader_compile_status(vertex) == RINGL_FALSE);
 

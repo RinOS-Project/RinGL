@@ -34,6 +34,10 @@ The current first-triangle slice supports:
   RSH1 `JUMP_IF`/`JUMP`, which the generic RinGPU backend executes. Nested or
   local-mutating branches, vector/mixed-type conditions, partial outputs, and
   loops remain unsupported;
+- standalone fragment `discard;`: RinGL emits RSH1 `DISCARD`, and the generic
+  RinGPU backend terminates the fragment before output validation or
+  depth/stencil/color publication. Vertex or conditional `discard`, loops, and
+  general control flow remain unsupported;
 - Float `min`, `max`, `clamp`, `mix`, and `dot`: min/max/clamp use the shared
   scalar RSH1 min/max opcodes, while mix/dot expand to ordered scalar
   arithmetic. Only GLSL's matching Float scalar/vector overloads are admitted;

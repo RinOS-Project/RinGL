@@ -664,6 +664,16 @@ int main(void)
     assert(ringl_lower_shader_rsh1(vertex) != 0);
     assert(ringl_get_shader_rsh1_size(vertex) == 0u);
 
+    /* The bounded profile does not publish a module that would manufacture a
+     * non-finite value for sqrt of a negative finite literal. */
+    ringl_shader_source(vertex,
+                        "void main() { gl_Position = vec4(sqrt(-1.0), "
+                        "0.0, 0.0, 1.0); }", -1);
+    ringl_compile_shader(vertex);
+    assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(vertex) != 0);
+    assert(ringl_get_shader_rsh1_size(vertex) == 0u);
+
     header = lower_and_read_header(fragment, fragment_source, blob, sizeof(blob));
     assert(header.stage == 2u);
     assert(header.input_count == 4u);

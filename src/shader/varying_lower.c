@@ -305,21 +305,84 @@ static int parse_finite_float(const char** cursor, float* value)
 
 /* The structural varying lowerers deliberately recognize only small complete
  * shader shapes. Keep gl_PointSize orthogonal to those shapes: remove one
- * finite literal assignment before matching, then add a real RSH1 output to
- * the verified vertex module. This is not a browser-side raster shortcut;
- * shifting slots 4 and above preserves every existing varying while reserving
- * slot 4 for the native RinGPU point-size contract. */
-static int extract_literal_point_size_assignment(char* source,
-                                                 int* has_point_size,
-                                                 float* point_size)
+ * finite literal or float-uniform assignment before matching, then add a
+ * real RSH1 output to the verified vertex module. This is not a browser-side
+ * raster shortcut; shifting slots 4 and above preserves every existing
+ * varying while reserving slot 4 for the native RinGPU point-size contract. */
+static int resolve_point_size_uniform(char* source, const char* name,
+                                      const RinGLGlslUniformValue* uniforms,
+                                      uint32_t uniform_count,
+                                      float* point_size)
+{
+    char declaration[128];
+    char* match;
+    uint32_t index;
+    int written;
+
+    if (source == NULL || name == NULL || point_size == NULL ||
+        (uniform_count != 0u && uniforms == NULL)) {
+        return 0;
+    }
+    written = snprintf(declaration, sizeof(declaration), "uniformfloat%s;",
+                       name);
+    if (written < 0 || (size_t)written >= sizeof(declaration))
+        return 0;
+    match = strstr(source, declaration);
+    if (match == NULL ||
+        (match != source && match[-1] != ';')) {
+        return 0;
+    }
+    *point_size = 0.0f;
+    for (index = 0u; index < uniform_count; ++index) {
+        if (uniforms[index].name != NULL &&
+            strcmp(uniforms[index].name, name) == 0) {
+            if (uniforms[index].type != RINGL_FLOAT)
+                return 0;
+            *point_size = uniforms[index].values[0];
+            break;
+        }
+    }
+    if (!isfinite(*point_size))
+        return 0;
+    return 1;
+}
+
+static int remove_point_size_uniform_declaration(char* source,
+                                                 const char* name)
+{
+    char declaration[128];
+    char* match;
+    int written;
+
+    if (source == NULL || name == NULL)
+        return 0;
+    written = snprintf(declaration, sizeof(declaration), "uniformfloat%s;",
+                       name);
+    if (written < 0 || (size_t)written >= sizeof(declaration))
+        return 0;
+    match = strstr(source, declaration);
+    if (match == NULL || (match != source && match[-1] != ';'))
+        return 0;
+    memmove(match, match + (size_t)written,
+            strlen(match + (size_t)written) + 1u);
+    return 1;
+}
+
+static int extract_point_size_assignment(
+    char* source, const RinGLGlslUniformValue* uniforms,
+    uint32_t uniform_count, int* has_point_size, float* point_size)
 {
     char* match = NULL;
     char* candidate = source;
     const char* cursor;
+    char uniform_name[64];
     size_t name_length = strlen("gl_PointSize");
+    int point_size_uses_uniform = 0;
 
-    if (source == NULL || has_point_size == NULL || point_size == NULL)
+    if (source == NULL || has_point_size == NULL || point_size == NULL ||
+        (uniform_count != 0u && uniforms == NULL)) {
         return 0;
+    }
     *has_point_size = 0;
     *point_size = 1.0f;
     while ((candidate = strstr(candidate, "gl_PointSize")) != NULL) {
@@ -336,9 +399,21 @@ static int extract_literal_point_size_assignment(char* source,
     if (match == NULL)
         return 1;
     cursor = match + name_length + 1u;
-    if (!parse_finite_float(&cursor, point_size) || *cursor != ';')
+    if (!parse_finite_float(&cursor, point_size)) {
+        if (!read_identifier(&cursor, uniform_name, sizeof(uniform_name)) ||
+            !resolve_point_size_uniform(source, uniform_name, uniforms,
+                                        uniform_count, point_size)) {
+            return 0;
+        }
+        point_size_uses_uniform = 1;
+    }
+    if (*cursor != ';')
         return 0;
     memmove(match, cursor + 1u, strlen(cursor + 1u) + 1u);
+    if (point_size_uses_uniform != 0 &&
+        !remove_point_size_uniform_declaration(source, uniform_name)) {
+        return 0;
+    }
     *has_point_size = 1;
     return 1;
 }
@@ -2717,11 +2792,11 @@ int ringl_glsl_lower_varying_rsh1_with_uniforms(
         return 1;
     }
     if (shader_type == RINGL_VERTEX_SHADER &&
-        !extract_literal_point_size_assignment(compact, &has_point_size,
-                                               &point_size)) {
+        !extract_point_size_assignment(compact, uniforms, uniform_count,
+                                       &has_point_size, &point_size)) {
         free(compact);
         (void)snprintf(result->diagnostic, sizeof(result->diagnostic),
-                       "varying gl_PointSize must be one finite literal");
+                       "varying gl_PointSize must be a finite literal or float uniform");
         return 1;
     }
     if (shader_type != RINGL_VERTEX_SHADER) {

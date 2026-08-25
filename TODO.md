@@ -142,13 +142,15 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   the RinGL pipeline-cache key, so a point draw cannot reuse a triangle
   pipeline.
 - [x] Execute vertex `gl_PointSize` for the generic no-varying profile and all
-  existing structural varying profiles with a finite literal assignment. RinGL
-  reserves the scalar immediately after clip `xyzw`, shifts user varying
-  outputs above it, advertises the executable `[1, 64]` range, and the generic
-  RinGPU backend finite-checks then clamps it before square point coverage.
-  Strict IR and the real RinGL→generic-RinGPU→caller-owned-Aquamarine-storage
-  bridge test verify a three-pixel `varying vec4` colored point; broader
-  varying point-size expressions remain unsupported.
+  existing structural varying profiles with a finite literal or `uniform
+  float` assignment. RinGL reserves the scalar immediately after clip `xyzw`,
+  shifts user varying outputs above it, advertises the executable `[1, 64]`
+  range, and the generic RinGPU backend finite-checks then clamps it before
+  square point coverage. Updating an active scalar float atomically rebuilds
+  the program-owned vertex module. Strict IR and the real
+  RinGL→generic-RinGPU→caller-owned-Aquamarine-storage bridge test verify a
+  `varying vec4` colored point changing from three-pixel to one-pixel coverage;
+  broader varying point-size expressions remain unsupported.
 - [x] Execute bounded `GL_LINES` direct and indexed draws through a distinct
   native RinGPU line-list pipeline. An incomplete pair is a successful no-op.
 - [x] Execute bounded `GL_LINE_STRIP` direct and indexed draws through a

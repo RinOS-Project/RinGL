@@ -38,6 +38,22 @@ typedef struct __attribute__((packed)) Instruction {
 } Instruction;
 
 #define RSH1_OP_STORE_OUTPUT_F32 UINT16_C(46)
+#define RSH1_OP_ADD_F32 UINT16_C(20)
+
+static int rsh1_has_opcode(const uint8_t* blob, const Header* header,
+                           uint16_t opcode)
+{
+    const Instruction* instructions;
+    uint32_t index;
+
+    assert(blob != NULL && header != NULL);
+    instructions = (const Instruction*)(blob + header->header_size);
+    for (index = 0u; index < header->instruction_count; ++index) {
+        if (instructions[index].opcode == opcode)
+            return 1;
+    }
+    return 0;
+}
 
 typedef struct FakeBackend {
     uint64_t next_handle;
@@ -409,6 +425,7 @@ int main(void)
     assert(header.input_count == 6u);
     assert(header.output_count == 9u);
     assert(header.instruction_count == 20u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_ADD_F32));
 
     /* Structural varying lowering accepts the documented finite literal or
      * scalar-float-uniform/attribute-component point-size forms. A broader

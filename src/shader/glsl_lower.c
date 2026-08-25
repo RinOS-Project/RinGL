@@ -686,6 +686,125 @@ static int float_vector_value(Lower* lower, const Value* value,
     return 1;
 }
 
+static Value float_constant_value(Lower* lower, float number)
+{
+    Value value = invalid_value();
+    uint16_t reg;
+    uint32_t bits;
+
+    memcpy(&bits, &number, sizeof(bits));
+    reg = new_reg(lower);
+    if (reg == RINGL_RSH1_UNUSED ||
+        !emit(lower, RINGL_RSH1_OP_CONST_F32, reg,
+              RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED, bits)) {
+        return value;
+    }
+    value.regs[0] = reg;
+    value.width = 1u;
+    return value;
+}
+
+static Value negate_float_value(Lower* lower, const Value* value)
+{
+    Value zero;
+
+    if (!float_vector_value(lower, value,
+                            "math builtin requires floating-point values")) {
+        return invalid_value();
+    }
+    zero = float_constant_value(lower, 0.0f);
+    if (zero.width == 0u)
+        return invalid_value();
+    return componentwise_binary(lower, &zero, value, RINGL_RSH1_OP_SUB_F32,
+                                1);
+}
+
+static Value floor_float_value(Lower* lower, const Value* value)
+{
+    Value result = invalid_value();
+    uint32_t index;
+
+    if (!float_vector_value(lower, value,
+                            "floor builtin requires floating-point values")) {
+        return result;
+    }
+    for (index = 0u; index < value->width; ++index) {
+        uint16_t destination = new_reg(lower);
+
+        if (destination == RINGL_RSH1_UNUSED ||
+            !emit(lower, RINGL_RSH1_OP_FLOOR_F32, destination,
+                  value->regs[index], RINGL_RSH1_UNUSED, 0u)) {
+            return invalid_value();
+        }
+        result.regs[index] = destination;
+    }
+    result.width = value->width;
+    return result;
+}
+
+static Value unary_math_argument(Lower* lower)
+{
+    Value value;
+
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after math builtin"))
+        return invalid_value();
+    value = expression(lower);
+    if (!need(lower, T_RPAREN, "expected ')' after math builtin"))
+        return invalid_value();
+    if (!float_vector_value(lower, &value,
+                            "math builtin requires floating-point values")) {
+        return invalid_value();
+    }
+    return value;
+}
+
+static Value floor_value(Lower* lower)
+{
+    Value value = unary_math_argument(lower);
+
+    return value.width == 0u ? value : floor_float_value(lower, &value);
+}
+
+static Value ceil_value(Lower* lower)
+{
+    Value value = unary_math_argument(lower);
+    Value negative;
+    Value rounded;
+
+    if (value.width == 0u)
+        return value;
+    negative = negate_float_value(lower, &value);
+    rounded = floor_float_value(lower, &negative);
+    return rounded.width == 0u ? rounded : negate_float_value(lower, &rounded);
+}
+
+static Value fract_value(Lower* lower)
+{
+    Value value = unary_math_argument(lower);
+    Value rounded;
+
+    if (value.width == 0u)
+        return value;
+    rounded = floor_float_value(lower, &value);
+    return rounded.width == 0u ? rounded
+                              : componentwise_binary(lower, &value, &rounded,
+                                                     RINGL_RSH1_OP_SUB_F32, 0);
+}
+
+static Value abs_value(Lower* lower)
+{
+    Value value = unary_math_argument(lower);
+    Value negative;
+
+    if (value.width == 0u)
+        return value;
+    negative = negate_float_value(lower, &value);
+    return negative.width == 0u ? negative
+                                : componentwise_binary(lower, &value, &negative,
+                                                       RINGL_RSH1_OP_MAX_F32, 0);
+}
+
 static Value min_max_value(Lower* lower, uint16_t opcode)
 {
     Value left;
@@ -865,6 +984,227 @@ static Value dot_value(Lower* lower)
     return result;
 }
 
+static Value mod_value(Lower* lower)
+{
+    Value value;
+    Value divisor;
+    Value quotient;
+    Value rounded;
+    Value product;
+
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after mod builtin"))
+        return invalid_value();
+    value = expression(lower);
+    if (!need(lower, T_COMMA, "expected ',' in mod builtin"))
+        return invalid_value();
+    divisor = expression(lower);
+    if (!need(lower, T_RPAREN, "expected ')' after mod builtin"))
+        return invalid_value();
+    if (!float_vector_value(lower, &value,
+                            "mod builtin requires floating-point values") ||
+        !float_vector_value(lower, &divisor,
+                            "mod builtin requires floating-point values") ||
+        (divisor.width != value.width && divisor.width != 1u)) {
+        fail(lower, "mod builtin component count mismatch");
+        return invalid_value();
+    }
+    quotient = componentwise_binary(lower, &value, &divisor,
+                                    RINGL_RSH1_OP_DIV_F32, 1);
+    if (quotient.width == 0u)
+        return invalid_value();
+    rounded = floor_float_value(lower, &quotient);
+    if (rounded.width == 0u)
+        return invalid_value();
+    product = componentwise_binary(lower, &divisor, &rounded,
+                                   RINGL_RSH1_OP_MUL_F32, 1);
+    return product.width == 0u ? product
+                              : componentwise_binary(lower, &value, &product,
+                                                     RINGL_RSH1_OP_SUB_F32, 0);
+}
+
+static Value sign_value(Lower* lower)
+{
+    Value value = unary_math_argument(lower);
+    Value zero;
+    Value result = invalid_value();
+    uint32_t index;
+
+    if (value.width == 0u)
+        return value;
+    zero = float_constant_value(lower, 0.0f);
+    if (zero.width == 0u)
+        return invalid_value();
+    for (index = 0u; index < value.width; ++index) {
+        uint16_t negative = new_reg(lower);
+        uint16_t positive = new_reg(lower);
+        uint16_t negative_float = new_reg(lower);
+        uint16_t positive_float = new_reg(lower);
+        uint16_t destination = new_reg(lower);
+
+        if (negative == RINGL_RSH1_UNUSED ||
+            positive == RINGL_RSH1_UNUSED ||
+            negative_float == RINGL_RSH1_UNUSED ||
+            positive_float == RINGL_RSH1_UNUSED ||
+            destination == RINGL_RSH1_UNUSED ||
+            !emit(lower, RINGL_RSH1_OP_CMP_LT_F32, negative,
+                  value.regs[index], zero.regs[0], 0u) ||
+            !emit(lower, RINGL_RSH1_OP_CMP_GT_F32, positive,
+                  value.regs[index], zero.regs[0], 0u) ||
+            !emit(lower, RINGL_RSH1_OP_I32_TO_F32, negative_float,
+                  negative, RINGL_RSH1_UNUSED, 0u) ||
+            !emit(lower, RINGL_RSH1_OP_I32_TO_F32, positive_float,
+                  positive, RINGL_RSH1_UNUSED, 0u) ||
+            !emit(lower, RINGL_RSH1_OP_SUB_F32, destination,
+                  positive_float, negative_float, 0u)) {
+            return invalid_value();
+        }
+        result.regs[index] = destination;
+    }
+    result.width = value.width;
+    return result;
+}
+
+static Value step_value(Lower* lower)
+{
+    Value edge;
+    Value value;
+    Value one;
+    Value result = invalid_value();
+    uint32_t index;
+
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after step builtin"))
+        return result;
+    edge = expression(lower);
+    if (!need(lower, T_COMMA, "expected ',' in step builtin"))
+        return result;
+    value = expression(lower);
+    if (!need(lower, T_RPAREN, "expected ')' after step builtin"))
+        return result;
+    if (!float_vector_value(lower, &edge,
+                            "step builtin requires floating-point values") ||
+        !float_vector_value(lower, &value,
+                            "step builtin requires floating-point values") ||
+        (edge.width != value.width && edge.width != 1u)) {
+        fail(lower, "step builtin component count mismatch");
+        return result;
+    }
+    one = float_constant_value(lower, 1.0f);
+    if (one.width == 0u)
+        return result;
+    for (index = 0u; index < value.width; ++index) {
+        uint16_t below_edge = new_reg(lower);
+        uint16_t below_edge_float = new_reg(lower);
+        uint16_t destination = new_reg(lower);
+        uint16_t edge_reg = edge.regs[edge.width == 1u ? 0u : index];
+
+        if (below_edge == RINGL_RSH1_UNUSED ||
+            below_edge_float == RINGL_RSH1_UNUSED ||
+            destination == RINGL_RSH1_UNUSED ||
+            !emit(lower, RINGL_RSH1_OP_CMP_LT_F32, below_edge,
+                  value.regs[index], edge_reg, 0u) ||
+            !emit(lower, RINGL_RSH1_OP_I32_TO_F32, below_edge_float,
+                  below_edge, RINGL_RSH1_UNUSED, 0u) ||
+            !emit(lower, RINGL_RSH1_OP_SUB_F32, destination, one.regs[0],
+                  below_edge_float, 0u)) {
+            return invalid_value();
+        }
+        result.regs[index] = destination;
+    }
+    result.width = value.width;
+    return result;
+}
+
+static Value smoothstep_value(Lower* lower)
+{
+    Value edge0;
+    Value edge1;
+    Value value;
+    Value zero;
+    Value one;
+    Value two;
+    Value three;
+    Value result = invalid_value();
+    uint32_t index;
+
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after smoothstep builtin"))
+        return result;
+    edge0 = expression(lower);
+    if (!need(lower, T_COMMA, "expected ',' after first smoothstep edge"))
+        return result;
+    edge1 = expression(lower);
+    if (!need(lower, T_COMMA, "expected ',' after second smoothstep edge"))
+        return result;
+    value = expression(lower);
+    if (!need(lower, T_RPAREN, "expected ')' after smoothstep builtin"))
+        return result;
+    if (!float_vector_value(lower, &edge0,
+                            "smoothstep builtin requires floating-point values") ||
+        !float_vector_value(lower, &edge1,
+                            "smoothstep builtin requires floating-point values") ||
+        !float_vector_value(lower, &value,
+                            "smoothstep builtin requires floating-point values") ||
+        (edge0.width != value.width && edge0.width != 1u) ||
+        (edge1.width != value.width && edge1.width != 1u)) {
+        fail(lower, "smoothstep builtin component count mismatch");
+        return result;
+    }
+    zero = float_constant_value(lower, 0.0f);
+    one = float_constant_value(lower, 1.0f);
+    two = float_constant_value(lower, 2.0f);
+    three = float_constant_value(lower, 3.0f);
+    if (zero.width == 0u || one.width == 0u || two.width == 0u ||
+        three.width == 0u) {
+        return result;
+    }
+    for (index = 0u; index < value.width; ++index) {
+        uint16_t edge0_reg = edge0.regs[edge0.width == 1u ? 0u : index];
+        uint16_t edge1_reg = edge1.regs[edge1.width == 1u ? 0u : index];
+        uint16_t span = new_reg(lower);
+        uint16_t offset = new_reg(lower);
+        uint16_t unclamped = new_reg(lower);
+        uint16_t lower_bound = new_reg(lower);
+        uint16_t parameter = new_reg(lower);
+        uint16_t squared = new_reg(lower);
+        uint16_t doubled = new_reg(lower);
+        uint16_t polynomial = new_reg(lower);
+        uint16_t destination = new_reg(lower);
+
+        if (span == RINGL_RSH1_UNUSED || offset == RINGL_RSH1_UNUSED ||
+            unclamped == RINGL_RSH1_UNUSED ||
+            lower_bound == RINGL_RSH1_UNUSED ||
+            parameter == RINGL_RSH1_UNUSED ||
+            squared == RINGL_RSH1_UNUSED || doubled == RINGL_RSH1_UNUSED ||
+            polynomial == RINGL_RSH1_UNUSED ||
+            destination == RINGL_RSH1_UNUSED ||
+            !emit(lower, RINGL_RSH1_OP_SUB_F32, span, edge1_reg, edge0_reg,
+                  0u) ||
+            !emit(lower, RINGL_RSH1_OP_SUB_F32, offset, value.regs[index],
+                  edge0_reg, 0u) ||
+            !emit(lower, RINGL_RSH1_OP_DIV_F32, unclamped, offset, span,
+                  0u) ||
+            !emit(lower, RINGL_RSH1_OP_MAX_F32, lower_bound, unclamped,
+                  zero.regs[0], 0u) ||
+            !emit(lower, RINGL_RSH1_OP_MIN_F32, parameter, lower_bound,
+                  one.regs[0], 0u) ||
+            !emit(lower, RINGL_RSH1_OP_MUL_F32, squared, parameter,
+                  parameter, 0u) ||
+            !emit(lower, RINGL_RSH1_OP_MUL_F32, doubled, two.regs[0],
+                  parameter, 0u) ||
+            !emit(lower, RINGL_RSH1_OP_SUB_F32, polynomial, three.regs[0],
+                  doubled, 0u) ||
+            !emit(lower, RINGL_RSH1_OP_MUL_F32, destination, squared,
+                  polynomial, 0u)) {
+            return invalid_value();
+        }
+        result.regs[index] = destination;
+    }
+    result.width = value.width;
+    return result;
+}
+
 /* gl_PointCoord belongs to fixed point rasterization, rather than to a
  * user-declared varying. Materialize its two components as RSH1 builtins so
  * the generic RinGPU backend supplies the coordinate for each fragment. */
@@ -933,6 +1273,22 @@ static Value primary(Lower* lower)
         return mix_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "dot"))
         return dot_value(lower);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "floor"))
+        return floor_value(lower);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "ceil"))
+        return ceil_value(lower);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "fract"))
+        return fract_value(lower);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "mod"))
+        return mod_value(lower);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "abs"))
+        return abs_value(lower);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "sign"))
+        return sign_value(lower);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "step"))
+        return step_value(lower);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "smoothstep"))
+        return smoothstep_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "gl_PointCoord"))
         return point_coord_value(lower);
     if (lower->token.kind == T_IDENT)

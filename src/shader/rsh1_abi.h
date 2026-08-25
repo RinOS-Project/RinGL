@@ -43,6 +43,8 @@ enum RinGLRsh1Opcode {
      * values or asking the embedding to evaluate a component. */
     RINGL_RSH1_OP_MIN_F32 = 24,
     RINGL_RSH1_OP_MAX_F32 = 25,
+    RINGL_RSH1_OP_CMP_LT_F32 = 39,
+    RINGL_RSH1_OP_CMP_GT_F32 = 41,
     RINGL_RSH1_OP_I32_TO_F32 = 43,
     RINGL_RSH1_OP_F32_TO_I32 = 44,
     RINGL_RSH1_OP_LOAD_INPUT_F32 = 45,
@@ -55,6 +57,8 @@ enum RinGLRsh1Opcode {
     RINGL_RSH1_OP_DFDX_F32 = 56,
     RINGL_RSH1_OP_DFDY_F32 = 57,
     RINGL_RSH1_OP_FWIDTH_F32 = 58,
+    /* Kept numerically aligned with RinShader's scalar floor operation. */
+    RINGL_RSH1_OP_FLOOR_F32 = 59,
 };
 
 enum RinGLRsh1Builtin {

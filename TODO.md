@@ -67,6 +67,18 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   them), rejects integer/matrix/mismatched-width forms before module
   publication, and the strict IR plus real RinGL→RinGPU→private-Aquamarine
   bridge regression verify both bytecode and `(116, 64, 143, 255)` readback.
+- [x] Lower the bounded Float rounding/remainder and threshold/shaping suite
+  `floor`, `ceil`, `fract`, `mod`, `abs`, `sign`, `step`, and `smoothstep`
+  through RinGL and generic RinGPU. RSH1 opcode 59 executes finite binary32
+  floor without a hosted libm or embedding callback; ceil/fract/mod use it
+  with ordered arithmetic, while abs/sign/step/smoothstep use the existing
+  scalar min/max/arithmetic/comparison operations. Only defined matching
+  Float scalar/vector overloads are admitted. Integer, matrix, and
+  mismatched-width calls are rejected before module publication; zero divisors
+  and degenerate smoothstep edges fail backend preflight rather than changing a
+  target. RinShader validation, strict RinGL IR, and the real
+  Ladybird→RinGL→RinGPU→private-Aquamarine bridge verify opcode admission and
+  the `(191, 128, 255, 40)` rounding/shaping readback.
 - [x] Implement the bounded WebGL `OES_standard_derivatives` slice through
   RinGL rather than a browser-local or Aquamarine-direct backend. An acquired
   extension object enables a context-local gate; exact fragment

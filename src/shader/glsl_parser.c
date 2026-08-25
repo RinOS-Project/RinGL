@@ -580,10 +580,16 @@ static int primary(Parser* parser)
         if (token_is_ident(&ident, "texture2D"))
             return texture2d_call(parser);
         if (token_is_ident(&ident, "min") || token_is_ident(&ident, "max") ||
-            token_is_ident(&ident, "dot"))
+            token_is_ident(&ident, "dot") || token_is_ident(&ident, "mod") ||
+            token_is_ident(&ident, "step"))
             return common_math_builtin_call(parser, 2u);
-        if (token_is_ident(&ident, "clamp") || token_is_ident(&ident, "mix"))
+        if (token_is_ident(&ident, "clamp") || token_is_ident(&ident, "mix") ||
+            token_is_ident(&ident, "smoothstep"))
             return common_math_builtin_call(parser, 3u);
+        if (token_is_ident(&ident, "floor") || token_is_ident(&ident, "ceil") ||
+            token_is_ident(&ident, "fract") || token_is_ident(&ident, "abs") ||
+            token_is_ident(&ident, "sign"))
+            return common_math_builtin_call(parser, 1u);
         if (token_is_ident(&ident, "dFdx") ||
             token_is_ident(&ident, "dFdy") ||
             token_is_ident(&ident, "fwidth")) {

@@ -558,9 +558,12 @@ instructions. Same-width `+`/`-`, unary `-`, and vector/scalar `*` and `/`
 are executable rather than host-side constant folding. The common Float
 expression builtins `min`, `max`, `clamp`, `mix`, and `dot` now use the same
 RSH1 path: min/max/clamp emit native scalar min/max instructions, while
-mix/dot expand to ordered scalar arithmetic. They accept only their matching
-Float scalar/vector overloads and reject integer, matrix, or mismatched-width
-calls before an executable is published. This covers common uniform color
+mix/dot expand to ordered scalar arithmetic. Float `floor`, `ceil`, `fract`,
+`mod`, `abs`, `sign`, `step`, and `smoothstep` use the same executable route:
+`floor` is RSH1 opcode 59 in generic RinGPU, and the rest scalarize to floor,
+ordered arithmetic, and comparisons. They accept only their matching Float
+scalar/vector overloads and reject integer, matrix, or mismatched-width calls
+before an executable is published. This covers common uniform color
 modulation and matrix-transformed positions (`mat2 * vec2`, `mat3 * vec3`, or
 `mat4 * vec4`) plus a vector offset while retaining explicit RSH1 resource and
 register limits; swizzles, matrix arithmetic beyond one matching

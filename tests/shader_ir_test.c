@@ -44,6 +44,7 @@ typedef struct __attribute__((packed)) Instruction {
 #define RSH1_OP_DIV_F32 UINT16_C(23)
 #define RSH1_OP_MIN_F32 UINT16_C(24)
 #define RSH1_OP_MAX_F32 UINT16_C(25)
+#define RSH1_OP_FLOOR_F32 UINT16_C(59)
 #define RSH1_OP_LOAD_BUILTIN_F32 UINT16_C(52)
 #define RSH1_BUILTIN_POINT_COORD_X UINT32_C(16)
 #define RSH1_BUILTIN_POINT_COORD_Y UINT32_C(17)
@@ -249,6 +250,16 @@ int main(void)
         "  vec4 bounded = clamp(upper, 0.0, 1.0);\n"
         "  float projected = dot(bounded.xyz, vec3(0.25, 0.5, 0.25));\n"
         "  gl_Position = mix(bounded, vec4(projected), 0.5);\n"
+        "}\n";
+    const char* rounding_and_shaping_builtin_source =
+        "attribute vec2 position;\n"
+        "void main() {\n"
+        "  vec2 rounded = ceil(floor(position));\n"
+        "  vec2 remainder = fract(mod(position, 0.5));\n"
+        "  vec2 curve = smoothstep(0.0, 1.0, abs(remainder));\n"
+        "  vec2 oriented = sign(curve - 0.5);\n"
+        "  vec2 threshold = step(0.25, curve);\n"
+        "  gl_Position = vec4(rounded + oriented + threshold, 0.0, 1.0);\n"
         "}\n";
     const char* fragment_source =
         "precision mediump float;\n"
@@ -583,6 +594,29 @@ int main(void)
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_MAX_F32));
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_ADD_F32));
+
+    /* The rounding/remainder and threshold/shaping families are lowered to
+     * scalar RSH1. Floor is executor-provided; the remaining functions use
+     * ordered arithmetic and comparisons rather than an embedding callback. */
+    header = lower_and_read_header(vertex, rounding_and_shaping_builtin_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 2u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_FLOOR_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_MIN_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_MAX_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_DIV_F32));
+
+    ringl_shader_source(vertex,
+                        "attribute vec2 position; void main() { "
+                        "vec2 invalid = mod(position, vec3(1.0)); "
+                        "gl_Position = vec4(invalid, 0.0, 1.0); }", -1);
+    ringl_compile_shader(vertex);
+    assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(vertex) != 0);
+    assert(ringl_get_shader_rsh1_size(vertex) == 0u);
 
     ringl_shader_source(vertex,
                         "attribute vec2 position; void main() { "

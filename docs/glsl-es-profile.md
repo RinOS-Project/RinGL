@@ -22,6 +22,15 @@ The current first-triangle slice supports:
   arithmetic. Only GLSL's matching Float scalar/vector overloads are admitted;
   integer, matrix, scalar-vector `dot`, and mismatched-width calls fail before
   RSH1 publication;
+- Float `floor`, `ceil`, `fract`, `mod`, `abs`, `sign`, `step`, and
+  `smoothstep`: `floor` uses scalar RSH1 opcode 59, executed by generic RinGPU
+  without a hosted math-library or embedding callback. `ceil`/`fract`/`mod`
+  lower to floor plus source-ordered arithmetic; `abs`/`sign`/`step` and
+  `smoothstep` lower to scalar min/max, arithmetic, and comparisons. The
+  profile admits the defined Float scalar/vector overloads only. Integer,
+  matrix, and mismatched-vector forms fail before RSH1 publication; a zero
+  `mod` divisor or equal `smoothstep` edges is not rounded into success and
+  fails the backend preflight without publishing a target;
 - vertex `attribute float` and `attribute vec2` inputs;
 - `vec2(...)` and `vec4(...)` constructors;
 - scalar or `vec4` writes to the stage output (`gl_Position` / `gl_FragColor`);

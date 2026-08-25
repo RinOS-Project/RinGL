@@ -370,7 +370,9 @@ static int remove_point_size_uniform_declaration(char* source,
 
 static int extract_point_size_assignment(
     char* source, const RinGLGlslUniformValue* uniforms,
-    uint32_t uniform_count, int* has_point_size, float* point_size)
+    uint32_t uniform_count, int* has_point_size, float* point_size,
+    char* attribute_name, size_t attribute_name_capacity,
+    uint32_t* attribute_component, int* uses_attribute)
 {
     char* match = NULL;
     char* candidate = source;
@@ -380,11 +382,16 @@ static int extract_point_size_assignment(
     int point_size_uses_uniform = 0;
 
     if (source == NULL || has_point_size == NULL || point_size == NULL ||
+        attribute_name == NULL || attribute_name_capacity == 0u ||
+        attribute_component == NULL || uses_attribute == NULL ||
         (uniform_count != 0u && uniforms == NULL)) {
         return 0;
     }
     *has_point_size = 0;
     *point_size = 1.0f;
+    attribute_name[0] = '\0';
+    *attribute_component = 0u;
+    *uses_attribute = 0;
     while ((candidate = strstr(candidate, "gl_PointSize")) != NULL) {
         if ((candidate == source ||
              (!isalnum((unsigned char)candidate[-1]) &&
@@ -400,12 +407,33 @@ static int extract_point_size_assignment(
         return 1;
     cursor = match + name_length + 1u;
     if (!parse_finite_float(&cursor, point_size)) {
-        if (!read_identifier(&cursor, uniform_name, sizeof(uniform_name)) ||
-            !resolve_point_size_uniform(source, uniform_name, uniforms,
-                                        uniform_count, point_size)) {
+        if (!read_identifier(&cursor, uniform_name, sizeof(uniform_name))) {
             return 0;
         }
-        point_size_uses_uniform = 1;
+        if (*cursor == '.') {
+            char component = cursor[1];
+
+            if (component == '\0' || cursor[2] != ';' ||
+                strlen(uniform_name) + 1u > attribute_name_capacity) {
+                return 0;
+            }
+            switch (component) {
+            case 'x': case 'r': *attribute_component = 0u; break;
+            case 'y': case 'g': *attribute_component = 1u; break;
+            case 'z': case 'b': *attribute_component = 2u; break;
+            case 'w': case 'a': *attribute_component = 3u; break;
+            default: return 0;
+            }
+            memcpy(attribute_name, uniform_name, strlen(uniform_name) + 1u);
+            *uses_attribute = 1;
+            cursor += 2;
+        } else {
+            if (!resolve_point_size_uniform(source, uniform_name, uniforms,
+                                            uniform_count, point_size)) {
+                return 0;
+            }
+            point_size_uses_uniform = 1;
+        }
     }
     if (*cursor != ';')
         return 0;
@@ -418,8 +446,9 @@ static int extract_point_size_assignment(
     return 1;
 }
 
-static int append_literal_point_size_output(RinGLGlslLowerResult* result,
-                                            float point_size)
+static int append_point_size_output(RinGLGlslLowerResult* result,
+                                    int uses_constant, float point_size,
+                                    uint16_t source_register)
 {
     RinGLRsh1HeaderV1 header;
     RinGLRsh1InstructionV1* instructions;
@@ -428,7 +457,9 @@ static int append_literal_point_size_output(RinGLGlslLowerResult* result,
     uint32_t instruction_count;
     uint32_t total_size;
 
-    if (result == NULL || !isfinite(point_size) ||
+    uint32_t additional_instructions;
+
+    if (result == NULL || (uses_constant != 0 && !isfinite(point_size)) ||
         result->byte_size < sizeof(header)) {
         return 0;
     }
@@ -438,14 +469,20 @@ static int append_literal_point_size_output(RinGLGlslLowerResult* result,
         header.header_size != sizeof(header) ||
         header.stage != RINGL_RSH1_STAGE_VERTEX ||
         header.instruction_count == 0u || header.output_count < 4u ||
-        header.instruction_count > RINGL_RSH1_MAX_INSTRUCTIONS - 2u ||
-        header.register_count >= RINGL_RSH1_MAX_REGISTERS ||
+        header.instruction_count >= RINGL_RSH1_MAX_INSTRUCTIONS ||
+        (uses_constant != 0 && header.register_count >= RINGL_RSH1_MAX_REGISTERS) ||
+        (uses_constant == 0 && source_register >= header.register_count) ||
         header.total_size != result->byte_size) {
+        return 0;
+    }
+    additional_instructions = uses_constant != 0 ? 2u : 1u;
+    if (header.instruction_count >
+        RINGL_RSH1_MAX_INSTRUCTIONS - additional_instructions) {
         return 0;
     }
     instruction_count = header.instruction_count;
     total_size = (uint32_t)(sizeof(header) +
-                            (size_t)(instruction_count + 2u) *
+                            (size_t)(instruction_count + additional_instructions) *
                                 sizeof(RinGLRsh1InstructionV1));
     if (total_size > sizeof(result->bytes))
         return 0;
@@ -458,20 +495,25 @@ static int append_literal_point_size_output(RinGLGlslLowerResult* result,
             instructions[index].immediate++;
         }
     }
-    memmove(&instructions[instruction_count + 1u],
+    memmove(&instructions[instruction_count + additional_instructions - 1u],
             &instructions[instruction_count - 1u], sizeof(instructions[0]));
-    memcpy(&point_size_bits, &point_size, sizeof(point_size_bits));
-    init_instruction(&instructions[instruction_count - 1u],
-                     RINGL_RSH1_OP_CONST_F32);
-    instructions[instruction_count - 1u].destination =
-        (uint16_t)header.register_count;
-    instructions[instruction_count - 1u].immediate = point_size_bits;
-    init_instruction(&instructions[instruction_count],
+    if (uses_constant != 0) {
+        memcpy(&point_size_bits, &point_size, sizeof(point_size_bits));
+        init_instruction(&instructions[instruction_count - 1u],
+                         RINGL_RSH1_OP_CONST_F32);
+        instructions[instruction_count - 1u].destination =
+            (uint16_t)header.register_count;
+        instructions[instruction_count - 1u].immediate = point_size_bits;
+        source_register = (uint16_t)header.register_count;
+        header.register_count++;
+    }
+    init_instruction(&instructions[instruction_count + additional_instructions - 2u],
                      RINGL_RSH1_OP_STORE_OUTPUT_F32);
-    instructions[instruction_count].source0 = (uint16_t)header.register_count;
-    instructions[instruction_count].immediate = 4u;
-    header.instruction_count += 2u;
-    header.register_count++;
+    instructions[instruction_count + additional_instructions - 2u].source0 =
+        source_register;
+    instructions[instruction_count + additional_instructions - 2u].immediate =
+        4u;
+    header.instruction_count += additional_instructions;
     header.output_count++;
     header.total_size = total_size;
     memcpy(result->bytes, &header, sizeof(header));
@@ -2363,6 +2405,27 @@ static int lower_vertex_color(const char* source,
     return 0;
 }
 
+static int lower_vertex_color_point_size_register(const char* source,
+                                                  uint32_t color_width,
+                                                  const char* attribute_name,
+                                                  uint32_t component,
+                                                  uint16_t* register_out)
+{
+    char attribute_tag[16];
+    char color[64];
+
+    if (source == NULL || attribute_name == NULL || register_out == NULL ||
+        (color_width != 3u && color_width != 4u) || component >= color_width ||
+        snprintf(attribute_tag, sizeof(attribute_tag), "attributevec%u",
+                 color_width) < 0 ||
+        !read_decl_name(source, attribute_tag, 0u, color, sizeof(color)) ||
+        strcmp(attribute_name, color) != 0) {
+        return 0;
+    }
+    *register_out = (uint16_t)(2u + component);
+    return 1;
+}
+
 static int lower_fragment_color(const char* source,
                                 uint32_t color_width,
                                 RinGLGlslLowerResult* result)
@@ -2780,6 +2843,10 @@ int ringl_glsl_lower_varying_rsh1_with_uniforms(
     int rc;
     int has_point_size;
     float point_size;
+    char point_size_attribute[64];
+    uint32_t point_size_component;
+    int point_size_uses_attribute;
+    uint16_t point_size_source_register = 0u;
 
     if (source == NULL || result == NULL ||
         (uniform_count != 0u && uniforms == NULL))
@@ -2793,7 +2860,11 @@ int ringl_glsl_lower_varying_rsh1_with_uniforms(
     }
     if (shader_type == RINGL_VERTEX_SHADER &&
         !extract_point_size_assignment(compact, uniforms, uniform_count,
-                                       &has_point_size, &point_size)) {
+                                       &has_point_size, &point_size,
+                                       point_size_attribute,
+                                       sizeof(point_size_attribute),
+                                       &point_size_component,
+                                       &point_size_uses_attribute)) {
         free(compact);
         (void)snprintf(result->diagnostic, sizeof(result->diagnostic),
                        "varying gl_PointSize must be a finite literal or float uniform");
@@ -2802,6 +2873,7 @@ int ringl_glsl_lower_varying_rsh1_with_uniforms(
     if (shader_type != RINGL_VERTEX_SHADER) {
         has_point_size = 0;
         point_size = 1.0f;
+        point_size_uses_attribute = 0;
     }
     if (strstr(compact, "varyingvec2") != NULL &&
         shader_type == RINGL_VERTEX_SHADER) {
@@ -2845,9 +2917,29 @@ int ringl_glsl_lower_varying_rsh1_with_uniforms(
                                           result);
     else
         rc = 1;
-    if (rc == 0 && has_point_size != 0 &&
-        !append_literal_point_size_output(result, point_size)) {
-        rc = 1;
+    if (rc == 0 && has_point_size != 0) {
+        if (point_size_uses_attribute != 0) {
+            if (strstr(compact, "varyingvec4") != NULL) {
+                if (!lower_vertex_color_point_size_register(
+                        compact, 4u, point_size_attribute,
+                        point_size_component, &point_size_source_register)) {
+                    rc = 1;
+                }
+            } else if (strstr(compact, "varyingvec3") != NULL) {
+                if (!lower_vertex_color_point_size_register(
+                        compact, 3u, point_size_attribute,
+                        point_size_component, &point_size_source_register)) {
+                    rc = 1;
+                }
+            } else {
+                rc = 1;
+            }
+        }
+        if (rc == 0 && !append_point_size_output(
+                           result, point_size_uses_attribute == 0, point_size,
+                           point_size_source_register)) {
+            rc = 1;
+        }
     }
     free(compact);
     if (rc != 0 && result->diagnostic[0] == '\0')

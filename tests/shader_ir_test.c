@@ -174,6 +174,11 @@ int main(void)
         "varying vec4 vertexColor; void main() { "
         "gl_Position = vec4(position, 0.0, 1.0); "
         "vertexColor = color; gl_PointSize = pointSize; }";
+    const char* point_size_attribute_color_varying_vertex_source =
+        "attribute vec2 position; attribute vec4 color; "
+        "varying vec4 vertexColor; void main() { "
+        "gl_Position = vec4(position, 0.0, 1.0); "
+        "vertexColor = color; gl_PointSize = color.r; }";
     const char* vector_arithmetic_source =
         "attribute vec4 position;\n"
         "void main() {\n"
@@ -384,14 +389,23 @@ int main(void)
     assert(header.output_count == 9u);
     assert(header.instruction_count == 19u);
 
+    header = lower_and_read_header(vertex,
+                                   point_size_attribute_color_varying_vertex_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 6u);
+    assert(header.output_count == 9u);
+    assert(header.instruction_count == 18u);
+
     /* Structural varying lowering accepts the documented finite literal or
-     * scalar-float-uniform point-size forms. A broader expression must fail
-     * before a native module can be published with an ambiguous output ABI. */
+     * scalar-float-uniform/attribute-component point-size forms. A broader
+     * expression must fail before a native module can be published with an
+     * ambiguous output ABI. */
     ringl_shader_source(vertex,
                         "attribute vec2 position; attribute vec4 color; "
                         "varying vec4 vertexColor; void main() { "
                         "gl_Position = vec4(position, 0.0, 1.0); "
-                        "vertexColor = color; gl_PointSize = color.r; }", -1);
+                        "vertexColor = color; gl_PointSize = color.r + 1.0; }", -1);
     ringl_compile_shader(vertex);
     assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
     assert(ringl_lower_shader_rsh1(vertex) != 0);

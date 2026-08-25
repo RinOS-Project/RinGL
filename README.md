@@ -687,12 +687,13 @@ validation paths before they reach the embedding; an incomplete line-list
 pair, a line strip or line loop with fewer than two vertices, and a triangle
 strip or fan with fewer than three vertices are successful no-ops. Public
 For the generic no-varying profile and every existing structural varying
-profile with a finite literal or `uniform float` assignment, a vertex
-`gl_PointSize` Float32 occupies the native scalar immediately after clip
-`xyzw`. Existing varying outputs move up by one scalar, and an active float
-uniform atomically rebuilds the program-owned vertex RSH1 module before the
-generic backend finite-checks and clamps the point size to `[1, 64]` before
-coverage is emitted. Broader varying point-size expressions remain outside
+profile with a finite literal, `uniform float`, or that profile's source color
+attribute component assignment, a vertex `gl_PointSize` Float32 occupies the
+native scalar immediately after clip `xyzw`. Existing varying outputs move up
+by one scalar, an active float uniform atomically rebuilds the program-owned
+vertex RSH1 module, and an attribute component is stored directly from its
+vertex RSH1 register before the generic backend finite-checks and clamps the
+point size to `[1, 64]`. Broader varying point-size expressions remain outside
 this bounded slice. Public WebGL binding and presentation remain unsupported.
 
 Custom RGBA8 renderbuffer FBOs may additionally attach a matching

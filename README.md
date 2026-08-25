@@ -581,6 +581,14 @@ atan(0,0), and sin/cos/tan angles outside `[-1024, 1024]` radians fail during
 lowering or preflight before target publication rather than using host libm or
 a direct surface fallback. Scientific Float literals are lowered only when they
 are finite binary32 values, so an overflowing literal fails before publication.
+The bounded Float exponential family `exp`, `log`, `exp2`, `log2`, and `pow`
+also runs only through RinGL RSH1 and generic RinGPU: opcodes 67--69 execute
+the finite binary32 base-two operations, while `exp`/`log` lower through exact
+scale operations around them. Matching Float scalar/vector overloads are
+accepted (`pow` widths must match). `exp2` and the derived `exp`/`pow` result
+exponent are bounded to `[-126, 127]`; logarithm and power bases must be
+strictly positive. Domain and range failure reject publication rather than
+substituting host libm or a direct surface result.
 This covers common uniform color
 modulation and matrix-transformed positions (`mat2 * vec2`, `mat3 * vec3`, or
 `mat4 * vec4`) plus a vector offset while retaining explicit RSH1 resource and

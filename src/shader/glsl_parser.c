@@ -570,6 +570,18 @@ static int atan_builtin_call(Parser* parser)
     return expect(parser, TOK_RPAREN, "expected ')' after atan arguments");
 }
 
+static int binary_math_builtin_call(Parser* parser, const char* name)
+{
+    next_token(parser);
+    if (!expect(parser, TOK_LPAREN, "expected '(' after math builtin") ||
+        !expression(parser) ||
+        !expect(parser, TOK_COMMA, "expected ',' in math builtin") ||
+        !expression(parser)) {
+        return 0;
+    }
+    return expect(parser, TOK_RPAREN, name);
+}
+
 static int primary(Parser* parser)
 {
     if (accept(parser, TOK_NUMBER))
@@ -609,10 +621,15 @@ static int primary(Parser* parser)
             token_is_ident(&ident, "radians") || token_is_ident(&ident, "degrees") ||
             token_is_ident(&ident, "sin") || token_is_ident(&ident, "cos") ||
             token_is_ident(&ident, "tan") || token_is_ident(&ident, "asin") ||
-            token_is_ident(&ident, "acos"))
+            token_is_ident(&ident, "acos") || token_is_ident(&ident, "exp") ||
+            token_is_ident(&ident, "log") || token_is_ident(&ident, "exp2") ||
+            token_is_ident(&ident, "log2"))
             return common_math_builtin_call(parser, 1u);
         if (token_is_ident(&ident, "atan"))
             return atan_builtin_call(parser);
+        if (token_is_ident(&ident, "pow"))
+            return binary_math_builtin_call(parser,
+                                            "expected ')' after pow arguments");
         if (token_is_ident(&ident, "dFdx") ||
             token_is_ident(&ident, "dFdy") ||
             token_is_ident(&ident, "fwidth")) {

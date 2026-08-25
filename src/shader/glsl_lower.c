@@ -973,6 +973,115 @@ static Value atan_value(Lower* lower)
                             "atan builtin requires floating-point values");
 }
 
+static Value exponential_float_value(Lower* lower, const Value* value,
+                                     uint16_t opcode, const char* diagnostic)
+{
+    Value result = invalid_value();
+    uint32_t index;
+
+    if (!float_vector_value(lower, value, diagnostic))
+        return result;
+    for (index = 0u; index < value->width; ++index) {
+        uint16_t destination = new_reg(lower);
+
+        if (destination == RINGL_RSH1_UNUSED ||
+            !emit(lower, opcode, destination, value->regs[index],
+                  RINGL_RSH1_UNUSED, 0u)) {
+            return invalid_value();
+        }
+        result.regs[index] = destination;
+    }
+    result.width = value->width;
+    return result;
+}
+
+static Value unary_exponential_value(Lower* lower, uint16_t opcode,
+                                     const char* diagnostic)
+{
+    Value value = unary_math_argument(lower);
+
+    return value.width == 0u ? value
+                             : exponential_float_value(lower, &value, opcode,
+                                                      diagnostic);
+}
+
+static Value exp_value(Lower* lower)
+{
+    const float log2e = 1.44269504088896340736f;
+    Value value = unary_math_argument(lower);
+    Value scale;
+    Value scaled;
+
+    if (value.width == 0u)
+        return value;
+    scale = float_constant_value(lower, log2e);
+    scaled = scale.width == 0u ? scale
+                               : componentwise_binary(lower, &value, &scale,
+                                                      RINGL_RSH1_OP_MUL_F32,
+                                                      1);
+    return scaled.width == 0u
+        ? scaled
+        : exponential_float_value(lower, &scaled, RINGL_RSH1_OP_EXP2_F32,
+                                  "exp builtin requires floating-point values");
+}
+
+static Value log_value(Lower* lower)
+{
+    const float ln2 = 0.69314718055994530942f;
+    Value value = unary_math_argument(lower);
+    Value logarithm;
+    Value scale;
+
+    if (value.width == 0u)
+        return value;
+    logarithm = exponential_float_value(lower, &value, RINGL_RSH1_OP_LOG2_F32,
+                                        "log builtin requires floating-point values");
+    if (logarithm.width == 0u)
+        return logarithm;
+    scale = float_constant_value(lower, ln2);
+    return scale.width == 0u ? scale
+                             : componentwise_binary(lower, &logarithm, &scale,
+                                                    RINGL_RSH1_OP_MUL_F32, 1);
+}
+
+static Value pow_value(Lower* lower)
+{
+    Value base;
+    Value exponent;
+    Value result = invalid_value();
+    uint32_t index;
+
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after pow builtin"))
+        return result;
+    base = expression(lower);
+    if (!need(lower, T_COMMA, "expected ',' after pow base") ||
+        (exponent = expression(lower)).width == 0u ||
+        !need(lower, T_RPAREN, "expected ')' after pow arguments")) {
+        return result;
+    }
+    if (!float_vector_value(lower, &base,
+                            "pow builtin requires floating-point values") ||
+        !float_vector_value(lower, &exponent,
+                            "pow builtin requires floating-point values") ||
+        base.width != exponent.width) {
+        fail(lower, "pow requires matching floating-point values");
+        return result;
+    }
+    for (index = 0u; index < base.width; ++index) {
+        uint16_t destination = new_reg(lower);
+
+        if (destination == RINGL_RSH1_UNUSED ||
+            !emit(lower, RINGL_RSH1_OP_POW_F32, destination, base.regs[index],
+                  exponent.regs[index], 0u)) {
+            return invalid_value();
+        }
+        result.regs[index] = destination;
+    }
+    result.width = base.width;
+    return result;
+}
+
 static Value inversesqrt_value(Lower* lower)
 {
     Value value = unary_math_argument(lower);
@@ -1896,6 +2005,18 @@ static Value primary(Lower* lower)
                                 "acos builtin requires floating-point values");
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "atan"))
         return atan_value(lower);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "exp"))
+        return exp_value(lower);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "log"))
+        return log_value(lower);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "exp2"))
+        return unary_exponential_value(lower, RINGL_RSH1_OP_EXP2_F32,
+                                       "exp2 builtin requires floating-point values");
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "log2"))
+        return unary_exponential_value(lower, RINGL_RSH1_OP_LOG2_F32,
+                                       "log2 builtin requires floating-point values");
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "pow"))
+        return pow_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "sign"))
         return sign_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "step"))

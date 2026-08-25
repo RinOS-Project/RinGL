@@ -102,6 +102,17 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   as finite binary32 values. Strict RinGL IR, RinShader validation, and the real
   Ladybird→RinGL→RinGPU→private-Aquamarine bridge verify the suite with
   `(128, 128, 255, 255)` readback.
+- [x] Lower the bounded Float exponential suite `exp`, `log`, `exp2`, `log2`,
+  and `pow` through RinGL and generic RinGPU. RSH1 67--69 execute finite
+  binary32 base-two operations, while `exp`/`log` use scalar conversion
+  factors and `pow` is a real binary backend operation. Matching Float
+  scalar/vector overloads are admitted, with matching widths required for
+  `pow`. `exp2` and the derived `exp`/`pow` result exponent are bounded to
+  `[-126, 127]`; log and pow bases must be strictly positive. Domain/range
+  failure is fail-closed before target publication. Strict RinGL IR, RinShader
+  validation, and the real Ladybird→RinGL→RinGPU→private-Aquamarine bridge
+  verify `exp(log(2))`, `log(exp(1))`, `exp2`, `log2`, and `pow` with
+  `(128, 128, 255, 255)` readback.
 - [x] Implement the bounded WebGL `OES_standard_derivatives` slice through
   RinGL rather than a browser-local or Aquamarine-direct backend. An acquired
   extension object enables a context-local gate; exact fragment

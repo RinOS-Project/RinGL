@@ -67,6 +67,9 @@ enum RinGLRsh1Opcode {
     RINGL_RSH1_OP_ATAN2_F32 = 64,
     RINGL_RSH1_OP_ASIN_F32 = 65,
     RINGL_RSH1_OP_ACOS_F32 = 66,
+    RINGL_RSH1_OP_EXP2_F32 = 67,
+    RINGL_RSH1_OP_LOG2_F32 = 68,
+    RINGL_RSH1_OP_POW_F32 = 69,
 };
 
 enum RinGLRsh1Builtin {

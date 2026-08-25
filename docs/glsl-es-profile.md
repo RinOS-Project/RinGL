@@ -50,6 +50,13 @@ The current first-triangle slice supports:
   and atan(0,0) fail lowering or backend preflight rather than manufacturing a
   result; scientific Float literals lower only when finite binary32, so an
   overflowing literal fails before module publication;
+- Float exponential `exp`, `log`, `exp2`, `log2`, and `pow`: `exp` and `log`
+  scale executable `exp2`/`log2`; RSH1 opcodes 67--69 execute the base-two
+  and power operations in generic RinGPU. Matching Float scalar/vector
+  overloads are accepted, with matching widths required for `pow`. `exp2`
+  and the derived `exp`/`pow` result exponent are bounded to `[-126, 127]`;
+  `log`/`log2` inputs and `pow` bases must be strictly positive. Domain/range
+  failure rejects target publication;
 - vertex `attribute float` and `attribute vec2` inputs;
 - `vec2(...)` and `vec4(...)` constructors;
 - scalar or `vec4` writes to the stage output (`gl_Position` / `gl_FragColor`);

@@ -52,6 +52,9 @@ typedef struct __attribute__((packed)) Instruction {
 #define RSH1_OP_ATAN2_F32 UINT16_C(64)
 #define RSH1_OP_ASIN_F32 UINT16_C(65)
 #define RSH1_OP_ACOS_F32 UINT16_C(66)
+#define RSH1_OP_EXP2_F32 UINT16_C(67)
+#define RSH1_OP_LOG2_F32 UINT16_C(68)
+#define RSH1_OP_POW_F32 UINT16_C(69)
 #define RSH1_OP_LOAD_BUILTIN_F32 UINT16_C(52)
 #define RSH1_BUILTIN_POINT_COORD_X UINT32_C(16)
 #define RSH1_BUILTIN_POINT_COORD_Y UINT32_C(17)
@@ -298,6 +301,18 @@ int main(void)
         "  gl_Position = vec4(degrees(inverse_sine.x) / 180.0,\n"
         "                     degrees(inverse_cosine.y) / 180.0,\n"
         "                     tangent.x + polar.x + direct_angle, 1.0);\n"
+        "}\n";
+    const char* exponential_builtin_source =
+        "attribute vec2 position;\n"
+        "void main() {\n"
+        "  float natural_exp = exp(0.0);\n"
+        "  float natural_log = log(1.0);\n"
+        "  vec2 powers_of_two = exp2(vec2(1.0, 2.0));\n"
+        "  vec2 exponents = log2(powers_of_two);\n"
+        "  vec2 powered = pow(vec2(2.0, 4.0), vec2(2.0, 0.5));\n"
+        "  gl_Position = vec4(position.x + natural_exp - 1.0,\n"
+        "                     position.y + natural_log + exponents.x - 1.0,\n"
+        "                     powered.x + powered.y, 1.0);\n"
         "}\n";
     const char* fragment_source =
         "precision mediump float;\n"
@@ -571,6 +586,24 @@ int main(void)
     ringl_shader_source(vertex,
                         "attribute vec2 position; void main() { "
                         "vec2 invalid = atan(position, 1.0); "
+                        "gl_Position = vec4(invalid, 0.0, 1.0); }", -1);
+    ringl_compile_shader(vertex);
+    assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(vertex) != 0);
+    assert(ringl_get_shader_rsh1_size(vertex) == 0u);
+
+    header = lower_and_read_header(vertex, exponential_builtin_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 2u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_EXP2_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_LOG2_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_POW_F32));
+
+    ringl_shader_source(vertex,
+                        "attribute vec2 position; void main() { "
+                        "vec2 invalid = pow(position, 2.0); "
                         "gl_Position = vec4(invalid, 0.0, 1.0); }", -1);
     ringl_compile_shader(vertex);
     assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);

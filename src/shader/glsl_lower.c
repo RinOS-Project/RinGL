@@ -474,38 +474,8 @@ static Value number_value(Lower* lower)
     return value;
 }
 
-static Value symbol_value(Lower* lower)
+static Value apply_swizzle(Lower* lower, Value value)
 {
-    Value value = invalid_value();
-    Token name = lower->token;
-    Symbol* symbol = find_symbol(lower, &name);
-    uint32_t index;
-
-    if (symbol == NULL || !symbol->initialized) {
-        fail(lower, "use of unavailable value");
-        return value;
-    }
-    next(lower);
-    value.width = symbol->width;
-    value.matrix = symbol->matrix;
-    value.is_i32 = symbol->is_i32;
-    if (symbol->attribute) {
-        for (index = 0u; index < symbol->width; ++index) {
-            uint16_t reg = new_reg(lower);
-            if (reg == RINGL_RSH1_UNUSED ||
-                !emit(lower, RINGL_RSH1_OP_LOAD_INPUT_F32, reg,
-                      RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED,
-                      (uint32_t)symbol->input + index)) {
-                return invalid_value();
-            }
-            value.regs[index] = reg;
-        }
-    } else {
-        for (index = 0u; index < (symbol->matrix
-                                      ? (uint32_t)symbol->matrix * symbol->matrix
-                                      : symbol->width); ++index)
-            value.regs[index] = symbol->regs[index];
-    }
     while (take(lower, T_DOT)) {
         Token swizzle = lower->token;
         uint16_t selected[4];
@@ -513,10 +483,10 @@ static Value symbol_value(Lower* lower)
         uint32_t index;
 
         /* GLSL permits a read-only swizzle of one through four components,
-         * including repeated components (for example xx and bgra).  The
+         * including repeated components (for example xx and bgra). The
          * selector must use exactly one of xyzw, rgba, or stpq: accepting a
          * mixed alphabet would assign a meaning that GLSL deliberately does
-         * not give it.  Keep this as register selection rather than emitting
+         * not give it. Keep this as register selection rather than emitting
          * fake vector instructions; RSH1 remains a scalar IR. */
         if (value.matrix || value.width == 1u || swizzle.kind != T_IDENT ||
             swizzle.length == 0u || swizzle.length > 4u) {
@@ -559,6 +529,41 @@ static Value symbol_value(Lower* lower)
         next(lower);
     }
     return value;
+}
+
+static Value symbol_value(Lower* lower)
+{
+    Value value = invalid_value();
+    Token name = lower->token;
+    Symbol* symbol = find_symbol(lower, &name);
+    uint32_t index;
+
+    if (symbol == NULL || !symbol->initialized) {
+        fail(lower, "use of unavailable value");
+        return value;
+    }
+    next(lower);
+    value.width = symbol->width;
+    value.matrix = symbol->matrix;
+    value.is_i32 = symbol->is_i32;
+    if (symbol->attribute) {
+        for (index = 0u; index < symbol->width; ++index) {
+            uint16_t reg = new_reg(lower);
+            if (reg == RINGL_RSH1_UNUSED ||
+                !emit(lower, RINGL_RSH1_OP_LOAD_INPUT_F32, reg,
+                      RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED,
+                      (uint32_t)symbol->input + index)) {
+                return invalid_value();
+            }
+            value.regs[index] = reg;
+        }
+    } else {
+        for (index = 0u; index < (symbol->matrix
+                                      ? (uint32_t)symbol->matrix * symbol->matrix
+                                      : symbol->width); ++index)
+            value.regs[index] = symbol->regs[index];
+    }
+    return apply_swizzle(lower, value);
 }
 
 static Value constructor_value(Lower* lower, uint8_t target_width,
@@ -693,7 +698,7 @@ static Value point_coord_value(Lower* lower)
     value.regs[0] = x;
     value.regs[1] = y;
     value.width = 2u;
-    return value;
+    return apply_swizzle(lower, value);
 }
 
 static Value primary(Lower* lower)

@@ -247,7 +247,7 @@ int main(void)
         "}\n";
     const char* point_coord_fragment_source =
         "void main() {\n"
-        "  gl_FragColor = vec4(gl_PointCoord, 0.0, 1.0);\n"
+        "  gl_FragColor = vec4(gl_PointCoord.yx, 0.0, 1.0);\n"
         "}\n";
     const char* derivative_fragment_source =
         "#extension GL_OES_standard_derivatives : enable\n"

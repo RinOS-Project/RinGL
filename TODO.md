@@ -141,6 +141,13 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   native RinGPU point-list pipeline. The primitive topology participates in
   the RinGL pipeline-cache key, so a point draw cannot reuse a triangle
   pipeline.
+- [x] Execute vertex `gl_PointSize` for the no-user-varying RSH1 profile.
+  RinGL reserves the scalar immediately after clip `xyzw`, advertises the
+  executable `[1, 64]` point range, and the generic RinGPU backend finite-checks
+  then clamps it before square point coverage. Strict IR and the real
+  RinGL→generic-RinGPU→caller-owned-Aquamarine-storage bridge test verify a
+  three-pixel point; broader programmable-point shaders with user varyings
+  remain unsupported.
 - [x] Execute bounded `GL_LINES` direct and indexed draws through a distinct
   native RinGPU line-list pipeline. An incomplete pair is a successful no-op.
 - [x] Execute bounded `GL_LINE_STRIP` direct and indexed draws through a

@@ -428,6 +428,9 @@ extern "C" {
 #define RINGL_RIN_GPU_COLOR_WRITE_BLUE        0x4u
 #define RINGL_RIN_GPU_COLOR_WRITE_ALPHA       0x8u
 #define RINGL_RIN_GPU_COLOR_WRITE_ALL         0x0fu
+/* Vertex output immediately following the four position scalars carries a
+ * programmable point size for the native point-list path. */
+#define RINGL_RIN_GPU_GRAPHICS_PIPELINE_NATIVE_POINT_SIZE_OUTPUT 0x00000001u
 /* A constant vertex input is encoded as IEEE-754 binary32 bits in the
  * attribute offset field. It is deliberately opt-in at binding time so a
  * backend compiled before this contract cannot mistake the bits for an
@@ -502,7 +505,7 @@ typedef struct RinGLRinGpuGraphicsPipelineNativeV1 {
     uint32_t color_write_mask;
     uint32_t cull_mode;
     uint32_t front_face;
-    uint32_t reserved0;
+    uint32_t flags;
     /* Front-face stencil state. A zero enable bit requires every remaining
      * stencil field to be zero; D32_FLOAT_S8_UINT is required when enabled. */
     uint32_t stencil_test_enabled;

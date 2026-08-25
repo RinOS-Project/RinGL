@@ -158,6 +158,12 @@ int main(void)
         "void main() {\n"
         "  gl_Position = vec4(position, 0.0, 1.0);\n"
         "}\n";
+    const char* point_size_source =
+        "attribute vec2 position;\n"
+        "void main() {\n"
+        "  gl_Position = vec4(position, 0.0, 1.0);\n"
+        "  gl_PointSize = 3.0;\n"
+        "}\n";
     const char* vector_arithmetic_source =
         "attribute vec4 position;\n"
         "void main() {\n"
@@ -332,10 +338,17 @@ int main(void)
     header = lower_and_read_header(vertex, vector_source, blob, sizeof(blob));
     assert(header.stage == 1u);
     assert(header.input_count == 2u);
-    assert(header.output_count == 8u);
+    assert(header.output_count == 9u);
     assert(header.instruction_count >= 13u);
     assert(ringl_get_shader_module(vertex) == 0u);
     assert(backend.destroys == 2u);
+
+    header = lower_and_read_header(vertex, point_size_source, blob,
+                                   sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 2u);
+    assert(header.output_count == 9u);
+    assert(header.instruction_count >= 14u);
 
     /* The parser has always accepted vector locals. Assert that these do not
      * merely compile: unary, matching-width, and scalar-broadcast arithmetic
@@ -344,7 +357,7 @@ int main(void)
                                    blob, sizeof(blob));
     assert(header.stage == 1u);
     assert(header.input_count == 4u);
-    assert(header.output_count == 8u);
+    assert(header.output_count == 9u);
     assert(header.instruction_count >= 40u);
     assert(header.register_count >= 32u);
 
@@ -355,7 +368,7 @@ int main(void)
                                    blob, sizeof(blob));
     assert(header.stage == 1u);
     assert(header.input_count == 2u);
-    assert(header.output_count == 8u);
+    assert(header.output_count == 9u);
     assert(header.instruction_count >= 17u);
     assert(header.register_count >= 11u);
 
@@ -648,6 +661,12 @@ int main(void)
     assert(ringl_get_shader_compile_status(vertex) == RINGL_FALSE);
     assert(ringl_get_shader_rsh1_size(vertex) == 0u);
     assert(ringl_get_shader_module(vertex) == 0u);
+
+    ringl_shader_source(fragment,
+                        "void main() { float size = gl_PointSize; "
+                        "gl_FragColor = vec4(size); }", -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
 
     /* Do not silently consume an incomplete precision declaration. The
      * frontend accepts only the exact GLES qualifier/type grammar it can map

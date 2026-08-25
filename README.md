@@ -104,8 +104,8 @@ surface backend.  A browser embedding enables it only after returning the
 extension object, then RinGL accepts the exact fragment-source directive
 `#extension GL_OES_standard_derivatives : enable` or `require`.  `dFdx`,
 `dFdy`, and `fwidth` lower to scalar RSH1 derivative opcodes and execute through
-the same RinGPU submission and private Aquamarine embedding as every other
-RinGL draw.  The implemented profile covers finite float/vecN values formed
+the same generic RinGPU software backend as every other RinGL draw; the
+Aquamarine surface is caller-owned storage only. The implemented profile covers finite float/vecN values formed
 from fragment varyings and arithmetic; it rejects texture-sample derivative
 expressions, control flow, and fine/coarse variants rather than inventing
 their semantics.  `FRAGMENT_SHADER_DERIVATIVE_HINT` is observable only after
@@ -228,8 +228,9 @@ RinGL, rather than the Ladybird embedding, owns the fixed profile values for
 `MAX_RENDERBUFFER_SIZE`, `MAX_VIEWPORT_DIMS`, `SAMPLE_BUFFERS`, `SAMPLES`, and
 `ALIASED_POINT_SIZE_RANGE`. Renderbuffers and drawable images are bounded to
 4096×4096; default-framebuffer installation and viewport mutation reject larger
-dimensions before they can change state. The private RinGPU/Aquamarine target
-is single-sample, and point draws rasterize one pixel.
+dimensions before they can change state. The generic RinGPU backend is
+single-sample, and native point-list draws clamp the vertex `gl_PointSize`
+output to the advertised `[1, 64]` pixel range.
 `ringl_get_compressed_texture_format_count()` authoritatively reports the
 nine executable ETC1/linear-S3TC/sRGB-S3TC formats; the browser still filters
 that ceiling through acquired extension objects before publishing
@@ -641,14 +642,14 @@ rather than treating every range as the default `[0,1]`.
 
 `RINGL_POLYGON_OFFSET_FILL` and `ringl_polygon_offset()` carry finite factor
 and units values in the dynamic raster state. The RinGPU V2 descriptor keeps
-the V1 default disabled, while the Aquamarine surface backend applies
+the V1 default disabled, while the generic RinGPU software backend applies
 `m * factor + 2^-23 * units` to filled-triangle depth immediately before depth
 comparison and writing. Points and lines are not offset; non-finite inputs
 leave the existing RinGL state intact and report `INVALID_VALUE`.
 
 `ringl_line_width()` accepts finite aliased widths from one through 64 pixels.
 RinGPU's V3 raster descriptor preserves V1/V2's one-pixel default, and the
-Aquamarine backend rasterizes bounded unique coverage for line lists, strips,
+generic backend rasterizes bounded unique coverage for line lists, strips,
 and loops. A half-open edge rule preserves the width-one rasterization at
 pixel-boundary ties; invalid values leave state unchanged with `INVALID_VALUE`.
 `RinGLLineWidthV1` exposes the current width and fixed `[1, 64]` range through
@@ -685,7 +686,11 @@ pipeline. Both direct and indexed draws use the existing vertex and index
 validation paths before they reach the embedding; an incomplete line-list
 pair, a line strip or line loop with fewer than two vertices, and a triangle
 strip or fan with fewer than three vertices are successful no-ops. Public
-WebGL binding and presentation remain unsupported.
+For the no-user-varying RSH1 profile, a vertex `gl_PointSize` Float32 occupies
+the native scalar immediately after clip `xyzw`; it is finite-checked and
+clamped to `[1, 64]` by the generic backend before point coverage is emitted.
+Broader programmable-point shaders with user varyings remain outside this
+bounded slice. Public WebGL binding and presentation remain unsupported.
 
 Custom RGBA8 renderbuffer FBOs may additionally attach a matching
 `DEPTH24_STENCIL8` renderbuffer or level-zero

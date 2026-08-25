@@ -572,8 +572,14 @@ static int primary(Parser* parser)
             }
             return 1;
         }
+        if (token_is_ident(&ident, "gl_PointSize") &&
+            parser->shader_type != RINGL_VERTEX_SHADER) {
+            fail(parser, "gl_PointSize is only available in vertex shaders");
+            return 0;
+        }
         if (!token_is_ident(&ident, "gl_Position") &&
             !token_is_ident(&ident, "gl_FragColor") &&
+            !token_is_ident(&ident, "gl_PointSize") &&
             !symbol_exists(parser, &ident)) {
             fail(parser, "use of undeclared identifier");
             return 0;
@@ -681,6 +687,11 @@ static int assignment(Parser* parser)
     if (token_is_ident(&target, "gl_Position")) {
         if (parser->shader_type != RINGL_VERTEX_SHADER) {
             fail(parser, "gl_Position is only writable in vertex shaders");
+            return 0;
+        }
+    } else if (token_is_ident(&target, "gl_PointSize")) {
+        if (parser->shader_type != RINGL_VERTEX_SHADER) {
+            fail(parser, "gl_PointSize is only writable in vertex shaders");
             return 0;
         }
     } else if (token_is_ident(&target, "gl_FragColor")) {

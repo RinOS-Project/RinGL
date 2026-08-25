@@ -51,13 +51,15 @@ static int fixed_raster_interface(const uint8_t* vertex_rsh1,
                                   uint32_t vertex_rsh1_size,
                                   const uint8_t* fragment_rsh1,
                                   uint32_t fragment_rsh1_size,
-                                  uint32_t* scalar_varying_count)
+                                  uint32_t* scalar_varying_count,
+                                  uint32_t* point_size_output_enabled)
 {
     RinGLRsh1HeaderV1 vertex_header;
     RinGLRsh1HeaderV1 fragment_header;
     uint32_t color_output_count;
 
-    if (scalar_varying_count == NULL || vertex_rsh1 == NULL ||
+    if (scalar_varying_count == NULL || point_size_output_enabled == NULL ||
+        vertex_rsh1 == NULL ||
         fragment_rsh1 == NULL || vertex_rsh1_size < sizeof(vertex_header) ||
         fragment_rsh1_size < sizeof(fragment_header)) {
         return 0;
@@ -78,6 +80,12 @@ static int fixed_raster_interface(const uint8_t* vertex_rsh1,
         (vertex_header.output_count == 10u && fragment_header.input_count == 6u) ||
         (vertex_header.output_count == 12u && fragment_header.input_count == 8u)) {
         *scalar_varying_count = fragment_header.input_count;
+        *point_size_output_enabled = 0u;
+        return 1;
+    }
+    if (vertex_header.output_count == 9u && fragment_header.input_count == 4u) {
+        *scalar_varying_count = fragment_header.input_count;
+        *point_size_output_enabled = 1u;
         return 1;
     }
     return 0;
@@ -253,6 +261,7 @@ int ringl_build_pipeline_key(RinGLContext* context,
     uint64_t fragment_module;
     uint32_t index;
     uint32_t fixed_scalar_varying_count;
+    uint32_t fixed_point_size_output;
 
     if (context == NULL || key == NULL || color_format == 0u ||
         !native_primitive_topology_valid(primitive_topology) ||
@@ -423,13 +432,17 @@ int ringl_build_pipeline_key(RinGLContext* context,
              NULL) &&
         fixed_raster_interface(vertex_rsh1, vertex_rsh1_size,
                                fragment_rsh1, fragment_rsh1_size,
-                               &fixed_scalar_varying_count)) {
+                               &fixed_scalar_varying_count,
+                               &fixed_point_size_output)) {
+        result.point_size_output_enabled = fixed_point_size_output;
         if (result.varying_count > fixed_scalar_varying_count)
             return -1;
         while (result.varying_count < fixed_scalar_varying_count) {
             RinGLRinGpuVaryingV1* native =
                 &result.varyings[result.varying_count];
-            native->vertex_output_location = 4u + result.varying_count;
+            native->vertex_output_location =
+                (result.point_size_output_enabled != 0u ? 5u : 4u) +
+                result.varying_count;
             native->fragment_input_location = result.varying_count;
             native->type = 1u;
             native->interpolation = 1u;
@@ -544,6 +557,8 @@ static int create_pipeline(RinGLContext* context,
         desc.primitive_topology = key->primitive_topology;
         desc.vertex_stride = key->vertex_stride;
         desc.position_output_location = 0u;
+        desc.flags = key->point_size_output_enabled != 0u
+            ? RINGL_RIN_GPU_GRAPHICS_PIPELINE_NATIVE_POINT_SIZE_OUTPUT : 0u;
         desc.depth_format = key->depth_format;
         desc.depth_compare = key->depth_compare;
         desc.depth_write_enabled = key->depth_write_enabled;

@@ -216,7 +216,7 @@ int main(void)
     assert(values[0] == (int32_t)RINGL_MAX_TEXTURE_SIZE &&
            values[1] == (int32_t)RINGL_MAX_TEXTURE_SIZE);
     ringl_get_integerv(RINGL_ALIASED_POINT_SIZE_RANGE, values);
-    assert(values[0] == 1 && values[1] == 1);
+    assert(values[0] == 1 && values[1] == 64);
     {
         size_t compressed_format_count = 1u;
 

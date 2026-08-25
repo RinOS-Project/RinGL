@@ -44,6 +44,7 @@ typedef struct RinGLPipelineKey {
     uint32_t vertex_binding_count;
     uint32_t attribute_count;
     uint32_t varying_count;
+    uint32_t point_size_output_enabled;
     uint32_t blend_enabled;
     uint32_t blend_source_rgb;
     uint32_t blend_destination_rgb;

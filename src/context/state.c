@@ -1154,10 +1154,10 @@ int ringl_get_integerv_bounded(uint32_t pname, int32_t* values,
         values[1] = (int32_t)RINGL_MAX_TEXTURE_SIZE;
         return 0;
     case RINGL_ALIASED_POINT_SIZE_RANGE:
-        /* The private Aquamarine/RinGPU target rasterizes exactly one pixel
-         * per point. RinGL exposes no programmable point-size state. */
+        /* Native point-list pipelines consume the vertex shader's
+         * gl_PointSize output and clamp it to this executable range. */
         values[0] = 1;
-        values[1] = 1;
+        values[1] = 64;
         return 0;
     case RINGL_MAX_TEXTURE_IMAGE_UNITS:
     case RINGL_MAX_COMBINED_TEXTURE_IMAGE_UNITS:

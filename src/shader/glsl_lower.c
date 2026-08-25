@@ -942,6 +942,7 @@ static int assignment(Lower* lower)
     uint32_t first_output = 0u;
     int frag_data = 0;
     int frag_depth = 0;
+    int point_size = 0;
 
     if (target.kind != T_IDENT) {
         fail(lower, "expected assignment");
@@ -949,6 +950,15 @@ static int assignment(Lower* lower)
     }
     if (text_is(&target, "gl_Position"))
         output = lower->shader_type == RINGL_VERTEX_SHADER;
+    else if (text_is(&target, "gl_PointSize")) {
+        if (lower->shader_type != RINGL_VERTEX_SHADER) {
+            fail(lower, "gl_PointSize is only writable in vertex shaders");
+            return 0;
+        }
+        output = 1;
+        point_size = 1;
+        first_output = 4u;
+    }
     else if (text_is(&target, "gl_FragColor"))
         output = lower->shader_type == RINGL_FRAGMENT_SHADER;
     else if (text_is(&target, "gl_FragDepthEXT")) {
@@ -1003,6 +1013,10 @@ static int assignment(Lower* lower)
     if (!need(lower, T_SEMI, "expected ';' after assignment"))
         return 0;
     if (output) {
+        if (point_size && (value.matrix || value.is_i32 || value.width != 1u)) {
+            fail(lower, "gl_PointSize output must be float");
+            return 0;
+        }
         if (frag_depth && (value.matrix || value.is_i32 || value.width != 1u)) {
             fail(lower, "gl_FragDepthEXT output must be float");
             return 0;
@@ -1295,11 +1309,11 @@ static int parse_all(Lower* lower)
 
 /*
  * The RinGPU software rasterizer consumes a fixed vertex ABI: clip position
- * occupies outputs 0..3 and four interpolants occupy outputs 4..7.  GLSL ES
- * shaders without varyings still need to provide the latter slots so that a
- * constant fragment shader can execute through the same pipeline.  Preserve
- * scalar lowering as-is; it is used by the standalone IR API rather than the
- * graphics pipeline.
+ * occupies outputs 0..3, with a programmable point size in output 4 and four
+ * interpolants in outputs 5..8. GLSL ES shaders without an explicit point
+ * size still receive the defined 1-pixel default. Preserve scalar lowering
+ * as-is; it is used by the standalone IR API rather than the graphics
+ * pipeline.
  */
 static int append_raster_defaults(Lower* lower)
 {
@@ -1309,7 +1323,7 @@ static int append_raster_defaults(Lower* lower)
     uint32_t one_bits;
 
     if (lower->shader_type != RINGL_VERTEX_SHADER ||
-        lower->output_count != 4u) {
+        (lower->output_count != 4u && lower->output_count != 5u)) {
         return 1;
     }
     zero = new_reg(lower);
@@ -1322,17 +1336,20 @@ static int append_raster_defaults(Lower* lower)
               RINGL_RSH1_UNUSED, 0u) ||
         !emit(lower, RINGL_RSH1_OP_CONST_F32, one, RINGL_RSH1_UNUSED,
               RINGL_RSH1_UNUSED, one_bits) ||
-        !emit(lower, RINGL_RSH1_OP_STORE_OUTPUT_F32, RINGL_RSH1_UNUSED,
-              zero, RINGL_RSH1_UNUSED, 4u) ||
+        (lower->output_count == 4u &&
+         !emit(lower, RINGL_RSH1_OP_STORE_OUTPUT_F32, RINGL_RSH1_UNUSED,
+               one, RINGL_RSH1_UNUSED, 4u)) ||
         !emit(lower, RINGL_RSH1_OP_STORE_OUTPUT_F32, RINGL_RSH1_UNUSED,
               zero, RINGL_RSH1_UNUSED, 5u) ||
         !emit(lower, RINGL_RSH1_OP_STORE_OUTPUT_F32, RINGL_RSH1_UNUSED,
               zero, RINGL_RSH1_UNUSED, 6u) ||
         !emit(lower, RINGL_RSH1_OP_STORE_OUTPUT_F32, RINGL_RSH1_UNUSED,
-              one, RINGL_RSH1_UNUSED, 7u)) {
+              zero, RINGL_RSH1_UNUSED, 7u) ||
+        !emit(lower, RINGL_RSH1_OP_STORE_OUTPUT_F32, RINGL_RSH1_UNUSED,
+              one, RINGL_RSH1_UNUSED, 8u)) {
         return 0;
     }
-    lower->output_count = 8u;
+    lower->output_count = 9u;
     return 1;
 }
 

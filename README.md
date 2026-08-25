@@ -688,11 +688,12 @@ pair, a line strip or line loop with fewer than two vertices, and a triangle
 strip or fan with fewer than three vertices are successful no-ops. Public
 For the generic no-varying profile and every existing structural varying
 profile with a finite literal, `uniform float`, or that profile's source color
-attribute component assignment, a vertex `gl_PointSize` Float32 occupies the
+attribute component optionally followed by one finite right-hand `+`, `-`, `*`,
+or nonzero `/` literal, a vertex `gl_PointSize` Float32 occupies the
 native scalar immediately after clip `xyzw`. Existing varying outputs move up
 by one scalar, an active float uniform atomically rebuilds the program-owned
-vertex RSH1 module, and an attribute component is stored directly from its
-vertex RSH1 register before the generic backend finite-checks and clamps the
+vertex RSH1 module, and an attribute component/arithmetic operand is emitted
+from vertex RSH1 registers before the generic backend finite-checks and clamps the
 point size to `[1, 64]`. Broader varying point-size expressions remain outside
 this bounded slice. Public WebGL binding and presentation remain unsupported.
 

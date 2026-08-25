@@ -340,6 +340,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 
 - [x] Inventory required OpenGL ES 2.0 entry points, enums, limits, and queries in `docs/gles2-api-status.md`; it audits every `gl2.h` entry point, all enum classes, fixed limits, and accepted query pnames against the public RinGL headers.
 - [x] Track implementation status per API instead of claiming version support early. `docs/gles2-api-status.md` classifies every GLES 2.0 entry point as bounded, partial, or absent and defines the embedding rule that absent APIs must not synthesize success.
+- [x] Expose WebGL's `drawingBufferFormat` from the effective context attributes: an alpha-capable buffer reports `RGBA8`, while an opaque buffer reports `RGB8`. The value describes the WebGL buffer rather than the embedding's physical channel order, so RinGL's private BGRA presentation storage remains unobservable. `drawingBufferColorSpace`, `unpackColorSpace`, drawing-buffer reallocation, and non-sRGB display remain separate unsupported work.
 - [ ] Close GLES 2.0 semantic gaps found by conformance-style tests.
 - [x] Expose the executable RSH1 shader precision profile through a versioned
   `ringl_get_shader_precision_format()` query. All accepted float precision

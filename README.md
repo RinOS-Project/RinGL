@@ -113,6 +113,18 @@ conditional profile remain rejected. `FRAGMENT_SHADER_DERIVATIVE_HINT` is observ
 the same context gate.  This is a bounded WebGL slice, not an OpenGL ES
 conformance claim.
 
+## Bounded fragment discard
+
+The GLSL ES frontend executes `discard;` as a terminal RSH1 instruction in the
+generic RinGPU backend. It also supports one WebGL-useful conditional form:
+an `if` with one scalar Float/i32 comparison and a mandatory `else` may discard
+on exactly one fragment branch when the other writes the complete
+`gl_FragColor` vector. The branch remains native RSH1 `JUMP_IF`/`JUMP` control
+flow; the private Aquamarine surface only owns caller-provided storage and does
+not choose the condition or emulate alpha testing. Both-discard branches,
+nested control flow, loops, and partial output writes are rejected before a
+module can be published.
+
 ## WebGL compressed textures
 
 `RINGL_ETC1_RGB8_OES`, the four linear S3TC DXT formats, and the four sRGB

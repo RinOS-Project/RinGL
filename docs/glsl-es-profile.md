@@ -28,16 +28,20 @@ The current first-triangle slice supports:
   `MUL_F32`, so RinGPU executes the operation rather than an embedding. Matrix
   arrays, cross-dimension conversion, arbitrary matrix arithmetic, and the
   specialized varying/texture profile remain unsupported;
-- scalar Float or i32 `if` conditions with exactly one comparison, a mandatory
-  `else`, and one complete `gl_Position`/`gl_FragColor` `vec4` write in each
-  branch. RinGL emits the original comparison, an i32 zero test, and forward
-  RSH1 `JUMP_IF`/`JUMP`, which the generic RinGPU backend executes. Nested or
-  local-mutating branches, vector/mixed-type conditions, partial outputs, and
-  loops remain unsupported;
+- scalar Float or i32 `if` conditions with exactly one comparison and a
+  mandatory `else`. Each branch normally writes one complete
+  `gl_Position`/`gl_FragColor` `vec4`; in a fragment shader, exactly one branch
+  may instead contain terminal `discard;` when the opposite branch writes the
+  complete `gl_FragColor`. RinGL emits the original comparison, an i32 zero
+  test, and forward RSH1 `JUMP_IF`/`JUMP`, which the generic RinGPU backend
+  executes. The discarded path terminates before output/depth/stencil/color
+  publication. Both-discard branches, nested or local-mutating branches,
+  vector/mixed-type conditions, partial outputs, and loops remain unsupported;
 - standalone fragment `discard;`: RinGL emits RSH1 `DISCARD`, and the generic
   RinGPU backend terminates the fragment before output validation or
-  depth/stencil/color publication. Vertex or conditional `discard`, loops, and
-  general control flow remain unsupported;
+  depth/stencil/color publication. Vertex discard, conditional discard outside
+  the exact scalar if/else form above, loops, and general control flow remain
+  unsupported;
 - Float `min`, `max`, `clamp`, `mix`, and `dot`: min/max/clamp use the shared
   scalar RSH1 min/max opcodes, while mix/dot expand to ordered scalar
   arithmetic. Only GLSL's matching Float scalar/vector overloads are admitted;

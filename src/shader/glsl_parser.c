@@ -942,9 +942,9 @@ static int assignment(Parser* parser)
 
 /* The lowerer makes the type and full-output checks. Keep this admission
  * grammar deliberately aligned with its executable control-flow slice: one
- * scalar comparison, one complete stage-output assignment per branch, and a
- * mandatory else. General statements and nested branches remain unsupported.
- */
+ * scalar comparison, one complete stage-output assignment per branch, or a
+ * fragment discard on exactly one branch, and a mandatory else. General
+ * statements and nested branches remain unsupported. */
 static int conditional_output_assignment(Parser* parser)
 {
     if (parser->token.kind != TOK_IDENT ||
@@ -957,8 +957,34 @@ static int conditional_output_assignment(Parser* parser)
     return assignment(parser);
 }
 
+/* Conditional discard is intentionally narrower than a general statement
+ * block. The opposite branch must still write the complete fragment output,
+ * so no path can reach RETURN with a partially initialized color vector. */
+static int conditional_branch(Parser* parser, int* discard_out)
+{
+    if (discard_out == NULL)
+        return 0;
+    *discard_out = 0;
+    if (parser->token.kind == TOK_IDENT &&
+        token_is_ident(&parser->token, "discard")) {
+        if (parser->shader_type != RINGL_FRAGMENT_SHADER) {
+            fail(parser, "discard is only available in fragment shaders");
+            return 0;
+        }
+        next_token(parser);
+        if (!expect(parser, TOK_SEMI, "expected ';' after discard"))
+            return 0;
+        *discard_out = 1;
+        return 1;
+    }
+    return conditional_output_assignment(parser);
+}
+
 static int conditional_statement(Parser* parser)
 {
+    int if_discards;
+    int else_discards;
+
     next_token(parser);
     if (!expect(parser, TOK_LPAREN, "expected '(' after if") ||
         !expression(parser)) {
@@ -974,12 +1000,16 @@ static int conditional_statement(Parser* parser)
     if (!expression(parser) ||
         !expect(parser, TOK_RPAREN, "expected ')' after if condition") ||
         !expect(parser, TOK_LBRACE, "expected '{' after if condition") ||
-        !conditional_output_assignment(parser) ||
+        !conditional_branch(parser, &if_discards) ||
         !expect(parser, TOK_RBRACE, "expected '}' after if branch") ||
         !expect(parser, TOK_ELSE, "bounded if requires else branch") ||
         !expect(parser, TOK_LBRACE, "expected '{' after else") ||
-        !conditional_output_assignment(parser) ||
+        !conditional_branch(parser, &else_discards) ||
         !expect(parser, TOK_RBRACE, "expected '}' after else branch")) {
+        return 0;
+    }
+    if (if_discards && else_discards) {
+        fail(parser, "conditional discard requires an output branch");
         return 0;
     }
     return 1;

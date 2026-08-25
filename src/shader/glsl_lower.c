@@ -2606,9 +2606,11 @@ static uint16_t comparison_opcode(Tok operator, int is_i32)
 }
 
 /* A scalar RSH1 branch can only guarantee stage output on both paths when
- * each path stores the complete fixed RGBA/clip vector. Keep this deliberately
- * narrower than general GLSL statements: no local mutation, nested branch, or
- * partial output can reach a later RETURN with an uninitialized component. */
+ * each path stores the complete fixed RGBA/clip vector. A fragment may instead
+ * discard on exactly one branch: DISCARD terminates execution before output
+ * publication. Keep this deliberately narrower than general GLSL statements:
+ * no local mutation, nested branch, or partial output can reach a later RETURN
+ * with an uninitialized component. */
 static int conditional_output_assignment(Lower* lower)
 {
     uint32_t first_instruction = lower->ins_count;
@@ -2640,6 +2642,26 @@ static int conditional_output_assignment(Lower* lower)
     return 1;
 }
 
+static int discard_statement(Lower* lower);
+
+static int conditional_branch(Lower* lower, int* discard_out)
+{
+    if (discard_out == NULL)
+        return 0;
+    *discard_out = 0;
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "discard")) {
+        if (lower->shader_type != RINGL_FRAGMENT_SHADER) {
+            fail(lower, "discard is only available in fragment shaders");
+            return 0;
+        }
+        if (!discard_statement(lower))
+            return 0;
+        *discard_out = 1;
+        return 1;
+    }
+    return conditional_output_assignment(lower);
+}
+
 static int conditional_output(Lower* lower)
 {
     Value left;
@@ -2651,6 +2673,8 @@ static int conditional_output(Lower* lower)
     uint16_t false_result;
     uint32_t jump_to_else;
     uint32_t jump_to_end;
+    int if_discards;
+    int else_discards;
 
     next(lower);
     if (!need(lower, T_LPAREN, "expected '(' after if"))
@@ -2691,7 +2715,7 @@ static int conditional_output(Lower* lower)
     jump_to_else = lower->ins_count;
     if (!emit(lower, RINGL_RSH1_OP_JUMP_IF, RINGL_RSH1_UNUSED,
               false_result, RINGL_RSH1_UNUSED, 0u) ||
-        !conditional_output_assignment(lower) ||
+        !conditional_branch(lower, &if_discards) ||
         !need(lower, T_RBRACE, "expected '}' after if branch")) {
         return 0;
     }
@@ -2703,17 +2727,21 @@ static int conditional_output(Lower* lower)
     lower->ins[jump_to_else].immediate = lower->ins_count;
     if (!need(lower, T_ELSE, "bounded if requires else branch") ||
         !need(lower, T_LBRACE, "expected '{' after else") ||
-        !conditional_output_assignment(lower) ||
+        !conditional_branch(lower, &else_discards) ||
         !need(lower, T_RBRACE, "expected '}' after else branch")) {
+        return 0;
+    }
+    if (if_discards && else_discards) {
+        fail(lower, "conditional discard requires an output branch");
         return 0;
     }
     lower->ins[jump_to_end].immediate = lower->ins_count;
     return 1;
 }
 
-/* Keep discard a terminal fragment instruction. This slice deliberately does
- * not admit it inside the bounded if/else form, which requires complete
- * outputs along both branch paths. */
+/* DISCARD is terminal for the current fragment invocation. Conditional use is
+ * admitted only by conditional_branch(), which requires a complete-output
+ * opposite branch. */
 static int discard_statement(Lower* lower)
 {
     if (lower->shader_type != RINGL_FRAGMENT_SHADER) {
@@ -2978,6 +3006,10 @@ static int parse_all(Lower* lower)
                         return 0;
                 } else if (lower->token.kind == T_IF) {
                     if (!conditional_output(lower))
+                        return 0;
+                } else if (lower->token.kind == T_IDENT &&
+                           text_is(&lower->token, "discard")) {
+                    if (!discard_statement(lower))
                         return 0;
                 } else if (!assignment(lower)) {
                     return 0;

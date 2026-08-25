@@ -375,6 +375,24 @@ int main(void)
         "void main() {\n"
         "  discard;\n"
         "}\n";
+    const char* conditional_discard_fragment_source =
+        "uniform float threshold;\n"
+        "void main() {\n"
+        "  if (threshold < 0.5) {\n"
+        "    discard;\n"
+        "  } else {\n"
+        "    gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);\n"
+        "  }\n"
+        "}\n";
+    const char* conditional_output_then_discard_fragment_source =
+        "uniform float threshold;\n"
+        "void main() {\n"
+        "  if (threshold < 0.5) {\n"
+        "    gl_FragColor = vec4(0.0, 0.0, 1.0, 1.0);\n"
+        "  } else {\n"
+        "    discard;\n"
+        "  }\n"
+        "}\n";
     const char* fragment_source =
         "precision mediump float;\n"
         "precision highp int;\n"
@@ -716,6 +734,28 @@ int main(void)
                                    blob, sizeof(blob));
     assert(header.stage == 2u);
     assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_DISCARD));
+
+    /* Conditional discard retains native forward control flow.  Each form has
+     * one complete color-output branch and one terminal discard branch, so
+     * neither the bridge nor the software surface needs to choose a result. */
+    header = lower_and_read_header(fragment, conditional_discard_fragment_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 4u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP_IF));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_DISCARD));
+
+    header = lower_and_read_header(fragment,
+                                   conditional_output_then_discard_fragment_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 4u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP_IF));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP));
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_DISCARD));
 
     header = lower_and_read_header(fragment, conditional_i32_fragment_source,

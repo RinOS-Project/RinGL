@@ -518,11 +518,16 @@ their RGBA result by one linked `uniform vec4`; RinGL materializes the finite
 four-component value in the program-owned fragment RSH1 module and retains
 the sampler-resource metadata needed to bind every native image/sampler pair.
 This specialized varying/texture shape deliberately remains `mat4` only. The
-new `mat2 * vec2` and `mat3 * vec3` forms execute only in the generic
-no-varying vertex profile; coordinate arithmetic and other matrix expressions
-remain outside both shapes. Direct texture coordinates through eight UV pairs
-fit the RSH1 interface; broader local coordinate expressions remain outside it
-and fail lowering without publishing a truncated module.
+generic no-varying vertex profile additionally executes matching Float
+`matrixCompMult(matN, matN)` for `mat2`, `mat3`, and `mat4`: scalar-diagonal,
+component-list/vector-column, and matching-copy constructors feed initialized
+local or program-owned uniform matrices, and every column-major component
+becomes an executable scalar RSH1 multiply before a matching `matN * vecN`.
+Matrix arrays, cross-dimension conversion, general matrix arithmetic, and all
+other matrix expressions remain outside both shapes. Direct texture coordinates
+through eight UV pairs fit the RSH1 interface; broader local coordinate
+expressions remain outside it and fail lowering without publishing a truncated
+module.
 
 The same transformed route supports the common vertex-color texture form: an
 `attribute vec4` is copied into a following `varying vec4`, and the exact
@@ -589,12 +594,12 @@ accepted (`pow` widths must match). `exp2` and the derived `exp`/`pow` result
 exponent are bounded to `[-126, 127]`; logarithm and power bases must be
 strictly positive. Domain and range failure reject publication rather than
 substituting host libm or a direct surface result.
-This covers common uniform color
-modulation and matrix-transformed positions (`mat2 * vec2`, `mat3 * vec3`, or
-`mat4 * vec4`) plus a vector offset while retaining explicit RSH1 resource and
-register limits; swizzles, matrix arithmetic beyond one matching
-matrix/vector product, vector comparisons, and control flow are still outside
-the profile.
+This covers common uniform color modulation and matrix-transformed positions
+(`mat2 * vec2`, `mat3 * vec3`, or `mat4 * vec4`) plus a vector offset and the
+matching Float `matrixCompMult(matN, matN)` subset described above, while
+retaining explicit RSH1 resource and register limits; swizzles, matrix arrays,
+cross-dimension conversion, general matrix arithmetic, vector comparisons, and
+control flow are still outside the profile.
 
 The frontend accepts GLSL ES global `precision lowp|mediump|highp` declarations
 for `float`, `int`, and `sampler2D`. They are not ignored text: the compiler

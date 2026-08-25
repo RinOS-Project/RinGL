@@ -136,9 +136,19 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     through program-owned RSH1 modules, with active-uniform reflection,
     locations, typed getters, finite column-major `transpose == false` setters,
     and failure-atomic replacement. The generic profile has no varyings and one
-    non-array matrix at each location; matrix arithmetic, matrix arrays, and the
-    specialized transformed texture profile beyond its existing `mat4 * vec4`
-    form remain unsupported.
+    non-array matrix at each location; matrix arrays and the specialized
+    transformed texture profile beyond its existing `mat4 * vec4` form remain
+    unsupported.
+  - [x] Lower bounded vertex `matrixCompMult` for matching Float `mat2`, `mat3`,
+    and `mat4` values into one scalar `MUL_F32` per column-major component. The
+    generic no-varying path accepts scalar-diagonal, scalar/vector component,
+    and same-dimension-copy constructors plus initialized local matrices and
+    program-owned matrix uniforms; matching `matN * vecN` then executes the
+    result on RinGPU. IR coverage includes all three dimensions and invalid
+    mixed dimensions, while the real bridge covers uniform mat2/mat3 and local
+    mat4 values. Matrix arrays, cross-dimension conversion, general
+    matrix/matrix arithmetic, and the specialized varying/texture profile stay
+    unsupported.
 - [x] Parse bounded `uniform sampler2D` declarations and retain names through shader compilation.
 - [x] Link sampler uniforms into program locations and implement `getUniformLocation`/`uniform1i`-style state.
 - [x] Report linked sampler uniforms through program reflection.

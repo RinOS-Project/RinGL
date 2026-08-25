@@ -17,6 +17,14 @@ The current first-triangle slice supports:
   chained selectors such as `.stpq.bgra`;
 - component-wise `+`, `-`, `*`, and `/` with same-width vectors or one scalar
   broadcast across a vector;
+- generic no-varying vertex `mat2`/`mat3`/`mat4` values: scalar-diagonal,
+  scalar/vector-component, and matching-dimension copy constructors; initialized
+  local matrices and vertex matrix uniforms; `matrixCompMult(matN, matN)` with
+  matching Float dimensions; and the resulting `matN * vecN`. RinGL retains
+  column-major elements and lowers every component product to scalar RSH1
+  `MUL_F32`, so RinGPU executes the operation rather than an embedding. Matrix
+  arrays, cross-dimension conversion, arbitrary matrix arithmetic, and the
+  specialized varying/texture profile remain unsupported;
 - Float `min`, `max`, `clamp`, `mix`, and `dot`: min/max/clamp use the shared
   scalar RSH1 min/max opcodes, while mix/dot expand to ordered scalar
   arithmetic. Only GLSL's matching Float scalar/vector overloads are admitted;
@@ -136,8 +144,9 @@ instructions and 68 registers. Coordinates derived from locals or different
 varyings, other expressions, and larger chains are not yet accepted.
 Nonconstant coordinates in this profile, swizzle writes, implicit float/integer
 conversion, vector constructors with mixed scalar types,
-matrices beyond the documented vertex transform, uniform arrays, additional
-varying types, loops, user functions, precision edge cases, and
+matrices beyond the documented bounded `matrixCompMult`/matrix-vector vertex
+forms, uniform arrays, additional varying types, loops, user functions,
+precision edge cases, and
 broader GLSL ES built-ins remain incremental work.
 
 ## `OES_standard_derivatives` boundary

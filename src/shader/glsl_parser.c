@@ -447,6 +447,33 @@ static int texture2d_coordinate_swizzle(Parser* parser)
     return 1;
 }
 
+/* The lowerer owns the exact component and type accounting.  The parser
+ * admits a bounded matrix argument list so it remains syntactically aligned
+ * with matN constructors without pretending that a vector argument is one
+ * scalar component. */
+static int matrix_constructor(Parser* parser)
+{
+    uint32_t argument_count = 0u;
+
+    next_token(parser);
+    if (!expect(parser, TOK_LPAREN, "expected '(' after matrix constructor"))
+        return 0;
+    if (parser->token.kind == TOK_RPAREN) {
+        fail(parser, "matrix constructor requires arguments");
+        return 0;
+    }
+    for (;;) {
+        if (++argument_count > 16u || !expression(parser)) {
+            if (argument_count > 16u)
+                fail(parser, "too many matrix constructor arguments");
+            return 0;
+        }
+        if (!accept(parser, TOK_COMMA))
+            break;
+    }
+    return expect(parser, TOK_RPAREN, "expected ')' after matrix constructor");
+}
+
 static int varying_vec2_offset(Parser* parser)
 {
     if (parser->token.kind != TOK_PLUS && parser->token.kind != TOK_MINUS)
@@ -597,6 +624,9 @@ static int primary(Parser* parser)
         parser->token.kind == TOK_VEC4 || parser->token.kind == TOK_IVEC2 ||
         parser->token.kind == TOK_IVEC3 || parser->token.kind == TOK_IVEC4)
         return constructor(parser, parser->token.kind);
+    if (parser->token.kind == TOK_MAT2 || parser->token.kind == TOK_MAT3 ||
+        parser->token.kind == TOK_MAT4)
+        return matrix_constructor(parser);
     if (parser->token.kind == TOK_IDENT) {
         Token ident = parser->token;
         Symbol* symbol = find_symbol(parser, &ident);
@@ -630,6 +660,9 @@ static int primary(Parser* parser)
         if (token_is_ident(&ident, "pow"))
             return binary_math_builtin_call(parser,
                                             "expected ')' after pow arguments");
+        if (token_is_ident(&ident, "matrixCompMult"))
+            return binary_math_builtin_call(
+                parser, "expected ')' after matrixCompMult arguments");
         if (token_is_ident(&ident, "dFdx") ||
             token_is_ident(&ident, "dFdy") ||
             token_is_ident(&ident, "fwidth")) {
@@ -877,8 +910,14 @@ static int local_declaration(Parser* parser)
         width = 4u;
     else if (parser->token.kind == TOK_IVEC4)
         width = 4u;
+    else if (parser->token.kind == TOK_MAT2)
+        width = 2u;
+    else if (parser->token.kind == TOK_MAT3)
+        width = 3u;
+    else if (parser->token.kind == TOK_MAT4)
+        width = 4u;
     else {
-        fail(parser, "expected scalar or vector type in local declaration");
+        fail(parser, "expected scalar, vector, or matrix type in local declaration");
         return 0;
     }
 
@@ -922,10 +961,13 @@ static int main_function(Parser* parser)
             parser->token.kind == TOK_INT ||
             parser->token.kind == TOK_VEC2 ||
             parser->token.kind == TOK_IVEC2 ||
-            parser->token.kind == TOK_VEC3 ||
-            parser->token.kind == TOK_IVEC3 ||
-            parser->token.kind == TOK_VEC4 ||
-            parser->token.kind == TOK_IVEC4) {
+             parser->token.kind == TOK_VEC3 ||
+             parser->token.kind == TOK_IVEC3 ||
+             parser->token.kind == TOK_VEC4 ||
+             parser->token.kind == TOK_IVEC4 ||
+             parser->token.kind == TOK_MAT2 ||
+             parser->token.kind == TOK_MAT3 ||
+             parser->token.kind == TOK_MAT4) {
             if (!local_declaration(parser))
                 return 0;
         } else if (!assignment(parser)) {

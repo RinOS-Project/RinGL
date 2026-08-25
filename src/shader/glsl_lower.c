@@ -453,8 +453,9 @@ static int emit(Lower* lower, uint16_t opcode, uint16_t dst,
 
 static Value expression(Lower* lower);
 static Value componentwise_binary(Lower* lower, const Value* left,
-                                  const Value* right, uint16_t opcode,
-                                  int allow_scalar_broadcast);
+                                   const Value* right, uint16_t opcode,
+                                   int allow_scalar_broadcast);
+static Value float_constant_value(Lower* lower, float number);
 
 static Value number_value(Lower* lower)
 {
@@ -641,6 +642,133 @@ static Value constructor_value(Lower* lower, uint8_t target_width,
     }
     result.width = target_width;
     result.is_i32 = (uint8_t)target_is_i32;
+    return result;
+}
+
+/* Matrices stay column-major all the way to matrix_times_vector(): element
+ * (column, row) is regs[column * dimension + row].  Do the constructor
+ * expansion here, rather than leave matrixCompMult to an embedding, so the
+ * same RSH1 scalar instructions run on every RinGPU backend. */
+static Value matrix_constructor_value(Lower* lower, uint8_t dimension)
+{
+    Value arguments[16];
+    Value result = invalid_value();
+    uint32_t argument_count = 0u;
+    uint32_t component_count = 0u;
+    uint32_t index;
+
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after matrix constructor"))
+        return result;
+    if (lower->token.kind == T_RPAREN) {
+        fail(lower, "matrix constructor requires arguments");
+        return result;
+    }
+    for (;;) {
+        Value argument;
+
+        if (argument_count == sizeof(arguments) / sizeof(arguments[0])) {
+            fail(lower, "too many matrix constructor arguments");
+            return result;
+        }
+        argument = expression(lower);
+        if (argument.width == 0u)
+            return result;
+        if (argument.is_i32) {
+            fail(lower, "matrix constructor requires floating-point values");
+            return result;
+        }
+        if (argument.matrix &&
+            (argument_count != 0u || argument.matrix != dimension)) {
+            fail(lower, "matrix constructor only accepts a matching matrix copy");
+            return result;
+        }
+        if (!argument.matrix && component_count + argument.width >
+                                    (uint32_t)dimension * dimension) {
+            fail(lower, "too many matrix constructor components");
+            return result;
+        }
+        arguments[argument_count++] = argument;
+        if (!argument.matrix)
+            component_count += argument.width;
+        if (!take(lower, T_COMMA))
+            break;
+    }
+    if (!need(lower, T_RPAREN, "expected ')' after matrix constructor"))
+        return invalid_value();
+
+    if (argument_count == 1u && arguments[0].matrix) {
+        result = arguments[0];
+        return result;
+    }
+    if (argument_count == 1u && component_count == 1u) {
+        Value zero = float_constant_value(lower, 0.0f);
+
+        if (zero.width == 0u)
+            return invalid_value();
+        for (index = 0u; index < (uint32_t)dimension * dimension; ++index)
+            result.regs[index] = index / dimension == index % dimension
+                ? arguments[0].regs[0] : zero.regs[0];
+    } else {
+        uint32_t destination = 0u;
+        uint32_t argument_index;
+
+        if (component_count != (uint32_t)dimension * dimension) {
+            fail(lower, "matrix constructor component count mismatch");
+            return invalid_value();
+        }
+        for (argument_index = 0u; argument_index < argument_count;
+             ++argument_index) {
+            const Value* argument = &arguments[argument_index];
+            uint32_t component;
+
+            for (component = 0u; component < argument->width; ++component)
+                result.regs[destination++] = argument->regs[component];
+        }
+    }
+    result.width = dimension;
+    result.matrix = dimension;
+    return result;
+}
+
+static Value matrix_component_multiply_value(Lower* lower)
+{
+    Value left;
+    Value right;
+    Value result = invalid_value();
+    uint32_t index;
+    uint32_t component_count;
+
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after matrixCompMult"))
+        return result;
+    left = expression(lower);
+    if (left.width == 0u || !need(lower, T_COMMA,
+                                  "expected ',' in matrixCompMult"))
+        return result;
+    right = expression(lower);
+    if (right.width == 0u ||
+        !need(lower, T_RPAREN, "expected ')' after matrixCompMult")) {
+        return result;
+    }
+    if (!left.matrix || !right.matrix || left.matrix != right.matrix ||
+        left.is_i32 || right.is_i32) {
+        fail(lower, "matrixCompMult requires matching floating-point matrices");
+        return result;
+    }
+    component_count = (uint32_t)left.matrix * left.matrix;
+    for (index = 0u; index < component_count; ++index) {
+        uint16_t destination = new_reg(lower);
+
+        if (destination == RINGL_RSH1_UNUSED ||
+            !emit(lower, RINGL_RSH1_OP_MUL_F32, destination,
+                  left.regs[index], right.regs[index], 0u)) {
+            return invalid_value();
+        }
+        result.regs[index] = destination;
+    }
+    result.width = left.width;
+    result.matrix = left.matrix;
     return result;
 }
 
@@ -1935,6 +2063,12 @@ static Value primary(Lower* lower)
         return constructor_value(lower, 3u, 0);
     if (lower->token.kind == T_VEC4)
         return constructor_value(lower, 4u, 0);
+    if (lower->token.kind == T_MAT2)
+        return matrix_constructor_value(lower, 2u);
+    if (lower->token.kind == T_MAT3)
+        return matrix_constructor_value(lower, 3u);
+    if (lower->token.kind == T_MAT4)
+        return matrix_constructor_value(lower, 4u);
     if (lower->token.kind == T_IVEC2)
         return constructor_value(lower, 2u, 1);
     if (lower->token.kind == T_IVEC3)
@@ -2017,6 +2151,8 @@ static Value primary(Lower* lower)
                                        "log2 builtin requires floating-point values");
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "pow"))
         return pow_value(lower);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "matrixCompMult"))
+        return matrix_component_multiply_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "sign"))
         return sign_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "step"))
@@ -2217,7 +2353,8 @@ static Value expression(Lower* lower)
     return left;
 }
 
-static int local_decl(Lower* lower, uint8_t width, int is_i32)
+static int local_decl(Lower* lower, uint8_t width, int is_i32,
+                      uint8_t matrix_dimension)
 {
     Token name;
     Symbol* symbol;
@@ -2231,20 +2368,21 @@ static int local_decl(Lower* lower, uint8_t width, int is_i32)
         fail(lower, "duplicate local");
         return 0;
     }
-    symbol = add_symbol(lower, &name, 0, width, 0u);
+    symbol = add_symbol(lower, &name, 0, width, matrix_dimension);
     if (symbol == NULL)
         return 0;
     symbol->is_i32 = (uint8_t)is_i32;
     next(lower);
     if (take(lower, T_ASSIGN)) {
         Value value = expression(lower);
-        if (value.matrix || value.width != width ||
+        if (value.matrix != matrix_dimension || value.width != width ||
             value.is_i32 != (uint8_t)is_i32) {
             fail(lower, "local initializer component count mismatch");
             return 0;
         }
         memcpy(symbol->regs, value.regs,
-               (size_t)width * sizeof(value.regs[0]));
+               (size_t)(matrix_dimension ? (uint32_t)matrix_dimension * matrix_dimension
+                                         : width) * sizeof(value.regs[0]));
         symbol->initialized = 1u;
     }
     return need(lower, T_SEMI, "expected ';' after local");
@@ -2371,12 +2509,14 @@ static int assignment(Lower* lower)
         fail(lower, "attribute or uniform is read-only");
         return 0;
     }
-    if (symbol->width != value.width || symbol->is_i32 != value.is_i32) {
+    if (symbol->matrix != value.matrix || symbol->width != value.width ||
+        symbol->is_i32 != value.is_i32) {
         fail(lower, "assignment width mismatch");
         return 0;
     }
     memcpy(symbol->regs, value.regs,
-           (size_t)value.width * sizeof(value.regs[0]));
+           (size_t)(value.matrix ? (uint32_t)value.matrix * value.matrix
+                                 : value.width) * sizeof(value.regs[0]));
     symbol->initialized = 1u;
     return 1;
 }
@@ -2611,16 +2751,24 @@ static int parse_all(Lower* lower)
                     lower->token.kind == T_INT ||
                     lower->token.kind == T_IVEC2 ||
                     lower->token.kind == T_IVEC3 ||
-                    lower->token.kind == T_IVEC4) {
+                    lower->token.kind == T_IVEC4 ||
+                    lower->token.kind == T_MAT2 ||
+                    lower->token.kind == T_MAT3 ||
+                    lower->token.kind == T_MAT4) {
                     uint8_t width = lower->token.kind == T_FLOAT ||
-                                    lower->token.kind == T_INT ? 1u
-                        : lower->token.kind == T_VEC2 || lower->token.kind == T_IVEC2 ? 2u
-                        : lower->token.kind == T_VEC3 || lower->token.kind == T_IVEC3 ? 3u : 4u;
+                                     lower->token.kind == T_INT ? 1u
+                        : lower->token.kind == T_VEC2 || lower->token.kind == T_IVEC2 ||
+                          lower->token.kind == T_MAT2 ? 2u
+                        : lower->token.kind == T_VEC3 || lower->token.kind == T_IVEC3 ||
+                          lower->token.kind == T_MAT3 ? 3u : 4u;
                     int is_i32 = lower->token.kind == T_INT ||
                                  lower->token.kind == T_IVEC2 ||
                                  lower->token.kind == T_IVEC3 ||
                                  lower->token.kind == T_IVEC4;
-                    if (!local_decl(lower, width, is_i32))
+                    uint8_t matrix_dimension = lower->token.kind == T_MAT2 ? 2u
+                        : lower->token.kind == T_MAT3 ? 3u
+                        : lower->token.kind == T_MAT4 ? 4u : 0u;
+                    if (!local_decl(lower, width, is_i32, matrix_dimension))
                         return 0;
                 } else if (!assignment(lower)) {
                     return 0;

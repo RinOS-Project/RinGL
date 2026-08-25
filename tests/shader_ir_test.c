@@ -314,6 +314,30 @@ int main(void)
         "                     position.y + natural_log + exponents.x - 1.0,\n"
         "                     powered.x + powered.y, 1.0);\n"
         "}\n";
+    const char* matrix2_component_multiply_source =
+        "attribute vec2 position;\n"
+        "void main() {\n"
+        "  mat2 identity = mat2(1.0);\n"
+        "  mat2 scale = matrixCompMult(mat2(0.5), identity);\n"
+        "  gl_Position = vec4(scale * position, 0.0, 1.0);\n"
+        "}\n";
+    const char* matrix3_component_multiply_source =
+        "attribute vec3 position;\n"
+        "void main() {\n"
+        "  mat3 original = mat3(vec3(1.0, 0.0, 0.0),\n"
+        "                       vec3(0.0, 1.0, 0.0),\n"
+        "                       vec3(0.0, 0.0, 1.0));\n"
+        "  mat3 copied = mat3(original);\n"
+        "  mat3 result = matrixCompMult(copied, mat3(1.0));\n"
+        "  gl_Position = vec4(result * position, 1.0);\n"
+        "}\n";
+    const char* matrix4_component_multiply_source =
+        "attribute vec4 position;\n"
+        "void main() {\n"
+        "  mat4 scale = mat4(0.5);\n"
+        "  mat4 result = matrixCompMult(scale, mat4(1.0));\n"
+        "  gl_Position = result * position;\n"
+        "}\n";
     const char* fragment_source =
         "precision mediump float;\n"
         "precision highp int;\n"
@@ -600,6 +624,39 @@ int main(void)
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_EXP2_F32));
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_LOG2_F32));
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_POW_F32));
+
+    /* matrixCompMult is component-wise, column-major RSH1 MUL_F32.  These
+     * three modules exercise scalar-diagonal, vector-column, and matching
+     * matrix-copy construction as well as local matrix storage and matN*vecN. */
+    header = lower_and_read_header(vertex, matrix2_component_multiply_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 2u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
+
+    header = lower_and_read_header(vertex, matrix3_component_multiply_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 3u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
+
+    header = lower_and_read_header(vertex, matrix4_component_multiply_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 4u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
+
+    ringl_shader_source(vertex,
+                        "attribute vec2 position; void main() { "
+                        "mat2 invalid = matrixCompMult(mat2(1.0), mat3(1.0)); "
+                        "gl_Position = vec4(invalid * position, 0.0, 1.0); }", -1);
+    ringl_compile_shader(vertex);
+    assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(vertex) != 0);
+    assert(ringl_get_shader_rsh1_size(vertex) == 0u);
 
     ringl_shader_source(vertex,
                         "attribute vec2 position; void main() { "

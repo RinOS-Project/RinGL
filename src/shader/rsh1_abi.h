@@ -59,6 +59,8 @@ enum RinGLRsh1Opcode {
     RINGL_RSH1_OP_FWIDTH_F32 = 58,
     /* Kept numerically aligned with RinShader's scalar floor operation. */
     RINGL_RSH1_OP_FLOOR_F32 = 59,
+    /* Kept numerically aligned with RinShader's scalar square root. */
+    RINGL_RSH1_OP_SQRT_F32 = 60,
 };
 
 enum RinGLRsh1Builtin {

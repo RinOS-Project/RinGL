@@ -45,6 +45,7 @@ typedef struct __attribute__((packed)) Instruction {
 #define RSH1_OP_MIN_F32 UINT16_C(24)
 #define RSH1_OP_MAX_F32 UINT16_C(25)
 #define RSH1_OP_FLOOR_F32 UINT16_C(59)
+#define RSH1_OP_SQRT_F32 UINT16_C(60)
 #define RSH1_OP_LOAD_BUILTIN_F32 UINT16_C(52)
 #define RSH1_BUILTIN_POINT_COORD_X UINT32_C(16)
 #define RSH1_BUILTIN_POINT_COORD_Y UINT32_C(17)
@@ -260,6 +261,22 @@ int main(void)
         "  vec2 oriented = sign(curve - 0.5);\n"
         "  vec2 threshold = step(0.25, curve);\n"
         "  gl_Position = vec4(rounded + oriented + threshold, 0.0, 1.0);\n"
+        "}\n";
+    const char* geometric_builtin_source =
+        "attribute vec3 position;\n"
+        "void main() {\n"
+        "  vec3 normal = normalize(position);\n"
+        "  vec3 perpendicular = cross(normal, vec3(0.0, 1.0, 0.0));\n"
+        "  vec3 reflected = reflect(perpendicular, normal);\n"
+        "  vec3 bent = refract(reflected, normal, 0.5);\n"
+        "  float spacing = distance(normal.xy, bent.xy);\n"
+        "  gl_Position = vec4(sqrt(length(bent) + spacing), inversesqrt(4.0), 0.0, 1.0);\n"
+        "}\n";
+    const char* faceforward_builtin_source =
+        "attribute vec2 position;\n"
+        "void main() {\n"
+        "  vec2 facing = faceforward(position, vec2(-1.0, 0.0), vec2(1.0, 0.0));\n"
+        "  gl_Position = vec4(facing, 0.0, 1.0);\n"
         "}\n";
     const char* fragment_source =
         "precision mediump float;\n"
@@ -526,6 +543,26 @@ int main(void)
     assert(header.output_count == 9u);
     assert(header.instruction_count == 20u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_DIV_F32));
+
+    /* Geometric builtins lower through scalar square root, arithmetic, and
+     * comparisons. There is no callback for a browser or Aquamarine backend
+     * to evaluate the original GLSL expression. */
+    header = lower_and_read_header(vertex, geometric_builtin_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 3u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_SQRT_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_MAX_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_DIV_F32));
+
+    header = lower_and_read_header(vertex, faceforward_builtin_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 2u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
 
     header = lower_and_read_header(
         vertex, point_size_scalar_attribute_color_varying_vertex_source,

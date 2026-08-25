@@ -659,7 +659,7 @@ int main(void)
                                    blob, sizeof(blob));
     assert(header.stage == 1u);
     assert(header.input_count == 2u);
-    assert(header.output_count == 4u);
+    assert(header.output_count == 9u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_EXP2_F32));
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_LOG2_F32));
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_POW_F32));
@@ -696,7 +696,7 @@ int main(void)
                                    blob, sizeof(blob));
     assert(header.stage == 1u);
     assert(header.input_count == 2u);
-    assert(header.output_count == 4u);
+    assert(header.output_count == 9u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_I32_TO_F32));
 
     /* Bounded scalar if/else emits a true scalar comparison, a zero test,
@@ -706,7 +706,7 @@ int main(void)
                                    blob, sizeof(blob));
     assert(header.stage == 1u);
     assert(header.input_count == 2u);
-    assert(header.output_count == 4u);
+    assert(header.output_count == 9u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_CMP_LT_F32));
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_CMP_EQ_I32));
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP_IF));
@@ -805,7 +805,7 @@ int main(void)
                                    blob, sizeof(blob));
     assert(header.stage == 1u);
     assert(header.input_count == 3u);
-    assert(header.output_count == 4u);
+    assert(header.output_count == 9u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_SQRT_F32));
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_MAX_F32));
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
@@ -815,7 +815,7 @@ int main(void)
                                    blob, sizeof(blob));
     assert(header.stage == 1u);
     assert(header.input_count == 2u);
-    assert(header.output_count == 4u);
+    assert(header.output_count == 9u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
 
     header = lower_and_read_header(
@@ -880,7 +880,7 @@ int main(void)
                                    blob, sizeof(blob));
     assert(header.stage == 1u);
     assert(header.input_count == 4u);
-    assert(header.output_count == 4u);
+    assert(header.output_count == 9u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_MIN_F32));
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_MAX_F32));
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
@@ -893,7 +893,7 @@ int main(void)
                                    blob, sizeof(blob));
     assert(header.stage == 1u);
     assert(header.input_count == 2u);
-    assert(header.output_count == 4u);
+    assert(header.output_count == 9u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_FLOOR_F32));
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_MIN_F32));
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_MAX_F32));

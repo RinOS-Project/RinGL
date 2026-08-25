@@ -39,6 +39,9 @@ typedef struct __attribute__((packed)) Instruction {
 
 #define RSH1_OP_STORE_OUTPUT_F32 UINT16_C(46)
 #define RSH1_OP_ADD_F32 UINT16_C(20)
+#define RSH1_OP_SUB_F32 UINT16_C(21)
+#define RSH1_OP_MUL_F32 UINT16_C(22)
+#define RSH1_OP_DIV_F32 UINT16_C(23)
 
 static int rsh1_has_opcode(const uint8_t* blob, const Header* header,
                            uint16_t opcode)
@@ -200,6 +203,21 @@ int main(void)
         "varying vec4 vertexColor; void main() { "
         "gl_Position = vec4(position, 0.0, 1.0); "
         "vertexColor = color; gl_PointSize = color.r + 1.0; }";
+    const char* point_size_attribute_subtract_color_varying_vertex_source =
+        "attribute vec2 position; attribute vec4 color; "
+        "varying vec4 vertexColor; void main() { "
+        "gl_Position = vec4(position, 0.0, 1.0); "
+        "vertexColor = color; gl_PointSize = color.g - 0.5; }";
+    const char* point_size_attribute_multiply_color_varying_vertex_source =
+        "attribute vec2 position; attribute vec4 color; "
+        "varying vec4 vertexColor; void main() { "
+        "gl_Position = vec4(position, 0.0, 1.0); "
+        "vertexColor = color; gl_PointSize = color.b * 2.0; }";
+    const char* point_size_attribute_divide_color_varying_vertex_source =
+        "attribute vec2 position; attribute vec4 color; "
+        "varying vec4 vertexColor; void main() { "
+        "gl_Position = vec4(position, 0.0, 1.0); "
+        "vertexColor = color; gl_PointSize = color.a / 2.0; }";
     const char* vector_arithmetic_source =
         "attribute vec4 position;\n"
         "void main() {\n"
@@ -427,6 +445,33 @@ int main(void)
     assert(header.instruction_count == 20u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_ADD_F32));
 
+    header = lower_and_read_header(
+        vertex, point_size_attribute_subtract_color_varying_vertex_source,
+        blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 6u);
+    assert(header.output_count == 9u);
+    assert(header.instruction_count == 20u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_SUB_F32));
+
+    header = lower_and_read_header(
+        vertex, point_size_attribute_multiply_color_varying_vertex_source,
+        blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 6u);
+    assert(header.output_count == 9u);
+    assert(header.instruction_count == 20u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
+
+    header = lower_and_read_header(
+        vertex, point_size_attribute_divide_color_varying_vertex_source,
+        blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 6u);
+    assert(header.output_count == 9u);
+    assert(header.instruction_count == 20u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_DIV_F32));
+
     /* Structural varying lowering accepts the documented finite literal or
      * scalar-float-uniform/attribute-component point-size forms. A broader
      * expression must fail before a native module can be published with an
@@ -436,6 +481,16 @@ int main(void)
                         "varying vec4 vertexColor; void main() { "
                         "gl_Position = vec4(position, 0.0, 1.0); "
                         "vertexColor = color; gl_PointSize = color.r * color.g; }", -1);
+    ringl_compile_shader(vertex);
+    assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(vertex) != 0);
+    assert(ringl_get_shader_rsh1_size(vertex) == 0u);
+
+    ringl_shader_source(vertex,
+                        "attribute vec2 position; attribute vec4 color; "
+                        "varying vec4 vertexColor; void main() { "
+                        "gl_Position = vec4(position, 0.0, 1.0); "
+                        "vertexColor = color; gl_PointSize = color.r / 0.0; }", -1);
     ringl_compile_shader(vertex);
     assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
     assert(ringl_lower_shader_rsh1(vertex) != 0);

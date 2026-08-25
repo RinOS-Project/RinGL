@@ -129,7 +129,8 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   `#extension GL_OES_standard_derivatives : enable`/`require` source lowers
   `dFdx`/`dFdy`/`fwidth` on finite float/vecN varying/arithmetic values to RSH1
   56/57/58. Parser/lower/state and real RinGPU/Aquamarine executor regressions
-  cover it. Texture-sample derivatives, control flow, and fine/coarse variants
+  cover it. Texture-sample derivatives, derivatives through the bounded
+  conditional form, and fine/coarse variants
   remain explicitly unsupported and are rejected.
 - [x] Reuse RinShader validation through public `ringpu_create_shader_module()` before backend shader creation.
 - [x] Implement the initial vertex/fragment shader linking checks.
@@ -159,6 +160,13 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     mat4 values. Matrix arrays, cross-dimension conversion, general
     matrix/matrix arithmetic, and the specialized varying/texture profile stay
     unsupported.
+  - [x] Lower bounded scalar `if`/`else` whose two branches each assign the
+    complete stage output. Matching Float or i32 scalar comparisons emit their
+    real RSH1 comparison, an i32 zero test, and forward `JUMP_IF`/`JUMP`; the
+    generic RinGPU executor runs those instructions. Missing `else`, vector or
+    mixed-type conditions, local mutation, nested branches, partial outputs,
+    and loops remain rejected. Strict IR covers Float/i32 branches and invalid
+    forms; the Ladybird→RinGL→RinGPU bridge reads both red and blue targets.
 - [x] Parse bounded `uniform sampler2D` declarations and retain names through shader compilation.
 - [x] Link sampler uniforms into program locations and implement `getUniformLocation`/`uniform1i`-style state.
 - [x] Report linked sampler uniforms through program reflection.

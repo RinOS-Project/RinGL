@@ -44,6 +44,11 @@ typedef struct __attribute__((packed)) Instruction {
 #define RSH1_OP_DIV_F32 UINT16_C(23)
 #define RSH1_OP_MIN_F32 UINT16_C(24)
 #define RSH1_OP_MAX_F32 UINT16_C(25)
+#define RSH1_OP_JUMP UINT16_C(11)
+#define RSH1_OP_JUMP_IF UINT16_C(12)
+#define RSH1_OP_CMP_EQ_I32 UINT16_C(31)
+#define RSH1_OP_CMP_NE_I32 UINT16_C(32)
+#define RSH1_OP_CMP_LT_F32 UINT16_C(39)
 #define RSH1_OP_I32_TO_F32 UINT16_C(43)
 #define RSH1_OP_FLOOR_F32 UINT16_C(59)
 #define RSH1_OP_SQRT_F32 UINT16_C(60)
@@ -346,6 +351,24 @@ int main(void)
         "  vec2 scale = vec2(float(units.x), float(units.y));\n"
         "  vec4 depth_and_w = vec4(0.5);\n"
         "  gl_Position = vec4(position * scale, depth_and_w.z, depth_and_w.w);\n"
+        "}\n";
+    const char* conditional_vertex_source =
+        "attribute vec2 position;\n"
+        "void main() {\n"
+        "  if (position.x < 0.0) {\n"
+        "    gl_Position = vec4(-position, 0.0, 1.0);\n"
+        "  } else {\n"
+        "    gl_Position = vec4(position, 0.0, 1.0);\n"
+        "  }\n"
+        "}\n";
+    const char* conditional_i32_fragment_source =
+        "uniform int selector;\n"
+        "void main() {\n"
+        "  if (selector != 0) {\n"
+        "    gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);\n"
+        "  } else {\n"
+        "    gl_FragColor = vec4(0.0, 0.0, 1.0, 1.0);\n"
+        "  }\n"
         "}\n";
     const char* fragment_source =
         "precision mediump float;\n"
@@ -669,10 +692,49 @@ int main(void)
     assert(header.output_count == 4u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_I32_TO_F32));
 
+    /* Bounded scalar if/else emits a true scalar comparison, a zero test,
+     * and forward branch instructions. This must remain native RSH1 control
+     * flow rather than an embedding-side choice. */
+    header = lower_and_read_header(vertex, conditional_vertex_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 2u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_CMP_LT_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_CMP_EQ_I32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP_IF));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP));
+
+    header = lower_and_read_header(fragment, conditional_i32_fragment_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 4u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_CMP_NE_I32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_CMP_EQ_I32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP_IF));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP));
+
     ringl_shader_source(vertex,
                         "attribute vec2 position; void main() { "
                         "mat2 invalid = matrixCompMult(mat2(1.0), mat3(1.0)); "
                         "gl_Position = vec4(invalid * position, 0.0, 1.0); }", -1);
+    ringl_compile_shader(vertex);
+    assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(vertex) != 0);
+    assert(ringl_get_shader_rsh1_size(vertex) == 0u);
+
+    ringl_shader_source(vertex,
+                        "void main() { if (1.0 < 2.0) { "
+                        "gl_Position = vec4(0.0); } }", -1);
+    ringl_compile_shader(vertex);
+    assert(ringl_get_shader_compile_status(vertex) == RINGL_FALSE);
+
+    ringl_shader_source(vertex,
+                        "attribute vec2 position; void main() { "
+                        "if (position < vec2(0.0)) { "
+                        "gl_Position = vec4(position, 0.0, 1.0); } else { "
+                        "gl_Position = vec4(-position, 0.0, 1.0); } }", -1);
     ringl_compile_shader(vertex);
     assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
     assert(ringl_lower_shader_rsh1(vertex) != 0);

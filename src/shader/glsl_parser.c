@@ -49,6 +49,14 @@ typedef enum TokenKind {
     TOK_COLON,
     TOK_LBRACKET,
     TOK_RBRACKET,
+    TOK_IF,
+    TOK_ELSE,
+    TOK_EQ,
+    TOK_NE,
+    TOK_LT,
+    TOK_LE,
+    TOK_GT,
+    TOK_GE,
     TOK_INVALID,
 } TokenKind;
 
@@ -179,6 +187,10 @@ static TokenKind keyword_kind(const char* begin, size_t length)
         return TOK_MEDIUMP;
     if (length == 5u && memcmp(begin, "highp", 5u) == 0)
         return TOK_HIGHP;
+    if (length == 2u && memcmp(begin, "if", 2u) == 0)
+        return TOK_IF;
+    if (length == 4u && memcmp(begin, "else", 4u) == 0)
+        return TOK_ELSE;
     return TOK_IDENT;
 }
 
@@ -270,7 +282,46 @@ static void next_token(Parser* parser)
     case '}': token.kind = TOK_RBRACE; break;
     case ';': token.kind = TOK_SEMI; break;
     case ',': token.kind = TOK_COMMA; break;
-    case '=': token.kind = TOK_ASSIGN; break;
+    case '=':
+        if (parser->offset < parser->length &&
+            parser->source[parser->offset] == '=') {
+            parser->offset++;
+            token.length = 2u;
+            token.kind = TOK_EQ;
+        } else {
+            token.kind = TOK_ASSIGN;
+        }
+        break;
+    case '!':
+        if (parser->offset < parser->length &&
+            parser->source[parser->offset] == '=') {
+            parser->offset++;
+            token.length = 2u;
+            token.kind = TOK_NE;
+        } else {
+            token.kind = TOK_INVALID;
+        }
+        break;
+    case '<':
+        if (parser->offset < parser->length &&
+            parser->source[parser->offset] == '=') {
+            parser->offset++;
+            token.length = 2u;
+            token.kind = TOK_LE;
+        } else {
+            token.kind = TOK_LT;
+        }
+        break;
+    case '>':
+        if (parser->offset < parser->length &&
+            parser->source[parser->offset] == '=') {
+            parser->offset++;
+            token.length = 2u;
+            token.kind = TOK_GE;
+        } else {
+            token.kind = TOK_GT;
+        }
+        break;
     case '+': token.kind = TOK_PLUS; break;
     case '-': token.kind = TOK_MINUS; break;
     case '*': token.kind = TOK_STAR; break;
@@ -889,6 +940,51 @@ static int assignment(Parser* parser)
     return 1;
 }
 
+/* The lowerer makes the type and full-output checks. Keep this admission
+ * grammar deliberately aligned with its executable control-flow slice: one
+ * scalar comparison, one complete stage-output assignment per branch, and a
+ * mandatory else. General statements and nested branches remain unsupported.
+ */
+static int conditional_output_assignment(Parser* parser)
+{
+    if (parser->token.kind != TOK_IDENT ||
+        (parser->shader_type == RINGL_VERTEX_SHADER
+             ? !token_is_ident(&parser->token, "gl_Position")
+             : !token_is_ident(&parser->token, "gl_FragColor"))) {
+        fail(parser, "if branches must assign the stage output");
+        return 0;
+    }
+    return assignment(parser);
+}
+
+static int conditional_statement(Parser* parser)
+{
+    next_token(parser);
+    if (!expect(parser, TOK_LPAREN, "expected '(' after if") ||
+        !expression(parser)) {
+        return 0;
+    }
+    if (parser->token.kind != TOK_EQ && parser->token.kind != TOK_NE &&
+        parser->token.kind != TOK_LT && parser->token.kind != TOK_LE &&
+        parser->token.kind != TOK_GT && parser->token.kind != TOK_GE) {
+        fail(parser, "if condition requires one scalar comparison");
+        return 0;
+    }
+    next_token(parser);
+    if (!expression(parser) ||
+        !expect(parser, TOK_RPAREN, "expected ')' after if condition") ||
+        !expect(parser, TOK_LBRACE, "expected '{' after if condition") ||
+        !conditional_output_assignment(parser) ||
+        !expect(parser, TOK_RBRACE, "expected '}' after if branch") ||
+        !expect(parser, TOK_ELSE, "bounded if requires else branch") ||
+        !expect(parser, TOK_LBRACE, "expected '{' after else") ||
+        !conditional_output_assignment(parser) ||
+        !expect(parser, TOK_RBRACE, "expected '}' after else branch")) {
+        return 0;
+    }
+    return 1;
+}
+
 static int local_declaration(Parser* parser)
 {
     Token name;
@@ -969,6 +1065,9 @@ static int main_function(Parser* parser)
              parser->token.kind == TOK_MAT3 ||
              parser->token.kind == TOK_MAT4) {
             if (!local_declaration(parser))
+                return 0;
+        } else if (parser->token.kind == TOK_IF) {
+            if (!conditional_statement(parser))
                 return 0;
         } else if (!assignment(parser)) {
             return 0;

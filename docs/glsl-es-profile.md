@@ -28,6 +28,12 @@ The current first-triangle slice supports:
   `MUL_F32`, so RinGPU executes the operation rather than an embedding. Matrix
   arrays, cross-dimension conversion, arbitrary matrix arithmetic, and the
   specialized varying/texture profile remain unsupported;
+- scalar Float or i32 `if` conditions with exactly one comparison, a mandatory
+  `else`, and one complete `gl_Position`/`gl_FragColor` `vec4` write in each
+  branch. RinGL emits the original comparison, an i32 zero test, and forward
+  RSH1 `JUMP_IF`/`JUMP`, which the generic RinGPU backend executes. Nested or
+  local-mutating branches, vector/mixed-type conditions, partial outputs, and
+  loops remain unsupported;
 - Float `min`, `max`, `clamp`, `mix`, and `dot`: min/max/clamp use the shared
   scalar RSH1 min/max opcodes, while mix/dot expand to ordered scalar
   arithmetic. Only GLSL's matching Float scalar/vector overloads are admitted;
@@ -150,7 +156,7 @@ Nonconstant coordinates in this profile, swizzle writes, implicit float/integer
 conversion, vector constructors with mixed scalar types,
 matrices beyond the documented bounded `matrixCompMult`/matrix-vector vertex
 forms, uniform arrays, additional varying types, loops, user functions,
-precision edge cases, and
+general/nested control flow, precision edge cases, and
 broader GLSL ES built-ins remain incremental work.
 
 ## `OES_standard_derivatives` boundary
@@ -164,10 +170,10 @@ component-wise to RSH1 opcodes 56, 57, and 58; `fwidth(x)` is evaluated as
 `abs(dFdx(x)) + abs(dFdy(x))` by the executor.
 
 The bounded profile accepts finite scalar/vector values obtained from fragment
-varyings and supported arithmetic.  It does not implement derivatives through
-texture samples, control flow, or `dFdxFine`/`dFdyFine`/coarse variants.  Those
-forms fail compilation/linking before a draw is submitted; they are not mapped
-to a zero derivative or to a browser-local fallback.
+varyings and supported arithmetic. It does not implement derivatives through
+texture samples, the bounded conditional form, or `dFdxFine`/`dFdyFine`/coarse
+variants. Those forms fail compilation/linking before a draw is submitted;
+they are not mapped to a zero derivative or to a browser-local fallback.
 
 ## Vertex input mapping
 

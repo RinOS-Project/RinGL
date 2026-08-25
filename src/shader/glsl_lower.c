@@ -49,6 +49,14 @@ typedef enum Tok {
     T_COLON,
     T_LBRACKET,
     T_RBRACKET,
+    T_IF,
+    T_ELSE,
+    T_EQ,
+    T_NE,
+    T_LT,
+    T_LE,
+    T_GT,
+    T_GE,
     T_BAD
 } Tok;
 
@@ -198,6 +206,10 @@ static Tok keyword(const char* begin, size_t length)
         return T_MEDIUMP;
     if (length == 5u && memcmp(begin, "highp", 5u) == 0)
         return T_HIGHP;
+    if (length == 2u && memcmp(begin, "if", 2u) == 0)
+        return T_IF;
+    if (length == 4u && memcmp(begin, "else", 4u) == 0)
+        return T_ELSE;
     return T_IDENT;
 }
 
@@ -281,7 +293,46 @@ static void next(Lower* lower)
     case '}': token.kind = T_RBRACE; break;
     case ';': token.kind = T_SEMI; break;
     case ',': token.kind = T_COMMA; break;
-    case '=': token.kind = T_ASSIGN; break;
+    case '=':
+        if (lower->offset < lower->length &&
+            lower->source[lower->offset] == '=') {
+            lower->offset++;
+            token.length = 2u;
+            token.kind = T_EQ;
+        } else {
+            token.kind = T_ASSIGN;
+        }
+        break;
+    case '!':
+        if (lower->offset < lower->length &&
+            lower->source[lower->offset] == '=') {
+            lower->offset++;
+            token.length = 2u;
+            token.kind = T_NE;
+        } else {
+            token.kind = T_BAD;
+        }
+        break;
+    case '<':
+        if (lower->offset < lower->length &&
+            lower->source[lower->offset] == '=') {
+            lower->offset++;
+            token.length = 2u;
+            token.kind = T_LE;
+        } else {
+            token.kind = T_LT;
+        }
+        break;
+    case '>':
+        if (lower->offset < lower->length &&
+            lower->source[lower->offset] == '=') {
+            lower->offset++;
+            token.length = 2u;
+            token.kind = T_GE;
+        } else {
+            token.kind = T_GT;
+        }
+        break;
     case '+': token.kind = T_PLUS; break;
     case '-': token.kind = T_MINUS; break;
     case '*': token.kind = T_STAR; break;
@@ -2534,6 +2585,132 @@ static int assignment(Lower* lower)
     return 1;
 }
 
+static uint16_t comparison_opcode(Tok operator, int is_i32)
+{
+    switch (operator) {
+    case T_EQ:
+        return is_i32 ? RINGL_RSH1_OP_CMP_EQ_I32 : RINGL_RSH1_OP_CMP_EQ_F32;
+    case T_NE:
+        return is_i32 ? RINGL_RSH1_OP_CMP_NE_I32 : RINGL_RSH1_OP_CMP_NE_F32;
+    case T_LT:
+        return is_i32 ? RINGL_RSH1_OP_CMP_LT_I32 : RINGL_RSH1_OP_CMP_LT_F32;
+    case T_LE:
+        return is_i32 ? RINGL_RSH1_OP_CMP_LE_I32 : RINGL_RSH1_OP_CMP_LE_F32;
+    case T_GT:
+        return is_i32 ? RINGL_RSH1_OP_CMP_GT_I32 : RINGL_RSH1_OP_CMP_GT_F32;
+    case T_GE:
+        return is_i32 ? RINGL_RSH1_OP_CMP_GE_I32 : RINGL_RSH1_OP_CMP_GE_F32;
+    default:
+        return 0u;
+    }
+}
+
+/* A scalar RSH1 branch can only guarantee stage output on both paths when
+ * each path stores the complete fixed RGBA/clip vector. Keep this deliberately
+ * narrower than general GLSL statements: no local mutation, nested branch, or
+ * partial output can reach a later RETURN with an uninitialized component. */
+static int conditional_output_assignment(Lower* lower)
+{
+    uint32_t first_instruction = lower->ins_count;
+    uint32_t component;
+
+    if (lower->token.kind != T_IDENT ||
+        (lower->shader_type == RINGL_VERTEX_SHADER
+             ? !text_is(&lower->token, "gl_Position")
+             : !text_is(&lower->token, "gl_FragColor"))) {
+        fail(lower, "if branches must assign the stage output");
+        return 0;
+    }
+    if (!assignment(lower))
+        return 0;
+    if (lower->ins_count < first_instruction + 4u) {
+        fail(lower, "if branch must write all four output components");
+        return 0;
+    }
+    for (component = 0u; component < 4u; ++component) {
+        const RinGLRsh1InstructionV1* instruction =
+            &lower->ins[lower->ins_count - 4u + component];
+
+        if (instruction->opcode != RINGL_RSH1_OP_STORE_OUTPUT_F32 ||
+            instruction->immediate != component) {
+            fail(lower, "if branch must write all four output components");
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int conditional_output(Lower* lower)
+{
+    Value left;
+    Value right;
+    Tok operator;
+    uint16_t comparison;
+    uint16_t comparison_result;
+    uint16_t zero;
+    uint16_t false_result;
+    uint32_t jump_to_else;
+    uint32_t jump_to_end;
+
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after if"))
+        return 0;
+    left = expression(lower);
+    operator = lower->token.kind;
+    if (left.width == 0u ||
+        (operator != T_EQ && operator != T_NE && operator != T_LT &&
+         operator != T_LE && operator != T_GT && operator != T_GE)) {
+        fail(lower, "if condition requires one scalar comparison");
+        return 0;
+    }
+    next(lower);
+    right = expression(lower);
+    if (right.width == 0u || !need(lower, T_RPAREN, "expected ')' after if condition"))
+        return 0;
+    if (left.matrix || right.matrix || left.width != 1u || right.width != 1u ||
+        left.is_i32 != right.is_i32) {
+        fail(lower, "if condition requires matching scalar operands");
+        return 0;
+    }
+    comparison = comparison_opcode(operator, left.is_i32);
+    comparison_result = new_reg(lower);
+    zero = new_reg(lower);
+    false_result = new_reg(lower);
+    if (comparison == 0u || comparison_result == RINGL_RSH1_UNUSED ||
+        zero == RINGL_RSH1_UNUSED || false_result == RINGL_RSH1_UNUSED ||
+        !emit(lower, comparison, comparison_result, left.regs[0],
+              right.regs[0], 0u) ||
+        !emit(lower, RINGL_RSH1_OP_CONST_I32, zero, RINGL_RSH1_UNUSED,
+              RINGL_RSH1_UNUSED, 0u) ||
+        !emit(lower, RINGL_RSH1_OP_CMP_EQ_I32, false_result,
+              comparison_result, zero, 0u)) {
+        return 0;
+    }
+    if (!need(lower, T_LBRACE, "expected '{' after if condition"))
+        return 0;
+    jump_to_else = lower->ins_count;
+    if (!emit(lower, RINGL_RSH1_OP_JUMP_IF, RINGL_RSH1_UNUSED,
+              false_result, RINGL_RSH1_UNUSED, 0u) ||
+        !conditional_output_assignment(lower) ||
+        !need(lower, T_RBRACE, "expected '}' after if branch")) {
+        return 0;
+    }
+    jump_to_end = lower->ins_count;
+    if (!emit(lower, RINGL_RSH1_OP_JUMP, RINGL_RSH1_UNUSED,
+              RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED, 0u)) {
+        return 0;
+    }
+    lower->ins[jump_to_else].immediate = lower->ins_count;
+    if (!need(lower, T_ELSE, "bounded if requires else branch") ||
+        !need(lower, T_LBRACE, "expected '{' after else") ||
+        !conditional_output_assignment(lower) ||
+        !need(lower, T_RBRACE, "expected '}' after else branch")) {
+        return 0;
+    }
+    lower->ins[jump_to_end].immediate = lower->ins_count;
+    return 1;
+}
+
 /* The RSH1 execution domain for this bounded GLES profile is binary32. GLSL
  * ES default precision statements are still parsed as source-language
  * declarations, but do not create an unobservable alternate lowering path. */
@@ -2782,6 +2959,9 @@ static int parse_all(Lower* lower)
                         : lower->token.kind == T_MAT3 ? 3u
                         : lower->token.kind == T_MAT4 ? 4u : 0u;
                     if (!local_decl(lower, width, is_i32, matrix_dimension))
+                        return 0;
+                } else if (lower->token.kind == T_IF) {
+                    if (!conditional_output(lower))
                         return 0;
                 } else if (!assignment(lower)) {
                     return 0;

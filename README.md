@@ -107,8 +107,9 @@ extension object, then RinGL accepts the exact fragment-source directive
 the same generic RinGPU software backend as every other RinGL draw; the
 Aquamarine surface is caller-owned storage only. The implemented profile covers finite float/vecN values formed
 from fragment varyings and arithmetic; it rejects texture-sample derivative
-expressions, control flow, and fine/coarse variants rather than inventing
-their semantics.  `FRAGMENT_SHADER_DERIVATIVE_HINT` is observable only after
+expressions, general control flow, and fine/coarse variants rather than
+inventing their semantics. General control flow and derivatives within the bounded
+conditional profile remain rejected. `FRAGMENT_SHADER_DERIVATIVE_HINT` is observable only after
 the same context gate.  This is a bounded WebGL slice, not an OpenGL ES
 conformance claim.
 
@@ -485,7 +486,7 @@ reinterpret the integer bit pattern as a float. All numeric setters stage a
 replacement program-owned module before publishing it, so a failed backend
 creation retains both the old integer values and executable. This profile
 supports single-component `.x/.y/.z/.w` (and color aliases) reads only; uniform
-arrays, multi-component swizzles, general integer control flow, and implicit
+arrays, multi-component swizzles, local-mutating/general integer control flow, and implicit
 numeric conversions remain unavailable.
 
 Program-owned uniform artifacts are stage-selective. A mutable vertex matrix
@@ -605,7 +606,12 @@ This covers common uniform color modulation and matrix-transformed positions
 matching Float `matrixCompMult(matN, matN)` subset described above, while
 retaining explicit RSH1 resource and register limits; swizzles, matrix arrays,
 cross-dimension conversion, general matrix arithmetic, vector comparisons, and
-control flow are still outside the profile.
+general control flow are still outside the profile. A bounded scalar
+`if (scalar-comparison) { stage-output = vec4(...); } else { stage-output =
+vec4(...); }` is executable: RinGL emits the original Float/i32 comparison,
+tests its i32 result against zero, and uses only forward RSH1 branches. The
+generic RinGPU backend, not Ladybird or Aquamarine, evaluates the branch.
+Nested/local-mutating branches, partial outputs, and loops remain rejected.
 
 The frontend accepts GLSL ES global `precision lowp|mediump|highp` declarations
 for `float`, `int`, and `sampler2D`. They are not ignored text: the compiler

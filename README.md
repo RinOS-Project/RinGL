@@ -628,8 +628,9 @@ Nested/local-mutating branches, partial outputs, and loops remain rejected.
 Standalone fragment `discard;` lowers to RSH1 `DISCARD`. The generic RinGPU
 backend terminates that fragment before output validation and depth, stencil, or
 color publication; it is not a surface-side clear or Aquamarine command.
-Vertex `discard`, conditional `discard`, loops, and general control flow remain
-rejected by this bounded profile.
+Vertex `discard`, conditional `discard` outside the documented one-comparison,
+one-discard-branch form, loops, and general control flow remain rejected by
+this bounded profile.
 
 The frontend accepts GLSL ES global `precision lowp|mediump|highp` declarations
 for `float`, `int`, and `sampler2D`. They are not ignored text: the compiler

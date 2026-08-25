@@ -231,6 +231,9 @@ RinGL, rather than the Ladybird embedding, owns the fixed profile values for
 dimensions before they can change state. The generic RinGPU backend is
 single-sample, and native point-list draws clamp the vertex `gl_PointSize`
 output to the advertised `[1, 64]` pixel range.
+Fragment `gl_PointCoord` is emitted as two RSH1 Float32 builtins, so the
+generic RinGPU point rasterizer supplies its GLES/WebGL fixed upper-left
+coordinate from the original point center instead of a synthetic varying.
 `ringl_get_compressed_texture_format_count()` authoritatively reports the
 nine executable ETC1/linear-S3TC/sRGB-S3TC formats; the browser still filters
 that ceiling through acquired extension objects before publishing
@@ -696,7 +699,10 @@ by one scalar, an active float uniform atomically rebuilds the program-owned
 vertex RSH1 module, and the scalar attribute/component arithmetic operand is
 emitted from a live vertex RSH1 register before the generic backend finite-checks
 and clamps the point size to `[1, 64]`. Broader varying point-size expressions remain outside
-this bounded slice. Public WebGL binding and presentation remain unsupported.
+this bounded slice. Fragment `gl_PointCoord` supports normal vector use and
+the bounded `texture2D(sampler uniform, gl_PointCoord)` form; both lower to the same
+RSH1 builtin X/Y loads and execute only for native point-list fragments.
+Public WebGL binding and presentation remain unsupported.
 
 Custom RGBA8 renderbuffer FBOs may additionally attach a matching
 `DEPTH24_STENCIL8` renderbuffer or level-zero

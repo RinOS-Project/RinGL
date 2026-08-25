@@ -665,6 +665,37 @@ static Value derivative_value(Lower* lower, uint16_t opcode)
     return value;
 }
 
+/* gl_PointCoord belongs to fixed point rasterization, rather than to a
+ * user-declared varying. Materialize its two components as RSH1 builtins so
+ * the generic RinGPU backend supplies the coordinate for each fragment. */
+static Value point_coord_value(Lower* lower)
+{
+    Value value = invalid_value();
+    uint16_t x;
+    uint16_t y;
+
+    if (lower->shader_type != RINGL_FRAGMENT_SHADER) {
+        fail(lower, "gl_PointCoord is only available in fragment shaders");
+        return value;
+    }
+    next(lower);
+    x = new_reg(lower);
+    y = new_reg(lower);
+    if (x == RINGL_RSH1_UNUSED || y == RINGL_RSH1_UNUSED ||
+        !emit(lower, RINGL_RSH1_OP_LOAD_BUILTIN_F32, x,
+              RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED,
+              RINGL_RSH1_BUILTIN_POINT_COORD_X) ||
+        !emit(lower, RINGL_RSH1_OP_LOAD_BUILTIN_F32, y,
+              RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED,
+              RINGL_RSH1_BUILTIN_POINT_COORD_Y)) {
+        return invalid_value();
+    }
+    value.regs[0] = x;
+    value.regs[1] = y;
+    value.width = 2u;
+    return value;
+}
+
 static Value primary(Lower* lower)
 {
     Value value;
@@ -692,6 +723,8 @@ static Value primary(Lower* lower)
         return derivative_value(lower, RINGL_RSH1_OP_DFDY_F32);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "fwidth"))
         return derivative_value(lower, RINGL_RSH1_OP_FWIDTH_F32);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "gl_PointCoord"))
+        return point_coord_value(lower);
     if (lower->token.kind == T_IDENT)
         return symbol_value(lower);
     if (take(lower, T_LPAREN)) {

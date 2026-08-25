@@ -511,6 +511,12 @@ static int texture2d_call(Parser* parser)
     if (parser->token.kind == TOK_VEC2) {
         if (!constructor(parser, TOK_VEC2))
             return 0;
+    } else if (parser->token.kind == TOK_IDENT &&
+               token_is_ident(&parser->token, "gl_PointCoord")) {
+        /* This exact point-sprite coordinate form is lowered to RSH1 builtin
+         * loads, not a declared varying. Do not accept swizzles or offsets
+         * here until the bounded texture lowerer can execute those forms. */
+        next_token(parser);
     } else if (parser->token.kind == TOK_IDENT) {
         Symbol* coordinate = find_symbol(parser, &parser->token);
         if (coordinate == NULL || coordinate->width != 2u ||
@@ -577,9 +583,17 @@ static int primary(Parser* parser)
             fail(parser, "gl_PointSize is only available in vertex shaders");
             return 0;
         }
+        if (token_is_ident(&ident, "gl_PointCoord")) {
+            if (parser->shader_type != RINGL_FRAGMENT_SHADER) {
+                fail(parser, "gl_PointCoord is only available in fragment shaders");
+                return 0;
+            }
+            value_width = 2u;
+        }
         if (!token_is_ident(&ident, "gl_Position") &&
             !token_is_ident(&ident, "gl_FragColor") &&
             !token_is_ident(&ident, "gl_PointSize") &&
+            !token_is_ident(&ident, "gl_PointCoord") &&
             !symbol_exists(parser, &ident)) {
             fail(parser, "use of undeclared identifier");
             return 0;

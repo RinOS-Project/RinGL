@@ -157,6 +157,13 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   `varying vec4` colored point changing from three-pixel to one-pixel coverage
   through uniform, scalar-attribute, and color-attribute values; broader varying point-size
   expressions remain unsupported.
+- [x] Execute fragment `gl_PointCoord` as RSH1 Float32 builtin X/Y values for
+  native point-list fragments. RinGL supports normal vector use and bounded
+  `texture2D(sampler uniform, gl_PointCoord)` lowering without fabricating a user
+  varying; generic RinGPU supplies the GLES/WebGL immutable upper-left
+  coordinate from the unclipped point center. IR and caller-owned Aquamarine
+  product tests verify the builtin bytecode and 3×3 point gradient. Non-point
+  execution is rejected rather than receiving invented coordinates.
 - [x] Execute bounded `GL_LINES` direct and indexed draws through a distinct
   native RinGPU line-list pipeline. An incomplete pair is a successful no-op.
 - [x] Execute bounded `GL_LINE_STRIP` direct and indexed draws through a

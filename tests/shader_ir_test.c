@@ -42,6 +42,9 @@ typedef struct __attribute__((packed)) Instruction {
 #define RSH1_OP_SUB_F32 UINT16_C(21)
 #define RSH1_OP_MUL_F32 UINT16_C(22)
 #define RSH1_OP_DIV_F32 UINT16_C(23)
+#define RSH1_OP_LOAD_BUILTIN_F32 UINT16_C(52)
+#define RSH1_BUILTIN_POINT_COORD_X UINT32_C(16)
+#define RSH1_BUILTIN_POINT_COORD_Y UINT32_C(17)
 
 static int rsh1_has_opcode(const uint8_t* blob, const Header* header,
                            uint16_t opcode)
@@ -242,6 +245,10 @@ int main(void)
         "void main() {\n"
         "  gl_FragColor = vec4(1.0, 0.25, 0.0, 1.0);\n"
         "}\n";
+    const char* point_coord_fragment_source =
+        "void main() {\n"
+        "  gl_FragColor = vec4(gl_PointCoord, 0.0, 1.0);\n"
+        "}\n";
     const char* derivative_fragment_source =
         "#extension GL_OES_standard_derivatives : enable\n"
         "precision mediump float;\n"
@@ -281,6 +288,13 @@ int main(void)
         "uniform sampler2D colorTexture;\n"
         "void main() {\n"
         "  gl_FragColor = texture2D(colorTexture, vec2(0.25, 0.75));\n"
+        "}\n";
+    const char* point_coord_texture_source =
+        "precision mediump float;\n"
+        "precision lowp sampler2D;\n"
+        "uniform sampler2D spriteTexture;\n"
+        "void main() {\n"
+        "  gl_FragColor = texture2D(spriteTexture, gl_PointCoord);\n"
         "}\n";
     const char* varying_vertex_source =
         "precision highp float; attribute vec2 position; attribute vec2 texCoord; varying vec2 uv; "
@@ -538,6 +552,30 @@ int main(void)
     assert(header.output_count == 4u);
     assert(header.instruction_count >= 5u);
 
+    /* Point-sprite coordinates are fragment builtins, not user varyings. The
+     * generated RSH1 therefore carries exactly the builtin X/Y loads and the
+     * fixed four interpolant ABI remains available to the native pipeline. */
+    header = lower_and_read_header(fragment, point_coord_fragment_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 4u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_LOAD_BUILTIN_F32));
+    {
+        const Instruction* instructions =
+            (const Instruction*)(blob + header.header_size);
+        uint32_t point_coord_loads = 0u;
+
+        for (uint32_t index = 0u; index < header.instruction_count; ++index) {
+            if (instructions[index].opcode != RSH1_OP_LOAD_BUILTIN_F32)
+                continue;
+            assert(instructions[index].immediate == RSH1_BUILTIN_POINT_COORD_X ||
+                   instructions[index].immediate == RSH1_BUILTIN_POINT_COORD_Y);
+            ++point_coord_loads;
+        }
+        assert(point_coord_loads == 2u);
+    }
+
     /* Derivatives must be emitted into RSH1, not folded into a browser-side
      * constant. The fragment ABI carries exactly the declared vec2 varying. */
     header = lower_and_read_header(fragment, derivative_fragment_source,
@@ -647,6 +685,15 @@ int main(void)
     assert(header.output_count == 4u);
     assert(header.resource_count == 2u);
     assert(header.instruction_count == 15u);
+
+    header = lower_and_read_header(fragment, point_coord_texture_source, blob,
+                                   sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 4u);
+    assert(header.output_count == 4u);
+    assert(header.resource_count == 2u);
+    assert(header.instruction_count == 15u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_LOAD_BUILTIN_F32));
 
     header = lower_and_read_header(vertex, varying_vertex_source,
                                    blob, sizeof(blob));

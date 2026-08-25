@@ -42,10 +42,21 @@ enum RinGLRsh1Opcode {
     RINGL_RSH1_OP_F32_TO_I32 = 44,
     RINGL_RSH1_OP_LOAD_INPUT_F32 = 45,
     RINGL_RSH1_OP_STORE_OUTPUT_F32 = 46,
+    /* RSH1 shares its wire opcode numbers with the RinGPU verifier. Keep these
+     * builtin loads explicit instead of lowering point-sprite coordinates to
+     * synthetic varyings: the rasterizer owns their per-fragment values. */
+    RINGL_RSH1_OP_LOAD_BUILTIN_F32 = 52,
     RINGL_RSH1_OP_SAMPLE_IMAGE_2D_F32 = 55,
     RINGL_RSH1_OP_DFDX_F32 = 56,
     RINGL_RSH1_OP_DFDY_F32 = 57,
     RINGL_RSH1_OP_FWIDTH_F32 = 58,
+};
+
+enum RinGLRsh1Builtin {
+    /* Keep the numbers synchronized with RinShaderBuiltin. These values are
+     * part of the RSH1 bytecode ABI emitted by RinGL, not GLSL token values. */
+    RINGL_RSH1_BUILTIN_POINT_COORD_X = 16,
+    RINGL_RSH1_BUILTIN_POINT_COORD_Y = 17,
 };
 
 typedef struct __attribute__((packed)) RinGLRsh1HeaderV1 {

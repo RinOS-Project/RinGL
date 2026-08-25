@@ -310,14 +310,13 @@ the preceding result rather than a host-side folded coordinate. The lowerer
 counts all locals, calls, optional call-local offsets, combines, stores, and
 color operations before it publishes the RSH1 blob.
 
-The bounded native interface supports three independent `varying vec2` texture
-coordinates with six scalar fragment inputs and a 10-scalar vertex output
-(clip `xyzw` plus those pairs). It also supports a direct four-`varying vec2`
-shape with eight scalar fragment inputs and a 12-scalar vertex output. The
-RinGPU surface keeps up to eight varying components in a private native
-clip/raster form while preserving the public compact RGBA clip-vertex V1 ABI.
-Six-plane clipping and perspective interpolation operate on every carried pair
-before resource-aware fragment preflight and submission. This route is
+The bounded native interface supports one through eight independent `varying
+vec2` texture coordinates: four through sixteen scalar fragment inputs and
+eight through twenty scalar vertex outputs (clip `xyzw` plus the declared
+pairs). The RinGPU surface keeps all sixteen scalar varyings in a private
+native clip/raster form while preserving the public compact RGBA clip-vertex V1
+ABI. Six-plane clipping and perspective interpolation operate on every carried
+pair before resource-aware fragment preflight and submission. This route is
 deliberately limited to direct/indexed points, lines, line strips/loops, and
 triangle lists, strips, and fans. One
 `firstUv +/- secondUv`,
@@ -328,7 +327,9 @@ declared pair. It does not claim general varying transport, expressions that
 combine all three pairs in one local, or broader three-input local expressions.
 The four-UV shape permits independent direct samples plus one named local that
 combines any two distinct pairs with `+` or `-`; it can feed the existing
-finite-affine local chain. Broader four-UV expressions are not inferred. For
+finite-affine local chain. Five through eight pairs are direct-coordinate
+only: each pair remains independently selectable, but a local expression that
+combines five or more pairs is not inferred. For
 one sampled texture result, or an explicitly parenthesized additive sample
 chain, a finite `vec4` color literal is emitted as four RSH1 constants followed
 by component-wise `ADD_F32`, `SUB_F32`, `MUL_F32`, or nonzero `DIV_F32`

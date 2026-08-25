@@ -362,6 +362,20 @@ int main(void)
         "firstUv = firstTexCoord; secondUv = secondTexCoord; "
         "thirdUv = thirdTexCoord; fourthUv = fourthTexCoord; "
         "fifthUv = fifthTexCoord; }";
+    const char* transformed_eight_uv_vertex_source =
+        "attribute vec2 position; attribute vec2 firstTexCoord; "
+        "attribute vec2 secondTexCoord; attribute vec2 thirdTexCoord; "
+        "attribute vec2 fourthTexCoord; attribute vec2 fifthTexCoord; "
+        "attribute vec2 sixthTexCoord; attribute vec2 seventhTexCoord; "
+        "attribute vec2 eighthTexCoord; uniform mat4 transform; "
+        "varying vec2 firstUv; varying vec2 secondUv; varying vec2 thirdUv; "
+        "varying vec2 fourthUv; varying vec2 fifthUv; varying vec2 sixthUv; "
+        "varying vec2 seventhUv; varying vec2 eighthUv; void main() { "
+        "gl_Position = transform * vec4(position, 0.0, 1.0); "
+        "firstUv = firstTexCoord; secondUv = secondTexCoord; "
+        "thirdUv = thirdTexCoord; fourthUv = fourthTexCoord; "
+        "fifthUv = fifthTexCoord; sixthUv = sixthTexCoord; "
+        "seventhUv = seventhTexCoord; eighthUv = eighthTexCoord; }";
     const char* transformed_vertex_color_texture_source =
         "attribute vec2 position; attribute vec2 texCoord; attribute vec4 color; "
         "uniform mat4 transform; varying vec2 uv; varying vec4 vertexColor; "
@@ -760,11 +774,11 @@ int main(void)
     assert(header.resource_count == 0u);
     assert(header.instruction_count == 9u);
 
-    /* The transformed texture route emits every scalar UV interface that the
-     * native pipeline accepts: one and two pairs use eight vertex outputs,
-     * while the third and fourth pairs extend the interface to ten and
-     * twelve. These are executable matrix/RSH1 modules, not CPU-expanded
-     * texture coordinates. */
+    /* The transformed texture route emits the complete executable scalar UV
+     * interface: one pair keeps the historical eight-output ABI, then each
+     * additional pair contributes two distinct native varyings up to the
+     * 16-scalar/20-output eight-pair ceiling. These are matrix/RSH1 modules,
+     * not CPU-expanded texture coordinates. */
     header = lower_and_read_header(vertex, transformed_two_uv_vertex_source,
                                    blob, sizeof(blob));
     assert(header.stage == 1u);
@@ -798,14 +812,23 @@ int main(void)
     assert(header.resource_count == 0u);
     assert(header.instruction_count == 69u);
 
-    /* The RSH1 native varying interface stops at eight interpolated scalars.
-     * A source outside that exact profile must not accidentally publish a
-     * truncated module. */
-    ringl_shader_source(vertex, transformed_five_uv_vertex_source, -1);
-    ringl_compile_shader(vertex);
-    assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
-    assert(ringl_lower_shader_rsh1(vertex) != 0);
-    assert(ringl_get_shader_rsh1_size(vertex) == 0u);
+    header = lower_and_read_header(vertex, transformed_five_uv_vertex_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 12u);
+    assert(header.output_count == 14u);
+    assert(header.resource_count == 0u);
+    assert(header.instruction_count == 73u);
+    assert(header.register_count == 58u);
+
+    header = lower_and_read_header(vertex, transformed_eight_uv_vertex_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 18u);
+    assert(header.output_count == 20u);
+    assert(header.resource_count == 0u);
+    assert(header.instruction_count == 85u);
+    assert(header.register_count == 64u);
 
     /* A texture sample can be modulated by an interpolated vertex RGBA value
      * on the six-scalar native interface. Both the matrix/attribute route and

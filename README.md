@@ -315,9 +315,9 @@ Up to eight fragment-local values may be chained from the shared UV; each
 initializer is lowered in source order before samples and the complete shape is
 rejected before IR publication when it exceeds an RSH1 limit. This remains a
 deliberately narrow GLSL ES subset: other local vector expressions, more than
-eight locals, more than four UV varyings, local expressions spanning four UV
-inputs, broader local expressions spanning three UV inputs, and more than
-eight calls are still
+eight locals, more than eight UV varyings, local expressions spanning five or
+more UV inputs, broader local expressions spanning three UV inputs, and more
+than eight calls are still
 unsupported.
 
 The bounded three-UV texture profile similarly permits one local `vec2`
@@ -338,6 +338,15 @@ without changing the public compact clip-vertex V1 ABI. Direct samples may use
 each pair independently. One local may combine any two distinct four-UV pairs
 with `+` or `-`, and may feed the existing finite-affine local chain; broader
 four-UV expressions remain deliberately outside this profile.
+
+The native scalar contract also carries five through eight direct `varying
+vec2` texture coordinates. The transformed vertex path writes 14, 16, 18, or
+20 outputs (`xyzw` plus the declared pairs), while the fragment path receives
+10, 12, 14, or 16 distinct inputs. A program-link/pipeline/bind-group/draw
+regression uses the eighth pair and a real image/sampler binding, so the
+extension does not collapse a coordinate onto an earlier pair or fall back to
+a declaration-only path. Local combinations spanning five or more pairs remain
+outside this bounded profile.
 
 See [TODO.md](TODO.md) for the implementation roadmap.
 
@@ -496,9 +505,9 @@ the last linked executable and resource layout.
 That path now executes a bounded transformed textured-quad profile end to
 end: a vertex shader may transform an `attribute vec4` position (or construct
 one from `attribute vec2` position) with a `uniform mat4`, then copy one to
-four declared `attribute vec2` values into matching `varying vec2` pairs.
-One pair retains the fixed eight-scalar interface; two, three, and four pairs
-publish four, six, and eight interpolated scalars. Both the matrix product and
+eight declared `attribute vec2` values into matching `varying vec2` pairs.
+One pair retains the fixed eight-scalar interface; two through eight pairs
+publish four through sixteen interpolated scalars. Both the matrix product and
 varying stores are RSH1 instructions consumed by RinGPU; no embedding-side
 geometry transform or sampled-color fallback is involved. The focused
 `textured-draw` test binds two coordinate attributes and two texture units,
@@ -511,8 +520,9 @@ the sampler-resource metadata needed to bind every native image/sampler pair.
 This specialized varying/texture shape deliberately remains `mat4` only. The
 new `mat2 * vec2` and `mat3 * vec3` forms execute only in the generic
 no-varying vertex profile; coordinate arithmetic and other matrix expressions
-remain outside both shapes. A fifth UV pair is outside the RSH1 interface and
-fails lowering without publishing a truncated module.
+remain outside both shapes. Direct texture coordinates through eight UV pairs
+fit the RSH1 interface; broader local coordinate expressions remain outside it
+and fail lowering without publishing a truncated module.
 
 The same transformed route supports the common vertex-color texture form: an
 `attribute vec4` is copied into a following `varying vec4`, and the exact

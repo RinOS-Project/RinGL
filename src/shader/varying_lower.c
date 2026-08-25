@@ -655,7 +655,8 @@ static int parse_varying_texture_call(const char** cursor,
         return 0;
     }
     if (call->coordinate_input_location != UINT32_MAX &&
-        (call->coordinate_input_location > 6u ||
+        (call->coordinate_input_location >
+             (RINGL_GLSL_MAX_VARYINGS - 1u) * 2u ||
          (call->coordinate_input_location & 1u) != 0u)) {
         return 0;
     }
@@ -681,7 +682,8 @@ static int parse_varying_texture_call(const char** cursor,
         }
         if (call->coordinate_input_location == UINT32_MAX ||
             call->secondary_coordinate_input_location == UINT32_MAX ||
-            call->secondary_coordinate_input_location > 6u ||
+            call->secondary_coordinate_input_location >
+                (RINGL_GLSL_MAX_VARYINGS - 1u) * 2u ||
             (call->secondary_coordinate_input_location & 1u) != 0u)
             return 0;
         call->coordinate_kind = subtract
@@ -1061,16 +1063,16 @@ static int lower_vertex(const char* source, RinGLGlslLowerResult* result)
 
 /* This is the WebGL transformed-texture vertex route with a program-owned
  * matrix. It keeps the scalar attribute/varying ABI used by the texture
- * fragment lowerer: clip position occupies outputs 0..3 and one through four
+ * fragment lowerer: clip position occupies outputs 0..3 and one through eight
  * UV pairs follow in declaration order. A single UV pair reserves the final
- * two scalar slots to retain the fixed eight-output RinGPU interface; two,
- * three, and four pairs occupy 8, 10, and 12 outputs respectively. The
+ * two scalar slots to retain the fixed eight-output RinGPU interface; two
+ * through eight pairs occupy 8, 10, 12, 14, 16, 18, and 20 outputs. The
  * profile may instead append one `attribute vec4`/`varying vec4` color after
- * one or two UV pairs, so the complete interpolation interface remains at
- * most eight scalars. The matrix values are materialized as RSH1 constants at
- * link time and on uniform updates, exactly as the no-varying mat4 lowerer
- * does; RinGPU executes the multiply rather than the embedding
- * pre-transforming geometry.
+ * one or two UV pairs, so the color material profile retains its existing
+ * eight-scalar interpolation ceiling. The matrix values are materialized as
+ * RSH1 constants at link time and on uniform updates, exactly as the
+ * no-varying mat4 lowerer does; RinGPU executes the multiply rather than the
+ * embedding pre-transforming geometry.
  * Both common position spellings are accepted:
  *
  *   vec4 position; vec2 texCoord0..3; transform * position
@@ -1083,15 +1085,15 @@ static int lower_vertex_transformed_texture(
     RinGLRsh1HeaderV1 header;
     RinGLRsh1InstructionV1 ins[RINGL_RSH1_MAX_INSTRUCTIONS];
     char position[64];
-    char texcoords[4][64];
+    char texcoords[RINGL_GLSL_MAX_VARYINGS][64];
     char color_attribute[64];
     char transform[64];
-    char varyings[4][64];
+    char varyings[RINGL_GLSL_MAX_VARYINGS][64];
     char color_varying[64];
-    char expected[2048];
+    char expected[4096];
     uint16_t position_regs[4];
     uint16_t transformed_position_regs[4];
-    uint16_t texcoord_regs[8];
+    uint16_t texcoord_regs[RINGL_GLSL_MAX_VARYINGS * 2u];
     uint16_t color_regs[4];
     uint16_t matrix_regs[16];
     uint16_t zero_reg;
@@ -1125,7 +1127,7 @@ static int lower_vertex_transformed_texture(
             return 1;
         }
     }
-    while (texcoord_count < 4u &&
+    while (texcoord_count < RINGL_GLSL_MAX_VARYINGS &&
            read_decl_name(source, "attributevec2",
                           texcoord_count +
                               (position_width == 2u ? 1u : 0u),
@@ -1335,7 +1337,7 @@ static int lower_vertex_transformed_texture(
     }
     varying_scalar_count = texcoord_count * 2u +
         (has_vertex_color ? 4u : 0u);
-    if (varying_scalar_count > 8u)
+    if (varying_scalar_count > RINGL_GLSL_MAX_VARYINGS * 2u)
         return 1;
     output_count = 4u + varying_scalar_count;
     if (varying_scalar_count == 2u)
@@ -1738,11 +1740,14 @@ static int lower_fragment_texture_chain(
     RinGLRsh1InstructionV1 ins[RINGL_RSH1_MAX_INSTRUCTIONS];
     char sampler_names[RINGL_VARYING_TEXTURE_MAX_SAMPLERS][64];
     char color_uniform_name[64] = {0};
-    char varying_names[4][64] = {{0}};
-    char coordinate_names[5][64];
+    char varying_names[RINGL_GLSL_MAX_VARYINGS][64] = {{0}};
+    /* Physical pairs plus one possible named local. The local slot never
+     * aliases the eighth pair, so direct five-through-eight pair shaders keep
+     * every coordinate register distinct. */
+    char coordinate_names[RINGL_GLSL_MAX_VARYINGS + 1u][64];
     char local_coordinate_names[RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES][64];
-    uint32_t coordinate_input_locations[5] = {
-        0u, 2u, 4u, 6u, UINT32_MAX
+    uint32_t coordinate_input_locations[RINGL_GLSL_MAX_VARYINGS + 1u] = {
+        0u, 2u, 4u, 6u, 8u, 10u, 12u, 14u, UINT32_MAX
     };
     uint32_t local_coordinate_kinds[RINGL_VARYING_TEXTURE_MAX_LOCAL_COORDINATES] = {0u};
     uint32_t local_secondary_input_locations[
@@ -1836,7 +1841,8 @@ static int lower_fragment_texture_chain(
     while (strncmp(cursor, "varyingvec2", strlen("varyingvec2")) == 0) {
         uint32_t index;
 
-        if (varying_count == 4u || !consume_text(&cursor, "varyingvec2") ||
+        if (varying_count == RINGL_GLSL_MAX_VARYINGS ||
+            !consume_text(&cursor, "varyingvec2") ||
             !read_identifier(&cursor, varying_names[varying_count],
                              sizeof(varying_names[varying_count])) ||
             !consume_text(&cursor, ";")) {
@@ -2882,6 +2888,145 @@ static int lower_vertex_four_vec2(const char* source,
     return 0;
 }
 
+/* The first four UV-pair profiles above keep their historic bytecode shapes.
+ * The same public RinGPU interface has room for eight vec2 pairs (16 scalar
+ * varyings), so use this structural path for the remaining five through eight
+ * pair sources rather than rejecting an otherwise executable interface. */
+static int lower_vertex_many_vec2(const char* source,
+                                  RinGLGlslLowerResult* result)
+{
+    RinGLRsh1HeaderV1 header;
+    RinGLRsh1InstructionV1 ins[RINGL_RSH1_MAX_INSTRUCTIONS];
+    char position[64];
+    char attributes[RINGL_GLSL_MAX_VARYINGS][64];
+    char varyings[RINGL_GLSL_MAX_VARYINGS][64];
+    char expected[4096];
+    uint32_t zero_bits = 0u;
+    float one = 1.0f;
+    uint32_t one_bits;
+    uint32_t pair_count = 0u;
+    uint32_t input_count;
+    uint32_t output_count;
+    uint32_t instruction_count;
+    uint32_t index;
+    size_t expected_length = 0u;
+    size_t total;
+
+    if (source == NULL || result == NULL ||
+        !read_decl_name(source, "attributevec2", 0u, position,
+                        sizeof(position))) {
+        return 1;
+    }
+    while (pair_count < RINGL_GLSL_MAX_VARYINGS &&
+           read_decl_name(source, "attributevec2", pair_count + 1u,
+                          attributes[pair_count],
+                          sizeof(attributes[pair_count]))) {
+        ++pair_count;
+    }
+    if (pair_count < 5u)
+        return 1;
+    for (index = 0u; index < pair_count; ++index) {
+        if (!read_decl_name(source, "varyingvec2", index,
+                            varyings[index], sizeof(varyings[index]))) {
+            return 1;
+        }
+    }
+    if (!append_compact_source(expected, sizeof(expected), &expected_length,
+                               "attributevec2%s;", position)) {
+        return 1;
+    }
+    for (index = 0u; index < pair_count; ++index) {
+        if (!append_compact_source(expected, sizeof(expected),
+                                   &expected_length, "attributevec2%s;",
+                                   attributes[index])) {
+            return 1;
+        }
+    }
+    for (index = 0u; index < pair_count; ++index) {
+        if (!append_compact_source(expected, sizeof(expected),
+                                   &expected_length, "varyingvec2%s;",
+                                   varyings[index])) {
+            return 1;
+        }
+    }
+    if (!append_compact_source(expected, sizeof(expected), &expected_length,
+                               "voidmain(){gl_Position=vec4(%s,0.0,1.0);",
+                               position)) {
+        return 1;
+    }
+    for (index = 0u; index < pair_count; ++index) {
+        if (!append_compact_source(expected, sizeof(expected),
+                                   &expected_length, "%s=%s;",
+                                   varyings[index], attributes[index])) {
+            return 1;
+        }
+    }
+    if (!append_compact_source(expected, sizeof(expected), &expected_length,
+                               "}") ||
+        strcmp(source, expected) != 0) {
+        return 1;
+    }
+
+    input_count = 2u + pair_count * 2u;
+    output_count = 4u + pair_count * 2u;
+    instruction_count = input_count + 2u + output_count + 1u;
+    if (output_count > 4u + RINGL_GLSL_MAX_VARYINGS * 2u ||
+        instruction_count > RINGL_RSH1_MAX_INSTRUCTIONS) {
+        return 1;
+    }
+    memset(ins, 0, sizeof(ins));
+    for (index = 0u; index < input_count; ++index) {
+        init_instruction(&ins[index], RINGL_RSH1_OP_LOAD_INPUT_F32);
+        ins[index].destination = (uint16_t)index;
+        ins[index].immediate = index;
+    }
+    memcpy(&one_bits, &one, sizeof(one_bits));
+    init_instruction(&ins[input_count], RINGL_RSH1_OP_CONST_F32);
+    ins[input_count].destination = (uint16_t)input_count;
+    ins[input_count].immediate = zero_bits;
+    init_instruction(&ins[input_count + 1u], RINGL_RSH1_OP_CONST_F32);
+    ins[input_count + 1u].destination = (uint16_t)(input_count + 1u);
+    ins[input_count + 1u].immediate = one_bits;
+    for (index = 0u; index < output_count; ++index) {
+        RinGLRsh1InstructionV1* store =
+            &ins[input_count + 2u + index];
+
+        init_instruction(store, RINGL_RSH1_OP_STORE_OUTPUT_F32);
+        if (index < 2u)
+            store->source0 = (uint16_t)index;
+        else if (index == 2u)
+            store->source0 = (uint16_t)input_count;
+        else if (index == 3u)
+            store->source0 = (uint16_t)(input_count + 1u);
+        else
+            store->source0 = (uint16_t)(index - 2u);
+        store->immediate = index;
+    }
+    init_instruction(&ins[instruction_count - 1u], RINGL_RSH1_OP_RETURN);
+
+    memset(&header, 0, sizeof(header));
+    header.magic = RINGL_RSH1_MAGIC;
+    header.version = RINGL_RSH1_VERSION;
+    header.header_size = sizeof(header);
+    header.stage = RINGL_RSH1_STAGE_VERTEX;
+    header.instruction_count = instruction_count;
+    header.register_count = input_count + 2u;
+    header.input_count = input_count;
+    header.output_count = output_count;
+    total = sizeof(header) + (size_t)instruction_count * sizeof(ins[0]);
+    header.total_size = (uint32_t)total;
+    memcpy(result->bytes, &header, sizeof(header));
+    memcpy(result->bytes + sizeof(header), ins,
+           (size_t)instruction_count * sizeof(ins[0]));
+    result->ok = 1u;
+    result->instruction_count = header.instruction_count;
+    result->register_count = header.register_count;
+    result->input_count = header.input_count;
+    result->output_count = header.output_count;
+    result->byte_size = header.total_size;
+    return 0;
+}
+
 static int lower_fragment_two_vec2(const char* source,
                                    RinGLGlslLowerResult* result)
 {
@@ -2989,6 +3134,8 @@ int ringl_glsl_lower_varying_rsh1_with_uniforms(
         shader_type == RINGL_VERTEX_SHADER) {
         rc = lower_vertex_transformed_texture(compact, uniforms, uniform_count,
                                               result);
+        if (rc != 0)
+            rc = lower_vertex_many_vec2(compact, result);
         if (rc != 0)
             rc = lower_vertex_four_vec2(compact, result);
         if (rc != 0)

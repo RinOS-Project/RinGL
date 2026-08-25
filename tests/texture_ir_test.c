@@ -130,6 +130,22 @@ int main(void)
         "texture2D(secondTexture, secondUv) + "
         "texture2D(thirdTexture, thirdUv) + "
         "texture2D(fourthTexture, fourthUv); }";
+    const char* varying_eight_coordinate_source =
+        "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
+        "uniform sampler2D thirdTexture; uniform sampler2D fourthTexture; "
+        "uniform sampler2D fifthTexture; uniform sampler2D sixthTexture; "
+        "uniform sampler2D seventhTexture; uniform sampler2D eighthTexture; "
+        "varying vec2 firstUv; varying vec2 secondUv; varying vec2 thirdUv; "
+        "varying vec2 fourthUv; varying vec2 fifthUv; varying vec2 sixthUv; "
+        "varying vec2 seventhUv; varying vec2 eighthUv; void main() { "
+        "gl_FragColor = texture2D(firstTexture, firstUv) + "
+        "texture2D(secondTexture, secondUv) + "
+        "texture2D(thirdTexture, thirdUv) + "
+        "texture2D(fourthTexture, fourthUv) + "
+        "texture2D(fifthTexture, fifthUv) + "
+        "texture2D(sixthTexture, sixthUv) + "
+        "texture2D(seventhTexture, seventhUv) + "
+        "texture2D(eighthTexture, eighthUv); }";
     const char* varying_four_coordinate_local_source =
         "uniform sampler2D firstTexture; uniform sampler2D secondTexture; "
         "uniform sampler2D thirdTexture; uniform sampler2D fourthTexture; "
@@ -1348,6 +1364,47 @@ int main(void)
         assert(second_sample->source0 == 30u && second_sample->source1 == 31u);
         assert(third_sample->source0 == 32u && third_sample->source1 == 33u);
         assert(fourth_sample->source0 == 34u && fourth_sample->source1 == 35u);
+    }
+
+    /* The published eight-varying contract is sixteen scalar coordinates.
+     * Every pair must retain its own RSH1 input registers; truncating pairs
+     * five through eight or aliasing them to the fourth pair would sample a
+     * different image before the native backend gets a chance to reject it. */
+    ringl_shader_source(shader, varying_eight_coordinate_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 81u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.instruction_count == 81u);
+    assert(header.register_count == 76u);
+    assert(header.input_count == 16u);
+    assert(header.output_count == 4u);
+    assert(header.resource_count == 16u);
+    {
+        static const uint16_t expected_coordinates[8][2] = {
+            {0u, 1u}, {62u, 63u}, {64u, 65u}, {66u, 67u},
+            {68u, 69u}, {70u, 71u}, {72u, 73u}, {74u, 75u}
+        };
+        uint32_t sample_index;
+
+        for (sample_index = 0u; sample_index < 8u; ++sample_index) {
+            for (component = 0u; component < 4u; ++component) {
+                const Instruction* sample =
+                    (const Instruction*)(blob + sizeof(header)) +
+                    16u + sample_index * 4u + component;
+
+                assert(sample->opcode == RSH1_SAMPLE_IMAGE_2D_F32);
+                assert(sample->source0 ==
+                       expected_coordinates[sample_index][0]);
+                assert(sample->source1 ==
+                       expected_coordinates[sample_index][1]);
+                assert(sample->resource == sample_index * 2u);
+                assert(sample->immediate == sample_index * 2u + 1u);
+            }
+        }
     }
 
     /* A four-UV local can combine any two physical pairs while direct samples

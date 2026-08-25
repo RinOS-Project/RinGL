@@ -198,6 +198,23 @@ static int fake_create_pipeline_native(
             assert(varyings[index].type == 1u &&
                    varyings[index].interpolation == 1u);
         }
+    } else if (backend->pipeline_creates == 3u) {
+        /* Eight independently declared vec2 varyings are sixteen scalar
+         * native descriptors, not a fourth-pair alias or CPU coordinate
+         * expansion. */
+        assert(desc->vertex_stride == 72u);
+        assert(attribute_count == 18u && attributes != NULL);
+        for (index = 0u; index < 18u; ++index) {
+            assert(attributes[index].location == index);
+            assert(attributes[index].offset == index * 4u);
+        }
+        assert(varying_count == 16u && varyings != NULL);
+        for (index = 0u; index < 16u; ++index) {
+            assert(varyings[index].vertex_output_location == 4u + index);
+            assert(varyings[index].fragment_input_location == index);
+            assert(varyings[index].type == 1u &&
+                   varyings[index].interpolation == 1u);
+        }
     } else {
         assert(0);
     }
@@ -358,6 +375,16 @@ static int fake_create_bind_group(
         assert(bindings[3].kind == RINGL_RIN_GPU_RESOURCE_SAMPLER);
         assert(bindings[3].access == 0u);
         assert(bindings[3].resource == backend->texture_samplers[1]);
+    } else if (backend->pipeline_creates == 4u) {
+        assert(binding_count == 2u);
+        assert(bindings[0].binding == 0u);
+        assert(bindings[0].kind == RINGL_RIN_GPU_RESOURCE_SAMPLED_IMAGE);
+        assert(bindings[0].access == RINGL_RIN_GPU_RESOURCE_READ);
+        assert(bindings[0].resource == backend->texture_images[0]);
+        assert(bindings[1].binding == 1u);
+        assert(bindings[1].kind == RINGL_RIN_GPU_RESOURCE_SAMPLER);
+        assert(bindings[1].access == 0u);
+        assert(bindings[1].resource == backend->texture_samplers[0]);
     } else {
         assert(0);
     }
@@ -461,6 +488,7 @@ int main(void)
     uint32_t buffer;
     uint32_t vertex_color_buffer;
     uint32_t two_texture_vertex_color_buffer;
+    uint32_t eight_uv_buffer;
     uint32_t textures[2];
     uint32_t vertex;
     uint32_t fragment;
@@ -471,6 +499,9 @@ int main(void)
     uint32_t two_texture_vertex_color_vertex;
     uint32_t two_texture_vertex_color_fragment;
     uint32_t two_texture_vertex_color_program;
+    uint32_t eight_uv_vertex;
+    uint32_t eight_uv_fragment;
+    uint32_t eight_uv_program;
     int32_t first_sampler_location;
     int32_t second_sampler_location;
     int32_t tint_location;
@@ -484,6 +515,8 @@ int main(void)
     int32_t two_texture_vertex_color_opacity_location;
     int32_t two_texture_vertex_color_tint_location;
     int32_t two_texture_vertex_color_transform_location;
+    int32_t eight_uv_sampler_location;
+    uint32_t attribute_index;
     const float vertices[] = {
         -0.75f, -0.75f, 0.0f, 0.0f, 0.25f, 0.75f,
          0.75f, -0.75f, 1.0f, 0.0f, 0.75f, 0.25f,
@@ -509,7 +542,15 @@ int main(void)
     const float two_texture_vertex_color_vertices[] = {
         -0.75f, -0.75f, 0.0f, 0.0f, 0.25f, 0.75f, 1.0f, 0.0f, 0.0f, 1.0f,
          0.75f, -0.75f, 1.0f, 0.0f, 0.75f, 0.25f, 0.0f, 1.0f, 0.0f, 1.0f,
-         0.0f,   0.75f, 0.5f, 1.0f, 0.50f, 0.50f, 0.0f, 0.0f, 1.0f, 1.0f,
+        0.0f,   0.75f, 0.5f, 1.0f, 0.50f, 0.50f, 0.0f, 0.0f, 1.0f, 1.0f,
+    };
+    const float eight_uv_vertices[] = {
+        -0.75f, -0.75f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+         0.75f, -0.75f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f,
+        1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f,
+         0.0f,   0.75f, 0.5f, 1.0f, 0.5f, 1.0f, 0.5f, 1.0f,
+        0.5f, 1.0f, 0.5f, 1.0f, 0.5f, 1.0f, 0.5f, 1.0f, 0.5f, 1.0f,
     };
     char commands[33];
 
@@ -763,6 +804,70 @@ int main(void)
     assert(backend.vertex_color_material_fragment_modules == 6u);
     assert(backend.pipeline_creates == 3u);
     assert(backend.bind_group_creates == 3u);
+
+    /* The eight-pair texture profile exercises the full public 16-scalar
+     * varying contract through program linking, native pipeline construction,
+     * typed resource binding, and draw submission. Only the eighth pair is
+     * sampled: this proves the tail reaches RSH1/RinGPU rather than merely
+     * accepting declarations and silently substituting an earlier coordinate. */
+    backend.validate_vertex_color_tint = 0u;
+    ringl_gen_buffers(1, &eight_uv_buffer);
+    ringl_bind_buffer(RINGL_ARRAY_BUFFER, eight_uv_buffer);
+    ringl_buffer_data(RINGL_ARRAY_BUFFER, sizeof(eight_uv_vertices),
+                      eight_uv_vertices, RINGL_STATIC_DRAW);
+    for (attribute_index = 0u; attribute_index < 9u; ++attribute_index) {
+        ringl_vertex_attrib_pointer(attribute_index, 2, RINGL_FLOAT,
+                                    RINGL_FALSE, 72,
+                                    (uint64_t)attribute_index * 8u);
+        ringl_enable_vertex_attrib_array(attribute_index);
+    }
+    eight_uv_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+    eight_uv_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+    eight_uv_program = ringl_create_program();
+    assert(eight_uv_vertex != 0u && eight_uv_fragment != 0u &&
+           eight_uv_program != 0u);
+    ringl_shader_source(
+        eight_uv_vertex,
+        "attribute vec2 position; attribute vec2 firstTexCoord; "
+        "attribute vec2 secondTexCoord; attribute vec2 thirdTexCoord; "
+        "attribute vec2 fourthTexCoord; attribute vec2 fifthTexCoord; "
+        "attribute vec2 sixthTexCoord; attribute vec2 seventhTexCoord; "
+        "attribute vec2 eighthTexCoord; varying vec2 firstUv; "
+        "varying vec2 secondUv; varying vec2 thirdUv; varying vec2 fourthUv; "
+        "varying vec2 fifthUv; varying vec2 sixthUv; varying vec2 seventhUv; "
+        "varying vec2 eighthUv; void main() { "
+        "gl_Position = vec4(position, 0.0, 1.0); firstUv = firstTexCoord; "
+        "secondUv = secondTexCoord; thirdUv = thirdTexCoord; "
+        "fourthUv = fourthTexCoord; fifthUv = fifthTexCoord; "
+        "sixthUv = sixthTexCoord; seventhUv = seventhTexCoord; "
+        "eighthUv = eighthTexCoord; }",
+        -1);
+    ringl_shader_source(
+        eight_uv_fragment,
+        "uniform sampler2D colorTexture; varying vec2 firstUv; "
+        "varying vec2 secondUv; varying vec2 thirdUv; varying vec2 fourthUv; "
+        "varying vec2 fifthUv; varying vec2 sixthUv; varying vec2 seventhUv; "
+        "varying vec2 eighthUv; void main() { "
+        "gl_FragColor = texture2D(colorTexture, eighthUv); }",
+        -1);
+    ringl_compile_shader(eight_uv_vertex);
+    ringl_compile_shader(eight_uv_fragment);
+    assert(ringl_get_shader_compile_status(eight_uv_vertex) == RINGL_TRUE);
+    assert(ringl_get_shader_compile_status(eight_uv_fragment) == RINGL_TRUE);
+    ringl_attach_shader(eight_uv_program, eight_uv_vertex);
+    ringl_attach_shader(eight_uv_program, eight_uv_fragment);
+    ringl_link_program(eight_uv_program);
+    assert(ringl_get_program_link_status(eight_uv_program) == RINGL_TRUE);
+    ringl_use_program(eight_uv_program);
+    eight_uv_sampler_location =
+        ringl_get_uniform_location(eight_uv_program, "colorTexture");
+    assert(eight_uv_sampler_location == 0);
+    ringl_uniform_1i(eight_uv_sampler_location, 0);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(backend.pipeline_creates == 4u);
+    assert(backend.bind_group_creates == 4u);
 
     ringl_context_destroy(context);
     return 0;

@@ -532,6 +532,9 @@ int ringl_resolve_depth_stencil_targets(RinGLContext* context,
                                         RinGLDepthStencilTargets* targets);
 int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
                                  int32_t width, int32_t height, void* pixels);
+int ringl_read_color_target_rgba_float(RinGLContext* context, int32_t x,
+                                       int32_t y, int32_t width,
+                                       int32_t height, void* pixels);
 
 int ringl_backend_create_buffer(RinGLContext* context,
                                 uint64_t size_bytes,

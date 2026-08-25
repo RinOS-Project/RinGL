@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #include "../ringl_internal.h"
 
+#include <float.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -313,6 +314,24 @@ static int ringl_color_target_readback_type_supported(
          format == RINGL_RIN_GPU_FORMAT_BGRA8_UNORM);
 }
 
+static int ringl_rgba_float_snapshot_is_finite(const void* pixels,
+                                               uint64_t pixel_count)
+{
+    const uint8_t* bytes = pixels;
+    uint64_t component;
+
+    if (bytes == NULL || pixel_count > UINT64_MAX / 4u)
+        return 0;
+    for (component = 0u; component < pixel_count * 4u; ++component) {
+        float value;
+
+        memcpy(&value, bytes + component * sizeof(value), sizeof(value));
+        if (value != value || value > FLT_MAX || value < -FLT_MAX)
+            return 0;
+    }
+    return 1;
+}
+
 int ringl_get_implementation_color_read_format_type(uint32_t* format_out,
                                                      uint32_t* type_out)
 {
@@ -532,6 +551,12 @@ static int ringl_read_color_target_to_type(RinGLContext* context, int32_t x,
         free(native_pixels);
         return -1;
     }
+    if (type == RINGL_FLOAT &&
+        !ringl_rgba_float_snapshot_is_finite(
+            pixels, (uint64_t)(uint32_t)width * (uint32_t)height)) {
+        free(native_pixels);
+        return -1;
+    }
     free(native_pixels);
     return 0;
 }
@@ -541,6 +566,14 @@ int ringl_read_color_target_rgba(RinGLContext* context, int32_t x, int32_t y,
 {
     return ringl_read_color_target_to_type(context, x, y, width, height,
                                            RINGL_UNSIGNED_BYTE, pixels);
+}
+
+int ringl_read_color_target_rgba_float(RinGLContext* context, int32_t x,
+                                        int32_t y, int32_t width,
+                                        int32_t height, void* pixels)
+{
+    return ringl_read_color_target_to_type(context, x, y, width, height,
+                                           RINGL_FLOAT, pixels);
 }
 
 static int readback_layout(int32_t width, int32_t height, uint32_t type,

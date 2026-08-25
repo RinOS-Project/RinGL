@@ -304,25 +304,29 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 
 - [x] Implement clear/copy paths that must end or split render passes.
   - [x] Add a bounded `copyTexSubImage2D` path from the current complete color
-    target, including RGBA8 or packed RGB565/RGBA4/RGB5_A1 texture/renderbuffer
-    FBOs, to a defined `RGBA`/`RGB`/`ALPHA`/`LUMINANCE`/`LUMINANCE_ALPHA` or
+    target, including RGBA8/packed RGB565/RGBA4/RGB5_A1 and native
+    RGBA32F/RGBA16F texture/renderbuffer FBOs, to a defined
+    `RGBA`/`RGB`/`ALPHA`/`LUMINANCE`/`LUMINANCE_ALPHA`, Float32, binary16, or
     native packed RGB565/RGBA4/RGB5_A1 texture level through fenced image
     readback. The copy validates FBO completeness and source/destination ranges
-    before allocation, writes the destination only after the full
-    default-BGRA/FBO-RGBA snapshot succeeds, preserves the canonical component
-    expansion for RGB/alpha/luminance formats, and quantizes packed destination
-    components directly. Explicit nonzero levels are supported; depth/stencil,
+    before allocation, validates a complete Float snapshot as finite, writes the
+    destination only after snapshot completion, preserves canonical component
+    expansion for RGB/alpha/luminance formats, retains finite Float values,
+    saturates finite binary16 conversion, and quantizes fixed-point/packed
+    destinations directly. Explicit nonzero levels are supported; depth/stencil,
     multisample, and other unrepresented FBO copy semantics remain rejected.
   - [x] Add a bounded `copyTexImage2D` definition path from the same complete
-    color targets. RGBA/RGB/ALPHA/LUMINANCE/LUMINANCE_ALPHA and native
-    RGB565/RGBA4/RGB5_A1 storage is defined only after its canonical RGBA
-    snapshot completes. Level zero replaces the base chain, while a nonzero
-    definition requires a defined same-format base and exact mip dimensions.
-    Canonical formats apply their component expansion and packed output
-    quantizes directly into two-byte storage. The bound texture's old
-    shadow/image remains intact for invalid source rectangles, incomplete FBOs,
-    allocation failure, or readback failure. Zero-sized, depth/stencil, and
-    multisample definitions remain unsupported.
+    color targets. RGBA/RGB/ALPHA/LUMINANCE/LUMINANCE_ALPHA, Float32, binary16,
+    and native RGB565/RGBA4/RGB5_A1 storage is defined only after its canonical
+    RGBA snapshot completes. Level zero replaces the base chain, while a
+    nonzero definition requires a defined same-format base and exact mip
+    dimensions. Canonical formats apply their component expansion, Float32
+    retains finite components, binary16 follows finite saturating conversion,
+    and packed output quantizes directly into two-byte storage. The bound
+    texture's old shadow/image remains intact for invalid source rectangles,
+    incomplete FBOs, allocation failure, non-finite Float source, or readback
+    failure. Zero-sized, depth/stencil, and multisample definitions remain
+    unsupported.
 - [x] Implement current immediate-submit `glFlush` semantics.
 - [x] Implement `glFinish` using an optional versioned sync extension, RinGPU fences, fenced queue submission, and `ringpu_wait_fence()`.
 - [x] Implement bounded current-color-framebuffer `RGBA/UNSIGNED_BYTE` `glReadPixels` logic through COPY_SOURCE transition, completion wait, RinGPU image readback, and BGRA-to-RGBA swizzle where required.

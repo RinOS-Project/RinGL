@@ -862,12 +862,16 @@ gate; it then permits `LINEAR` magnification and `LINEAR`,
 `LINEAR_MIPMAP_LINEAR` minification. The gate is deliberately not inferred
 from a capable native sampler, so a non-WebGL caller cannot make the browser
 extension visible accidentally. RinGL preserves the corresponding min/mag/mip
-descriptors through the RinGPU adapter and generated RGBA32F mip chain. CopyTex
-and Float RGB/ALPHA/LUMINANCE color attachments remain unavailable, so this is
-not a full float-FBO profile. The generic software backend rejects a non-finite
-component before it changes its target. The Aquamarine embedding snapshots the
-same Float32 components into its RSH1 sampler table, and the product bridge
-test draws a Float texture through the full RinGL/RinGPU route into a Float FBO.
+descriptors through the RinGPU adapter and generated RGBA32F mip chain.
+`copyTexSubImage2D` and `copyTexImage2D` now snapshot a complete finite
+RGBA32F/RGBA16F target as Float32, or a fixed-point target as canonical RGBA8,
+then convert it atomically into Float32, binary16, fixed-point, or packed
+destination storage. Float RGB/ALPHA/LUMINANCE color attachments remain
+unavailable, so this is not a full float-FBO profile. The generic software
+backend rejects a non-finite component before it changes its target. The
+Aquamarine embedding snapshots the same Float32 components into its RSH1
+sampler table, and the product bridge test draws a Float texture through the
+full RinGL/RinGPU route into a Float FBO.
 
 `OES_texture_half_float` is represented by the public
 `RINGL_HALF_FLOAT_OES` token. Its bounded uploads accept binary16 bytes only
@@ -901,36 +905,41 @@ definition intact. The older raw-pointer texture APIs remain only for trusted
 native callers that can prove the source extent independently.
 
 `copyTexSubImage2D` has a bounded data-movement path from the current complete
-color target, including an RGBA8 or packed RGB565/RGBA4/RGB5_A1
-texture/renderbuffer FBO, into a defined `RGBA`, `RGB`, `ALPHA`, `LUMINANCE`,
-`LUMINANCE_ALPHA`, or native packed texture level. It validates FBO completeness
-and both source and destination rectangles before allocating a temporary RGBA
-snapshot, uses the existing fenced RinGPU readback path (including
-default-framebuffer BGRA-to-RGBA swizzle), and only then updates the destination
-shadow. RGB retains implicit alpha one; alpha/luminance formats apply their
-canonical component expansion; packed destinations quantize that snapshot
-directly into stored 5/6/4/1-bit components. Explicit nonzero mip levels are
-supported and retain their independently defined storage. A failed readback
-leaves every destination level unchanged. Depth/stencil readback, multisample,
-and other unrepresented copy semantics remain outside the current profile.
+color target, including RGBA8/packed RGB565/RGBA4/RGB5_A1 and native
+RGBA32F/RGBA16F texture/renderbuffer FBOs, into a defined `RGBA`, `RGB`,
+`ALPHA`, `LUMINANCE`, `LUMINANCE_ALPHA`, Float32, binary16, or native packed
+texture level. It validates FBO completeness and both source and destination
+rectangles before allocating a temporary canonical RGBA snapshot, uses the
+fenced RinGPU readback path (including default-framebuffer BGRA-to-RGBA
+swizzle), validates every Float32 component as finite, and only then updates
+the destination shadow. RGB retains implicit alpha one; alpha/luminance formats
+apply their canonical component expansion; Float32 preserves finite
+out-of-range components, binary16 uses the existing finite saturating
+conversion, and fixed-point/packed destinations quantize the snapshot.
+Explicit nonzero levels retain their independently defined storage. A failed
+readback or non-finite Float source leaves every destination level unchanged.
+Depth/stencil readback, multisample, and other unrepresented copy semantics
+remain outside the current profile.
 
 `copyTexImage2D` uses the same fenced snapshot from those complete color targets
-to define `RGBA`, `RGB`, `ALPHA`, `LUMINANCE`, `LUMINANCE_ALPHA`, or native
-RGB565/RGBA4/RGB5_A1 storage. Level zero replaces the base chain; an explicit
-nonzero level requires a defined same-format base and exact mip dimensions.
-Canonical formats apply their component-expansion rules, while packed
-definitions quantize canonical RGBA directly into two-byte storage. Its full
-source rectangle, FBO completeness, and destination limits are validated before
-readback; the previous texture definition and realized RinGPU image remain
-intact unless snapshot completion succeeds. This profile does not yet define
-zero-sized, depth/stencil, or multisample copy definitions.
+to define `RGBA`, `RGB`, `ALPHA`, `LUMINANCE`, `LUMINANCE_ALPHA`, Float32,
+binary16, or native RGB565/RGBA4/RGB5_A1 storage. Level zero replaces the base
+chain; an explicit nonzero level requires a defined same-format base and exact
+mip dimensions and retains its base component representation. Canonical formats
+apply their component-expansion rules, Float32 retains finite values, binary16
+uses the finite saturating conversion, and packed definitions quantize canonical
+RGBA directly into two-byte storage. Its full source rectangle, FBO completeness,
+and destination limits are validated before readback; the previous texture
+definition and realized RinGPU image remain intact unless snapshot completion
+succeeds. This profile does not yet define zero-sized, depth/stencil, or
+multisample copy definitions.
 
 The RinGL-to-RinGPU-to-Aquamarine integration test also performs the full
 observable ordering sequence: it draws to a source texture FBO, snapshots it
-with `copyTexSubImage2D`, reads the copied FBO, clears that copied attachment,
-flushes and finishes, then reads the original FBO again. This proves that the
-`COPY_SOURCE` and later `COLOR_TARGET` transitions split passes without aliasing
-or overwriting either attachment.
+with both `copyTexSubImage2D` and `copyTexImage2D`, reads the copied Float FBO,
+clears that copied attachment, flushes and finishes, then reads the original FBO
+again. This proves that the `COPY_SOURCE` and later `COLOR_TARGET` transitions
+split passes without aliasing or overwriting either attachment.
 
 The strict sync test complements that live-pixel evidence with an exact fake
 RinGPU event trace for clear → copy → clear → flush → finish → readback. It

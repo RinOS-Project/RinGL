@@ -33,6 +33,7 @@ typedef struct FakeBackend {
     uint32_t failed_readbacks;
     uint32_t fail_next_readback;
     uint32_t lose_next_readback;
+    uint32_t nonfinite_float_readback;
     uint32_t lose_next_create_buffer;
     uint32_t render_passes;
     uint32_t queue_submits;
@@ -117,7 +118,7 @@ static int fake_transition_image(void* session, uint64_t command_list,
                (old_state == RINGL_RIN_GPU_IMAGE_COLOR_TARGET &&
                 new_state == RINGL_RIN_GPU_IMAGE_COPY_SOURCE));
     } else {
-        assert(image == 701u);
+        assert(image == 701u || image == 703u);
         assert((old_state == RINGL_RIN_GPU_IMAGE_UNDEFINED &&
                 new_state == RINGL_RIN_GPU_IMAGE_COLOR_TARGET) ||
                (old_state == RINGL_RIN_GPU_IMAGE_COLOR_TARGET &&
@@ -155,7 +156,7 @@ static int fake_begin_render_pass(void* session, uint64_t command_list,
 
     assert(command_list != 0u && pass != NULL);
     assert(pass->color_target == 700u || pass->color_target == 701u ||
-           pass->color_target == 702u);
+           pass->color_target == 702u || pass->color_target == 703u);
     assert(pass->load_op == RINGL_RIN_GPU_RENDER_CLEAR);
     assert(pass->store_op == RINGL_RIN_GPU_RENDER_STORE);
     backend->render_passes++;
@@ -240,7 +241,11 @@ static int fake_readback(void* session, uint64_t image,
         40u, 50u, 60u, 128u,
     };
     const uint16_t expected_rgba4[2] = { UINT16_C(0xf00f), UINT16_C(0x0f08) };
-    assert((image == 700u || image == 701u || image == 702u) && readback != NULL &&
+    const float expected_float[8] = {
+        2.0f, -0.5f, 0.25f, 1.0f,
+        0.1f, 0.2f, 0.3f, 0.4f,
+    };
+    assert((image == 700u || image == 701u || image == 702u || image == 703u) && readback != NULL &&
            destination != NULL);
     assert(readback->y == 2u);
     if (readback->x == 0u) {
@@ -258,6 +263,12 @@ static int fake_readback(void* session, uint64_t image,
         assert(readback->width == 2u && readback->height == 1u);
         assert(readback->destination_row_pitch_bytes == sizeof(expected_rgba4));
         assert(destination_size == sizeof(expected_rgba4));
+    } else if (image == 703u) {
+        assert(readback->x == 1u);
+        assert(readback->width == 2u && readback->height == 1u);
+        assert(readback->destination_row_pitch_bytes ==
+               4u * sizeof(float));
+        assert(destination_size == sizeof(expected_float));
     } else {
         assert(readback->x == 1u);
         assert(readback->width == 2u && readback->height == 1u);
@@ -276,6 +287,15 @@ static int fake_readback(void* session, uint64_t image,
     }
     if (image == 702u)
         memcpy(destination, expected_rgba4, sizeof(expected_rgba4));
+    else if (image == 703u) {
+        memcpy(destination, expected_float, sizeof(expected_float));
+        if (backend->nonfinite_float_readback != 0u) {
+            const uint32_t nan_bits = UINT32_C(0x7fc00000);
+
+            backend->nonfinite_float_readback = 0u;
+            memcpy(destination, &nan_bits, sizeof(nan_bits));
+        }
+    }
     else if (readback->x == 0u)
         memcpy(destination, expected_bgra, 4u);
     else
@@ -569,6 +589,11 @@ int main(void)
     uint32_t packed_framebuffer = 0u;
     uint32_t float_renderbuffer = 0u;
     uint32_t float_framebuffer = 0u;
+    uint32_t float_from_unorm_texture = 0u;
+    uint32_t float_copy_texture = 0u;
+    uint32_t half_copy_texture = 0u;
+    uint32_t unorm_copy_texture = 0u;
+    uint32_t float_copy_image_texture = 0u;
     uint32_t depth_renderbuffer = 0u;
     uint32_t texture_before_loss;
     uint32_t submits_before_loss;
@@ -591,6 +616,23 @@ int main(void)
     const uint8_t expected_packed_rgba[8] = {
         255u, 0u, 0u, 255u,
         0u, 255u, 0u, 136u,
+    };
+    const float expected_unorm_as_float[8] = {
+        10.0f / 255.0f, 20.0f / 255.0f, 30.0f / 255.0f, 1.0f,
+        40.0f / 255.0f, 50.0f / 255.0f, 60.0f / 255.0f,
+        128.0f / 255.0f,
+    };
+    const float expected_float_copy[8] = {
+        2.0f, -0.5f, 0.25f, 1.0f,
+        0.1f, 0.2f, 0.3f, 0.4f,
+    };
+    const uint16_t expected_half_copy[8] = {
+        UINT16_C(0x4000), UINT16_C(0xb800), UINT16_C(0x3400), UINT16_C(0x3c00),
+        UINT16_C(0x2e66), UINT16_C(0x3266), UINT16_C(0x34cd), UINT16_C(0x3666),
+    };
+    const uint8_t expected_float_as_unorm[8] = {
+        255u, 0u, 64u, 255u,
+        26u, 51u, 77u, 102u,
     };
 
     assert(ringl_context_create(&desc, &context) == 0);
@@ -646,6 +688,21 @@ int main(void)
     assert(backend.readbacks == 2u);
     assert(memcmp(context->textures[ringl_object_slot_index(texture)].shadow_bytes,
                   expected_rgba, sizeof(expected_rgba)) == 0);
+
+    /* CopyTexSubImage2D converts the normal UNORM source into real Float32
+     * texture storage rather than rejecting the Float destination. */
+    ringl_gen_textures(1, &float_from_unorm_texture);
+    ringl_bind_texture(RINGL_TEXTURE_2D, float_from_unorm_texture);
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 2, 1, 0,
+                       RINGL_RGBA, RINGL_FLOAT, NULL);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_copy_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 1, 2, 2, 1);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(context->textures[ringl_object_slot_index(float_from_unorm_texture)]
+               .color_component_type == RINGL_FLOAT);
+    assert(memcmp(context->textures[ringl_object_slot_index(float_from_unorm_texture)]
+                      .shadow_bytes,
+                  expected_unorm_as_float, sizeof(expected_unorm_as_float)) == 0);
     ringl_copy_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 7, 2, 2, 1);
     assert(ringl_get_error() == RINGL_INVALID_VALUE);
     assert(backend.readbacks == 2u);
@@ -841,6 +898,65 @@ int main(void)
                &implementation_read_format, &implementation_read_type) == 0);
     assert(implementation_read_format == RINGL_RGBA);
     assert(implementation_read_type == RINGL_FLOAT);
+
+    /* The source itself is a real RGBA32F color target. CopyTex must keep
+     * finite Float32 values for Float storage, convert them to binary16 when
+     * requested, and clamp only when the destination is UNORM. */
+    ringl_clear(RINGL_COLOR_BUFFER_BIT);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+
+    ringl_gen_textures(1, &float_copy_texture);
+    ringl_bind_texture(RINGL_TEXTURE_2D, float_copy_texture);
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 2, 1, 0,
+                       RINGL_RGBA, RINGL_FLOAT, NULL);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_copy_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 1, 2, 2, 1);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(memcmp(context->textures[ringl_object_slot_index(float_copy_texture)]
+                      .shadow_bytes,
+                  expected_float_copy, sizeof(expected_float_copy)) == 0);
+
+    ringl_gen_textures(1, &half_copy_texture);
+    ringl_bind_texture(RINGL_TEXTURE_2D, half_copy_texture);
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 2, 1, 0,
+                       RINGL_RGBA, RINGL_HALF_FLOAT_OES, NULL);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_copy_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 1, 2, 2, 1);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(memcmp(context->textures[ringl_object_slot_index(half_copy_texture)]
+                      .shadow_bytes,
+                  expected_half_copy, sizeof(expected_half_copy)) == 0);
+
+    ringl_gen_textures(1, &unorm_copy_texture);
+    ringl_bind_texture(RINGL_TEXTURE_2D, unorm_copy_texture);
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 2, 1, 0,
+                       RINGL_RGBA, RINGL_UNSIGNED_BYTE, NULL);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_copy_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 1, 2, 2, 1);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(memcmp(context->textures[ringl_object_slot_index(unorm_copy_texture)]
+                      .shadow_bytes,
+                  expected_float_as_unorm, sizeof(expected_float_as_unorm)) == 0);
+
+    ringl_gen_textures(1, &float_copy_image_texture);
+    ringl_bind_texture(RINGL_TEXTURE_2D, float_copy_image_texture);
+    ringl_copy_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 1, 2, 2, 1, 0);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(context->textures[ringl_object_slot_index(float_copy_image_texture)]
+               .defined == RINGL_TRUE);
+    assert(context->textures[ringl_object_slot_index(float_copy_image_texture)]
+               .color_component_type == RINGL_FLOAT);
+    assert(memcmp(context->textures[ringl_object_slot_index(float_copy_image_texture)]
+                      .shadow_bytes,
+                  expected_float_copy, sizeof(expected_float_copy)) == 0);
+
+    backend.nonfinite_float_readback = 1u;
+    ringl_bind_texture(RINGL_TEXTURE_2D, float_copy_texture);
+    ringl_copy_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 1, 2, 2, 1);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    assert(memcmp(context->textures[ringl_object_slot_index(float_copy_texture)]
+                      .shadow_bytes,
+                  expected_float_copy, sizeof(expected_float_copy)) == 0);
 
     ringl_bind_framebuffer(RINGL_FRAMEBUFFER, 0u);
     assert(ringl_get_error() == RINGL_NO_ERROR);

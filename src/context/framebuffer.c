@@ -34,8 +34,17 @@ static int framebuffer_valid(const RinGLDefaultFramebufferV1* framebuffer)
             RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) {
         return 0;
     }
-    if (framebuffer->depth_target == 0u && framebuffer->flags != 0u)
+    if ((framebuffer->flags & RINGL_DEFAULT_FRAMEBUFFER_ALPHA) != 0u &&
+        (framebuffer->flags &
+         RINGL_DEFAULT_FRAMEBUFFER_EXPLICIT_ALPHA) == 0u) {
         return 0;
+    }
+    if (framebuffer->depth_target == 0u &&
+        (framebuffer->flags &
+         (RINGL_DEFAULT_FRAMEBUFFER_ASPECT_MASK |
+          RINGL_DEFAULT_FRAMEBUFFER_EXPLICIT_ASPECTS)) != 0u) {
+        return 0;
+    }
     return 1;
 }
 
@@ -76,7 +85,10 @@ int ringl_set_default_framebuffer(const RinGLDefaultFramebufferV1* framebuffer)
         return -1;
     }
     if (!context->has_default_framebuffer ||
-        context->default_framebuffer.color_format != framebuffer->color_format) {
+        context->default_framebuffer.color_format != framebuffer->color_format ||
+        ((context->default_framebuffer.flags ^ framebuffer->flags) &
+         (RINGL_DEFAULT_FRAMEBUFFER_ALPHA |
+          RINGL_DEFAULT_FRAMEBUFFER_EXPLICIT_ALPHA)) != 0u) {
         dirty |= RINGL_DIRTY_PIPELINE;
     }
     context->default_framebuffer = *framebuffer;

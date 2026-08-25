@@ -1003,6 +1003,11 @@ static int32_t default_framebuffer_color_bits(
     default:
         break;
     }
+    if ((framebuffer->flags & RINGL_DEFAULT_FRAMEBUFFER_EXPLICIT_ALPHA) !=
+            0u &&
+        (framebuffer->flags & RINGL_DEFAULT_FRAMEBUFFER_ALPHA) == 0u) {
+        alpha_bits = 0u;
+    }
     switch (pname) {
     case RINGL_RED_BITS:
         return (int32_t)red_bits;

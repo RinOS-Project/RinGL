@@ -93,8 +93,16 @@ static int ringl_resolve_color_attachment_target(
             return -1;
         target->image = context->default_framebuffer.color_target;
         target->format = context->default_framebuffer.color_format;
-        target->has_alpha = RINGL_TRUE;
-        target->logical_color_format = RINGL_RGBA;
+        target->has_alpha =
+            (context->default_framebuffer.flags &
+             RINGL_DEFAULT_FRAMEBUFFER_EXPLICIT_ALPHA) != 0u &&
+                (context->default_framebuffer.flags &
+                 RINGL_DEFAULT_FRAMEBUFFER_ALPHA) == 0u
+            ? RINGL_FALSE
+            : RINGL_TRUE;
+        target->logical_color_format = target->has_alpha != RINGL_FALSE
+            ? RINGL_RGBA
+            : RINGL_RGB;
         target->width = context->default_framebuffer.width;
         target->height = context->default_framebuffer.height;
         target->mip_level = 0u;
@@ -1563,6 +1571,7 @@ int ringl_clear_default_framebuffer_for_embedding(uint32_t* error_out)
     uint32_t saved_scissor_enabled;
     uint32_t saved_color_write_mask;
     uint32_t saved_default_draw_buffer;
+    uint32_t saved_default_framebuffer_flags;
     uint32_t saved_depth_write_mask;
     uint32_t saved_stencil_write_mask;
     float saved_clear_red;
@@ -1584,6 +1593,7 @@ int ringl_clear_default_framebuffer_for_embedding(uint32_t* error_out)
     saved_scissor_enabled = context->scissor_enabled;
     saved_color_write_mask = context->color_write_mask;
     saved_default_draw_buffer = context->default_draw_buffer;
+    saved_default_framebuffer_flags = context->default_framebuffer.flags;
     saved_depth_write_mask = context->depth_write_mask;
     saved_stencil_write_mask = context->stencil_write_mask;
     saved_clear_red = context->clear_red;
@@ -1603,6 +1613,17 @@ int ringl_clear_default_framebuffer_for_embedding(uint32_t* error_out)
     context->clear_green = 0.0f;
     context->clear_blue = 0.0f;
     context->clear_alpha = 0.0f;
+    if ((context->default_framebuffer.flags &
+         RINGL_DEFAULT_FRAMEBUFFER_EXPLICIT_ALPHA) != 0u &&
+        (context->default_framebuffer.flags &
+         RINGL_DEFAULT_FRAMEBUFFER_ALPHA) == 0u) {
+        /* The WebGL-visible default framebuffer is RGB, but its private BGRA
+         * storage must still begin (and return after presentation) opaque.
+         * Temporarily expose the storage alpha only to this trusted clear;
+         * author operations continue to have no alpha plane. */
+        context->default_framebuffer.flags |= RINGL_DEFAULT_FRAMEBUFFER_ALPHA;
+        context->clear_alpha = 1.0f;
+    }
     context->clear_depth = 1.0f;
     context->clear_stencil = 0u;
 
@@ -1615,6 +1636,7 @@ int ringl_clear_default_framebuffer_for_embedding(uint32_t* error_out)
     context->scissor_enabled = saved_scissor_enabled;
     context->color_write_mask = saved_color_write_mask;
     context->default_draw_buffer = saved_default_draw_buffer;
+    context->default_framebuffer.flags = saved_default_framebuffer_flags;
     context->depth_write_mask = saved_depth_write_mask;
     context->stencil_write_mask = saved_stencil_write_mask;
     context->clear_red = saved_clear_red;

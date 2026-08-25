@@ -659,9 +659,19 @@ uint32_t ringl_effective_color_write_mask(const RinGLContext* context)
     if (context == NULL)
         return 0u;
     if (context->framebuffer_binding == 0u) {
-        return context->default_draw_buffer == RINGL_BACK
-            ? context->color_write_mask
-            : 0u;
+        if (context->default_draw_buffer != RINGL_BACK)
+            return 0u;
+        mask = context->color_write_mask;
+        if ((context->default_framebuffer.flags &
+             RINGL_DEFAULT_FRAMEBUFFER_EXPLICIT_ALPHA) != 0u &&
+            (context->default_framebuffer.flags &
+             RINGL_DEFAULT_FRAMEBUFFER_ALPHA) == 0u) {
+            /* A browser may use a physical BGRA image for a logical RGB
+             * default framebuffer. Keep that storage byte opaque, while
+             * removing it from all author-visible writes. */
+            mask &= ~RINGL_RIN_GPU_COLOR_WRITE_ALPHA;
+        }
+        return mask;
     }
     if (ringl_object_lookup_const(context, context->framebuffer_binding,
                                   RINGL_OBJECT_FRAMEBUFFER) == NULL)

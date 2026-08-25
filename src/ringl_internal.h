@@ -82,6 +82,7 @@ typedef struct RinGLTextureObject {
     uint32_t defined;
     uint32_t min_filter;
     uint32_t mag_filter;
+    float max_anisotropy;
     uint32_t wrap_s;
     uint32_t wrap_t;
     /* RinGPU tracks image state per subresource. Keeping the same ownership
@@ -412,6 +413,7 @@ struct RinGLContext {
     uint32_t default_draw_buffer;
     uint32_t webgl_float_texture_linear_enabled;
     uint32_t webgl_half_float_texture_linear_enabled;
+    uint32_t webgl_texture_filter_anisotropic_enabled;
     uint32_t webgl_float_color_buffer_enabled;
     uint32_t webgl_half_float_color_buffer_enabled;
     uint32_t webgl_blend_minmax_enabled;

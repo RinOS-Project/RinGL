@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include <assert.h>
+#include <float.h>
 #include <stdint.h>
 
 #include <ringl/ringl.h>
@@ -71,6 +72,47 @@ int main(void)
     assert(ringl_get_tex_parameteri(RINGL_TEXTURE_2D,
                                     RINGL_TEXTURE_WRAP_T) ==
            (int32_t)RINGL_REPEAT);
+
+    /* EXT_texture_filter_anisotropic is a context-local WebGL capability:
+     * before its extension object is acquired, its tokens cannot leak into
+     * native sampler state. */
+    assert(ringl_get_tex_parameterf(
+               RINGL_TEXTURE_2D, RINGL_TEXTURE_MAX_ANISOTROPY_EXT) == 0.0f);
+    assert(ringl_get_error() == RINGL_INVALID_ENUM);
+    ringl_tex_parameterf(RINGL_TEXTURE_2D,
+                         RINGL_TEXTURE_MAX_ANISOTROPY_EXT, 4.0f);
+    assert(ringl_get_error() == RINGL_INVALID_ENUM);
+    assert(ringl_enable_webgl_texture_filter_anisotropic() == 0);
+    assert(ringl_get_tex_parameterf(
+               RINGL_TEXTURE_2D, RINGL_TEXTURE_MAX_ANISOTROPY_EXT) == 1.0f);
+    ringl_tex_parameterf(RINGL_TEXTURE_2D,
+                         RINGL_TEXTURE_MAX_ANISOTROPY_EXT, 4.5f);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_get_tex_parameterf(
+               RINGL_TEXTURE_2D, RINGL_TEXTURE_MAX_ANISOTROPY_EXT) == 4.5f);
+    ringl_tex_parameterf(RINGL_TEXTURE_2D,
+                         RINGL_TEXTURE_MAX_ANISOTROPY_EXT, 0.5f);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    assert(ringl_get_tex_parameterf(
+               RINGL_TEXTURE_2D, RINGL_TEXTURE_MAX_ANISOTROPY_EXT) == 4.5f);
+    {
+        float infinite_degree = FLT_MAX;
+
+        infinite_degree *= 2.0f;
+        ringl_tex_parameterf(RINGL_TEXTURE_2D,
+                             RINGL_TEXTURE_MAX_ANISOTROPY_EXT,
+                             infinite_degree);
+        assert(ringl_get_error() == RINGL_INVALID_VALUE);
+        assert(ringl_get_tex_parameterf(
+                   RINGL_TEXTURE_2D, RINGL_TEXTURE_MAX_ANISOTROPY_EXT) ==
+               4.5f);
+    }
+    ringl_tex_parameteri(RINGL_TEXTURE_2D,
+                         RINGL_TEXTURE_MAX_ANISOTROPY_EXT, 32);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_get_tex_parameterf(
+               RINGL_TEXTURE_2D, RINGL_TEXTURE_MAX_ANISOTROPY_EXT) ==
+           (float)RINGL_MAX_TEXTURE_ANISOTROPY);
 
     ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MIN_FILTER,
                          RINGL_LINEAR);

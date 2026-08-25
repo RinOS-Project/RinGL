@@ -242,6 +242,11 @@ extern "C" {
 #define RINGL_TEXTURE_MIN_FILTER 0x2801u
 #define RINGL_TEXTURE_WRAP_S     0x2802u
 #define RINGL_TEXTURE_WRAP_T     0x2803u
+/* EXT_texture_filter_anisotropic tokens. The highest degree is the bounded
+ * RinGPU capability, not an Aquamarine/GLES capability. */
+#define RINGL_TEXTURE_MAX_ANISOTROPY_EXT     0x84feu
+#define RINGL_MAX_TEXTURE_MAX_ANISOTROPY_EXT 0x84ffu
+#define RINGL_MAX_TEXTURE_ANISOTROPY          16u
 #define RINGL_NEAREST                0x2600u
 #define RINGL_LINEAR                 0x2601u
 #define RINGL_NEAREST_MIPMAP_NEAREST 0x2700u
@@ -880,6 +885,9 @@ typedef struct RinGLRinGpuSamplerV1 {
     uint32_t address_u;
     uint32_t address_v;
     uint32_t reserved0;
+    /* Kept after the V1 prefix so a pre-anisotropy adapter can still read its
+     * complete descriptor. New adapters must accept the bounded range below. */
+    uint32_t max_anisotropy;
 } RinGLRinGpuSamplerV1;
 
 typedef int (*RinGLRinGpuCreateBufferFn)(void* session,
@@ -1478,6 +1486,9 @@ uint32_t ringl_get_active_texture(void);
 uint32_t ringl_get_bound_texture(uint32_t target);
 void ringl_tex_parameteri(uint32_t target, uint32_t pname, int32_t param);
 int32_t ringl_get_tex_parameteri(uint32_t target, uint32_t pname);
+void ringl_tex_parameterf(uint32_t target, uint32_t pname, float param);
+float ringl_get_tex_parameterf(uint32_t target, uint32_t pname);
+float ringl_get_max_texture_anisotropy(void);
 /* Enables the WebGL 1 OES_texture_float_linear completion rules for the
  * current context. It is deliberately opt-in: Float textures continue to be
  * incomplete for linear filtering until their browser extension object has
@@ -1488,6 +1499,9 @@ int ringl_enable_webgl_float_texture_linear(void);
  * the current context. HALF_FLOAT_OES textures remain nearest-only until the
  * browser has acquired that extension object. */
 int ringl_enable_webgl_half_float_texture_linear(void);
+/* Enables EXT_texture_filter_anisotropic after the browser has exposed its
+ * extension object. Sampler state remains inaccessible before this call. */
+int ringl_enable_webgl_texture_filter_anisotropic(void);
 /* WEBGL_color_buffer_float enables unclamped blendColor state for the current
  * context. RinGL retains finite components, then clamps them only while it
  * builds a pipeline for a fixed-point target. Returns zero only when a live

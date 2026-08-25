@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #include "../ringl_internal.h"
 
+#include <float.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -35,6 +36,7 @@ static void texture_init_defaults(RinGLTextureObject* texture)
         return;
     texture->min_filter = RINGL_NEAREST_MIPMAP_LINEAR;
     texture->mag_filter = RINGL_LINEAR;
+    texture->max_anisotropy = 1.0f;
     texture->wrap_s = RINGL_REPEAT;
     texture->wrap_t = RINGL_REPEAT;
     memset(texture->ringpu_image_state, RINGL_RIN_GPU_IMAGE_UNDEFINED,
@@ -1195,6 +1197,16 @@ static int texture_realize_sampler(RinGLContext* context,
     desc.mip_filter = sampler_mip_filter(texture->min_filter);
     desc.address_u = sampler_address(texture->wrap_s);
     desc.address_v = sampler_address(texture->wrap_t);
+    if (texture->max_anisotropy < 1.0f ||
+        texture->max_anisotropy > (float)RINGL_MAX_TEXTURE_ANISOTROPY) {
+        return -1;
+    }
+    /* RinGPU's bounded sampler describes an integral number of real taps.
+     * Fractional WebGL requests are rounded down, never beyond the requested
+     * degree; query state retains the clamped GL value. */
+    desc.max_anisotropy = (uint32_t)texture->max_anisotropy;
+    if (desc.max_anisotropy == 0u)
+        desc.max_anisotropy = 1u;
     if (ringl_backend_create_sampler(context, &desc, &sampler) != 0 ||
         sampler == 0u) {
         return -1;
@@ -1255,6 +1267,16 @@ int ringl_enable_webgl_half_float_texture_linear(void)
     if (context == NULL || context->lost != RINGL_FALSE)
         return -1;
     context->webgl_half_float_texture_linear_enabled = RINGL_TRUE;
+    return 0;
+}
+
+int ringl_enable_webgl_texture_filter_anisotropic(void)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL || context->lost != RINGL_FALSE)
+        return -1;
+    context->webgl_texture_filter_anisotropic_enabled = RINGL_TRUE;
     return 0;
 }
 
@@ -1443,6 +1465,10 @@ void ringl_tex_parameteri(uint32_t target, uint32_t pname, int32_t param)
     uint32_t value = (uint32_t)param;
     uint32_t* field;
 
+    if (pname == RINGL_TEXTURE_MAX_ANISOTROPY_EXT) {
+        ringl_tex_parameterf(target, pname, (float)param);
+        return;
+    }
     if (context == NULL)
         return;
     if (!texture_target_valid(target)) {
@@ -1492,6 +1518,41 @@ void ringl_tex_parameteri(uint32_t target, uint32_t pname, int32_t param)
     }
 }
 
+void ringl_tex_parameterf(uint32_t target, uint32_t pname, float param)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLTextureObject* texture;
+    float clamped;
+
+    if (context == NULL)
+        return;
+    if (!texture_target_valid(target) ||
+        pname != RINGL_TEXTURE_MAX_ANISOTROPY_EXT ||
+        context->webgl_texture_filter_anisotropic_enabled == RINGL_FALSE) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return;
+    }
+    texture = bound_texture_2d(context);
+    if (texture == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    /* The extension parameter must remain finite at this native boundary;
+     * infinity is not silently converted into a maximum sampler degree. */
+    if (param != param || param < 1.0f || param > FLT_MAX) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    clamped = param > (float)RINGL_MAX_TEXTURE_ANISOTROPY
+        ? (float)RINGL_MAX_TEXTURE_ANISOTROPY : param;
+    if (texture->max_anisotropy != clamped) {
+        ringl_backend_destroy_object(context, texture->ringpu_sampler);
+        texture->ringpu_sampler = 0u;
+        texture->max_anisotropy = clamped;
+        ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
+    }
+}
+
 int32_t ringl_get_tex_parameteri(uint32_t target, uint32_t pname)
 {
     RinGLContext* context = ringl_get_current_context();
@@ -1519,6 +1580,40 @@ int32_t ringl_get_tex_parameteri(uint32_t target, uint32_t pname)
         return (int32_t)texture->wrap_t;
     ringl_context_record_error(context, RINGL_INVALID_ENUM);
     return 0;
+}
+
+float ringl_get_tex_parameterf(uint32_t target, uint32_t pname)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLTextureObject* texture;
+
+    if (context == NULL)
+        return 0.0f;
+    if (!texture_target_valid(target) ||
+        pname != RINGL_TEXTURE_MAX_ANISOTROPY_EXT ||
+        context->webgl_texture_filter_anisotropic_enabled == RINGL_FALSE) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return 0.0f;
+    }
+    texture = bound_texture_2d(context);
+    if (texture == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return 0.0f;
+    }
+    return texture->max_anisotropy;
+}
+
+float ringl_get_max_texture_anisotropy(void)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL)
+        return 0.0f;
+    if (context->webgl_texture_filter_anisotropic_enabled == RINGL_FALSE) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return 0.0f;
+    }
+    return (float)RINGL_MAX_TEXTURE_ANISOTROPY;
 }
 
 static void texture_free_generated_mips(

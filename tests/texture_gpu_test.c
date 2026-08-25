@@ -28,6 +28,7 @@ typedef struct FakeBackend {
     uint32_t last_sampler_min_filter;
     uint32_t last_sampler_mag_filter;
     uint32_t last_sampler_mip_filter;
+    uint32_t last_sampler_max_anisotropy;
 } FakeBackend;
 
 static int fake_create_buffer(void* session, uint64_t size_bytes,
@@ -174,9 +175,13 @@ static int fake_create_sampler(void* session,
     assert(desc->address_u == RINGL_RIN_GPU_ADDRESS_REPEAT ||
            desc->address_u == RINGL_RIN_GPU_ADDRESS_CLAMP);
     assert(desc->address_v == RINGL_RIN_GPU_ADDRESS_REPEAT);
+    assert(desc->reserved0 == 0u);
+    assert(desc->max_anisotropy >= 1u &&
+           desc->max_anisotropy <= RINGL_MAX_TEXTURE_ANISOTROPY);
     backend->last_sampler_min_filter = desc->min_filter;
     backend->last_sampler_mag_filter = desc->mag_filter;
     backend->last_sampler_mip_filter = desc->mip_filter;
+    backend->last_sampler_max_anisotropy = desc->max_anisotropy;
     backend->sampler_creates++;
     *sampler_out = ++backend->next_handle;
     return 0;
@@ -648,6 +653,15 @@ int main(void)
     assert(backend.last_sampler_min_filter == RINGL_RIN_GPU_SAMPLER_LINEAR);
     assert(backend.last_sampler_mag_filter == RINGL_RIN_GPU_SAMPLER_LINEAR);
     assert(backend.last_sampler_mip_filter == RINGL_RIN_GPU_SAMPLER_LINEAR);
+    /* The WebGL-facing floating state is quantized only at the RinGPU
+     * adapter boundary. The software backend receives four real taps rather
+     * than silently retaining the default degree one sampler. */
+    assert(ringl_enable_webgl_texture_filter_anisotropic() == 0);
+    ringl_tex_parameterf(RINGL_TEXTURE_2D,
+                         RINGL_TEXTURE_MAX_ANISOTROPY_EXT, 4.5f);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+    assert(backend.last_sampler_max_anisotropy == 4u);
     // The existing later mip-chain cases use the fake backend's counters as
     // per-case evidence, so restore their initially-zero fixture state.
     backend.mip_image_creates = 0u;

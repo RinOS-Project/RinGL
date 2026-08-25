@@ -143,17 +143,19 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   pipeline.
 - [x] Execute vertex `gl_PointSize` for the generic no-varying profile and all
   existing structural varying profiles with a finite literal, `uniform float`,
-  or profile color-attribute component assignment optionally followed by one
-  finite right-hand arithmetic literal. RinGL reserves the scalar
+  a dedicated `attribute float` point-size input, or profile color-attribute
+  component assignment optionally followed by one finite right-hand arithmetic
+  literal. RinGL reserves the scalar
   immediately after clip `xyzw`,
   shifts user varying outputs above it, advertises the executable `[1, 64]`
   range, and the generic RinGPU backend finite-checks then clamps it before
   square point coverage. Updating an active scalar float atomically rebuilds
-  the program-owned vertex module; a color attribute component is stored from
-  its vertex RSH1 register with a real RSH1 arithmetic opcode. Strict IR and the real
+  the program-owned vertex module; a scalar input or color attribute component
+  is stored from its vertex RSH1 register with a real RSH1 arithmetic opcode.
+  Strict IR and the real
   RinGL→generic-RinGPU→caller-owned-Aquamarine-storage bridge test verify a
   `varying vec4` colored point changing from three-pixel to one-pixel coverage
-  through both uniform and attribute values; broader varying point-size
+  through uniform, scalar-attribute, and color-attribute values; broader varying point-size
   expressions remain unsupported.
 - [x] Execute bounded `GL_LINES` direct and indexed draws through a distinct
   native RinGPU line-list pipeline. An incomplete pair is a successful no-op.

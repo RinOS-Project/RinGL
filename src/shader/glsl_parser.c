@@ -673,6 +673,7 @@ static int assignment(Parser* parser)
     Token target = parser->token;
     Symbol* symbol;
     int frag_data = 0;
+    int frag_depth = 0;
     if (target.kind != TOK_IDENT) {
         fail(parser, "expected assignment target");
         return 0;
@@ -687,6 +688,13 @@ static int assignment(Parser* parser)
             fail(parser, "gl_FragColor is only writable in fragment shaders");
             return 0;
         }
+    } else if (token_is_ident(&target, "gl_FragDepthEXT")) {
+        if (parser->shader_type != RINGL_FRAGMENT_SHADER ||
+            parser->result->frag_depth_enabled == 0u) {
+            fail(parser, "gl_FragDepthEXT requires GL_EXT_frag_depth");
+            return 0;
+        }
+        frag_depth = 1;
     } else if (token_is_ident(&target, "gl_FragData")) {
         if (parser->shader_type != RINGL_FRAGMENT_SHADER ||
             parser->result->draw_buffers_enabled == 0u) {
@@ -745,6 +753,8 @@ static int assignment(Parser* parser)
         return 0;
     if (!expect(parser, TOK_SEMI, "expected ';' after assignment"))
         return 0;
+    if (frag_depth)
+        parser->result->uses_webgl_frag_depth = 1u;
     parser->result->statement_count++;
     return 1;
 }
@@ -1123,6 +1133,7 @@ static int extension_directive(Parser* parser)
     }
     next_token(parser);
     if (!token_is_ident(&parser->token, "GL_OES_standard_derivatives") &&
+        !token_is_ident(&parser->token, "GL_EXT_frag_depth") &&
         !token_is_ident(&parser->token, "GL_EXT_draw_buffers")) {
         fail(parser, "unsupported GLSL extension");
         return 0;
@@ -1130,6 +1141,7 @@ static int extension_directive(Parser* parser)
     {
         int standard_derivatives = token_is_ident(
             &parser->token, "GL_OES_standard_derivatives");
+        int frag_depth = token_is_ident(&parser->token, "GL_EXT_frag_depth");
     next_token(parser);
     if (!expect(parser, TOK_COLON, "expected ':' in #extension directive"))
         return 0;
@@ -1144,6 +1156,8 @@ static int extension_directive(Parser* parser)
     }
         if (standard_derivatives)
             parser->result->standard_derivatives_enabled = 1u;
+        else if (frag_depth)
+            parser->result->frag_depth_enabled = 1u;
         else
             parser->result->draw_buffers_enabled = 1u;
     }

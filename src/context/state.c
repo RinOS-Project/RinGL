@@ -772,6 +772,16 @@ int ringl_enable_webgl_standard_derivatives(void)
     return 0;
 }
 
+int ringl_enable_webgl_frag_depth(void)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL || context->lost != RINGL_FALSE)
+        return -1;
+    context->webgl_frag_depth_enabled = RINGL_TRUE;
+    return 0;
+}
+
 int ringl_enable_webgl_draw_buffers(void)
 {
     RinGLContext* context = ringl_get_current_context();

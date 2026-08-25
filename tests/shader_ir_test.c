@@ -186,6 +186,12 @@ int main(void)
         "  vec2 dy = dFdy(uv);\n"
         "  gl_FragColor = vec4(dx, fwidth(dy.x), 1.0);\n"
         "}\n";
+    const char* frag_depth_fragment_source =
+        "#extension GL_EXT_frag_depth : require\n"
+        "void main() {\n"
+        "  gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);\n"
+        "  gl_FragDepthEXT = 0.75;\n"
+        "}\n";
     const char* draw_buffers_fragment_source =
         "#extension GL_EXT_draw_buffers : require\n"
         "void main() {\n"
@@ -197,6 +203,13 @@ int main(void)
     const char* sparse_draw_buffers_fragment_source =
         "#extension GL_EXT_draw_buffers : require\n"
         "void main() { gl_FragData[2] = vec4(0.0, 0.0, 1.0, 1.0); }\n";
+    const char* draw_buffers_frag_depth_fragment_source =
+        "#extension GL_EXT_draw_buffers : require\n"
+        "#extension GL_EXT_frag_depth : require\n"
+        "void main() {\n"
+        "  gl_FragData[0] = vec4(1.0, 0.0, 0.0, 1.0);\n"
+        "  gl_FragDepthEXT = 0.25;\n"
+        "}\n";
     const char* texture_source =
         "precision mediump float;\n"
         "precision lowp sampler2D;\n"
@@ -361,6 +374,32 @@ int main(void)
     assert(header.output_count == 4u);
     assert(header.instruction_count >= 12u);
 
+    /* EXT_frag_depth is not accepted merely because the parser knows its
+     * spelling. The capability gate precedes an executable fifth RSH1 output
+     * which RinGPU reserves for the fragment's window-depth value. */
+    ringl_shader_source(fragment, frag_depth_fragment_source, -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
+    assert(ringl_enable_webgl_frag_depth() == 0);
+    header = lower_and_read_header(fragment, frag_depth_fragment_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 4u);
+    assert(header.output_count == 5u);
+    {
+        Instruction const* instructions =
+            (Instruction const*)(blob + header.header_size);
+        int has_depth_store = 0;
+
+        for (uint32_t index = 0u; index < header.instruction_count; ++index) {
+            if (instructions[index].opcode == RSH1_OP_STORE_OUTPUT_F32 &&
+                instructions[index].immediate == 4u) {
+                has_depth_store = 1;
+            }
+        }
+        assert(has_depth_store != 0);
+    }
+
     /* The extension gate applies before the shader can be used, then lower
      * gl_FragData[n] to all four independent RSH1 output vectors. This is a
      * real multi-target ABI, not a color-attachment-zero fallback. */
@@ -407,6 +446,26 @@ int main(void)
         }
         assert(written_outputs == UINT32_C(0xffff));
         assert(output_stores == 16u);
+    }
+
+    /* The terminal fragment-depth scalar remains outside the four RGBA MRT
+     * vectors, including when the lowerer fills omitted gl_FragData stores. */
+    header = lower_and_read_header(fragment,
+                                   draw_buffers_frag_depth_fragment_source,
+                                   blob, sizeof(blob));
+    assert(header.output_count == 17u);
+    {
+        Instruction const* instructions =
+            (Instruction const*)(blob + header.header_size);
+        int has_depth_store = 0;
+
+        for (uint32_t index = 0u; index < header.instruction_count; ++index) {
+            if (instructions[index].opcode == RSH1_OP_STORE_OUTPUT_F32 &&
+                instructions[index].immediate == 16u) {
+                has_depth_store = 1;
+            }
+        }
+        assert(has_depth_store != 0);
     }
 
     header = lower_and_read_header(fragment, texture_source, blob, sizeof(blob));

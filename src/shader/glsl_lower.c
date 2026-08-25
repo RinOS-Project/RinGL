@@ -93,6 +93,8 @@ typedef struct Lower {
     const RinGLGlslUniformValue* uniforms;
     uint32_t uniform_count;
     uint32_t standard_derivatives_enabled;
+    uint32_t frag_depth_enabled;
+    uint32_t uses_frag_depth;
     uint32_t draw_buffers_enabled;
     uint32_t uses_draw_buffers;
     RinGLGlslLowerResult* result;
@@ -939,6 +941,7 @@ static int assignment(Lower* lower)
     int output = 0;
     uint32_t first_output = 0u;
     int frag_data = 0;
+    int frag_depth = 0;
 
     if (target.kind != T_IDENT) {
         fail(lower, "expected assignment");
@@ -948,6 +951,17 @@ static int assignment(Lower* lower)
         output = lower->shader_type == RINGL_VERTEX_SHADER;
     else if (text_is(&target, "gl_FragColor"))
         output = lower->shader_type == RINGL_FRAGMENT_SHADER;
+    else if (text_is(&target, "gl_FragDepthEXT")) {
+        if (lower->shader_type != RINGL_FRAGMENT_SHADER ||
+            lower->frag_depth_enabled == 0u) {
+            fail(lower, "gl_FragDepthEXT requires GL_EXT_frag_depth");
+            return 0;
+        }
+        output = 1;
+        frag_depth = 1;
+        first_output = lower->draw_buffers_enabled != 0u
+            ? RINGL_MAX_COLOR_ATTACHMENTS * 4u : 4u;
+    }
     else if (text_is(&target, "gl_FragData")) {
         if (lower->shader_type != RINGL_FRAGMENT_SHADER ||
             lower->draw_buffers_enabled == 0u) {
@@ -989,8 +1003,12 @@ static int assignment(Lower* lower)
     if (!need(lower, T_SEMI, "expected ';' after assignment"))
         return 0;
     if (output) {
-        if (value.matrix || value.is_i32 ||
-            (value.width != 1u && value.width != 4u)) {
+        if (frag_depth && (value.matrix || value.is_i32 || value.width != 1u)) {
+            fail(lower, "gl_FragDepthEXT output must be float");
+            return 0;
+        }
+        if (!frag_depth && (value.matrix || value.is_i32 ||
+                            (value.width != 1u && value.width != 4u))) {
             fail(lower, "shader output must be scalar or vec4");
             return 0;
         }
@@ -998,6 +1016,8 @@ static int assignment(Lower* lower)
             fail(lower, "gl_FragData output must be vec4");
             return 0;
         }
+        if (frag_depth)
+            lower->uses_frag_depth = 1u;
         return store_output(lower, &value, first_output);
     }
     if (symbol->attribute || symbol->uniform) {
@@ -1043,6 +1063,7 @@ static int extension_decl(Lower* lower)
     }
     next(lower);
     if (!text_is(&lower->token, "GL_OES_standard_derivatives") &&
+        !text_is(&lower->token, "GL_EXT_frag_depth") &&
         !text_is(&lower->token, "GL_EXT_draw_buffers")) {
         fail(lower, "unsupported GLSL extension");
         return 0;
@@ -1050,6 +1071,7 @@ static int extension_decl(Lower* lower)
     {
         int standard_derivatives = text_is(
             &lower->token, "GL_OES_standard_derivatives");
+        int frag_depth = text_is(&lower->token, "GL_EXT_frag_depth");
     next(lower);
     if (!need(lower, T_COLON, "expected ':' in #extension directive"))
         return 0;
@@ -1064,6 +1086,8 @@ static int extension_decl(Lower* lower)
     }
         if (standard_derivatives)
             lower->standard_derivatives_enabled = 1u;
+        else if (frag_depth)
+            lower->frag_depth_enabled = 1u;
         else
             lower->draw_buffers_enabled = 1u;
     }
@@ -1356,6 +1380,8 @@ static int append_draw_buffer_defaults(Lower* lower)
         }
     }
     lower->output_count = RINGL_MAX_COLOR_ATTACHMENTS * 4u;
+    if (lower->uses_frag_depth != 0u)
+        lower->output_count++;
     return 1;
 }
 
@@ -1364,11 +1390,17 @@ static int append_draw_buffer_defaults(Lower* lower)
  * it builds a native graphics pipeline. */
 static int append_fragment_interpolant_inputs(Lower* lower)
 {
+    uint32_t color_output_count;
     uint32_t index;
 
+    color_output_count = lower->output_count;
+    /* GL_EXT_frag_depth appends one terminal scalar after the RGBA outputs;
+     * it does not alter the vertex-to-fragment interpolant interface. */
+    if ((color_output_count % 4u) == 1u)
+        color_output_count--;
     if (lower->shader_type != RINGL_FRAGMENT_SHADER ||
-        (lower->output_count != 4u &&
-         lower->output_count != RINGL_MAX_COLOR_ATTACHMENTS * 4u) ||
+        (color_output_count != 4u &&
+         color_output_count != RINGL_MAX_COLOR_ATTACHMENTS * 4u) ||
         lower->next_input != 0u) {
         return 1;
     }

@@ -1501,6 +1501,10 @@ int ringl_enable_webgl_blend_minmax(void);
  * browser extension object has been acquired. This gates GLSL dFdx/dFdy/
  * fwidth compilation and FRAGMENT_SHADER_DERIVATIVE_HINT queries. */
 int ringl_enable_webgl_standard_derivatives(void);
+/* Enables EXT_frag_depth only after the browser has exposed its empty WebGL
+ * extension object. Fragment shaders that write gl_FragDepthEXT then carry a
+ * dedicated scalar RSH1 output through the RinGPU depth-test path. */
+int ringl_enable_webgl_frag_depth(void);
 /* Enables WEBGL_draw_buffers only after the embedding exposes the V9 MRT
  * adapter callback.  The extension remains unavailable on older bindings. */
 int ringl_enable_webgl_draw_buffers(void);

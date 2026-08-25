@@ -55,6 +55,7 @@ static int fixed_raster_interface(const uint8_t* vertex_rsh1,
 {
     RinGLRsh1HeaderV1 vertex_header;
     RinGLRsh1HeaderV1 fragment_header;
+    uint32_t color_output_count;
 
     if (scalar_varying_count == NULL || vertex_rsh1 == NULL ||
         fragment_rsh1 == NULL || vertex_rsh1_size < sizeof(vertex_header) ||
@@ -66,8 +67,12 @@ static int fixed_raster_interface(const uint8_t* vertex_rsh1,
     if (vertex_header.stage != RINGL_RSH1_STAGE_VERTEX ||
         fragment_header.stage != RINGL_RSH1_STAGE_FRAGMENT ||
         fragment_header.output_count < 4u ||
-        fragment_header.output_count > RINGL_MAX_COLOR_ATTACHMENTS * 4u ||
-        (fragment_header.output_count & 3u) != 0u)
+        fragment_header.output_count > RINGL_MAX_COLOR_ATTACHMENTS * 4u + 1u)
+        return 0;
+    color_output_count = fragment_header.output_count;
+    if ((color_output_count & 3u) == 1u)
+        color_output_count--;
+    if ((color_output_count & 3u) != 0u)
         return 0;
     if ((vertex_header.output_count == 8u && fragment_header.input_count == 4u) ||
         (vertex_header.output_count == 10u && fragment_header.input_count == 6u) ||

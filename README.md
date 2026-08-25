@@ -686,11 +686,13 @@ pipeline. Both direct and indexed draws use the existing vertex and index
 validation paths before they reach the embedding; an incomplete line-list
 pair, a line strip or line loop with fewer than two vertices, and a triangle
 strip or fan with fewer than three vertices are successful no-ops. Public
-For the no-user-varying RSH1 profile, a vertex `gl_PointSize` Float32 occupies
-the native scalar immediately after clip `xyzw`; it is finite-checked and
-clamped to `[1, 64]` by the generic backend before point coverage is emitted.
-Broader programmable-point shaders with user varyings remain outside this
-bounded slice. Public WebGL binding and presentation remain unsupported.
+For the generic no-varying profile and every existing structural varying
+profile with a finite literal assignment, a vertex `gl_PointSize` Float32
+occupies the native scalar immediately after clip `xyzw`. Existing varying
+outputs move up by one scalar, then the generic backend finite-checks and
+clamps the point size to `[1, 64]` before coverage is emitted. Broader varying
+point-size expressions remain outside this bounded slice. Public WebGL binding
+and presentation remain unsupported.
 
 Custom RGBA8 renderbuffer FBOs may additionally attach a matching
 `DEPTH24_STENCIL8` renderbuffer or level-zero

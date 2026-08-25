@@ -164,6 +164,11 @@ int main(void)
         "  gl_Position = vec4(position, 0.0, 1.0);\n"
         "  gl_PointSize = 3.0;\n"
         "}\n";
+    const char* point_size_color_varying_vertex_source =
+        "attribute vec2 position; attribute vec4 color; "
+        "varying vec4 vertexColor; void main() { "
+        "gl_Position = vec4(position, 0.0, 1.0); "
+        "vertexColor = color; gl_PointSize = 3.0; }";
     const char* vector_arithmetic_source =
         "attribute vec4 position;\n"
         "void main() {\n"
@@ -262,6 +267,14 @@ int main(void)
         "varying vec2 thirdUv; void main() { gl_Position = transform * "
         "vec4(position, 0.0, 1.0); firstUv = firstTexCoord; "
         "secondUv = secondTexCoord; thirdUv = thirdTexCoord; }";
+    const char* point_size_transformed_three_uv_vertex_source =
+        "attribute vec2 position; attribute vec2 firstTexCoord; "
+        "attribute vec2 secondTexCoord; attribute vec2 thirdTexCoord; "
+        "uniform mat4 transform; varying vec2 firstUv; varying vec2 secondUv; "
+        "varying vec2 thirdUv; void main() { gl_Position = transform * "
+        "vec4(position, 0.0, 1.0); firstUv = firstTexCoord; "
+        "secondUv = secondTexCoord; thirdUv = thirdTexCoord; "
+        "gl_PointSize = 3.0; }";
     const char* transformed_four_uv_vertex_source =
         "attribute vec2 position; attribute vec2 firstTexCoord; "
         "attribute vec2 secondTexCoord; attribute vec2 thirdTexCoord; "
@@ -349,6 +362,27 @@ int main(void)
     assert(header.input_count == 2u);
     assert(header.output_count == 9u);
     assert(header.instruction_count >= 14u);
+
+    header = lower_and_read_header(vertex,
+                                   point_size_color_varying_vertex_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 6u);
+    assert(header.output_count == 9u);
+    assert(header.instruction_count == 19u);
+
+    /* Structural varying lowering accepts only the documented finite literal
+     * point-size form. A broader expression must fail before a native module
+     * can be published with an ambiguous output ABI. */
+    ringl_shader_source(vertex,
+                        "attribute vec2 position; attribute vec4 color; "
+                        "varying vec4 vertexColor; void main() { "
+                        "gl_Position = vec4(position, 0.0, 1.0); "
+                        "vertexColor = color; gl_PointSize = color.r; }", -1);
+    ringl_compile_shader(vertex);
+    assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(vertex) != 0);
+    assert(ringl_get_shader_rsh1_size(vertex) == 0u);
 
     /* The parser has always accepted vector locals. Assert that these do not
      * merely compile: unary, matching-width, and scalar-broadcast arithmetic
@@ -573,6 +607,15 @@ int main(void)
     assert(header.output_count == 10u);
     assert(header.resource_count == 0u);
     assert(header.instruction_count == 65u);
+
+    header = lower_and_read_header(vertex,
+                                   point_size_transformed_three_uv_vertex_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 8u);
+    assert(header.output_count == 11u);
+    assert(header.resource_count == 0u);
+    assert(header.instruction_count == 67u);
 
     header = lower_and_read_header(vertex, transformed_four_uv_vertex_source,
                                    blob, sizeof(blob));

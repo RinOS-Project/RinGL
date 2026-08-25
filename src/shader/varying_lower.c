@@ -303,6 +303,110 @@ static int parse_finite_float(const char** cursor, float* value)
     return 1;
 }
 
+/* The structural varying lowerers deliberately recognize only small complete
+ * shader shapes. Keep gl_PointSize orthogonal to those shapes: remove one
+ * finite literal assignment before matching, then add a real RSH1 output to
+ * the verified vertex module. This is not a browser-side raster shortcut;
+ * shifting slots 4 and above preserves every existing varying while reserving
+ * slot 4 for the native RinGPU point-size contract. */
+static int extract_literal_point_size_assignment(char* source,
+                                                 int* has_point_size,
+                                                 float* point_size)
+{
+    char* match = NULL;
+    char* candidate = source;
+    const char* cursor;
+    size_t name_length = strlen("gl_PointSize");
+
+    if (source == NULL || has_point_size == NULL || point_size == NULL)
+        return 0;
+    *has_point_size = 0;
+    *point_size = 1.0f;
+    while ((candidate = strstr(candidate, "gl_PointSize")) != NULL) {
+        if ((candidate == source ||
+             (!isalnum((unsigned char)candidate[-1]) &&
+              candidate[-1] != '_')) &&
+            candidate[name_length] == '=') {
+            if (match != NULL)
+                return 0;
+            match = candidate;
+        }
+        candidate += name_length;
+    }
+    if (match == NULL)
+        return 1;
+    cursor = match + name_length + 1u;
+    if (!parse_finite_float(&cursor, point_size) || *cursor != ';')
+        return 0;
+    memmove(match, cursor + 1u, strlen(cursor + 1u) + 1u);
+    *has_point_size = 1;
+    return 1;
+}
+
+static int append_literal_point_size_output(RinGLGlslLowerResult* result,
+                                            float point_size)
+{
+    RinGLRsh1HeaderV1 header;
+    RinGLRsh1InstructionV1* instructions;
+    uint32_t point_size_bits;
+    uint32_t index;
+    uint32_t instruction_count;
+    uint32_t total_size;
+
+    if (result == NULL || !isfinite(point_size) ||
+        result->byte_size < sizeof(header)) {
+        return 0;
+    }
+    memcpy(&header, result->bytes, sizeof(header));
+    if (header.magic != RINGL_RSH1_MAGIC ||
+        header.version != RINGL_RSH1_VERSION ||
+        header.header_size != sizeof(header) ||
+        header.stage != RINGL_RSH1_STAGE_VERTEX ||
+        header.instruction_count == 0u || header.output_count < 4u ||
+        header.instruction_count > RINGL_RSH1_MAX_INSTRUCTIONS - 2u ||
+        header.register_count >= RINGL_RSH1_MAX_REGISTERS ||
+        header.total_size != result->byte_size) {
+        return 0;
+    }
+    instruction_count = header.instruction_count;
+    total_size = (uint32_t)(sizeof(header) +
+                            (size_t)(instruction_count + 2u) *
+                                sizeof(RinGLRsh1InstructionV1));
+    if (total_size > sizeof(result->bytes))
+        return 0;
+    instructions = (RinGLRsh1InstructionV1*)(result->bytes + sizeof(header));
+    if (instructions[instruction_count - 1u].opcode != RINGL_RSH1_OP_RETURN)
+        return 0;
+    for (index = 0u; index < instruction_count; ++index) {
+        if (instructions[index].opcode == RINGL_RSH1_OP_STORE_OUTPUT_F32 &&
+            instructions[index].immediate >= 4u) {
+            instructions[index].immediate++;
+        }
+    }
+    memmove(&instructions[instruction_count + 1u],
+            &instructions[instruction_count - 1u], sizeof(instructions[0]));
+    memcpy(&point_size_bits, &point_size, sizeof(point_size_bits));
+    init_instruction(&instructions[instruction_count - 1u],
+                     RINGL_RSH1_OP_CONST_F32);
+    instructions[instruction_count - 1u].destination =
+        (uint16_t)header.register_count;
+    instructions[instruction_count - 1u].immediate = point_size_bits;
+    init_instruction(&instructions[instruction_count],
+                     RINGL_RSH1_OP_STORE_OUTPUT_F32);
+    instructions[instruction_count].source0 = (uint16_t)header.register_count;
+    instructions[instruction_count].immediate = 4u;
+    header.instruction_count += 2u;
+    header.register_count++;
+    header.output_count++;
+    header.total_size = total_size;
+    memcpy(result->bytes, &header, sizeof(header));
+    result->instruction_count = header.instruction_count;
+    result->register_count = header.register_count;
+    result->output_count = header.output_count;
+    result->byte_size = header.total_size;
+    return 1;
+}
+
 static int parse_varying_texture_offset(const char** cursor,
                                         uint32_t* coordinate_kind,
                                         float* offset_u,
@@ -2599,6 +2703,8 @@ int ringl_glsl_lower_varying_rsh1_with_uniforms(
 {
     char* compact;
     int rc;
+    int has_point_size;
+    float point_size;
 
     if (source == NULL || result == NULL ||
         (uniform_count != 0u && uniforms == NULL))
@@ -2609,6 +2715,18 @@ int ringl_glsl_lower_varying_rsh1_with_uniforms(
         (void)snprintf(result->diagnostic, sizeof(result->diagnostic),
                        "varying lowering could not normalize shader source");
         return 1;
+    }
+    if (shader_type == RINGL_VERTEX_SHADER &&
+        !extract_literal_point_size_assignment(compact, &has_point_size,
+                                               &point_size)) {
+        free(compact);
+        (void)snprintf(result->diagnostic, sizeof(result->diagnostic),
+                       "varying gl_PointSize must be one finite literal");
+        return 1;
+    }
+    if (shader_type != RINGL_VERTEX_SHADER) {
+        has_point_size = 0;
+        point_size = 1.0f;
     }
     if (strstr(compact, "varyingvec2") != NULL &&
         shader_type == RINGL_VERTEX_SHADER) {
@@ -2652,6 +2770,10 @@ int ringl_glsl_lower_varying_rsh1_with_uniforms(
                                           result);
     else
         rc = 1;
+    if (rc == 0 && has_point_size != 0 &&
+        !append_literal_point_size_output(result, point_size)) {
+        rc = 1;
+    }
     free(compact);
     if (rc != 0 && result->diagnostic[0] == '\0')
         (void)snprintf(result->diagnostic, sizeof(result->diagnostic),

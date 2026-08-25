@@ -83,7 +83,12 @@ static int fixed_raster_interface(const uint8_t* vertex_rsh1,
         *point_size_output_enabled = 0u;
         return 1;
     }
-    if (vertex_header.output_count == 9u && fragment_header.input_count == 4u) {
+    if ((vertex_header.output_count == 9u &&
+         fragment_header.input_count == 4u) ||
+        (vertex_header.output_count == 11u &&
+         fragment_header.input_count == 6u) ||
+        (vertex_header.output_count == 13u &&
+         fragment_header.input_count == 8u)) {
         *scalar_varying_count = fragment_header.input_count;
         *point_size_output_enabled = 1u;
         return 1;
@@ -437,6 +442,13 @@ int ringl_build_pipeline_key(RinGLContext* context,
         result.point_size_output_enabled = fixed_point_size_output;
         if (result.varying_count > fixed_scalar_varying_count)
             return -1;
+        if (result.point_size_output_enabled != 0u) {
+            for (index = 0u; index < result.varying_count; ++index) {
+                if (result.varyings[index].vertex_output_location < 4u)
+                    return -1;
+                result.varyings[index].vertex_output_location++;
+            }
+        }
         while (result.varying_count < fixed_scalar_varying_count) {
             RinGLRinGpuVaryingV1* native =
                 &result.varyings[result.varying_count];

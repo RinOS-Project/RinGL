@@ -61,6 +61,12 @@ enum RinGLRsh1Opcode {
     RINGL_RSH1_OP_FLOOR_F32 = 59,
     /* Kept numerically aligned with RinShader's scalar square root. */
     RINGL_RSH1_OP_SQRT_F32 = 60,
+    RINGL_RSH1_OP_SIN_F32 = 61,
+    RINGL_RSH1_OP_COS_F32 = 62,
+    RINGL_RSH1_OP_ATAN_F32 = 63,
+    RINGL_RSH1_OP_ATAN2_F32 = 64,
+    RINGL_RSH1_OP_ASIN_F32 = 65,
+    RINGL_RSH1_OP_ACOS_F32 = 66,
 };
 
 enum RinGLRsh1Builtin {

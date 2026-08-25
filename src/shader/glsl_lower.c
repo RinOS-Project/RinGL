@@ -111,6 +111,17 @@ static Value invalid_value(void)
     return value;
 }
 
+/* RSH1 is a finite binary32 execution contract. Keep an overflowing source
+ * literal from becoming an Inf/NaN constant that is only rejected after a
+ * caller has attempted a draw. */
+static int finite_f32(float number)
+{
+    uint32_t bits;
+
+    memcpy(&bits, &number, sizeof(bits));
+    return (bits & UINT32_C(0x7f800000)) != UINT32_C(0x7f800000);
+}
+
 static void fail(Lower* lower, const char* message)
 {
     if (lower->result->diagnostic[0] == '\0') {
@@ -221,6 +232,7 @@ static void next(Lower* lower)
          isdigit((unsigned char)lower->source[lower->offset]))) {
         size_t start = lower->offset - 1u;
         int dot_seen = c == '.';
+        int exponent_seen = 0;
         while (lower->offset < lower->length) {
             c = lower->source[lower->offset];
             if (isdigit((unsigned char)c)) {
@@ -230,6 +242,27 @@ static void next(Lower* lower)
             if (c == '.' && !dot_seen) {
                 dot_seen = 1;
                 lower->offset++;
+                continue;
+            }
+            if ((c == 'e' || c == 'E') && !exponent_seen) {
+                size_t exponent = lower->offset + 1u;
+
+                exponent_seen = 1;
+                if (exponent < lower->length &&
+                    (lower->source[exponent] == '+' ||
+                     lower->source[exponent] == '-')) {
+                    ++exponent;
+                }
+                if (exponent >= lower->length ||
+                    !isdigit((unsigned char)lower->source[exponent])) {
+                    token.kind = T_BAD;
+                    token.begin = lower->source + start;
+                    token.length = exponent - start;
+                    lower->offset = exponent;
+                    lower->token = token;
+                    return;
+                }
+                lower->offset = exponent + 1u;
                 continue;
             }
             break;
@@ -440,7 +473,7 @@ static Value number_value(Lower* lower)
     memcpy(temp, lower->token.begin, lower->token.length);
     temp[lower->token.length] = '\0';
     for (index = 0u; index < lower->token.length; ++index) {
-        if (temp[index] == '.') {
+        if (temp[index] == '.' || temp[index] == 'e' || temp[index] == 'E') {
             integer = 0;
             break;
         }
@@ -457,8 +490,8 @@ static Value number_value(Lower* lower)
         memcpy(&bits, &i32_number, sizeof(bits));
     } else {
         float number = strtof(temp, &end);
-        if (end == temp || *end != '\0') {
-            fail(lower, "invalid numeric literal");
+        if (end == temp || *end != '\0' || !finite_f32(number)) {
+            fail(lower, "numeric literal must be finite binary32");
             return value;
         }
         memcpy(&bits, &number, sizeof(bits));
@@ -833,6 +866,111 @@ static Value sqrt_value(Lower* lower)
     Value value = unary_math_argument(lower);
 
     return value.width == 0u ? value : sqrt_float_value(lower, &value);
+}
+
+static Value trig_float_value(Lower* lower, const Value* value,
+                              uint16_t opcode, const char* diagnostic)
+{
+    Value result = invalid_value();
+    uint32_t index;
+
+    if (!float_vector_value(lower, value, diagnostic))
+        return result;
+    for (index = 0u; index < value->width; ++index) {
+        uint16_t destination = new_reg(lower);
+
+        if (destination == RINGL_RSH1_UNUSED ||
+            !emit(lower, opcode, destination, value->regs[index],
+                  RINGL_RSH1_UNUSED, 0u)) {
+            return invalid_value();
+        }
+        result.regs[index] = destination;
+    }
+    result.width = value->width;
+    return result;
+}
+
+static Value unary_trig_value(Lower* lower, uint16_t opcode,
+                              const char* diagnostic)
+{
+    Value value = unary_math_argument(lower);
+
+    return value.width == 0u ? value
+                             : trig_float_value(lower, &value, opcode,
+                                                diagnostic);
+}
+
+static Value angle_scale_value(Lower* lower, float factor)
+{
+    Value value = unary_math_argument(lower);
+    Value scale;
+
+    if (value.width == 0u)
+        return value;
+    scale = float_constant_value(lower, factor);
+    return scale.width == 0u ? scale
+                             : componentwise_binary(lower, &value, &scale,
+                                                    RINGL_RSH1_OP_MUL_F32, 1);
+}
+
+static Value tan_value(Lower* lower)
+{
+    Value value = unary_math_argument(lower);
+    Value sine;
+    Value cosine;
+
+    if (value.width == 0u)
+        return value;
+    sine = trig_float_value(lower, &value, RINGL_RSH1_OP_SIN_F32,
+                            "tan builtin requires floating-point values");
+    cosine = trig_float_value(lower, &value, RINGL_RSH1_OP_COS_F32,
+                              "tan builtin requires floating-point values");
+    if (sine.width == 0u || cosine.width == 0u)
+        return invalid_value();
+    return componentwise_binary(lower, &sine, &cosine, RINGL_RSH1_OP_DIV_F32,
+                                 0);
+}
+
+static Value atan_value(Lower* lower)
+{
+    Value value;
+    Value x;
+    Value result = invalid_value();
+    uint32_t index;
+
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after atan builtin"))
+        return result;
+    value = expression(lower);
+    if (take(lower, T_COMMA)) {
+        x = expression(lower);
+        if (!need(lower, T_RPAREN, "expected ')' after atan arguments"))
+            return result;
+        if (!float_vector_value(lower, &value,
+                                "atan builtin requires floating-point values") ||
+            !float_vector_value(lower, &x,
+                                "atan builtin requires floating-point values") ||
+            value.width != x.width) {
+            fail(lower, "atan(y, x) requires matching floating-point values");
+            return result;
+        }
+        for (index = 0u; index < value.width; ++index) {
+            uint16_t destination = new_reg(lower);
+
+            if (destination == RINGL_RSH1_UNUSED ||
+                !emit(lower, RINGL_RSH1_OP_ATAN2_F32, destination,
+                      value.regs[index], x.regs[index], 0u)) {
+                return invalid_value();
+            }
+            result.regs[index] = destination;
+        }
+        result.width = value.width;
+        return result;
+    }
+    if (!need(lower, T_RPAREN, "expected ')' after atan argument"))
+        return result;
+    return trig_float_value(lower, &value, RINGL_RSH1_OP_ATAN_F32,
+                            "atan builtin requires floating-point values");
 }
 
 static Value inversesqrt_value(Lower* lower)
@@ -1738,6 +1876,26 @@ static Value primary(Lower* lower)
         return length_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "normalize"))
         return normalize_value(lower);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "radians"))
+        return angle_scale_value(lower, 0.01745329251994329577f);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "degrees"))
+        return angle_scale_value(lower, 57.2957795130823208768f);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "sin"))
+        return unary_trig_value(lower, RINGL_RSH1_OP_SIN_F32,
+                                "sin builtin requires floating-point values");
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "cos"))
+        return unary_trig_value(lower, RINGL_RSH1_OP_COS_F32,
+                                "cos builtin requires floating-point values");
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "tan"))
+        return tan_value(lower);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "asin"))
+        return unary_trig_value(lower, RINGL_RSH1_OP_ASIN_F32,
+                                "asin builtin requires floating-point values");
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "acos"))
+        return unary_trig_value(lower, RINGL_RSH1_OP_ACOS_F32,
+                                "acos builtin requires floating-point values");
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "atan"))
+        return atan_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "sign"))
         return sign_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "step"))

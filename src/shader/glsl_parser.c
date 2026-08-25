@@ -558,6 +558,18 @@ static int common_math_builtin_call(Parser* parser, uint32_t argument_count)
     return expect(parser, TOK_RPAREN, "expected ')' after math builtin");
 }
 
+static int atan_builtin_call(Parser* parser)
+{
+    next_token(parser);
+    if (!expect(parser, TOK_LPAREN, "expected '(' after atan"))
+        return 0;
+    if (!expression(parser))
+        return 0;
+    if (accept(parser, TOK_COMMA) && !expression(parser))
+        return 0;
+    return expect(parser, TOK_RPAREN, "expected ')' after atan arguments");
+}
+
 static int primary(Parser* parser)
 {
     if (accept(parser, TOK_NUMBER))
@@ -593,8 +605,14 @@ static int primary(Parser* parser)
             token_is_ident(&ident, "fract") || token_is_ident(&ident, "abs") ||
             token_is_ident(&ident, "sign") || token_is_ident(&ident, "sqrt") ||
             token_is_ident(&ident, "inversesqrt") ||
-            token_is_ident(&ident, "length") || token_is_ident(&ident, "normalize"))
+            token_is_ident(&ident, "length") || token_is_ident(&ident, "normalize") ||
+            token_is_ident(&ident, "radians") || token_is_ident(&ident, "degrees") ||
+            token_is_ident(&ident, "sin") || token_is_ident(&ident, "cos") ||
+            token_is_ident(&ident, "tan") || token_is_ident(&ident, "asin") ||
+            token_is_ident(&ident, "acos"))
             return common_math_builtin_call(parser, 1u);
+        if (token_is_ident(&ident, "atan"))
+            return atan_builtin_call(parser);
         if (token_is_ident(&ident, "dFdx") ||
             token_is_ident(&ident, "dFdy") ||
             token_is_ident(&ident, "fwidth")) {

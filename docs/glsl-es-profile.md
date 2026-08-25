@@ -40,6 +40,16 @@ The current first-triangle slice supports:
   matrix, and mismatched-width forms fail before RSH1 publication. Invalid
   square-root domains and zero normalization/inverse-square-root inputs fail
   backend preflight rather than substituting a host result;
+- Float trigonometric `radians`, `degrees`, `sin`, `cos`, `tan`, `asin`,
+  `acos`, and one/two-argument `atan`: angle conversion scalarizes to ordinary
+  Float multiplication; RSH1 opcodes 61--66 execute finite sin/cos/atan and
+  inverse-trigonometric operations in generic RinGPU, while `tan` expands to
+  sin/cos/division. All matching Float scalar/vector overloads are accepted;
+  two-argument `atan(y, x)` requires matching widths. Sin/cos/tan retain a
+  finite `[-1024, 1024]` radian execution domain, asin/acos require `[-1, 1]`,
+  and atan(0,0) fail lowering or backend preflight rather than manufacturing a
+  result; scientific Float literals lower only when finite binary32, so an
+  overflowing literal fails before module publication;
 - vertex `attribute float` and `attribute vec2` inputs;
 - `vec2(...)` and `vec4(...)` constructors;
 - scalar or `vec4` writes to the stage output (`gl_Position` / `gl_FragColor`);

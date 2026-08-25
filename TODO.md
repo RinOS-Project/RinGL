@@ -90,6 +90,18 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   preflight rather than receiving a fabricated result. Strict RinGL IR plus the
   Ladybird→RinGL→RinGPU→private-Aquamarine bridge execute the suite and verify
   `(255, 153, 204, 255)` and `(255, 153, 255, 255)` readbacks.
+- [x] Lower the bounded Float trigonometric suite `radians`, `degrees`, `sin`,
+  `cos`, `tan`, `asin`, `acos`, and one/two-argument `atan` through RinGL and
+  generic RinGPU. Angle conversion uses scalar multiplication; RSH1 61--66
+  execute the finite trigonometric operations without hosted libm or an
+  embedding callback, while `tan` emits executable sin/cos division. Matching
+  Float scalar/vector overloads are admitted, with matching widths required
+  for `atan(y, x)`. Sin/cos/tan are bounded to `[-1024, 1024]` radians;
+  asin/acos domains and atan(0,0) fail lowering or preflight instead of
+  returning a fabricated result. Scientific Float literals are accepted only
+  as finite binary32 values. Strict RinGL IR, RinShader validation, and the real
+  Ladybird→RinGL→RinGPU→private-Aquamarine bridge verify the suite with
+  `(128, 128, 255, 255)` readback.
 - [x] Implement the bounded WebGL `OES_standard_derivatives` slice through
   RinGL rather than a browser-local or Aquamarine-direct backend. An acquired
   extension object enables a context-local gate; exact fragment

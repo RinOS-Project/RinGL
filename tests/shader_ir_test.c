@@ -46,6 +46,12 @@ typedef struct __attribute__((packed)) Instruction {
 #define RSH1_OP_MAX_F32 UINT16_C(25)
 #define RSH1_OP_FLOOR_F32 UINT16_C(59)
 #define RSH1_OP_SQRT_F32 UINT16_C(60)
+#define RSH1_OP_SIN_F32 UINT16_C(61)
+#define RSH1_OP_COS_F32 UINT16_C(62)
+#define RSH1_OP_ATAN_F32 UINT16_C(63)
+#define RSH1_OP_ATAN2_F32 UINT16_C(64)
+#define RSH1_OP_ASIN_F32 UINT16_C(65)
+#define RSH1_OP_ACOS_F32 UINT16_C(66)
 #define RSH1_OP_LOAD_BUILTIN_F32 UINT16_C(52)
 #define RSH1_BUILTIN_POINT_COORD_X UINT32_C(16)
 #define RSH1_BUILTIN_POINT_COORD_Y UINT32_C(17)
@@ -277,6 +283,21 @@ int main(void)
         "void main() {\n"
         "  vec2 facing = faceforward(position, vec2(-1.0, 0.0), vec2(1.0, 0.0));\n"
         "  gl_Position = vec4(facing, 0.0, 1.0);\n"
+        "}\n";
+    const char* trigonometric_builtin_source =
+        "attribute vec2 position;\n"
+        "void main() {\n"
+        "  vec2 angle = radians(vec2(3e1, 4.5e1));\n"
+        "  vec2 sine = sin(angle);\n"
+        "  vec2 cosine = cos(angle);\n"
+        "  vec2 tangent = tan(angle);\n"
+        "  vec2 inverse_sine = asin(sine);\n"
+        "  vec2 inverse_cosine = acos(cosine);\n"
+        "  vec2 polar = atan(sine, cosine);\n"
+        "  float direct_angle = atan(tangent.x);\n"
+        "  gl_Position = vec4(degrees(inverse_sine.x) / 180.0,\n"
+        "                     degrees(inverse_cosine.y) / 180.0,\n"
+        "                     tangent.x + polar.x + direct_angle, 1.0);\n"
         "}\n";
     const char* fragment_source =
         "precision mediump float;\n"
@@ -534,6 +555,37 @@ int main(void)
     assert(header.output_count == 9u);
     assert(header.instruction_count == 20u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
+
+    header = lower_and_read_header(vertex, trigonometric_builtin_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 2u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_SIN_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_COS_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_ATAN_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_ATAN2_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_ASIN_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_ACOS_F32));
+
+    ringl_shader_source(vertex,
+                        "attribute vec2 position; void main() { "
+                        "vec2 invalid = atan(position, 1.0); "
+                        "gl_Position = vec4(invalid, 0.0, 1.0); }", -1);
+    ringl_compile_shader(vertex);
+    assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(vertex) != 0);
+    assert(ringl_get_shader_rsh1_size(vertex) == 0u);
+
+    ringl_shader_source(vertex,
+                        "attribute vec2 position; void main() { "
+                        "float invalid = 3.5e39; "
+                        "gl_Position = vec4(position + invalid, 0.0, 1.0); }",
+                        -1);
+    ringl_compile_shader(vertex);
+    assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(vertex) != 0);
+    assert(ringl_get_shader_rsh1_size(vertex) == 0u);
 
     header = lower_and_read_header(
         vertex, point_size_attribute_divide_color_varying_vertex_source,

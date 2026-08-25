@@ -571,6 +571,16 @@ arithmetic and comparisons. `cross` is vec3-only and the directional forms
 require matching vec2/vec3/vec4 operands (with scalar Float eta for `refract`);
 invalid type/width combinations fail before publication. Undefined zero
 normalization/inverse-square-root is not replaced with a host-side value.
+The bounded Float trigonometric family `radians`, `degrees`, `sin`, `cos`,
+`tan`, `asin`, `acos`, and both `atan` overloads follows the same route:
+angle conversion is scalar multiplication, opcodes 61--66 execute finite
+sin/cos/atan and inverse-trigonometric values in generic RinGPU, and `tan`
+uses executable sin/cos division. Matching Float scalar/vector overloads are
+accepted (the two-argument `atan` widths must match); out-of-domain asin/acos,
+atan(0,0), and sin/cos/tan angles outside `[-1024, 1024]` radians fail during
+lowering or preflight before target publication rather than using host libm or
+a direct surface fallback. Scientific Float literals are lowered only when they
+are finite binary32 values, so an overflowing literal fails before publication.
 This covers common uniform color
 modulation and matrix-transformed positions (`mat2 * vec2`, `mat3 * vec3`, or
 `mat4 * vec4`) plus a vector offset while retaining explicit RSH1 resource and

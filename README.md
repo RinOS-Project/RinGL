@@ -842,10 +842,11 @@ RinGL-to-RinGPU route.
 The same bounded ownership path also carries Float32 color textures for the
 RinOS `OES_texture_float` / `WEBGL_color_buffer_float` embedding. Exact
 `RGBA`, `RGB`, `ALPHA`, `LUMINANCE`, and `LUMINANCE_ALPHA`/`FLOAT` uploads are
-converted with unaligned-safe reads into an RGBA32F shadow. A sampled texture
-uses `COPY_DESTINATION|SAMPLED`; a color-renderable `RGBA/FLOAT` texture or
-`RGBA32F` renderbuffer additionally realizes the same native
-`RIN_GPU_FORMAT_RGBA32_FLOAT` storage with `COLOR_TARGET|COPY_SOURCE`.
+converted with unaligned-safe reads into an RGBA32F shadow. Every one of those
+Float texture formats can also be a color attachment, realized as native
+`RIN_GPU_FORMAT_RGBA32_FLOAT` storage with
+`COPY_DESTINATION|SAMPLED|COLOR_TARGET|COPY_SOURCE`; `RGBA32F` renderbuffers
+use the same physical target.
 `ringl_framebuffer_color_attachment_is_float()` lets a browser gate that
 native capability behind its WebGL extension object without mirroring RinGL
 attachment state. Float clear and fragment outputs retain finite components
@@ -863,15 +864,17 @@ gate; it then permits `LINEAR` magnification and `LINEAR`,
 from a capable native sampler, so a non-WebGL caller cannot make the browser
 extension visible accidentally. RinGL preserves the corresponding min/mag/mip
 descriptors through the RinGPU adapter and generated RGBA32F mip chain.
-`copyTexSubImage2D` and `copyTexImage2D` now snapshot a complete finite
-RGBA32F/RGBA16F target as Float32, or a fixed-point target as canonical RGBA8,
-then convert it atomically into Float32, binary16, fixed-point, or packed
-destination storage. Float RGB/ALPHA/LUMINANCE color attachments remain
-unavailable, so this is not a full float-FBO profile. The generic software
-backend rejects a non-finite component before it changes its target. The
-Aquamarine embedding snapshots the same Float32 components into its RSH1
-sampler table, and the product bridge test draws a Float texture through the
-full RinGL/RinGPU route into a Float FBO.
+Legacy attachment semantics stay logical while their physical target is RGBA:
+`RGB` exposes alpha one, `ALPHA` exposes zero RGB, `LUMINANCE` replicates its
+red/luminance value into RGB with alpha one, and `LUMINANCE_ALPHA` replicates
+the luminance while retaining alpha. Clear, fragment output, Float readback,
+and CopyTex all use that same conversion. A partial RGB `colorMask` for a
+luminance target updates the one logical luminance component atomically across
+physical RGB; LUMINANCE_ALPHA still masks alpha independently. The generic
+software backend rejects a non-finite component before it changes its target.
+The Aquamarine embedding snapshots the same Float32 components into its RSH1
+sampler table, and the product bridge test draws every Float legacy format
+through the full RinGL/RinGPU route into a Float FBO.
 
 `OES_texture_half_float` is represented by the public
 `RINGL_HALF_FLOAT_OES` token. Its bounded uploads accept binary16 bytes only

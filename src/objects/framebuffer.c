@@ -51,6 +51,69 @@ static uint32_t color_attachment_ringpu_format(uint32_t format)
     return RINGL_RIN_GPU_FORMAT_RGBA8_UNORM;
 }
 
+static uint32_t color_attachment_logical_format_for(
+    const RinGLContext* context, const RinGLFramebufferObject* framebuffer,
+    uint32_t attachment_index)
+{
+    uint32_t object_index;
+
+    if (context == NULL || framebuffer == NULL ||
+        attachment_index >= RINGL_MAX_COLOR_ATTACHMENTS) {
+        return 0u;
+    }
+    object_index = ringl_object_slot_index(
+        framebuffer->color_attachment_object[attachment_index]);
+    if (object_index >= RINGL_OBJECT_SLOT_COUNT)
+        return 0u;
+    if (framebuffer->color_attachment_kind[attachment_index] ==
+        RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D) {
+        return context->textures[object_index].format;
+    }
+    if (framebuffer->color_attachment_kind[attachment_index] ==
+        RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER) {
+        uint32_t format = context->renderbuffers[object_index].internal_format;
+
+        return format == RINGL_RGB565 || format == RINGL_RGB16F
+            ? RINGL_RGB : RINGL_RGBA;
+    }
+    return 0u;
+}
+
+static uint32_t color_attachment_logical_write_mask(uint32_t format,
+                                                     uint32_t requested_mask)
+{
+    uint32_t rgb_mask = requested_mask &
+        (RINGL_RIN_GPU_COLOR_WRITE_RED |
+         RINGL_RIN_GPU_COLOR_WRITE_GREEN |
+         RINGL_RIN_GPU_COLOR_WRITE_BLUE);
+
+    if (format == RINGL_RGB)
+        return rgb_mask;
+    if (format == RINGL_ALPHA)
+        return requested_mask & RINGL_RIN_GPU_COLOR_WRITE_ALPHA;
+    if (format == RINGL_LUMINANCE) {
+        /* The physical RGBA image stores one logical luminance value in all
+         * RGB lanes. Any enabled logical color lane therefore updates the
+         * complete replicated value; no partial physical write is allowed. */
+        return rgb_mask != 0u
+            ? RINGL_RIN_GPU_COLOR_WRITE_RED |
+                  RINGL_RIN_GPU_COLOR_WRITE_GREEN |
+                  RINGL_RIN_GPU_COLOR_WRITE_BLUE
+            : 0u;
+    }
+    if (format == RINGL_LUMINANCE_ALPHA) {
+        uint32_t mask = requested_mask & RINGL_RIN_GPU_COLOR_WRITE_ALPHA;
+
+        if (rgb_mask != 0u) {
+            mask |= RINGL_RIN_GPU_COLOR_WRITE_RED |
+                    RINGL_RIN_GPU_COLOR_WRITE_GREEN |
+                    RINGL_RIN_GPU_COLOR_WRITE_BLUE;
+        }
+        return mask;
+    }
+    return requested_mask & RINGL_RIN_GPU_COLOR_WRITE_ALL;
+}
+
 static int depth_attachment_valid(uint32_t attachment)
 {
     return attachment == RINGL_DEPTH_ATTACHMENT ||
@@ -226,8 +289,10 @@ static int color_attachment_dimensions(RinGLContext* context,
             return -1;
         texture = &context->textures[index];
         if ((texture->format != RINGL_RGBA &&
+             texture->color_component_type != RINGL_FLOAT &&
+             texture->color_component_type != RINGL_HALF_FLOAT_OES &&
              texture->srgb_encoding == 0u &&
-            !color_attachment_format_valid(texture->format)) ||
+             !color_attachment_format_valid(texture->format)) ||
             texture_attachment_dimensions(texture,
                                           framebuffer->color_attachment_level[
                                               attachment_index],
@@ -276,12 +341,12 @@ static int color_attachment_ringpu_format_for(
         RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D) {
         const RinGLTextureObject* texture = &context->textures[object_index];
 
-        if (texture->format == RINGL_RGBA || texture->srgb_encoding != 0u) {
-            *format_out = texture->color_component_type == RINGL_FLOAT
-                ? RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT
-                : texture->color_component_type == RINGL_HALF_FLOAT_OES
-                    ? RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT
-                    : RINGL_RIN_GPU_FORMAT_RGBA8_UNORM;
+        if (texture->color_component_type == RINGL_FLOAT) {
+            *format_out = RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT;
+            return 0;
+        }
+        if (texture->color_component_type == RINGL_HALF_FLOAT_OES) {
+            *format_out = RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT;
             return 0;
         }
         *format_out = color_attachment_ringpu_format(texture->format);
@@ -610,26 +675,35 @@ uint32_t ringl_effective_color_write_mask(const RinGLContext* context)
         ? framebuffer->draw_buffer_mask : 1u;
     if (active_mask == 0u)
         return 0u;
-    mask = context->color_write_mask;
+    mask = RINGL_RIN_GPU_COLOR_WRITE_ALL;
     for (uint32_t attachment = 0u;
          attachment < RINGL_MAX_COLOR_ATTACHMENTS; ++attachment) {
         uint32_t object_index;
+        uint32_t logical_format;
 
         if ((active_mask & (UINT32_C(1) << attachment)) == 0u)
-            continue;
-        if (framebuffer->color_attachment_kind[attachment] !=
-            RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D)
             continue;
         object_index = ringl_object_slot_index(
             framebuffer->color_attachment_object[attachment]);
         if (object_index >= RINGL_OBJECT_SLOT_COUNT ||
-            ringl_object_lookup_const(
-                context, framebuffer->color_attachment_object[attachment],
-                RINGL_OBJECT_TEXTURE) == NULL) {
+            (framebuffer->color_attachment_kind[attachment] ==
+                     RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D &&
+             ringl_object_lookup_const(
+                 context, framebuffer->color_attachment_object[attachment],
+                 RINGL_OBJECT_TEXTURE) == NULL) ||
+            (framebuffer->color_attachment_kind[attachment] ==
+                     RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER &&
+             ringl_object_lookup_const(
+                 context, framebuffer->color_attachment_object[attachment],
+                 RINGL_OBJECT_RENDERBUFFER) == NULL)) {
             return 0u;
         }
-        if (context->textures[object_index].format == RINGL_RGB)
-            mask &= ~RINGL_RIN_GPU_COLOR_WRITE_ALPHA;
+        logical_format = color_attachment_logical_format_for(
+            context, framebuffer, attachment);
+        if (logical_format == 0u)
+            return 0u;
+        mask &= color_attachment_logical_write_mask(
+            logical_format, context->color_write_mask);
     }
     return mask;
 }
@@ -966,6 +1040,7 @@ uint32_t ringl_check_framebuffer_status(uint32_t target)
     uint32_t color_width;
     uint32_t color_height;
     uint32_t color_format = 0u;
+    uint32_t color_logical_format = 0u;
     uint32_t depth_width;
     uint32_t depth_height;
     uint32_t stencil_width;
@@ -992,6 +1067,7 @@ uint32_t ringl_check_framebuffer_status(uint32_t target)
         uint32_t width;
         uint32_t height;
         uint32_t format;
+        uint32_t logical_format;
         uint32_t object_index;
 
         if (framebuffer->color_attachment_kind[attachment] ==
@@ -1019,6 +1095,16 @@ uint32_t ringl_check_framebuffer_status(uint32_t target)
                                                 attachment, &format) != 0) {
             return RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
         }
+        logical_format = color_attachment_logical_format_for(
+            context, framebuffer, attachment);
+        if (logical_format != RINGL_RGBA && logical_format != RINGL_RGB &&
+            logical_format != RINGL_ALPHA &&
+            logical_format != RINGL_LUMINANCE &&
+            logical_format != RINGL_LUMINANCE_ALPHA &&
+            logical_format != RINGL_RGB565 && logical_format != RINGL_RGBA4 &&
+            logical_format != RINGL_RGB5_A1) {
+            return RINGL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
+        }
         object_index = ringl_object_slot_index(
             framebuffer->color_attachment_object[attachment]);
         if (object_index >= RINGL_OBJECT_SLOT_COUNT)
@@ -1040,8 +1126,10 @@ uint32_t ringl_check_framebuffer_status(uint32_t target)
             color_width = width;
             color_height = height;
             color_format = format;
+            color_logical_format = logical_format;
         } else if (color_width != width || color_height != height ||
-                   color_format != format) {
+                   color_format != format ||
+                   color_logical_format != logical_format) {
             /* RinGPU's current graphics pipeline has one color format; do
              * not claim this heterogeneous FBO is executable. */
             return RINGL_FRAMEBUFFER_UNSUPPORTED;

@@ -624,6 +624,43 @@ static uint32_t texture_storage_texel_bytes(uint32_t format,
     return texture_packed_color_format(format) ? 2u : 4u;
 }
 
+/* A null TexImage definition is still a logical image, not an uninitialized
+ * physical RGBA allocation. RGB and LUMINANCE omit alpha, so their expanded
+ * shadow storage must start with the WebGL default alpha of one. This also
+ * lets a later color-mask-limited clear or draw preserve the required value. */
+static void texture_initialize_color_defaults(uint8_t* destination,
+                                              uint64_t texel_count,
+                                              uint32_t format,
+                                              uint32_t color_component_type)
+{
+    uint64_t index;
+
+    if (destination == NULL ||
+        (format != RINGL_RGB && format != RINGL_LUMINANCE)) {
+        return;
+    }
+    if (color_component_type == RINGL_FLOAT) {
+        const float one = 1.0f;
+
+        for (index = 0u; index < texel_count; ++index) {
+            memcpy(destination + (index * 4u + 3u) * sizeof(one), &one,
+                   sizeof(one));
+        }
+        return;
+    }
+    if (color_component_type == RINGL_HALF_FLOAT_OES) {
+        const uint16_t one = UINT16_C(0x3c00);
+
+        for (index = 0u; index < texel_count; ++index) {
+            memcpy(destination + (index * 4u + 3u) * sizeof(one), &one,
+                   sizeof(one));
+        }
+        return;
+    }
+    for (index = 0u; index < texel_count; ++index)
+        destination[index * 4u + 3u] = UINT8_MAX;
+}
+
 /* EXT_sRGB accepts normalized byte source data, but texture sampling and
  * blending must see linear RGB. Keep alpha unmodified and always materialize
  * four Float32 components so the normal RinGPU RGBA32_FLOAT path owns the
@@ -1176,13 +1213,9 @@ static int texture_realize_image(RinGLContext* context,
         return -1;
 
     if (mip_count > 1u) {
-        if ((!texture_color_format(texture->format) &&
-             texture->format != RINGL_DEPTH_COMPONENT32F &&
-             texture->format != RINGL_DEPTH24_STENCIL8) ||
-            (texture->requires_color_target != 0u &&
-             texture->format != RINGL_RGBA &&
-             texture->srgb_encoding == 0u &&
-             !texture_packed_color_format(texture->format))) {
+        if (!texture_color_format(texture->format) &&
+            texture->format != RINGL_DEPTH_COMPONENT32F &&
+            texture->format != RINGL_DEPTH24_STENCIL8) {
             return -1;
         }
         memset(&mip_desc, 0, sizeof(mip_desc));
@@ -1226,9 +1259,7 @@ static int texture_realize_image(RinGLContext* context,
                                           &image) != 0 || image == 0u) {
             return -1;
         }
-    } else if ((texture->format == RINGL_RGBA ||
-                texture->srgb_encoding != 0u ||
-                texture_packed_color_format(texture->format)) &&
+    } else if (texture_color_format(texture->format) &&
                texture->requires_color_target) {
         memset(&color_target_desc, 0, sizeof(color_target_desc));
         color_target_desc.width = texture->width;
@@ -2110,6 +2141,11 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
             }
     } else {
         memset(replacement, 0, (size_t)size);
+        if (storage_format != 0u) {
+            texture_initialize_color_defaults(
+                replacement, (uint64_t)(uint32_t)width * (uint32_t)height,
+                storage_format, requested_color_component_type);
+        }
         if (requested_srgb_encoding != RINGL_FALSE &&
             storage_format == RINGL_RGB) {
             texture_initialize_srgb_rgb_alpha(

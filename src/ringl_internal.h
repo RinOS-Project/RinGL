@@ -363,6 +363,12 @@ typedef struct RinGLColorTarget {
     /* RGB/sRGB-RGB targets use an RGBA physical image, but alpha is logically
      * absent: it must remain one and no pipeline may write it. */
     uint32_t has_alpha;
+    /* The physical target is always a four-component RinGPU image, but
+     * WebGL's legacy color formats still own their component semantics.  This
+     * is the logical texture/renderbuffer format (RGBA/RGB/ALPHA/LUMINANCE or
+     * LUMINANCE_ALPHA) used to map clear and fragment output values before
+     * they reach that physical image. */
+    uint32_t logical_color_format;
     uint32_t width;
     uint32_t height;
     uint32_t mip_level;

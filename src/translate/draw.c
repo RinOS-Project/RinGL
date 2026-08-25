@@ -30,6 +30,51 @@ static float clear_color_for_target(uint32_t format, float value)
         ? value : clamp_color(value);
 }
 
+static void clear_colors_for_target(const RinGLContext* context,
+                                    const RinGLColorTarget* target,
+                                    float* red_out, float* green_out,
+                                    float* blue_out, float* alpha_out)
+{
+    float red;
+    float green;
+    float blue;
+    float alpha;
+
+    if (context == NULL || target == NULL || red_out == NULL ||
+        green_out == NULL || blue_out == NULL || alpha_out == NULL) {
+        return;
+    }
+    red = context->clear_red;
+    green = context->clear_green;
+    blue = context->clear_blue;
+    alpha = context->clear_alpha;
+    switch (target->logical_color_format) {
+    case RINGL_RGB:
+        alpha = 1.0f;
+        break;
+    case RINGL_ALPHA:
+        red = 0.0f;
+        green = 0.0f;
+        blue = 0.0f;
+        break;
+    case RINGL_LUMINANCE:
+        green = red;
+        blue = red;
+        alpha = 1.0f;
+        break;
+    case RINGL_LUMINANCE_ALPHA:
+        green = red;
+        blue = red;
+        break;
+    default:
+        break;
+    }
+    *red_out = clear_color_for_target(target->format, red);
+    *green_out = clear_color_for_target(target->format, green);
+    *blue_out = clear_color_for_target(target->format, blue);
+    *alpha_out = clear_color_for_target(target->format, alpha);
+}
+
 static int ringl_resolve_color_attachment_target(
     RinGLContext* context, uint32_t attachment_index,
     RinGLColorTarget* target)
@@ -49,6 +94,7 @@ static int ringl_resolve_color_attachment_target(
         target->image = context->default_framebuffer.color_target;
         target->format = context->default_framebuffer.color_format;
         target->has_alpha = RINGL_TRUE;
+        target->logical_color_format = RINGL_RGBA;
         target->width = context->default_framebuffer.width;
         target->height = context->default_framebuffer.height;
         target->mip_level = 0u;
@@ -109,8 +155,12 @@ static int ringl_resolve_color_attachment_target(
             break;
         }
         target->srgb_encoding = context->renderbuffers[index].srgb_encoding;
-        target->has_alpha = context->renderbuffers[index].internal_format !=
-                RINGL_RGB565 ? RINGL_TRUE : RINGL_FALSE;
+        target->logical_color_format =
+            context->renderbuffers[index].internal_format == RINGL_RGB565 ||
+                    context->renderbuffers[index].internal_format == RINGL_RGB16F
+                ? RINGL_RGB : RINGL_RGBA;
+        target->has_alpha = target->logical_color_format != RINGL_RGB
+            ? RINGL_TRUE : RINGL_FALSE;
     } else {
         return -1;
     }
@@ -123,6 +173,9 @@ static int ringl_resolve_color_attachment_target(
         switch (context->textures[index].format) {
         case RINGL_RGBA:
         case RINGL_RGB:
+        case RINGL_ALPHA:
+        case RINGL_LUMINANCE:
+        case RINGL_LUMINANCE_ALPHA:
             target->format = context->textures[index].color_component_type ==
                     RINGL_FLOAT ? RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT
                 : context->textures[index].color_component_type ==
@@ -143,7 +196,9 @@ static int ringl_resolve_color_attachment_target(
             break;
         }
         target->srgb_encoding = context->textures[index].srgb_encoding;
-        target->has_alpha = context->textures[index].format != RINGL_RGB
+        target->logical_color_format = context->textures[index].format;
+        target->has_alpha = target->logical_color_format != RINGL_RGB &&
+                target->logical_color_format != RINGL_LUMINANCE
             ? RINGL_TRUE : RINGL_FALSE;
     }
     return target->image != 0u && target->state != NULL &&
@@ -194,8 +249,10 @@ int ringl_resolve_color_targets(RinGLContext* context,
             return -1;
         for (uint32_t prior = 0u; prior < index; ++prior) {
             if ((active_mask & (UINT32_C(1) << prior)) != 0u &&
-                targets->targets[prior].has_alpha !=
-                    targets->targets[index].has_alpha) {
+                (targets->targets[prior].has_alpha !=
+                     targets->targets[index].has_alpha ||
+                 targets->targets[prior].logical_color_format !=
+                     targets->targets[index].logical_color_format)) {
                 /* The current RinGPU MRT ABI has one component-write mask.
                  * Do not silently let an RGB target corrupt or observe a
                  * physical alpha channel beside an RGBA target. */
@@ -751,14 +808,9 @@ static int begin_mrt_pass(RinGLContext* context, uint64_t command_list,
     if (first == NULL)
         return -1;
     if (color_load_op == RINGL_RIN_GPU_RENDER_CLEAR) {
-        pass.clear_red = clear_color_for_target(first->format,
-                                                 context->clear_red);
-        pass.clear_green = clear_color_for_target(first->format,
-                                                   context->clear_green);
-        pass.clear_blue = clear_color_for_target(first->format,
-                                                  context->clear_blue);
-        pass.clear_alpha = clear_color_for_target(first->format,
-                                                   context->clear_alpha);
+        clear_colors_for_target(context, first, &pass.clear_red,
+                                &pass.clear_green, &pass.clear_blue,
+                                &pass.clear_alpha);
         pass.color_write_mask = ringl_effective_color_write_mask(context);
     }
     if (depth_targets != NULL && depth_targets->depth.has_depth != 0u) {
@@ -808,14 +860,9 @@ static int begin_color_pass(RinGLContext* context,
     render_pass.load_op = load_op;
     render_pass.store_op = RINGL_RIN_GPU_RENDER_STORE;
     if (load_op == RINGL_RIN_GPU_RENDER_CLEAR) {
-        render_pass.clear_red = clear_color_for_target(target->format,
-                                                        context->clear_red);
-        render_pass.clear_green = clear_color_for_target(target->format,
-                                                          context->clear_green);
-        render_pass.clear_blue = clear_color_for_target(target->format,
-                                                         context->clear_blue);
-        render_pass.clear_alpha = clear_color_for_target(target->format,
-                                                          context->clear_alpha);
+        clear_colors_for_target(context, target, &render_pass.clear_red,
+                                &render_pass.clear_green, &render_pass.clear_blue,
+                                &render_pass.clear_alpha);
         render_pass.color_write_mask = ringl_effective_color_write_mask(context);
         configure_clear_region(context, target, &render_pass.clear_region);
     }
@@ -867,14 +914,11 @@ static int begin_depth_pass(RinGLContext* context, uint64_t command_list,
         separate_pass.stencil_load_op = stencil_load_op;
         separate_pass.stencil_store_op = RINGL_RIN_GPU_RENDER_STORE;
         if (color_load_op == RINGL_RIN_GPU_RENDER_CLEAR) {
-            separate_pass.clear_red = clear_color_for_target(color_target->format,
-                                                              context->clear_red);
-            separate_pass.clear_green = clear_color_for_target(color_target->format,
-                                                                context->clear_green);
-            separate_pass.clear_blue = clear_color_for_target(color_target->format,
-                                                               context->clear_blue);
-            separate_pass.clear_alpha = clear_color_for_target(color_target->format,
-                                                                context->clear_alpha);
+            clear_colors_for_target(context, color_target,
+                                    &separate_pass.clear_red,
+                                    &separate_pass.clear_green,
+                                    &separate_pass.clear_blue,
+                                    &separate_pass.clear_alpha);
             separate_pass.color_write_mask =
                 ringl_effective_color_write_mask(context);
         }
@@ -935,14 +979,9 @@ static int begin_depth_pass(RinGLContext* context, uint64_t command_list,
         return -1;
     }
     if (color_load_op == RINGL_RIN_GPU_RENDER_CLEAR) {
-        render_pass.clear_red = clear_color_for_target(color_target->format,
-                                                        context->clear_red);
-        render_pass.clear_green = clear_color_for_target(color_target->format,
-                                                          context->clear_green);
-        render_pass.clear_blue = clear_color_for_target(color_target->format,
-                                                         context->clear_blue);
-        render_pass.clear_alpha = clear_color_for_target(color_target->format,
-                                                          context->clear_alpha);
+        clear_colors_for_target(context, color_target, &render_pass.clear_red,
+                                &render_pass.clear_green, &render_pass.clear_blue,
+                                &render_pass.clear_alpha);
         render_pass.color_write_mask = ringl_effective_color_write_mask(context);
     }
     if (depth_load_op == RINGL_RIN_GPU_RENDER_CLEAR)
@@ -1762,7 +1801,7 @@ static void ringl_draw_arrays_impl(uint32_t mode, int32_t first, int32_t count,
 
     if (begin_commands(context, &command_list) != 0 ||
         ringl_get_or_create_graphics_pipeline(
-            context, target->format,
+            context, target->format, target->logical_color_format,
             depth_stencil_pipeline_format(&depth_targets, use_depth_target),
             primitive_topology,
             effective_depth_test, effective_stencil_test,
@@ -2019,7 +2058,7 @@ static void ringl_draw_elements_impl(uint32_t mode, int32_t count,
 
     if (begin_commands(context, &command_list) != 0 ||
         ringl_get_or_create_graphics_pipeline(
-            context, target->format,
+            context, target->format, target->logical_color_format,
             depth_stencil_pipeline_format(&depth_targets, use_depth_target),
             primitive_topology,
             effective_depth_test, effective_stencil_test,

@@ -227,6 +227,14 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Expose a versioned bounded framebuffer-attachment query for `COLOR_ATTACHMENT0`, `DEPTH_ATTACHMENT`, `STENCIL_ATTACHMENT`, and `DEPTH_STENCIL_ATTACHMENT`. The query leaves caller output untouched on failure, reports a depth-stencil object only when both logical aspects share it, and supersedes the color-only compatibility shorthand for new embeddings.
 - [x] Map supported RGBA8 color FBO texture/renderbuffer attachments to lazy RinGPU color targets, including image-state transitions, render-pass clear/draw targets, and `COPY_SOURCE` readback capability.
 - [x] Implement framebuffer completeness validation for the supported single level-zero RGBA8 color-attachment combinations.
+- [x] Realize level-zero `RGBA`/`RGB`/`ALPHA`/`LUMINANCE`/`LUMINANCE_ALPHA`
+  `FLOAT` textures as complete native RGBA32F color FBOs after the Float-color
+  gate. RinGL keeps the legacy logical channels over physical RGBA storage:
+  RGB alpha is one, ALPHA RGB is zero, LUMINANCE is replicated across RGB, and
+  LUMINANCE_ALPHA keeps alpha. Clear, fragment output, readback, CopyTex, and
+  partial logical color masks use the same conversion without a direct
+  Aquamarine command path; the product bridge regression executes all five
+  formats plus independent LUMINANCE_ALPHA alpha masking.
 - [x] Implement viewport and scissor GL state, validation, defaults, and queries.
 - [x] Implement face-culling/front-face GL state, validation, defaults, and queries.
 - [x] Implement depth-test function/write-mask GL state, defaults, validation, dirty tracking, and queries.

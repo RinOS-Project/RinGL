@@ -9,6 +9,10 @@ typedef struct RinGLPipelineCacheEntry {
     RinGLPipelineKey key;
     uint64_t hash;
     uint64_t pipeline;
+    /* LUMINANCE targets use a validated, pipeline-owned fragment module whose
+     * RGB stores all read the logical red component. It must outlive the
+     * native pipeline and be released only after that pipeline is destroyed. */
+    uint64_t logical_fragment_module;
     uint32_t valid;
     uint32_t reserved0;
 } RinGLPipelineCacheEntry;
@@ -103,6 +107,127 @@ static int fixed_raster_interface(const uint8_t* vertex_rsh1,
     return 0;
 }
 
+static int create_luminance_fragment_module(RinGLContext* context,
+                                            const RinGLPipelineKey* key,
+                                            uint64_t* module_out)
+{
+    RinGLProgramObject* program;
+    RinGLShaderObject* fragment;
+    const uint8_t* source;
+    uint32_t source_size;
+    RinGLRsh1HeaderV1 header;
+    RinGLRsh1InstructionV1* instructions;
+    uint16_t red_sources[RINGL_MAX_COLOR_ATTACHMENTS];
+    uint32_t red_seen = 0u;
+    uint8_t* copy = NULL;
+    uint64_t module = 0u;
+    uint32_t index;
+
+    if (module_out == NULL)
+        return -1;
+    *module_out = 0u;
+    if (context == NULL || key == NULL)
+        return -1;
+    if (key->logical_color_format != RINGL_LUMINANCE &&
+        key->logical_color_format != RINGL_LUMINANCE_ALPHA) {
+        return 0;
+    }
+    program = current_program(context);
+    if (program == NULL || !program->link_status)
+        return -1;
+    fragment = shader_object(context, program->linked_fragment_shader);
+    if (fragment == NULL)
+        return -1;
+    source = program->fragment_uniform_rsh1 != NULL
+        ? program->fragment_uniform_rsh1 : fragment->rsh1;
+    source_size = program->fragment_uniform_rsh1 != NULL
+        ? program->fragment_uniform_rsh1_size : fragment->rsh1_size;
+    if (source == NULL || source_size < sizeof(header) ||
+        (program->fragment_uniform_rsh1 != NULL
+             ? program->fragment_uniform_module : fragment->ringpu_module) !=
+            key->fragment_shader_module) {
+        return -1;
+    }
+    memcpy(&header, source, sizeof(header));
+    if (header.magic != RINGL_RSH1_MAGIC ||
+        header.version != RINGL_RSH1_VERSION ||
+        header.header_size != sizeof(header) ||
+        header.stage != RINGL_RSH1_STAGE_FRAGMENT ||
+        header.instruction_count == 0u ||
+        header.instruction_count > RINGL_RSH1_MAX_INSTRUCTIONS ||
+        header.register_count == 0u ||
+        header.register_count > RINGL_RSH1_MAX_REGISTERS ||
+        header.output_count == 0u ||
+        header.output_count > RINGL_MAX_COLOR_ATTACHMENTS * 4u ||
+        header.total_size != source_size ||
+        header.total_size != sizeof(header) +
+                                 header.instruction_count *
+                                     sizeof(RinGLRsh1InstructionV1)) {
+        return -1;
+    }
+    copy = malloc(source_size);
+    if (copy == NULL)
+        return -1;
+    memcpy(copy, source, source_size);
+    instructions = (RinGLRsh1InstructionV1*)(copy + sizeof(header));
+    for (index = 0u; index < RINGL_MAX_COLOR_ATTACHMENTS; ++index)
+        red_sources[index] = RINGL_RSH1_UNUSED;
+    for (index = 0u; index < header.instruction_count; ++index) {
+        const RinGLRsh1InstructionV1* instruction = &instructions[index];
+        uint32_t output;
+        uint32_t component;
+
+        if (instruction->opcode != RINGL_RSH1_OP_STORE_OUTPUT_F32)
+            continue;
+        if (instruction->immediate >= header.output_count ||
+            instruction->source0 == RINGL_RSH1_UNUSED ||
+            instruction->source0 >= header.register_count) {
+            free(copy);
+            return -1;
+        }
+        output = instruction->immediate >> 2u;
+        component = instruction->immediate & 3u;
+        if (output >= RINGL_MAX_COLOR_ATTACHMENTS)
+            continue;
+        if (component == 0u) {
+            if ((red_seen & (UINT32_C(1) << output)) != 0u) {
+                free(copy);
+                return -1;
+            }
+            red_sources[output] = instruction->source0;
+            red_seen |= UINT32_C(1) << output;
+        }
+    }
+    for (index = 0u; index < header.instruction_count; ++index) {
+        RinGLRsh1InstructionV1* instruction = &instructions[index];
+        uint32_t output;
+        uint32_t component;
+
+        if (instruction->opcode != RINGL_RSH1_OP_STORE_OUTPUT_F32)
+            continue;
+        output = instruction->immediate >> 2u;
+        component = instruction->immediate & 3u;
+        if (output >= RINGL_MAX_COLOR_ATTACHMENTS ||
+            (component != 1u && component != 2u)) {
+            continue;
+        }
+        if ((red_seen & (UINT32_C(1) << output)) == 0u) {
+            free(copy);
+            return -1;
+        }
+        instruction->source0 = red_sources[output];
+    }
+    if (ringl_backend_create_shader_module(context, copy, source_size,
+                                           &module) != 0 ||
+        module == 0u) {
+        free(copy);
+        return -1;
+    }
+    free(copy);
+    *module_out = module;
+    return 0;
+}
+
 static RinGLPipelineCache* cache_for(RinGLContext* context, int create)
 {
     RinGLPipelineCache* cache;
@@ -179,6 +304,13 @@ static float blend_constant_for_color_target(uint32_t color_format, float value)
     return value;
 }
 
+static int logical_color_format_valid(uint32_t format)
+{
+    return format == RINGL_RGBA || format == RINGL_RGB ||
+           format == RINGL_ALPHA || format == RINGL_LUMINANCE ||
+           format == RINGL_LUMINANCE_ALPHA;
+}
+
 static uint32_t native_blend_op(uint32_t operation)
 {
     switch (operation) {
@@ -253,8 +385,9 @@ static int native_primitive_topology_valid(uint32_t primitive_topology)
            primitive_topology == RINGL_NATIVE_PRIMITIVE_TRIANGLE_FAN;
 }
 
-int ringl_build_pipeline_key(RinGLContext* context,
-                             uint32_t color_format, uint32_t depth_format,
+int ringl_build_pipeline_key(RinGLContext* context, uint32_t color_format,
+                             uint32_t logical_color_format,
+                             uint32_t depth_format,
                              uint32_t primitive_topology,
                              uint32_t depth_test_enabled,
                              uint32_t stencil_test_enabled,
@@ -276,6 +409,7 @@ int ringl_build_pipeline_key(RinGLContext* context,
     uint32_t fixed_point_size_output;
 
     if (context == NULL || key == NULL || color_format == 0u ||
+        !logical_color_format_valid(logical_color_format) ||
         !native_primitive_topology_valid(primitive_topology) ||
         depth_test_enabled > RINGL_TRUE || stencil_test_enabled > RINGL_TRUE ||
         (depth_format != 0u &&
@@ -319,6 +453,7 @@ int ringl_build_pipeline_key(RinGLContext* context,
     result.vertex_shader_module = vertex_module;
     result.fragment_shader_module = fragment_module;
     result.color_format = color_format;
+    result.logical_color_format = logical_color_format;
     result.depth_format = depth_format;
     if (depth_test_enabled != 0u) {
         result.depth_compare = native_depth_compare(context->depth_func);
@@ -401,9 +536,13 @@ int ringl_build_pipeline_key(RinGLContext* context,
     result.blend_constant_red = blend_constant_for_color_target(
         color_format, context->blend_constant_red);
     result.blend_constant_green = blend_constant_for_color_target(
-        color_format, context->blend_constant_green);
+        color_format, logical_color_format == RINGL_LUMINANCE ||
+                              logical_color_format == RINGL_LUMINANCE_ALPHA
+            ? context->blend_constant_red : context->blend_constant_green);
     result.blend_constant_blue = blend_constant_for_color_target(
-        color_format, context->blend_constant_blue);
+        color_format, logical_color_format == RINGL_LUMINANCE ||
+                              logical_color_format == RINGL_LUMINANCE_ALPHA
+            ? context->blend_constant_red : context->blend_constant_blue);
     result.blend_constant_alpha = blend_constant_for_color_target(
         color_format, context->blend_constant_alpha);
     result.color_write_mask = ringl_effective_color_write_mask(context);
@@ -691,8 +830,10 @@ int ringl_pipeline_cache_get_or_create(RinGLContext* context,
                                        uint64_t* pipeline_out)
 {
     RinGLPipelineCache* cache;
+    RinGLPipelineKey realized_key;
     uint64_t hash;
     uint64_t pipeline = 0u;
+    uint64_t logical_fragment_module = 0u;
     uint32_t index;
     uint32_t target;
 
@@ -716,8 +857,19 @@ int ringl_pipeline_cache_get_or_create(RinGLContext* context,
         }
     }
 
-    if (create_pipeline(context, key, &pipeline) != 0 || pipeline == 0u)
+    realized_key = *key;
+    if (create_luminance_fragment_module(context, key,
+                                         &logical_fragment_module) != 0) {
         return -1;
+    }
+    if (logical_fragment_module != 0u)
+        realized_key.fragment_shader_module = logical_fragment_module;
+    if (create_pipeline(context, &realized_key, &pipeline) != 0 ||
+        pipeline == 0u) {
+        ringl_backend_destroy_object(context, pipeline);
+        ringl_backend_destroy_object(context, logical_fragment_module);
+        return -1;
+    }
 
     if (cache->count < RINGL_PIPELINE_CACHE_CAPACITY) {
         target = cache->count++;
@@ -728,11 +880,17 @@ int ringl_pipeline_cache_get_or_create(RinGLContext* context,
         if (cache->entries[target].valid &&
             cache->entries[target].pipeline != 0u)
             ringl_backend_destroy_object(context, cache->entries[target].pipeline);
+        if (cache->entries[target].valid &&
+            cache->entries[target].logical_fragment_module != 0u) {
+            ringl_backend_destroy_object(
+                context, cache->entries[target].logical_fragment_module);
+        }
     }
 
     cache->entries[target].key = *key;
     cache->entries[target].hash = hash;
     cache->entries[target].pipeline = pipeline;
+    cache->entries[target].logical_fragment_module = logical_fragment_module;
     cache->entries[target].valid = 1u;
     *pipeline_out = pipeline;
     return 0;
@@ -740,6 +898,7 @@ int ringl_pipeline_cache_get_or_create(RinGLContext* context,
 
 int ringl_get_or_create_graphics_pipeline(RinGLContext* context,
                                           uint32_t color_format,
+                                          uint32_t logical_color_format,
                                           uint32_t depth_format,
                                           uint32_t primitive_topology,
                                           uint32_t depth_test_enabled,
@@ -748,7 +907,8 @@ int ringl_get_or_create_graphics_pipeline(RinGLContext* context,
 {
     RinGLPipelineKey key;
 
-    if (ringl_build_pipeline_key(context, color_format, depth_format,
+    if (ringl_build_pipeline_key(context, color_format, logical_color_format,
+                                 depth_format,
                                  primitive_topology, depth_test_enabled,
                                  stencil_test_enabled, &key) != 0)
         return -1;
@@ -768,6 +928,11 @@ void ringl_pipeline_cache_destroy(RinGLContext* context)
     for (index = 0u; index < RINGL_PIPELINE_CACHE_CAPACITY; ++index) {
         if (cache->entries[index].valid && cache->entries[index].pipeline != 0u)
             ringl_backend_destroy_object(context, cache->entries[index].pipeline);
+        if (cache->entries[index].valid &&
+            cache->entries[index].logical_fragment_module != 0u) {
+            ringl_backend_destroy_object(
+                context, cache->entries[index].logical_fragment_module);
+        }
     }
     free(cache);
     context->pipeline_cache = NULL;

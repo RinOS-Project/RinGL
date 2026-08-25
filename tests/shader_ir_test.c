@@ -636,7 +636,9 @@ int main(void)
                                    blob, sizeof(blob));
     assert(header.stage == 1u);
     assert(header.input_count == 2u);
-    assert(header.output_count == 4u);
+    /* Graphics vertex modules carry the explicit default point size and
+     * fixed interpolant ABI after clip position. */
+    assert(header.output_count == 9u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_SIN_F32));
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_COS_F32));
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_ATAN_F32));
@@ -669,21 +671,21 @@ int main(void)
                                    blob, sizeof(blob));
     assert(header.stage == 1u);
     assert(header.input_count == 2u);
-    assert(header.output_count == 4u);
+    assert(header.output_count == 9u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
 
     header = lower_and_read_header(vertex, matrix3_component_multiply_source,
                                    blob, sizeof(blob));
     assert(header.stage == 1u);
     assert(header.input_count == 3u);
-    assert(header.output_count == 4u);
+    assert(header.output_count == 9u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
 
     header = lower_and_read_header(vertex, matrix4_component_multiply_source,
                                    blob, sizeof(blob));
     assert(header.stage == 1u);
     assert(header.input_count == 4u);
-    assert(header.output_count == 4u);
+    assert(header.output_count == 9u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
 
     /* A one-scalar vecN/ivecN constructor aliases the source register across
@@ -916,15 +918,16 @@ int main(void)
     assert(ringl_lower_shader_rsh1(vertex) != 0);
     assert(ringl_get_shader_rsh1_size(vertex) == 0u);
 
-    /* The bounded profile does not publish a module that would manufacture a
-     * non-finite value for sqrt of a negative finite literal. */
+    /* Domain checks are executable RinGPU semantics: the source module keeps
+     * the real SQRT opcode, and the backend rejects its non-finite result
+     * before publishing a draw. */
     ringl_shader_source(vertex,
                         "void main() { gl_Position = vec4(sqrt(-1.0), "
                         "0.0, 0.0, 1.0); }", -1);
     ringl_compile_shader(vertex);
     assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
-    assert(ringl_lower_shader_rsh1(vertex) != 0);
-    assert(ringl_get_shader_rsh1_size(vertex) == 0u);
+    assert(ringl_lower_shader_rsh1(vertex) == 0);
+    assert(ringl_get_shader_rsh1_size(vertex) != 0u);
 
     header = lower_and_read_header(fragment, fragment_source, blob, sizeof(blob));
     assert(header.stage == 2u);

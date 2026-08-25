@@ -17,6 +17,11 @@ The current first-triangle slice supports:
   chained selectors such as `.stpq.bgra`;
 - component-wise `+`, `-`, `*`, and `/` with same-width vectors or one scalar
   broadcast across a vector;
+- Float `min`, `max`, `clamp`, `mix`, and `dot`: min/max/clamp use the shared
+  scalar RSH1 min/max opcodes, while mix/dot expand to ordered scalar
+  arithmetic. Only GLSL's matching Float scalar/vector overloads are admitted;
+  integer, matrix, scalar-vector `dot`, and mismatched-width calls fail before
+  RSH1 publication;
 - vertex `attribute float` and `attribute vec2` inputs;
 - `vec2(...)` and `vec4(...)` constructors;
 - scalar or `vec4` writes to the stage output (`gl_Position` / `gl_FragColor`);

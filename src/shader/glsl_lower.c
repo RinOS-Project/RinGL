@@ -419,6 +419,9 @@ static int emit(Lower* lower, uint16_t opcode, uint16_t dst,
 }
 
 static Value expression(Lower* lower);
+static Value componentwise_binary(Lower* lower, const Value* left,
+                                  const Value* right, uint16_t opcode,
+                                  int allow_scalar_broadcast);
 
 static Value number_value(Lower* lower)
 {
@@ -670,6 +673,198 @@ static Value derivative_value(Lower* lower, uint16_t opcode)
     return value;
 }
 
+/* Common GLSL floating-point builtins are scalarized here rather than
+ * delegated to an embedding. This keeps their ordinary expression semantics
+ * in the RSH1 module that RinGPU validates and executes. */
+static int float_vector_value(Lower* lower, const Value* value,
+                              const char* message)
+{
+    if (value == NULL || value->width == 0u || value->matrix || value->is_i32) {
+        fail(lower, message);
+        return 0;
+    }
+    return 1;
+}
+
+static Value min_max_value(Lower* lower, uint16_t opcode)
+{
+    Value left;
+    Value right;
+
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after min/max builtin"))
+        return invalid_value();
+    left = expression(lower);
+    if (!need(lower, T_COMMA, "expected ',' in min/max builtin"))
+        return invalid_value();
+    right = expression(lower);
+    if (!need(lower, T_RPAREN, "expected ')' after min/max builtin"))
+        return invalid_value();
+    if (!float_vector_value(lower, &left,
+                            "min/max builtin requires floating-point values") ||
+        !float_vector_value(lower, &right,
+                            "min/max builtin requires floating-point values") ||
+        (left.width != right.width && right.width != 1u)) {
+        fail(lower, "min/max builtin component count mismatch");
+        return invalid_value();
+    }
+    return componentwise_binary(lower, &left, &right, opcode, 1);
+}
+
+static Value clamp_value(Lower* lower)
+{
+    Value value;
+    Value minimum;
+    Value maximum;
+    Value result;
+
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after clamp builtin"))
+        return invalid_value();
+    value = expression(lower);
+    if (!need(lower, T_COMMA, "expected ',' after clamp value"))
+        return invalid_value();
+    minimum = expression(lower);
+    if (!need(lower, T_COMMA, "expected ',' after clamp minimum"))
+        return invalid_value();
+    maximum = expression(lower);
+    if (!need(lower, T_RPAREN, "expected ')' after clamp builtin"))
+        return invalid_value();
+    if (!float_vector_value(lower, &value,
+                            "clamp builtin requires floating-point values") ||
+        !float_vector_value(lower, &minimum,
+                            "clamp builtin requires floating-point values") ||
+        !float_vector_value(lower, &maximum,
+                            "clamp builtin requires floating-point values") ||
+        (minimum.width != value.width && minimum.width != 1u) ||
+        (maximum.width != value.width && maximum.width != 1u)) {
+        fail(lower, "clamp builtin component count mismatch");
+        return invalid_value();
+    }
+    result = componentwise_binary(lower, &value, &minimum,
+                                  RINGL_RSH1_OP_MAX_F32, 1);
+    if (result.width == 0u)
+        return invalid_value();
+    return componentwise_binary(lower, &result, &maximum,
+                                RINGL_RSH1_OP_MIN_F32, 1);
+}
+
+static Value mix_value(Lower* lower)
+{
+    Value left;
+    Value right;
+    Value amount;
+    Value result = invalid_value();
+    uint32_t one_bits;
+    float one = 1.0f;
+    uint32_t index;
+
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after mix builtin"))
+        return result;
+    left = expression(lower);
+    if (!need(lower, T_COMMA, "expected ',' after first mix value"))
+        return result;
+    right = expression(lower);
+    if (!need(lower, T_COMMA, "expected ',' after second mix value"))
+        return result;
+    amount = expression(lower);
+    if (!need(lower, T_RPAREN, "expected ')' after mix builtin"))
+        return result;
+    if (!float_vector_value(lower, &left,
+                            "mix builtin requires floating-point values") ||
+        !float_vector_value(lower, &right,
+                            "mix builtin requires floating-point values") ||
+        !float_vector_value(lower, &amount,
+                            "mix builtin requires floating-point values") ||
+        left.width != right.width ||
+        (amount.width != left.width && amount.width != 1u)) {
+        fail(lower, "mix builtin component count mismatch");
+        return result;
+    }
+    memcpy(&one_bits, &one, sizeof(one_bits));
+    for (index = 0u; index < left.width; ++index) {
+        uint16_t one_reg = new_reg(lower);
+        uint16_t inverse_amount = new_reg(lower);
+        uint16_t left_product = new_reg(lower);
+        uint16_t right_product = new_reg(lower);
+        uint16_t destination = new_reg(lower);
+        uint16_t amount_reg = amount.regs[amount.width == 1u ? 0u : index];
+
+        if (one_reg == RINGL_RSH1_UNUSED ||
+            inverse_amount == RINGL_RSH1_UNUSED ||
+            left_product == RINGL_RSH1_UNUSED ||
+            right_product == RINGL_RSH1_UNUSED ||
+            destination == RINGL_RSH1_UNUSED ||
+            !emit(lower, RINGL_RSH1_OP_CONST_F32, one_reg,
+                  RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED, one_bits) ||
+            !emit(lower, RINGL_RSH1_OP_SUB_F32, inverse_amount, one_reg,
+                  amount_reg, 0u) ||
+            !emit(lower, RINGL_RSH1_OP_MUL_F32, left_product,
+                  left.regs[index], inverse_amount, 0u) ||
+            !emit(lower, RINGL_RSH1_OP_MUL_F32, right_product,
+                  right.regs[index], amount_reg, 0u) ||
+            !emit(lower, RINGL_RSH1_OP_ADD_F32, destination, left_product,
+                  right_product, 0u)) {
+            return invalid_value();
+        }
+        result.regs[index] = destination;
+    }
+    result.width = left.width;
+    return result;
+}
+
+static Value dot_value(Lower* lower)
+{
+    Value left;
+    Value right;
+    Value result = invalid_value();
+    uint16_t sum = RINGL_RSH1_UNUSED;
+    uint32_t index;
+
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after dot builtin"))
+        return result;
+    left = expression(lower);
+    if (!need(lower, T_COMMA, "expected ',' in dot builtin"))
+        return result;
+    right = expression(lower);
+    if (!need(lower, T_RPAREN, "expected ')' after dot builtin"))
+        return result;
+    if (!float_vector_value(lower, &left,
+                            "dot builtin requires floating-point vectors") ||
+        !float_vector_value(lower, &right,
+                            "dot builtin requires floating-point vectors") ||
+        left.width < 2u || left.width != right.width) {
+        fail(lower, "dot builtin requires matching vec2, vec3, or vec4 values");
+        return result;
+    }
+    for (index = 0u; index < left.width; ++index) {
+        uint16_t product = new_reg(lower);
+
+        if (product == RINGL_RSH1_UNUSED ||
+            !emit(lower, RINGL_RSH1_OP_MUL_F32, product, left.regs[index],
+                  right.regs[index], 0u)) {
+            return invalid_value();
+        }
+        if (index != 0u) {
+            uint16_t combined = new_reg(lower);
+
+            if (combined == RINGL_RSH1_UNUSED ||
+                !emit(lower, RINGL_RSH1_OP_ADD_F32, combined, sum, product,
+                      0u)) {
+                return invalid_value();
+            }
+            sum = combined;
+        } else {
+            sum = product;
+        }
+    }
+    result.regs[0] = sum;
+    result.width = 1u;
+    return result;
+}
+
 /* gl_PointCoord belongs to fixed point rasterization, rather than to a
  * user-declared varying. Materialize its two components as RSH1 builtins so
  * the generic RinGPU backend supplies the coordinate for each fragment. */
@@ -728,6 +923,16 @@ static Value primary(Lower* lower)
         return derivative_value(lower, RINGL_RSH1_OP_DFDY_F32);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "fwidth"))
         return derivative_value(lower, RINGL_RSH1_OP_FWIDTH_F32);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "min"))
+        return min_max_value(lower, RINGL_RSH1_OP_MIN_F32);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "max"))
+        return min_max_value(lower, RINGL_RSH1_OP_MAX_F32);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "clamp"))
+        return clamp_value(lower);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "mix"))
+        return mix_value(lower);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "dot"))
+        return dot_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "gl_PointCoord"))
         return point_coord_value(lower);
     if (lower->token.kind == T_IDENT)

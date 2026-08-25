@@ -58,6 +58,15 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     destruction.
 - [x] Implement a bounded GLSL ES lexer/parser with initial semantic validation.
 - [x] Lower the current scalar GLSL ES subset directly to RinShader RSH1.
+- [x] Lower the common Float GLSL expression builtins `min`, `max`, `clamp`,
+  `mix`, and `dot` through RinGL rather than a browser-side calculation or a
+  direct surface backend. `min`/`max`/`clamp` emit RinShader's scalar F32
+  min/max opcodes, while `mix` and `dot` retain source-ordered scalar
+  arithmetic. The lowerer accepts only matching Float scalar/vector overloads
+  (with a scalar mix weight and scalar min/max/clamp bounds where GLSL permits
+  them), rejects integer/matrix/mismatched-width forms before module
+  publication, and the strict IR plus real RinGL→RinGPU→private-Aquamarine
+  bridge regression verify both bytecode and `(116, 64, 143, 255)` readback.
 - [x] Implement the bounded WebGL `OES_standard_derivatives` slice through
   RinGL rather than a browser-local or Aquamarine-direct backend. An acquired
   extension object enables a context-local gate; exact fragment

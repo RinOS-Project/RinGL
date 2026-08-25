@@ -555,12 +555,17 @@ general uniform-vector expression.
 The no-varying RSH1 profile also lowers local `vec2`, `vec3`, and `vec4`
 values and component-wise vector arithmetic directly to scalar RSH1
 instructions. Same-width `+`/`-`, unary `-`, and vector/scalar `*` and `/`
-are executable rather than host-side constant folding. This covers common
-uniform color modulation and matrix-transformed positions (`mat2 * vec2`,
-`mat3 * vec3`, or `mat4 * vec4`) plus a vector offset while retaining explicit
-RSH1 resource and register limits; swizzles, matrix arithmetic beyond one
-matching matrix/vector product, vector comparisons, and control flow are still
-outside the profile.
+are executable rather than host-side constant folding. The common Float
+expression builtins `min`, `max`, `clamp`, `mix`, and `dot` now use the same
+RSH1 path: min/max/clamp emit native scalar min/max instructions, while
+mix/dot expand to ordered scalar arithmetic. They accept only their matching
+Float scalar/vector overloads and reject integer, matrix, or mismatched-width
+calls before an executable is published. This covers common uniform color
+modulation and matrix-transformed positions (`mat2 * vec2`, `mat3 * vec3`, or
+`mat4 * vec4`) plus a vector offset while retaining explicit RSH1 resource and
+register limits; swizzles, matrix arithmetic beyond one matching
+matrix/vector product, vector comparisons, and control flow are still outside
+the profile.
 
 The frontend accepts GLSL ES global `precision lowp|mediump|highp` declarations
 for `float`, `int`, and `sampler2D`. They are not ignored text: the compiler

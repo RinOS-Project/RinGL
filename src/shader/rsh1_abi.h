@@ -38,6 +38,11 @@ enum RinGLRsh1Opcode {
     RINGL_RSH1_OP_SUB_F32 = 21,
     RINGL_RSH1_OP_MUL_F32 = 22,
     RINGL_RSH1_OP_DIV_F32 = 23,
+    /* These opcode numbers are shared with RinShader. The bounded GLSL
+     * min/max/clamp lowering emits them directly instead of folding author
+     * values or asking the embedding to evaluate a component. */
+    RINGL_RSH1_OP_MIN_F32 = 24,
+    RINGL_RSH1_OP_MAX_F32 = 25,
     RINGL_RSH1_OP_I32_TO_F32 = 43,
     RINGL_RSH1_OP_F32_TO_I32 = 44,
     RINGL_RSH1_OP_LOAD_INPUT_F32 = 45,

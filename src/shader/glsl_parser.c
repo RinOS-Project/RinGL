@@ -537,6 +537,27 @@ static int texture2d_call(Parser* parser)
     return expect(parser, TOK_RPAREN, "expected ')' after texture2D arguments");
 }
 
+/* The lowering stage owns the exact scalar/vector type checks. Keep parser
+ * admission in sync with its fixed builtin arity so malformed calls fail at
+ * compile time rather than leaking into a later declaration or assignment. */
+static int common_math_builtin_call(Parser* parser, uint32_t argument_count)
+{
+    uint32_t index;
+
+    next_token(parser);
+    if (!expect(parser, TOK_LPAREN, "expected '(' after math builtin"))
+        return 0;
+    for (index = 0u; index < argument_count; ++index) {
+        if (!expression(parser))
+            return 0;
+        if (index + 1u < argument_count &&
+            !expect(parser, TOK_COMMA, "expected ',' in math builtin")) {
+            return 0;
+        }
+    }
+    return expect(parser, TOK_RPAREN, "expected ')' after math builtin");
+}
+
 static int primary(Parser* parser)
 {
     if (accept(parser, TOK_NUMBER))
@@ -558,6 +579,11 @@ static int primary(Parser* parser)
         uint32_t value_width = symbol ? symbol->width : 0u;
         if (token_is_ident(&ident, "texture2D"))
             return texture2d_call(parser);
+        if (token_is_ident(&ident, "min") || token_is_ident(&ident, "max") ||
+            token_is_ident(&ident, "dot"))
+            return common_math_builtin_call(parser, 2u);
+        if (token_is_ident(&ident, "clamp") || token_is_ident(&ident, "mix"))
+            return common_math_builtin_call(parser, 3u);
         if (token_is_ident(&ident, "dFdx") ||
             token_is_ident(&ident, "dFdy") ||
             token_is_ident(&ident, "fwidth")) {

@@ -52,7 +52,7 @@ Status meanings:
 | `glGetShaderPrecisionFormat` | B | `ringl_get_shader_precision_format` returns the executable RSH1 binary32 or signed-i32 profile through a validated versioned record. |
 | `glGetString` | P | `ringl_get_string` returns only RinGL's static vendor, renderer, bounded-profile version, and RSH1 language-profile strings; extension strings remain unavailable. |
 | `glGetTexParameteriv` | P | Integer values for `MIN_FILTER`, `MAG_FILTER`, `WRAP_S`, `WRAP_T` only. |
-| `glGetTexParameterfv` | N | No floating tex-parameter getter. |
+| `glGetTexParameterfv` | P | `ringl_get_tex_parameterf` exposes only the gated `TEXTURE_MAX_ANISOTROPY_EXT` value; it does not manufacture float views of enum-valued sampler state. |
 | `glGetUniformiv` | P | `ringl_get_uniform_1i` for linked scalar `sampler2D` or `int`, plus `ringl_get_uniform_{2,3,4}i` for complete `ivec` values; no arrays. |
 | `glGetUniformfv` | P | `ringl_get_uniform_{1,2,3,4}f` for linked `float`/`vec2`/`vec3`/`vec4` locations, and `ringl_get_uniform_matrix{2,3,4}f` for bounded vertex square-matrix profiles. |
 | `glGetUniformLocation` | P | Linked `sampler2D`, scalar/vector float and signed integer, and bounded vertex `mat2`/`mat3`/`mat4` uniforms only. |
@@ -64,7 +64,8 @@ Status meanings:
 | `glReleaseShaderCompiler`, `glShaderBinary` | N | Shader compiler lifetime/binary shader formats are not implemented. |
 | `glStencilFunc`, `glStencilFuncSeparate`, `glStencilMask`, `glStencilMaskSeparate`, `glStencilOp`, `glStencilOpSeparate` | B | Bounded native D24S8/S8 paths; remaining attachment semantics stay outside the profile. |
 | `glTexImage2D`, `glTexSubImage2D` | B | 2D canonical/packed color plus bounded depth formats; exact canonical `FLOAT` color uploads use RGBA32F sampled storage with nearest-only completeness. Logical `SRGB_EXT`/`SRGB_ALPHA_EXT` accept exact unsigned-byte input only and decode RGB into linear RGBA32F storage. Byte-span variants protect untrusted imports. |
-| `glTexParameterf`, `glTexParameterfv`, `glTexParameteriv` | N | Raw RinGL only has integer `ringl_tex_parameteri`; an embedding may accept a float only after exact integer conversion. |
+| `glTexParameterf` | P | `ringl_tex_parameterf` accepts only finite `TEXTURE_MAX_ANISOTROPY_EXT` after the context-local anisotropy gate; it preserves failure atomicity and clamps only the extension-defined upper bound. |
+| `glTexParameterfv`, `glTexParameteriv` | N | Raw RinGL has no unbounded pointer-vector entry points; an embedding must validate a complete caller span and dispatch the corresponding scalar setter. |
 | `glTexParameteri` | P | Four sampler pnames only; all accepted values map to RinGPU sampler state. |
 | `glUniform1i` | P | Linked `sampler2D` or scalar `int` location; no arrays. |
 | `glUniform1f`, `glUniform1fv`, `glUniform2f`, `glUniform2fv`, `glUniform3f`, `glUniform3fv`, `glUniform4f`, `glUniform4fv` | P | Finite scalar/vector values realize a program-owned RinGPU module only for stages that declare the updated uniform name, preserving independent sampler/varying modules. The bounded vertex-colored texture material may sample one UV/image pair, or add two pairs, then apply a `vec4` tint and scalar opacity in RSH1 (`(texture2D(...) + texture2D(...)) * vertexColor * tint * opacity`); an embedding may map each `*fv` form only when its single non-array value is complete. |

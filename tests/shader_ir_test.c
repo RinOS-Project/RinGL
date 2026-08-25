@@ -44,6 +44,7 @@ typedef struct __attribute__((packed)) Instruction {
 #define RSH1_OP_DIV_F32 UINT16_C(23)
 #define RSH1_OP_MIN_F32 UINT16_C(24)
 #define RSH1_OP_MAX_F32 UINT16_C(25)
+#define RSH1_OP_I32_TO_F32 UINT16_C(43)
 #define RSH1_OP_FLOOR_F32 UINT16_C(59)
 #define RSH1_OP_SQRT_F32 UINT16_C(60)
 #define RSH1_OP_SIN_F32 UINT16_C(61)
@@ -337,6 +338,14 @@ int main(void)
         "  mat4 scale = mat4(0.5);\n"
         "  mat4 result = matrixCompMult(scale, mat4(1.0));\n"
         "  gl_Position = result * position;\n"
+        "}\n";
+    const char* vector_scalar_constructor_source =
+        "attribute vec2 position;\n"
+        "void main() {\n"
+        "  ivec2 units = ivec2(1);\n"
+        "  vec2 scale = vec2(float(units.x), float(units.y));\n"
+        "  vec4 depth_and_w = vec4(0.5);\n"
+        "  gl_Position = vec4(position * scale, depth_and_w.z, depth_and_w.w);\n"
         "}\n";
     const char* fragment_source =
         "precision mediump float;\n"
@@ -649,10 +658,32 @@ int main(void)
     assert(header.output_count == 4u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
 
+    /* A one-scalar vecN/ivecN constructor aliases the source register across
+     * all components. The i32 splat is consumed through explicit scalar
+     * float(...) conversions, so the emitted RSH1 module proves both typed
+     * constructor paths remain executable without implicit mixed-type casts. */
+    header = lower_and_read_header(vertex, vector_scalar_constructor_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 2u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_I32_TO_F32));
+
     ringl_shader_source(vertex,
                         "attribute vec2 position; void main() { "
                         "mat2 invalid = matrixCompMult(mat2(1.0), mat3(1.0)); "
                         "gl_Position = vec4(invalid * position, 0.0, 1.0); }", -1);
+    ringl_compile_shader(vertex);
+    assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(vertex) != 0);
+    assert(ringl_get_shader_rsh1_size(vertex) == 0u);
+
+    /* GLES vector constructors require matching basic types. Preserve that
+     * boundary while adding same-type scalar splats above. */
+    ringl_shader_source(vertex,
+                        "attribute vec2 position; void main() { "
+                        "vec2 invalid = vec2(1); "
+                        "gl_Position = vec4(position + invalid, 0.0, 1.0); }", -1);
     ringl_compile_shader(vertex);
     assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
     assert(ringl_lower_shader_rsh1(vertex) != 0);

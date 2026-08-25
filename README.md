@@ -594,6 +594,12 @@ accepted (`pow` widths must match). `exp2` and the derived `exp`/`pow` result
 exponent are bounded to `[-126, 127]`; logarithm and power bases must be
 strictly positive. Domain and range failure reject publication rather than
 substituting host libm or a direct surface result.
+Matching-basic-type `vecN(scalar)` and `ivecN(scalar)` constructors are also
+executable in this profile: RinGL aliases the one Float or i32 RSH1 register
+across all target components, rather than asking Ladybird or the private
+Aquamarine surface to expand it. Component-list constructors still require an
+exact target width and one basic type; `vecN(int)` and `ivecN(float)` remain
+rejected, with scalar `float(...)`/`int(...)` the explicit typed conversion.
 This covers common uniform color modulation and matrix-transformed positions
 (`mat2 * vec2`, `mat3 * vec3`, or `mat4 * vec4`) plus a vector offset and the
 matching Float `matrixCompMult(matN, matN)` subset described above, while

@@ -607,6 +607,7 @@ static Value constructor_value(Lower* lower, uint8_t target_width,
                                int target_is_i32)
 {
     Value result = invalid_value();
+    uint32_t argument_count = 0u;
     uint32_t width = 0u;
 
     next(lower);
@@ -631,11 +632,23 @@ static Value constructor_value(Lower* lower, uint8_t target_width,
         }
         for (index = 0u; index < argument.width; ++index)
             result.regs[width++] = argument.regs[index];
+        argument_count++;
         if (!take(lower, T_COMMA))
             break;
     }
     if (!need(lower, T_RPAREN, "expected ')' after vector constructor"))
         return invalid_value();
+    /* GLSL permits one same-basic-type scalar to initialize every vector
+     * component. Keep it as a register alias: the scalar RSH1 ABI has no
+     * vector instruction, and no browser/Aquamarine-side broadcast is needed.
+     * Multiple arguments still require the exact component count below. */
+    if (argument_count == 1u && width == 1u) {
+        uint32_t index;
+
+        for (index = 1u; index < target_width; ++index)
+            result.regs[index] = result.regs[0];
+        width = target_width;
+    }
     if (width != target_width) {
         fail(lower, "vector constructor component count mismatch");
         return invalid_value();

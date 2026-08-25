@@ -10,8 +10,11 @@ The current first-triangle slice supports:
 
 - `void main()` entry points;
 - scalar `float`/`int` declarations and same-type arithmetic;
-- `vec2`/`vec3`/`vec4` and `ivec2`/`ivec3`/`ivec4` constructors, plus an
-  explicit scalar `int(...)` or `float(...)` conversion;
+- same-basic-type `vec2`/`vec3`/`vec4` and `ivec2`/`ivec3`/`ivec4`
+  constructors: an exact scalar/vector component list, a same-width matching
+  vector copy, or one scalar splat. A splat aliases one scalar RSH1 register
+  across the target components; Float/i32 conversion stays explicit and scalar
+  through `int(...)` or `float(...)`;
 - read-only one-through-four-component vector/ivector swizzles using exactly
   one of the `xyzw`, `rgba`, or `stpq` alphabets, including repeated and
   chained selectors such as `.stpq.bgra`;
@@ -66,7 +69,8 @@ The current first-triangle slice supports:
   `log`/`log2` inputs and `pow` bases must be strictly positive. Domain/range
   failure rejects target publication;
 - vertex `attribute float` and `attribute vec2` inputs;
-- `vec2(...)` and `vec4(...)` constructors;
+- `vec2(...)` and `vec4(...)` constructors, including their matching-basic-type
+  single-scalar splats;
 - scalar or `vec4` writes to the stage output (`gl_Position` / `gl_FragColor`);
 - constants and simple assignments;
 - context-gated fragment `#extension GL_OES_standard_derivatives : enable` or

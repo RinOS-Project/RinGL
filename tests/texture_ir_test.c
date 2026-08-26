@@ -307,6 +307,9 @@ int main(void)
         "varying vec2 uv; void main() { gl_FragColor = "
         "texture2D(firstTexture, uv + vec2(5e-1, -5e-1)) + "
         "texture2D(secondTexture, uv - vec2(2.5e-1, 7.5e-1)); }";
+    const char* varying_uniform_offset_source =
+        "uniform sampler2D colorTexture; uniform vec2 offset; varying vec2 uv; "
+        "void main() { gl_FragColor = texture2D(colorTexture, uv + offset); }";
     const char* varying_repeated_partial_source =
         "uniform sampler2D unusedTexture; uniform sampler2D activeTexture; "
         "varying vec2 uv; void main() { gl_FragColor = "
@@ -1203,6 +1206,38 @@ int main(void)
         assert(second_coordinate->source1 == 16u + component / 2u);
         assert(second_sample->source0 == 18u && second_sample->source1 == 19u);
         assert(second_sample->resource == 2u && second_sample->immediate == 3u);
+    }
+
+    /* A declared coordinate vec2 is lowered through the same RSH1 constants
+     * as the literal form. The standalone shader path has WebGL's initial
+     * zero uniform value; the native draw test below verifies a later public
+     * uniform2f update replaces these exact constants atomically. */
+    ringl_shader_source(shader, varying_uniform_offset_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 17u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.instruction_count == 17u);
+    assert(header.register_count == 12u);
+    assert(header.resource_count == 2u);
+    for (component = 0u; component < 2u; ++component) {
+        const Instruction* constant =
+            (const Instruction*)(blob + sizeof(header)) + 4u + component;
+        const Instruction* add =
+            (const Instruction*)(blob + sizeof(header)) + 6u + component;
+        const Instruction* sample =
+            (const Instruction*)(blob + sizeof(header)) + 8u + component;
+
+        assert(constant->opcode == RSH1_CONST_F32);
+        assert(constant->destination == 8u + component);
+        assert(constant->immediate == 0u);
+        assert(add->opcode == RSH1_ADD_F32);
+        assert(add->destination == 10u + component);
+        assert(add->source0 == component && add->source1 == 8u + component);
+        assert(sample->source0 == 10u && sample->source1 == 11u);
     }
 
     /* Repeated calls over a non-first declaration compact to one RSH1

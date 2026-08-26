@@ -585,18 +585,29 @@ static int matrix_constructor(Parser* parser)
 
 static int varying_vec2_offset(Parser* parser)
 {
-    if (parser->token.kind != TOK_PLUS && parser->token.kind != TOK_MINUS)
+    if (parser->token.kind != TOK_PLUS && parser->token.kind != TOK_MINUS &&
+        parser->token.kind != TOK_STAR)
         return 1;
     next_token(parser);
     if (parser->token.kind == TOK_IDENT) {
         Symbol* coordinate = find_symbol(parser, &parser->token);
 
-        if (coordinate == NULL || coordinate->kind != SYMBOL_VARYING ||
-            coordinate->width != 2u) {
-            fail(parser, "texture2D varying operation requires vec2 varying");
+        if (coordinate == NULL || coordinate->width != 2u ||
+            (coordinate->kind != SYMBOL_VARYING &&
+             coordinate->kind != SYMBOL_UNIFORM_VEC2)) {
+            fail(parser,
+                 "texture2D varying operation requires vec2 varying or uniform");
             return 0;
         }
         next_token(parser);
+        if (coordinate->kind == SYMBOL_UNIFORM_VEC2) {
+            if (parser->token.kind == TOK_DOT) {
+                fail(parser,
+                     "texture2D coordinate uniform does not support swizzles");
+                return 0;
+            }
+            return 1;
+        }
         if (!texture2d_coordinate_swizzle(parser))
             return 0;
         return 1;

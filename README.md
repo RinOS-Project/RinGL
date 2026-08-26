@@ -306,6 +306,14 @@ rewriting a coordinate on the host. Partial-width, mixed-family, and
 out-of-range coordinate selectors are rejected. The bounded two-UV profile maps
 `firstUv` and `secondUv` to separate RSH1 perspective input pairs and also
 supports `firstUv + secondUv` and `firstUv - secondUv` as sampler coordinates.
+One declared, unswizzled fragment `uniform vec2` may be the right operand of
+the bounded coordinate `+`, `-`, or `*` forms, including direct sampler calls
+and the existing source-order local-coordinate chains. RinGL materializes the
+live, finite pair as the same two RSH1 Float32 constants as a literal; a public
+`ringl_uniform_2f()` update stages and publishes a replacement fragment module
+before the next native RinGPU draw. It never routes the coordinate through an
+Aquamarine renderer or a Ladybird-side texture shortcut. Uniform divisors and
+general vector expressions remain outside this profile.
 The same bounded two-UV operation may be named first as
 `vec2 mixedUv = firstUv +/- secondUv;` and then passed to `texture2D()`.
 That result can also feed a direct/finite-affine local chain of up to eight

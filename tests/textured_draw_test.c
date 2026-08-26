@@ -42,13 +42,16 @@ typedef struct FakeBackend {
     uint32_t texture_image_count;
     uint32_t texture_sampler_count;
     uint64_t pipeline;
-    char commands[32];
+    char commands[64];
     uint32_t command_count;
     uint32_t shader_creates;
     uint32_t vertex_color_material_fragment_modules;
     float expected_vertex_color_tint[4];
     float expected_vertex_color_opacity;
     uint32_t validate_vertex_color_tint;
+    float expected_coordinate_uniform[2];
+    uint32_t validate_coordinate_uniform;
+    uint32_t coordinate_uniform_fragment_modules;
     uint32_t pipeline_creates;
     uint32_t bind_group_creates;
 } FakeBackend;
@@ -134,6 +137,34 @@ static int fake_create_shader_module(void* session, const void* rsh1,
         }
         ++backend->vertex_color_material_fragment_modules;
     }
+    if (header.stage == 2u && header.resource_count == 2u &&
+        header.instruction_count == 17u &&
+        backend->validate_coordinate_uniform != 0u) {
+        const Rsh1Instruction* instructions =
+            (const Rsh1Instruction*)((const uint8_t*)rsh1 + sizeof(header));
+        uint32_t index;
+
+        assert(size_bytes == sizeof(header) +
+                                 header.instruction_count * sizeof(*instructions));
+        for (index = 0u; index < 2u; ++index) {
+            uint32_t expected_bits;
+
+            memcpy(&expected_bits, &backend->expected_coordinate_uniform[index],
+                   sizeof(expected_bits));
+            assert(instructions[4u + index].opcode == 16u &&
+                   instructions[4u + index].destination == 8u + index &&
+                   instructions[4u + index].immediate == expected_bits);
+            assert(instructions[6u + index].opcode == 20u &&
+                   instructions[6u + index].destination == 10u + index &&
+                   instructions[6u + index].source0 == index &&
+                   instructions[6u + index].source1 == 8u + index);
+        }
+        for (index = 0u; index < 4u; ++index) {
+            assert(instructions[8u + index].source0 == 10u &&
+                   instructions[8u + index].source1 == 11u);
+        }
+        ++backend->coordinate_uniform_fragment_modules;
+    }
     ++backend->shader_creates;
     *shader_module_out = ++backend->next_handle;
     return 0;
@@ -210,6 +241,24 @@ static int fake_create_pipeline_native(
         }
         assert(varying_count == 16u && varyings != NULL);
         for (index = 0u; index < 16u; ++index) {
+            assert(varyings[index].vertex_output_location == 4u + index);
+            assert(varyings[index].fragment_input_location == index);
+            assert(varyings[index].type == 1u &&
+                   varyings[index].interpolation == 1u);
+        }
+    } else if (backend->pipeline_creates == 4u) {
+        /* A public uniform2f update changes only the live fragment RSH1
+         * coordinate constants; the native pipeline still receives the real
+         * position/UV attributes and the fixed four-scalar perspective
+         * varying interface used by the one-UV texture profile. */
+        assert(desc->vertex_stride == 24u);
+        assert(attribute_count == 4u && attributes != NULL);
+        for (index = 0u; index < 4u; ++index) {
+            assert(attributes[index].location == index);
+            assert(attributes[index].offset == index * 4u);
+        }
+        assert(varying_count == 4u && varyings != NULL);
+        for (index = 0u; index < 4u; ++index) {
             assert(varyings[index].vertex_output_location == 4u + index);
             assert(varyings[index].fragment_input_location == index);
             assert(varyings[index].type == 1u &&
@@ -385,6 +434,16 @@ static int fake_create_bind_group(
         assert(bindings[1].kind == RINGL_RIN_GPU_RESOURCE_SAMPLER);
         assert(bindings[1].access == 0u);
         assert(bindings[1].resource == backend->texture_samplers[0]);
+    } else if (backend->pipeline_creates == 5u) {
+        assert(binding_count == 2u);
+        assert(bindings[0].binding == 0u);
+        assert(bindings[0].kind == RINGL_RIN_GPU_RESOURCE_SAMPLED_IMAGE);
+        assert(bindings[0].access == RINGL_RIN_GPU_RESOURCE_READ);
+        assert(bindings[0].resource == backend->texture_images[0]);
+        assert(bindings[1].binding == 1u);
+        assert(bindings[1].kind == RINGL_RIN_GPU_RESOURCE_SAMPLER);
+        assert(bindings[1].access == 0u);
+        assert(bindings[1].resource == backend->texture_samplers[0]);
     } else {
         assert(0);
     }
@@ -502,6 +561,9 @@ int main(void)
     uint32_t eight_uv_vertex;
     uint32_t eight_uv_fragment;
     uint32_t eight_uv_program;
+    uint32_t coordinate_uniform_vertex;
+    uint32_t coordinate_uniform_fragment;
+    uint32_t coordinate_uniform_program;
     int32_t first_sampler_location;
     int32_t second_sampler_location;
     int32_t tint_location;
@@ -516,6 +578,8 @@ int main(void)
     int32_t two_texture_vertex_color_tint_location;
     int32_t two_texture_vertex_color_transform_location;
     int32_t eight_uv_sampler_location;
+    int32_t coordinate_uniform_sampler_location;
+    int32_t coordinate_uniform_offset_location;
     uint32_t attribute_index;
     const float vertices[] = {
         -0.75f, -0.75f, 0.0f, 0.0f, 0.25f, 0.75f,
@@ -868,6 +932,64 @@ int main(void)
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(backend.pipeline_creates == 4u);
     assert(backend.bind_group_creates == 4u);
+
+    /* Keep the public WebGL-shaped path: Ladybird/RinGL updates a vec2
+     * uniform, RinGL atomically rebuilds its fragment RSH1, and the same
+     * RinGPU native draw consumes the interpolated UV plus those constants.
+     * No Aquamarine renderer or direct surface backend is involved. */
+    ringl_bind_buffer(RINGL_ARRAY_BUFFER, buffer);
+    ringl_vertex_attrib_pointer(0u, 2, RINGL_FLOAT, RINGL_FALSE, 24, 0u);
+    ringl_enable_vertex_attrib_array(0u);
+    ringl_vertex_attrib_pointer(1u, 2, RINGL_FLOAT, RINGL_FALSE, 24, 8u);
+    ringl_enable_vertex_attrib_array(1u);
+    ringl_disable_vertex_attrib_array(2u);
+    coordinate_uniform_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+    coordinate_uniform_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+    coordinate_uniform_program = ringl_create_program();
+    assert(coordinate_uniform_vertex != 0u &&
+           coordinate_uniform_fragment != 0u &&
+           coordinate_uniform_program != 0u);
+    ringl_shader_source(
+        coordinate_uniform_vertex,
+        "attribute vec2 position; attribute vec2 texCoord; varying vec2 uv; "
+        "void main() { gl_Position = vec4(position, 0.0, 1.0); uv = texCoord; }",
+        -1);
+    ringl_shader_source(
+        coordinate_uniform_fragment,
+        "uniform sampler2D colorTexture; uniform vec2 offset; varying vec2 uv; "
+        "void main() { gl_FragColor = texture2D(colorTexture, uv + offset); }",
+        -1);
+    ringl_compile_shader(coordinate_uniform_vertex);
+    ringl_compile_shader(coordinate_uniform_fragment);
+    assert(ringl_get_shader_compile_status(coordinate_uniform_vertex) ==
+           RINGL_TRUE);
+    assert(ringl_get_shader_compile_status(coordinate_uniform_fragment) ==
+           RINGL_TRUE);
+    ringl_attach_shader(coordinate_uniform_program, coordinate_uniform_vertex);
+    ringl_attach_shader(coordinate_uniform_program, coordinate_uniform_fragment);
+    ringl_link_program(coordinate_uniform_program);
+    assert(ringl_get_program_link_status(coordinate_uniform_program) ==
+           RINGL_TRUE);
+    ringl_use_program(coordinate_uniform_program);
+    coordinate_uniform_sampler_location = ringl_get_uniform_location(
+        coordinate_uniform_program, "colorTexture");
+    coordinate_uniform_offset_location = ringl_get_uniform_location(
+        coordinate_uniform_program, "offset");
+    assert(coordinate_uniform_sampler_location == 0);
+    assert(coordinate_uniform_offset_location == 1);
+    ringl_uniform_1i(coordinate_uniform_sampler_location, 0);
+    backend.expected_coordinate_uniform[0] = 0.25f;
+    backend.expected_coordinate_uniform[1] = -0.5f;
+    backend.validate_coordinate_uniform = 1u;
+    ringl_uniform_2f(coordinate_uniform_offset_location,
+                     backend.expected_coordinate_uniform[0],
+                     backend.expected_coordinate_uniform[1]);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(backend.coordinate_uniform_fragment_modules == 1u);
+    ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(backend.pipeline_creates == 5u);
+    assert(backend.bind_group_creates == 5u);
 
     ringl_context_destroy(context);
     return 0;

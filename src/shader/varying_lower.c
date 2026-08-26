@@ -593,8 +593,12 @@ static int append_point_size_output(RinGLGlslLowerResult* result,
 static int parse_varying_texture_offset(const char** cursor,
                                         uint32_t* coordinate_kind,
                                         float* offset_u,
-                                        float* offset_v)
+                                        float* offset_v,
+                                        const char* uniform_name,
+                                        const float uniform_values[2])
 {
+    int uses_uniform = 0;
+
     if (cursor == NULL || *cursor == NULL || coordinate_kind == NULL ||
         offset_u == NULL || offset_v == NULL) {
         return 0;
@@ -613,13 +617,28 @@ static int parse_varying_texture_offset(const char** cursor,
         ? RINGL_VARYING_TEXTURE_COORD_MUL_SCALE
         : RINGL_VARYING_TEXTURE_COORD_DIV_SCALE;
     ++*cursor;
-    if (!consume_text(cursor, "vec2(") ||
-        !parse_finite_float(cursor, offset_u) || !consume_text(cursor, ",") ||
-        !parse_finite_float(cursor, offset_v) || !consume_text(cursor, ")")) {
-        return 0;
+    if (consume_text(cursor, "vec2(")) {
+        if (!parse_finite_float(cursor, offset_u) || !consume_text(cursor, ",") ||
+            !parse_finite_float(cursor, offset_v) || !consume_text(cursor, ")")) {
+            return 0;
+        }
+    } else {
+        char name[64];
+
+        if (uniform_name == NULL || uniform_values == NULL ||
+            !read_identifier(cursor, name, sizeof(name)) ||
+            strcmp(name, uniform_name) != 0 ||
+            !isfinite(uniform_values[0]) || !isfinite(uniform_values[1])) {
+            return 0;
+        }
+        *offset_u = uniform_values[0];
+        *offset_v = uniform_values[1];
+        uses_uniform = 1;
     }
-    return *coordinate_kind != RINGL_VARYING_TEXTURE_COORD_DIV_SCALE ||
-           (*offset_u != 0.0f && *offset_v != 0.0f);
+    return (*coordinate_kind != RINGL_VARYING_TEXTURE_COORD_DIV_SCALE ||
+            (*offset_u != 0.0f && *offset_v != 0.0f)) &&
+           (uses_uniform == 0 ||
+            *coordinate_kind != RINGL_VARYING_TEXTURE_COORD_DIV_SCALE);
 }
 
 static int parse_varying_texture_call(const char** cursor,
@@ -628,12 +647,15 @@ static int parse_varying_texture_call(const char** cursor,
                                       char coordinate_names[][64],
                                       const uint32_t* coordinate_input_locations,
                                       uint32_t coordinate_count,
+                                      const char* coordinate_uniform_name,
+                                      const float coordinate_uniform[2],
                                       VaryingTextureCall* call)
 {
     char sampler[64];
     char coordinate[64];
     char secondary_coordinate[64];
     uint32_t coordinate_index;
+    uint32_t coordinate_uniform_offset = 0u;
 
     if (cursor == NULL || sampler_names == NULL ||
         coordinate_names == NULL || coordinate_input_locations == NULL ||
@@ -669,32 +691,51 @@ static int parse_varying_texture_call(const char** cursor,
 
         ++*cursor;
         if (!read_identifier(cursor, secondary_coordinate,
-                             sizeof(secondary_coordinate)) ||
-            !sampler_index_for_name(coordinate_names, coordinate_count,
-                                    secondary_coordinate, &secondary_index)) {
+                             sizeof(secondary_coordinate))) {
             return 0;
         }
-        call->secondary_coordinate_input_location =
-            coordinate_input_locations[secondary_index];
-        if (!parse_optional_read_swizzle(
-                cursor, 2u, 2u, call->secondary_coordinate_components)) {
+        if (coordinate_uniform_name != NULL && coordinate_uniform != NULL &&
+            strcmp(secondary_coordinate, coordinate_uniform_name) == 0) {
+            if (!isfinite(coordinate_uniform[0]) ||
+                !isfinite(coordinate_uniform[1])) {
+                return 0;
+            }
+            call->coordinate_kind = subtract
+                ? RINGL_VARYING_TEXTURE_COORD_SUB_OFFSET
+                : RINGL_VARYING_TEXTURE_COORD_ADD_OFFSET;
+            call->offset_u = coordinate_uniform[0];
+            call->offset_v = coordinate_uniform[1];
+            coordinate_uniform_offset = 1u;
+        } else if (!sampler_index_for_name(coordinate_names, coordinate_count,
+                                           secondary_coordinate,
+                                           &secondary_index)) {
             return 0;
+        } else {
+            call->secondary_coordinate_input_location =
+                coordinate_input_locations[secondary_index];
+            if (!parse_optional_read_swizzle(
+                    cursor, 2u, 2u, call->secondary_coordinate_components)) {
+                return 0;
+            }
+            if (call->coordinate_input_location == UINT32_MAX ||
+                call->secondary_coordinate_input_location == UINT32_MAX ||
+                call->secondary_coordinate_input_location >
+                    (RINGL_GLSL_MAX_VARYINGS - 1u) * 2u ||
+                (call->secondary_coordinate_input_location & 1u) != 0u)
+                return 0;
+            call->coordinate_kind = subtract
+                ? RINGL_VARYING_TEXTURE_COORD_SUB_COORDINATE
+                : RINGL_VARYING_TEXTURE_COORD_ADD_COORDINATE;
         }
-        if (call->coordinate_input_location == UINT32_MAX ||
-            call->secondary_coordinate_input_location == UINT32_MAX ||
-            call->secondary_coordinate_input_location >
-                (RINGL_GLSL_MAX_VARYINGS - 1u) * 2u ||
-            (call->secondary_coordinate_input_location & 1u) != 0u)
-            return 0;
-        call->coordinate_kind = subtract
-            ? RINGL_VARYING_TEXTURE_COORD_SUB_COORDINATE
-            : RINGL_VARYING_TEXTURE_COORD_ADD_COORDINATE;
     } else if (!parse_varying_texture_offset(cursor, &call->coordinate_kind,
-                                      &call->offset_u, &call->offset_v) ||
+                                      &call->offset_u, &call->offset_v,
+                                      coordinate_uniform_name,
+                                      coordinate_uniform) ||
                !consume_text(cursor, ")")) {
         return 0;
     }
-    if (call->secondary_coordinate_input_location != UINT32_MAX &&
+    if ((call->secondary_coordinate_input_location != UINT32_MAX ||
+         coordinate_uniform_offset != 0u) &&
         !consume_text(cursor, ")"))
         return 0;
     return 1;
@@ -706,7 +747,8 @@ static int parse_varying_texture_call(const char** cursor,
 static int parse_varying_texture_local_coordinate(
     const char** cursor, const char* source_coordinate, char* coordinate,
     size_t coordinate_capacity, uint32_t* coordinate_kind, float* offset_u,
-    float* offset_v)
+    float* offset_v, const char* coordinate_uniform_name,
+    const float coordinate_uniform[2])
 {
     char source[64];
 
@@ -720,7 +762,8 @@ static int parse_varying_texture_local_coordinate(
         !read_identifier(cursor, source, sizeof(source)) ||
         strcmp(source, source_coordinate) != 0 ||
         !parse_varying_texture_offset(cursor, coordinate_kind, offset_u,
-                                      offset_v) ||
+                                      offset_v, coordinate_uniform_name,
+                                      coordinate_uniform) ||
         !consume_text(cursor, ";")) {
         return 0;
     }
@@ -732,7 +775,8 @@ static int parse_varying_texture_local_coordinate_or_varying(
     char varying_names[][64], uint32_t varying_count,
     uint32_t allowed_secondary_input_location, char* coordinate,
     size_t coordinate_capacity, uint32_t* coordinate_kind, float* offset_u,
-    float* offset_v, uint32_t* secondary_input_location)
+    float* offset_v, uint32_t* secondary_input_location,
+    const char* coordinate_uniform_name, const float coordinate_uniform[2])
 {
     char source[64];
     char secondary[64];
@@ -756,10 +800,25 @@ static int parse_varying_texture_local_coordinate_or_varying(
         int subtract = **cursor == '-';
 
         ++*cursor;
-        if (!read_identifier(cursor, secondary, sizeof(secondary)) ||
-            !consume_text(cursor, ";")) {
+        if (!read_identifier(cursor, secondary, sizeof(secondary))) {
             return 0;
         }
+        if (coordinate_uniform_name != NULL && coordinate_uniform != NULL &&
+            strcmp(secondary, coordinate_uniform_name) == 0) {
+            if (!isfinite(coordinate_uniform[0]) ||
+                !isfinite(coordinate_uniform[1]) ||
+                !consume_text(cursor, ";")) {
+                return 0;
+            }
+            *coordinate_kind = subtract
+                ? RINGL_VARYING_TEXTURE_COORD_SUB_OFFSET
+                : RINGL_VARYING_TEXTURE_COORD_ADD_OFFSET;
+            *offset_u = coordinate_uniform[0];
+            *offset_v = coordinate_uniform[1];
+            return 1;
+        }
+        if (!consume_text(cursor, ";"))
+            return 0;
         for (index = 0u; index < varying_count; ++index) {
             if (strcmp(secondary, varying_names[index]) == 0)
                 break;
@@ -773,7 +832,9 @@ static int parse_varying_texture_local_coordinate_or_varying(
         return 1;
     }
     return parse_varying_texture_offset(cursor, coordinate_kind, offset_u,
-                                        offset_v) && consume_text(cursor, ";");
+                                        offset_v, coordinate_uniform_name,
+                                        coordinate_uniform) &&
+           consume_text(cursor, ";");
 }
 
 /* Keep the multi-varying extension deliberately narrow: one local vec2 may
@@ -1740,6 +1801,7 @@ static int lower_fragment_texture_chain(
     RinGLRsh1InstructionV1 ins[RINGL_RSH1_MAX_INSTRUCTIONS];
     char sampler_names[RINGL_VARYING_TEXTURE_MAX_SAMPLERS][64];
     char color_uniform_name[64] = {0};
+    char coordinate_uniform_name[64] = {0};
     char varying_names[RINGL_GLSL_MAX_VARYINGS][64] = {{0}};
     /* Physical pairs plus one possible named local. The local slot never
      * aliases the eighth pair, so direct five-through-eight pair shaders keep
@@ -1760,6 +1822,7 @@ static int lower_fragment_texture_chain(
     const char* cursor;
     uint32_t sampler_count = 0u;
     uint32_t has_color_uniform = 0u;
+    uint32_t has_coordinate_uniform = 0u;
     uint32_t varying_count = 0u;
     uint32_t coordinate_name_count;
     uint32_t local_coordinate_count = 0u;
@@ -1797,6 +1860,7 @@ static int lower_fragment_texture_chain(
     uint32_t sampler_index;
     uint32_t component;
     float color[4] = {0.0f};
+    float coordinate_uniform[2] = {0.0f, 0.0f};
     size_t total;
 
     if (source == NULL || result == NULL ||
@@ -1810,7 +1874,8 @@ static int lower_fragment_texture_chain(
     cursor = source;
     while (strncmp(cursor, "uniformsampler2D", strlen("uniformsampler2D")) ==
                0 ||
-           strncmp(cursor, "uniformvec4", strlen("uniformvec4")) == 0) {
+           strncmp(cursor, "uniformvec4", strlen("uniformvec4")) == 0 ||
+           strncmp(cursor, "uniformvec2", strlen("uniformvec2")) == 0) {
         if (strncmp(cursor, "uniformsampler2D",
                     strlen("uniformsampler2D")) == 0) {
             if (sampler_count == RINGL_VARYING_TEXTURE_MAX_SAMPLERS ||
@@ -1828,7 +1893,8 @@ static int lower_fragment_texture_chain(
                 }
             }
             ++sampler_count;
-        } else {
+        } else if (strncmp(cursor, "uniformvec4", strlen("uniformvec4")) ==
+                   0) {
             if (has_color_uniform || !consume_text(&cursor, "uniformvec4") ||
                 !read_identifier(&cursor, color_uniform_name,
                                  sizeof(color_uniform_name)) ||
@@ -1836,6 +1902,15 @@ static int lower_fragment_texture_chain(
                 return 1;
             }
             has_color_uniform = 1u;
+        } else {
+            if (has_coordinate_uniform ||
+                !consume_text(&cursor, "uniformvec2") ||
+                !read_identifier(&cursor, coordinate_uniform_name,
+                                 sizeof(coordinate_uniform_name)) ||
+                !consume_text(&cursor, ";")) {
+                return 1;
+            }
+            has_coordinate_uniform = 1u;
         }
     }
     while (strncmp(cursor, "varyingvec2", strlen("varyingvec2")) == 0) {
@@ -1872,6 +1947,23 @@ static int lower_fragment_texture_chain(
             break;
         }
     }
+    if (has_coordinate_uniform) {
+        for (call_index = 0u; call_index < uniform_count; ++call_index) {
+            if (uniforms[call_index].name == NULL ||
+                strcmp(uniforms[call_index].name,
+                       coordinate_uniform_name) != 0) {
+                continue;
+            }
+            if (uniforms[call_index].type != RINGL_FLOAT_VEC2 ||
+                !isfinite(uniforms[call_index].values[0]) ||
+                !isfinite(uniforms[call_index].values[1])) {
+                return 1;
+            }
+            memcpy(coordinate_uniform, uniforms[call_index].values,
+                   sizeof(coordinate_uniform));
+            break;
+        }
+    }
     for (call_index = 0u; call_index < varying_count; ++call_index) {
         /* read_identifier() accepted this fixed-width name. Copy its complete
          * bounded representation rather than routing a proven 63-byte string
@@ -1893,7 +1985,9 @@ static int lower_fragment_texture_chain(
                     sizeof(local_coordinate_names[local_coordinate_count]),
                     &local_coordinate_kinds[local_coordinate_count],
                     &local_offset_u[local_coordinate_count],
-                    &local_offset_v[local_coordinate_count])) {
+                    &local_offset_v[local_coordinate_count],
+                    has_coordinate_uniform ? coordinate_uniform_name : NULL,
+                    has_coordinate_uniform ? coordinate_uniform : NULL)) {
                 return 1;
             }
             local_source = local_coordinate_names[local_coordinate_count++];
@@ -1965,14 +2059,18 @@ static int lower_fragment_texture_chain(
                             &local_offset_u[local_coordinate_count],
                             &local_offset_v[local_coordinate_count],
                             &local_secondary_input_locations[
-                                local_coordinate_count])
+                                local_coordinate_count],
+                            has_coordinate_uniform ? coordinate_uniform_name : NULL,
+                            has_coordinate_uniform ? coordinate_uniform : NULL)
                       : parse_varying_texture_local_coordinate(
                             &cursor, local_source,
                             local_coordinate_names[local_coordinate_count],
                             sizeof(local_coordinate_names[local_coordinate_count]),
                             &local_coordinate_kinds[local_coordinate_count],
                             &local_offset_u[local_coordinate_count],
-                            &local_offset_v[local_coordinate_count]))) {
+                            &local_offset_v[local_coordinate_count],
+                            has_coordinate_uniform ? coordinate_uniform_name : NULL,
+                            has_coordinate_uniform ? coordinate_uniform : NULL))) {
                 return 1;
             }
             if (local_secondary_input_locations[local_coordinate_count] !=
@@ -2040,6 +2138,8 @@ static int lower_fragment_texture_chain(
                 !parse_varying_texture_call(
                     &cursor, sampler_names, sampler_count, coordinate_names,
                     coordinate_input_locations, coordinate_name_count,
+                    has_coordinate_uniform ? coordinate_uniform_name : NULL,
+                    has_coordinate_uniform ? coordinate_uniform : NULL,
                     &calls[call_count])) {
                 return 1;
             }
@@ -2062,6 +2162,8 @@ static int lower_fragment_texture_chain(
                 !parse_varying_texture_call(
                     &cursor, sampler_names, sampler_count, coordinate_names,
                     coordinate_input_locations, coordinate_name_count,
+                    has_coordinate_uniform ? coordinate_uniform_name : NULL,
+                    has_coordinate_uniform ? coordinate_uniform : NULL,
                     &calls[call_count])) {
                 return 1;
             }

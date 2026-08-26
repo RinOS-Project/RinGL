@@ -14,6 +14,7 @@ typedef struct TextureCall {
     float u;
     float v;
     uint32_t uses_point_coord;
+    uint32_t uses_frag_coord;
 } TextureCall;
 
 #define RINGL_TEXTURE_MAX_SAMPLERS RINGL_GLSL_MAX_SAMPLER_UNIFORMS
@@ -22,9 +23,11 @@ typedef struct TextureCall {
 _Static_assert(10u * RINGL_TEXTURE_MAX_CALLS <=
                    RINGL_RSH1_MAX_REGISTERS,
                "texture profile exceeds the RSH1 register ceiling");
-_Static_assert(10u * RINGL_TEXTURE_MAX_CALLS + 5u <=
+/* gl_FragCoord.xy / vec2(...) uses two temporary constants and two scalar
+ * divisions per call before the normal sample sequence. */
+_Static_assert(14u * RINGL_TEXTURE_MAX_CALLS + 5u <=
                    RINGL_RSH1_MAX_INSTRUCTIONS,
-               "texture profile exceeds the RSH1 instruction ceiling");
+               "texture profile with fragment coordinates exceeds RSH1 instruction ceiling");
 
 static const char* skip_space(const char* p, const char* end)
 {
@@ -136,7 +139,10 @@ static int parse_texture_call(const char** cursor, const char* end,
     char ctor[16];
     int scalar_splat;
 
-    if (call == NULL || !parse_ident(cursor, end, ident, sizeof(ident)) ||
+    if (call == NULL)
+        return 0;
+    memset(call, 0, sizeof(*call));
+    if (!parse_ident(cursor, end, ident, sizeof(ident)) ||
         strcmp(ident, "texture2D") != 0 ||
         !expect_char(cursor, end, '(') ||
         !parse_ident(cursor, end, ident, sizeof(ident)) ||
@@ -152,6 +158,30 @@ static int parse_texture_call(const char** cursor, const char* end,
             strcmp(ident, "gl_PointCoord") == 0) {
             call->uses_point_coord = 1u;
             *cursor = point_coord_cursor;
+            return expect_char(cursor, end, ')');
+        }
+    }
+    {
+        const char* frag_coord_cursor = *cursor;
+
+        if (parse_ident(&frag_coord_cursor, end, ident, sizeof(ident)) &&
+            strcmp(ident, "gl_FragCoord") == 0) {
+            if (!expect_char(&frag_coord_cursor, end, '.') ||
+                !parse_ident(&frag_coord_cursor, end, ident, sizeof(ident)) ||
+                strcmp(ident, "xy") != 0 ||
+                !expect_char(&frag_coord_cursor, end, '/') ||
+                !parse_ident(&frag_coord_cursor, end, ctor, sizeof(ctor)) ||
+                strcmp(ctor, "vec2") != 0 ||
+                !expect_char(&frag_coord_cursor, end, '(') ||
+                !parse_float(&frag_coord_cursor, end, &call->u) ||
+                !expect_char(&frag_coord_cursor, end, ',') ||
+                !parse_float(&frag_coord_cursor, end, &call->v) ||
+                !expect_char(&frag_coord_cursor, end, ')') ||
+                call->u == 0.0f || call->v == 0.0f) {
+                return 0;
+            }
+            call->uses_frag_coord = 1u;
+            *cursor = frag_coord_cursor;
             return expect_char(cursor, end, ')');
         }
     }
@@ -230,8 +260,9 @@ static void store_result(RinGLGlslLowerResult* result,
     result->byte_size = header->total_size;
 }
 
-/* The fragment profile uses one coordinate pair (finite constant or the
- * point-sprite builtin) and one RGBA sample per texture call. Results are
+/* The fragment profile uses one coordinate pair (finite constant, point
+ * sprite builtin, or normalized fragment coordinate) and one RGBA sample per
+ * texture call. Results are
  * accumulated left-to-right. The register layout is deliberately formulaic
  * so every supported call count has a fixed, auditable RSH1 shape:
  *
@@ -250,12 +281,23 @@ static void emit_texture_sum(const TextureCall* calls, uint32_t call_count,
     RinGLRsh1InstructionV1 instructions[RINGL_RSH1_MAX_INSTRUCTIONS];
     uint32_t sample_base = call_count * 2u;
     uint32_t input_base = call_count * 6u;
-    uint32_t add_base = 4u + call_count * 6u;
-    uint32_t store_base = call_count * 10u;
+    uint32_t frag_coord_call_count = 0u;
+    uint32_t transform_base;
+    uint32_t sample_instruction_base;
+    uint32_t add_base;
+    uint32_t store_base;
     uint32_t final_base;
     uint32_t sampler;
     uint32_t component;
 
+    for (sampler = 0u; sampler < call_count; ++sampler) {
+        if (calls[sampler].uses_frag_coord != 0u)
+            frag_coord_call_count++;
+    }
+    transform_base = 4u + call_count * 2u;
+    sample_instruction_base = transform_base + frag_coord_call_count * 4u;
+    add_base = sample_instruction_base + call_count * 4u;
+    store_base = add_base + (call_count - 1u) * 4u;
     memset(instructions, 0, sizeof(instructions));
     for (component = 0u; component < 4u; ++component) {
         init_instruction(&instructions[component], RINGL_RSH1_OP_LOAD_INPUT_F32);
@@ -279,6 +321,19 @@ static void emit_texture_sum(const TextureCall* calls, uint32_t call_count,
                 (uint16_t)(sampler * 2u + 1u);
             instructions[coordinate_instruction + 1u].immediate =
                 RINGL_RSH1_BUILTIN_POINT_COORD_Y;
+        } else if (calls[sampler].uses_frag_coord != 0u) {
+            init_instruction(&instructions[coordinate_instruction],
+                             RINGL_RSH1_OP_LOAD_BUILTIN_F32);
+            instructions[coordinate_instruction].destination =
+                (uint16_t)(sampler * 2u);
+            instructions[coordinate_instruction].immediate =
+                RINGL_RSH1_BUILTIN_FRAG_COORD_X;
+            init_instruction(&instructions[coordinate_instruction + 1u],
+                             RINGL_RSH1_OP_LOAD_BUILTIN_F32);
+            instructions[coordinate_instruction + 1u].destination =
+                (uint16_t)(sampler * 2u + 1u);
+            instructions[coordinate_instruction + 1u].immediate =
+                RINGL_RSH1_BUILTIN_FRAG_COORD_Y;
         } else {
             uint32_t u_bits;
             uint32_t v_bits;
@@ -297,11 +352,55 @@ static void emit_texture_sum(const TextureCall* calls, uint32_t call_count,
             instructions[coordinate_instruction + 1u].immediate = v_bits;
         }
     }
+    {
+        uint32_t transform_instruction = transform_base;
+
+        for (sampler = 0u; sampler < call_count; ++sampler) {
+            uint32_t u_bits;
+            uint32_t v_bits;
+            uint32_t temporary_base;
+
+            if (calls[sampler].uses_frag_coord == 0u)
+                continue;
+            memcpy(&u_bits, &calls[sampler].u, sizeof(u_bits));
+            memcpy(&v_bits, &calls[sampler].v, sizeof(v_bits));
+            /* Sample result registers are still dead here. Use two of them
+             * for finite divisors, then let SAMPLE overwrite all four. */
+            temporary_base = sample_base + sampler * 4u;
+            init_instruction(&instructions[transform_instruction],
+                             RINGL_RSH1_OP_CONST_F32);
+            instructions[transform_instruction].destination =
+                (uint16_t)temporary_base;
+            instructions[transform_instruction].immediate = u_bits;
+            init_instruction(&instructions[transform_instruction + 1u],
+                             RINGL_RSH1_OP_CONST_F32);
+            instructions[transform_instruction + 1u].destination =
+                (uint16_t)(temporary_base + 1u);
+            instructions[transform_instruction + 1u].immediate = v_bits;
+            init_instruction(&instructions[transform_instruction + 2u],
+                             RINGL_RSH1_OP_DIV_F32);
+            instructions[transform_instruction + 2u].destination =
+                (uint16_t)(sampler * 2u);
+            instructions[transform_instruction + 2u].source0 =
+                (uint16_t)(sampler * 2u);
+            instructions[transform_instruction + 2u].source1 =
+                (uint16_t)temporary_base;
+            init_instruction(&instructions[transform_instruction + 3u],
+                             RINGL_RSH1_OP_DIV_F32);
+            instructions[transform_instruction + 3u].destination =
+                (uint16_t)(sampler * 2u + 1u);
+            instructions[transform_instruction + 3u].source0 =
+                (uint16_t)(sampler * 2u + 1u);
+            instructions[transform_instruction + 3u].source1 =
+                (uint16_t)(temporary_base + 1u);
+            transform_instruction += 4u;
+        }
+    }
     for (sampler = 0u; sampler < call_count; ++sampler) {
         uint32_t resource =
             sampler_resource_indices[calls[sampler].sampler_index] * 2u;
         for (component = 0u; component < 4u; ++component) {
-            uint32_t instruction = 4u + call_count * 2u +
+            uint32_t instruction = sample_instruction_base +
                 sampler * 4u + component;
             init_instruction(&instructions[instruction],
                              RINGL_RSH1_OP_SAMPLE_IMAGE_2D_F32);
@@ -401,7 +500,7 @@ int ringl_glsl_lower_texture2d_rsh1(
                                 sampler_name_stride, sampler_count,
                                 &calls[call_index])) {
             (void)snprintf(result->diagnostic, sizeof(result->diagnostic),
-                           "bounded texture2D lowering requires finite vec2 or gl_PointCoord texture2D calls combined with '+'");
+                       "bounded texture2D lowering requires finite vec2, gl_PointCoord, or gl_FragCoord.xy / vec2(finite, finite) texture2D calls combined with '+'");
             return 1;
         }
     }

@@ -269,8 +269,10 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   reciprocal clip `w`, together with finite lower-left `dFdx`/`dFdy` inputs;
   it never aliases a user varying or a top-down storage coordinate. The
   caller-owned WebGL bridge regression verifies all four components from an
-  actual clip-W-two triangle. Texture-coordinate special forms remain outside
-  the bounded profile.
+  actual clip-W-two triangle and the exact bounded
+  `texture2D(sampler, gl_FragCoord.xy / vec2(finite, finite))` profile. The
+  lowerer emits builtin X/Y loads plus real RSH1 divisions before sampling;
+  other texture-coordinate special forms remain outside the bounded profile.
 - [x] Execute bounded `GL_LINES` direct and indexed draws through a distinct
   native RinGPU line-list pipeline. An incomplete pair is a successful no-op.
 - [x] Execute bounded `GL_LINE_STRIP` direct and indexed draws through a

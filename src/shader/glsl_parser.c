@@ -659,6 +659,35 @@ static int texture2d_call(Parser* parser)
          * loads, not a declared varying. Do not accept swizzles or offsets
          * here until the bounded texture lowerer can execute those forms. */
         next_token(parser);
+    } else if (parser->token.kind == TOK_IDENT &&
+               token_is_ident(&parser->token, "gl_FragCoord")) {
+        /* Keep this parser admission exactly aligned with texture_lower.c:
+         * only a finite explicit normalization is useful as a WebGL texture
+         * coordinate, and the lowering owns both builtin loads and divides. */
+        next_token(parser);
+        if (!expect(parser, TOK_DOT,
+                    "texture2D gl_FragCoord coordinate requires '.xy'") ||
+            parser->token.kind != TOK_IDENT || parser->token.length != 2u ||
+            memcmp(parser->token.begin, "xy", 2u) != 0) {
+            fail(parser,
+                 "texture2D gl_FragCoord coordinate requires '.xy'");
+            return 0;
+        }
+        next_token(parser);
+        if (!expect(parser, TOK_SLASH,
+                    "texture2D gl_FragCoord coordinate requires '/ vec2(...)'") ||
+            !expect(parser, TOK_VEC2,
+                    "texture2D gl_FragCoord coordinate requires vec2") ||
+            !expect(parser, TOK_LPAREN,
+                    "expected '(' after gl_FragCoord normalization") ||
+            !finite_number(parser) ||
+            !expect(parser, TOK_COMMA,
+                    "expected ',' in gl_FragCoord normalization") ||
+            !finite_number(parser) ||
+            !expect(parser, TOK_RPAREN,
+                    "expected ')' after gl_FragCoord normalization")) {
+            return 0;
+        }
     } else if (parser->token.kind == TOK_IDENT) {
         Symbol* coordinate = find_symbol(parser, &parser->token);
         if (coordinate == NULL || coordinate->width != 2u ||

@@ -1991,6 +1991,84 @@ static int ringl_program_active_sampler_uniform_at(
     return -1;
 }
 
+/* Numeric arrays use the same normalized `name[0]` ... `name[N-1]` linked
+ * storage as sampler arrays. Keep the grouping in reflection rather than
+ * inventing a second source-only representation. */
+static uint32_t ringl_float_active_uniform_length(
+    const RinGLProgramObject* object, uint32_t first_uniform)
+{
+    const char* base_name;
+    size_t base_length;
+    uint32_t element_index;
+    uint32_t length = 1u;
+
+    if (object == NULL || first_uniform >= object->float_uniform_count ||
+        !ringl_sampler_array_element_index(
+            object->float_uniforms[first_uniform].name, &base_length,
+            &element_index) || element_index != 0u) {
+        return 1u;
+    }
+    base_name = object->float_uniforms[first_uniform].name;
+    while (first_uniform + length < object->float_uniform_count) {
+        size_t candidate_base_length;
+        uint32_t candidate_element_index;
+
+        if (!ringl_sampler_array_element_index(
+                object->float_uniforms[first_uniform + length].name,
+                &candidate_base_length, &candidate_element_index) ||
+            candidate_base_length != base_length ||
+            memcmp(base_name,
+                   object->float_uniforms[first_uniform + length].name,
+                   base_length) != 0 || candidate_element_index != length) {
+            break;
+        }
+        ++length;
+    }
+    return length;
+}
+
+static uint32_t ringl_program_active_float_uniform_count(
+    const RinGLProgramObject* object)
+{
+    uint32_t uniform_index = 0u;
+    uint32_t active_count = 0u;
+
+    if (object == NULL)
+        return 0u;
+    while (uniform_index < object->float_uniform_count) {
+        uniform_index += ringl_float_active_uniform_length(object,
+                                                           uniform_index);
+        ++active_count;
+    }
+    return active_count;
+}
+
+static int ringl_program_active_float_uniform_at(
+    const RinGLProgramObject* object, uint32_t active_index,
+    uint32_t* uniform_index_out, uint32_t* array_length_out)
+{
+    uint32_t uniform_index = 0u;
+    uint32_t current_active_index = 0u;
+
+    if (object == NULL || uniform_index_out == NULL ||
+        array_length_out == NULL) {
+        return -1;
+    }
+    while (uniform_index < object->float_uniform_count) {
+        uint32_t array_length = ringl_float_active_uniform_length(
+            object, uniform_index);
+
+        if (current_active_index == active_index) {
+            *uniform_index_out = uniform_index;
+            *array_length_out = array_length;
+            return 0;
+        }
+        uniform_index += array_length;
+        ++current_active_index;
+    }
+    return -1;
+}
+
 int ringl_get_program_info(uint32_t program, RinGLProgramInfoV1* info)
 {
     RinGLContext* context = ringl_get_current_context();
@@ -2018,7 +2096,7 @@ int ringl_get_program_info(uint32_t program, RinGLProgramInfoV1* info)
     if (object->link_status) {
         result.active_attribute_count = object->attribute_count;
         result.active_uniform_count = ringl_program_active_sampler_uniform_count(object) +
-                                       object->float_uniform_count +
+                                       ringl_program_active_float_uniform_count(object) +
                                        object->int_uniform_count +
                                        object->bool_uniform_count +
                                        object->bvec2_uniform_count +
@@ -2145,6 +2223,7 @@ int ringl_get_active_uniform(uint32_t program, uint32_t index,
     RinGLProgramObject* object;
     RinGLActiveInfoV1 result;
     uint32_t active_sampler_count;
+    uint32_t active_float_count;
 
     if (context == NULL || !ringl_active_info_header_valid(info))
         return -1;
@@ -2158,7 +2237,8 @@ int ringl_get_active_uniform(uint32_t program, uint32_t index,
         return -1;
     }
     active_sampler_count = ringl_program_active_sampler_uniform_count(object);
-    if (index >= active_sampler_count + object->float_uniform_count +
+    active_float_count = ringl_program_active_float_uniform_count(object);
+    if (index >= active_sampler_count + active_float_count +
                      object->vec2_uniform_count + object->vec3_uniform_count +
                      object->vec4_uniform_count + object->mat4_uniform_count +
                      object->mat2_uniform_count + object->mat3_uniform_count +
@@ -2184,13 +2264,28 @@ int ringl_get_active_uniform(uint32_t program, uint32_t index,
         *info = result;
         return 0;
     }
-    index = index - active_sampler_count + object->sampler_uniform_count;
-    if (index < object->sampler_uniform_count +
-                           object->float_uniform_count) {
+    index -= active_sampler_count;
+    if (index < active_float_count) {
+        uint32_t float_uniform_index;
+        uint32_t array_length;
+
+        if (ringl_program_active_float_uniform_at(
+                object, index, &float_uniform_index, &array_length) != 0) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return -1;
+        }
         ringl_active_info_set(&result, RINGL_FLOAT,
-                              object->float_uniforms[
-                                  index - object->sampler_uniform_count].name);
-    } else if (index < object->sampler_uniform_count +
+                              object->float_uniforms[float_uniform_index].name);
+        result.size = array_length;
+        *info = result;
+        return 0;
+    }
+    /* The remaining historic type blocks retain their raw contiguous element
+     * locations. Restore that coordinate system after coalescing float
+     * arrays for active-uniform reflection. */
+    index = index - active_float_count + object->sampler_uniform_count +
+            object->float_uniform_count;
+    if (index < object->sampler_uniform_count +
                            object->float_uniform_count +
                            object->vec2_uniform_count) {
         ringl_active_info_set(&result, RINGL_FLOAT_VEC2,
@@ -2594,6 +2689,44 @@ static int ringl_sampler_array_range_is_valid(const RinGLProgramObject* object,
     return 1;
 }
 
+static int ringl_float_array_range_is_valid(const RinGLProgramObject* object,
+                                            uint32_t first_uniform,
+                                            uint32_t count)
+{
+    char expected_name[RINGL_UNIFORM_NAME_MAX];
+    const char* base_name;
+    size_t base_length;
+    uint32_t first_element_index;
+    uint32_t offset;
+
+    if (object == NULL || count == 0u ||
+        first_uniform >= object->float_uniform_count ||
+        count > object->float_uniform_count - first_uniform) {
+        return 0;
+    }
+    if (count == 1u)
+        return 1;
+    if (!ringl_sampler_array_element_index(
+            object->float_uniforms[first_uniform].name, &base_length,
+            &first_element_index) || base_length >= sizeof(expected_name) ||
+        first_element_index > UINT32_MAX - (count - 1u)) {
+        return 0;
+    }
+    base_name = object->float_uniforms[first_uniform].name;
+    for (offset = 0u; offset < count; ++offset) {
+        int written = snprintf(expected_name, sizeof(expected_name), "%.*s[%u]",
+                               (int)base_length, base_name,
+                               first_element_index + offset);
+
+        if (written < 0 || (size_t)written >= sizeof(expected_name) ||
+            strcmp(object->float_uniforms[first_uniform + offset].name,
+                   expected_name) != 0) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 int32_t ringl_get_uniform_location(uint32_t program, const char* name)
 {
     RinGLContext* context = ringl_get_current_context();
@@ -2609,6 +2742,22 @@ int32_t ringl_get_uniform_location(uint32_t program, const char* name)
     if (!object->link_status) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return -1;
+    }
+    /* Arrays are normalized to element names in every supported uniform
+     * class. Resolve `name` through `name[0]` first, then retain the ordinary
+     * scalar lookup when no such element exists. */
+    if (strchr(name, '[') == NULL) {
+        char first_element_name[RINGL_UNIFORM_NAME_MAX];
+        int written = snprintf(first_element_name, sizeof(first_element_name),
+                               "%s[0]", name);
+        int32_t first_element_location;
+
+        if (written >= 0 && (size_t)written < sizeof(first_element_name)) {
+            first_element_location = ringl_get_uniform_location(
+                program, first_element_name);
+            if (first_element_location >= 0)
+                return first_element_location;
+        }
     }
     for (i = 0u; i < object->sampler_uniform_count; ++i) {
         if (strcmp(object->sampler_uniforms[i].name, name) == 0)
@@ -2999,6 +3148,75 @@ int ringl_get_uniform_1i(uint32_t program, int32_t location,
         *value_out = object->bool_uniforms[(uint32_t)location - first_location].value;
     }
     return 0;
+}
+
+void ringl_uniform_1fv(int32_t location, uint32_t count,
+                        const float* values)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLProgramObject* object;
+    RinGLShaderObject* vertex;
+    RinGLShaderObject* fragment;
+    float previous_values[RINGL_MAX_FLOAT_UNIFORMS];
+    uint32_t first_uniform;
+    uint32_t index;
+    int changed = 0;
+
+    if (context == NULL || location == -1 || count == 0u)
+        return;
+    if (values == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    for (index = 0u; index < count; ++index) {
+        if (!isfinite(values[index])) {
+            ringl_context_record_error(context, RINGL_INVALID_VALUE);
+            return;
+        }
+    }
+    if (context->current_program == 0u) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    object = ringl_program_object(context, context->current_program);
+    if (object == NULL || !object->link_status || location < 0 ||
+        (uint32_t)location < object->sampler_uniform_count) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    first_uniform = (uint32_t)location - object->sampler_uniform_count;
+    if (!ringl_float_array_range_is_valid(object, first_uniform, count)) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    for (index = 0u; index < count; ++index) {
+        if (object->float_uniforms[first_uniform + index].value != values[index]) {
+            changed = 1;
+            break;
+        }
+    }
+    if (!changed)
+        return;
+    vertex = ringl_program_shader(context, object->linked_vertex_shader);
+    fragment = ringl_program_shader(context, object->linked_fragment_shader);
+    if (vertex == NULL || fragment == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    for (index = 0u; index < count; ++index) {
+        previous_values[index] =
+            object->float_uniforms[first_uniform + index].value;
+        object->float_uniforms[first_uniform + index].value = values[index];
+    }
+    /* Re-lower both numeric stages before publishing either replacement
+     * module. A late failure restores every touched element. */
+    if (!ringl_program_rebuild_uniform_artifacts(
+            context, object, vertex, fragment, 1, 1)) {
+        for (index = 0u; index < count; ++index)
+            object->float_uniforms[first_uniform + index].value =
+                previous_values[index];
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+    }
 }
 
 void ringl_uniform_1f(int32_t location, float value)

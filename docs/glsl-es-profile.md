@@ -210,7 +210,8 @@ Nonconstant coordinates in this profile, general swizzle writes outside the
 documented generic vertex-varying lvalue form, implicit float/integer
 conversion, vector constructors with mixed scalar types,
 matrices beyond the documented bounded `matrixCompMult`/matrix-vector vertex
-forms, uniform arrays, additional varying types, loops, user functions,
+forms, uniform arrays other than the bounded scalar `float name[N]` profile,
+additional varying types, loops, user functions,
 general/nested control flow, precision edge cases, and
 broader GLSL ES built-ins remain incremental work.
 

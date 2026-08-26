@@ -320,9 +320,15 @@ number of elements is at most eight, and each `texture2D(name[index], uv)`
 uses an in-range decimal constant index that maps to its own real RSH1
 image/sampler pair. Reflection exposes one `name[0]` uniform of size `N`, the
 base name aliases element zero, and `ringl_uniform_1iv()` atomically updates a
-complete contiguous range after validating every element. Dynamic indices and
-non-sampler uniform arrays remain outside the profile. Vertex/fragment
-same-name sampler arrays must have matching lengths or linking fails.
+complete contiguous range after validating every element. The same executable
+reflection/lowering route accepts bounded scalar `uniform float name[N]`
+arrays (up to eight total float elements): a decimal constant in-range source
+index reads the selected program-owned RSH1 constant, `name` aliases
+`name[0]`, and `ringl_uniform_1fv()` validates every finite value and the
+complete in-array range before atomically replacing the affected stage
+modules. Dynamic indices plus integer, Boolean, vector, and matrix uniform
+arrays remain outside the profile. Vertex/fragment same-name sampler arrays
+must have matching lengths or linking fails.
 
 The generic path has the same finite RSH1 admission limits as every other
 RinGL shader (128 instructions and 96 registers). Unsupported GLSL ES sampler

@@ -103,6 +103,8 @@ typedef struct Symbol {
     char name[64];
     uint32_t kind;
     uint32_t width;
+    /* A declaration remains one source symbol. Array elements are expanded
+     * only for linked WebGL reflection and location state. */
     uint32_t sampler_array_length;
 } Symbol;
 
@@ -948,6 +950,25 @@ static int primary(Parser* parser)
             return 0;
         }
         next_token(parser);
+        if (symbol != NULL && symbol->sampler_array_length > 1u) {
+            uint32_t array_index;
+
+            if (!expect(parser, TOK_LBRACKET,
+                        "uniform array requires a constant index") ||
+                !token_unsigned_integer(&parser->token, &array_index) ||
+                array_index >= symbol->sampler_array_length) {
+                fail(parser, "uniform array index is outside the declared range");
+                return 0;
+            }
+            next_token(parser);
+            if (!expect(parser, TOK_RBRACKET,
+                        "expected ']' after uniform array index")) {
+                return 0;
+            }
+        } else if (parser->token.kind == TOK_LBRACKET) {
+            fail(parser, "scalar value cannot be indexed");
+            return 0;
+        }
         while (accept(parser, TOK_DOT)) {
             Token swizzle = parser->token;
             uint8_t family = 0u;
@@ -1581,6 +1602,55 @@ static int uniform_declaration(Parser* parser)
         parser->result->declaration_count++;
         return 1;
     }
+    /* Scalar float arrays share the executable numeric-uniform path. Source
+     * indexing is validated against this declaration, while reflection keeps
+     * one contiguous WebGL location for each element. */
+    if (type == TOK_FLOAT) {
+        uint32_t float_array_length = 1u;
+        Symbol* symbol;
+
+        next_token(parser);
+        if (accept(parser, TOK_LBRACKET)) {
+            if (!token_unsigned_integer(&parser->token, &float_array_length) ||
+                float_array_length == 0u ||
+                float_array_length > RINGL_GLSL_MAX_FLOAT_UNIFORMS ||
+                !expect(parser, TOK_NUMBER,
+                        "float array length must be a positive integer") ||
+                !expect(parser, TOK_RBRACKET,
+                        "expected ']' after float array length")) {
+                fail(parser, "float array length is outside the supported range");
+                return 0;
+            }
+        }
+        if (float_array_length > RINGL_GLSL_MAX_FLOAT_UNIFORMS -
+                                     parser->result->float_uniform_count) {
+            fail(parser, "too many float uniforms");
+            return 0;
+        }
+        if (!add_symbol(parser, &name, SYMBOL_UNIFORM_FLOAT, 1u))
+            return 0;
+        symbol = find_symbol(parser, &name);
+        if (symbol == NULL)
+            return 0;
+        symbol->sampler_array_length = float_array_length;
+        for (index = 0u; index < float_array_length; ++index) {
+            char* reflected_name = parser->result->float_uniform_names[
+                parser->result->float_uniform_count++];
+
+            if (float_array_length == 1u) {
+                memcpy(reflected_name, name.begin, name.length);
+                reflected_name[name.length] = '\0';
+            } else if (!sampler_array_element_name(
+                           reflected_name, RINGL_GLSL_NAME_MAX, &name, index)) {
+                fail(parser, "float array name is too long");
+                return 0;
+            }
+        }
+        if (!expect(parser, TOK_SEMI, "expected ';' after float uniform"))
+            return 0;
+        parser->result->declaration_count++;
+        return 1;
+    }
     if (!add_symbol(parser, &name,
                     type == TOK_SAMPLER2D ? SYMBOL_SAMPLER2D
                     : type == TOK_FLOAT ? SYMBOL_UNIFORM_FLOAT
@@ -1615,16 +1685,6 @@ static int uniform_declaration(Parser* parser)
         memcpy(parser->result->sampler_uniform_names[index], name.begin,
                name.length);
         parser->result->sampler_uniform_names[index][name.length] = '\0';
-    } else if (type == TOK_FLOAT) {
-        if (parser->result->float_uniform_count >=
-            RINGL_GLSL_MAX_FLOAT_UNIFORMS) {
-            fail(parser, "too many float uniforms");
-            return 0;
-        }
-        index = parser->result->float_uniform_count++;
-        memcpy(parser->result->float_uniform_names[index], name.begin,
-               name.length);
-        parser->result->float_uniform_names[index][name.length] = '\0';
     } else if (type == TOK_INT) {
         if (parser->result->int_uniform_count >= RINGL_GLSL_MAX_INT_UNIFORMS) {
             fail(parser, "too many int uniforms");

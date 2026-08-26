@@ -242,6 +242,61 @@ int main(void)
     }
 
     {
+        uint32_t array_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+        uint32_t array_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+        uint32_t array_program = ringl_create_program();
+        float gains[2] = { 0.25f, 0.75f };
+        float value = -1.0f;
+        int32_t base_location;
+        int32_t second_location;
+
+        assert(array_vertex != 0u && array_fragment != 0u &&
+               array_program != 0u);
+        ringl_shader_source(array_vertex,
+                            "void main() { gl_Position = vec4(0.0); }", -1);
+        ringl_shader_source(array_fragment,
+                            "uniform float gains[2]; void main() { "
+                            "gl_FragColor = vec4(gains[1], gains[0], 0.0, 1.0); }",
+                            -1);
+        ringl_compile_shader(array_vertex);
+        ringl_compile_shader(array_fragment);
+        assert(ringl_get_shader_compile_status(array_vertex) == RINGL_TRUE);
+        assert(ringl_get_shader_compile_status(array_fragment) == RINGL_TRUE);
+        ringl_attach_shader(array_program, array_vertex);
+        ringl_attach_shader(array_program, array_fragment);
+        ringl_link_program(array_program);
+        assert(ringl_get_program_link_status(array_program) == RINGL_TRUE);
+        assert(ringl_get_program_info(array_program, &info) == 0);
+        assert(info.active_uniform_count == 1u);
+        assert(ringl_get_active_uniform(array_program, 0u, &active_info) == 0);
+        assert(active_info.type == RINGL_FLOAT && active_info.size == 2u &&
+               strcmp(active_info.name, "gains[0]") == 0);
+        base_location = ringl_get_uniform_location(array_program, "gains");
+        second_location = ringl_get_uniform_location(array_program, "gains[1]");
+        assert(base_location >= 0 &&
+               base_location == ringl_get_uniform_location(array_program,
+                                                            "gains[0]") &&
+               second_location == base_location + 1);
+        ringl_use_program(array_program);
+        ringl_uniform_1fv(base_location, 2u, gains);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_1f(array_program, second_location, &value) == 0);
+        assert(value == 0.75f);
+        ringl_uniform_1fv(second_location, 2u, gains);
+        assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+        assert(ringl_get_uniform_1f(array_program, second_location, &value) == 0);
+        assert(value == 0.75f);
+        gains[0] = NAN;
+        ringl_uniform_1fv(base_location, 2u, gains);
+        assert(ringl_get_error() == RINGL_INVALID_VALUE);
+        assert(ringl_get_uniform_1f(array_program, base_location, &value) == 0);
+        assert(value == 0.25f);
+        ringl_delete_program(array_program);
+        ringl_delete_shader(array_vertex);
+        ringl_delete_shader(array_fragment);
+    }
+
+    {
         uint32_t mismatch_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
         uint32_t mismatch_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
         uint32_t mismatch_program = ringl_create_program();

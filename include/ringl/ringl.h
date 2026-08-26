@@ -1780,6 +1780,12 @@ int ringl_get_uniform_4i(uint32_t program, int32_t location,
  * setter applies only to the currently used program and replaces its
  * program-owned RinGPU shader modules atomically after finite-value checks. */
 void ringl_uniform_1f(int32_t location, float value);
+/* Applies a contiguous scalar-float array range. `location` may name any
+ * element, but all `count` values must remain in the same reflected array;
+ * preflight and module replacement are atomic. Scalar float uniforms accept
+ * count one. */
+void ringl_uniform_1fv(int32_t location, uint32_t count,
+                       const float* values);
 /* Reads an active scalar float uniform. Invalid program/location/type inputs
  * leave value_out unchanged and record an error. */
 int ringl_get_uniform_1f(uint32_t program, int32_t location,

@@ -47,6 +47,33 @@ int main(void)
     assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
     assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) == 0u);
 
+    /* Numeric arrays stay in the generic RSH1 path: only a finite constant
+     * element index may select the program-owned element constants. */
+    {
+        static const char float_array_source[] =
+            "uniform float gains[2]; void main() { "
+            "gl_FragColor = vec4(gains[1], gains[0], 0.0, 1.0); }";
+        static const char dynamic_float_array_source[] =
+            "uniform float gains[2]; uniform int index; void main() { "
+            "gl_FragColor = vec4(gains[index]); }";
+        RinGLGlslUniformValue uniforms[2] = {
+            { .name = "gains[0]", .type = RINGL_FLOAT, .values = { 0.25f } },
+            { .name = "gains[1]", .type = RINGL_FLOAT, .values = { 0.75f } },
+        };
+        RinGLGlslLowerResult lowered;
+
+        assert(ringl_glsl_lower_rsh1_with_uniforms(
+                   RINGL_FRAGMENT_SHADER, float_array_source,
+                   sizeof(float_array_source) - 1u, uniforms, 2u,
+                   &lowered) == 0);
+        assert(lowered.ok != 0u);
+        assert(ringl_glsl_lower_rsh1(
+                   RINGL_FRAGMENT_SHADER, dynamic_float_array_source,
+                   sizeof(dynamic_float_array_source) - 1u,
+                   &lowered) != 0);
+        assert(strstr(lowered.diagnostic, "array") != NULL);
+    }
+
     /* Generic texture lowering owns the sampler reflection and emits actual
      * RinGPU resource-pair samples. The first declaration is deliberately
      * inactive: the resource binding must point at the second shader sampler

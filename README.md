@@ -321,14 +321,16 @@ uses an in-range decimal constant index that maps to its own real RSH1
 image/sampler pair. Reflection exposes one `name[0]` uniform of size `N`, the
 base name aliases element zero, and `ringl_uniform_1iv()` atomically updates a
 complete contiguous range after validating every element. The same executable
-reflection/lowering route accepts bounded scalar `uniform float name[N]`
-arrays (up to eight total float elements): a decimal constant in-range source
-index reads the selected program-owned RSH1 constant, `name` aliases
-`name[0]`, and `ringl_uniform_1fv()` validates every finite value and the
-complete in-array range before atomically replacing the affected stage
-modules. Dynamic indices plus integer, Boolean, vector, and matrix uniform
-arrays remain outside the profile. Vertex/fragment same-name sampler arrays
-must have matching lengths or linking fails.
+reflection/lowering route accepts bounded numeric `uniform name[N]` arrays:
+scalar float/int/Boolean and every `vec`/`ivec`/`bvec` class has at most eight
+elements, while vertex `mat2`/`mat3`/`mat4` has at most four. A decimal,
+in-range source index reads the selected program-owned RSH1 constants, the
+base name aliases `name[0]`, and the matching scalar/vector/matrix span
+setter validates the complete contiguous range before atomically replacing
+both affected stage modules. Boolean writes normalize each component to zero
+or one. Dynamic indices remain outside the profile; vertex/fragment same-name
+uniform declarations must still be type-compatible and sampler arrays must
+have matching lengths or linking fails.
 
 The generic path has the same finite RSH1 admission limits as every other
 RinGL shader (128 instructions and 96 registers). Unsupported GLSL ES sampler
@@ -547,18 +549,20 @@ depending on the current program binding. Each validates its complete input
 before writing caller-owned storage, so invalid programs or locations cannot
 expose a partially updated result.
 
-`ringl_uniform_1f()`, `ringl_uniform_2f()`, `ringl_uniform_3f()`,
-`ringl_uniform_4f()`, and `ringl_uniform_matrix{2,3,4}fv()` update a linked program
-only after every supplied component is finite. The matrix setter requires
-`transpose == 0` and preserves WebGL's column-major order. A NaN, infinity, or
-transposed matrix records `INVALID_VALUE` and leaves the published uniform and
-its derived executable unchanged. This lets embeddings preserve atomic
-WebGL-visible uniform state while the bounded RSH1 lowering path has no
-non-finite literal representation.
+`ringl_uniform_{1,2,3,4}fv()` and
+`ringl_uniform_matrix{2,3,4}fv_array()` update a linked contiguous array
+range only after every supplied component is finite and the entire range fits
+one reflected declaration. The legacy scalar setters remain count-one
+wrappers. Matrix updates require `transpose == 0` and preserve WebGL's
+column-major order. A NaN, infinity, transposed matrix, or cross-declaration
+range records an error and leaves the published uniform and its derived
+executable unchanged. This lets embeddings preserve atomic WebGL-visible
+uniform state while the bounded RSH1 lowering path has no non-finite literal
+representation.
 
-`ringl_uniform_1i()` accepts the linked sampler, scalar-`int`, or scalar-`bool`
-location; `ringl_uniform_{2,3,4}i()` update the matching `ivec` or `bvec`
-location. Integer updates retain signed i32 values in RSH1 (`CONST_I32` plus
+`ringl_uniform_1iv()` accepts a complete contiguous linked sampler,
+scalar-`int`, or scalar-`bool` range; `ringl_uniform_{2,3,4}iv()` update the
+matching `ivec` or `bvec` range. Integer updates retain signed i32 values in RSH1 (`CONST_I32` plus
 integer arithmetic) until an explicit GLSL `float(...)` conversion emits
 `I32_TO_F32`; they never reinterpret the integer bit pattern as a float.
 Boolean writes instead normalize each component to exact zero or one before
@@ -571,9 +575,9 @@ also admit precedence-correct `!`, `&&`, `^^`, and `||`; the profile forbids
 expression side effects, so their RSH1 Boolean evaluation preserves observable
 GLSL behavior without a second backend. Boolean vector builtins lower to scalar
 RSH1 integer comparisons/additions and therefore run through the same generic
-RinGPU backend as every other program. Uniform arrays, multi-component Boolean
-swizzles, local-mutating integer control flow, and implicit numeric conversions
-remain unavailable.
+RinGPU backend as every other program. Multi-component Boolean swizzles,
+local-mutating integer control flow, implicit numeric conversions, dynamic
+uniform-array indexing, and over-limit modules remain unavailable.
 
 Program-owned uniform artifacts are stage-selective. A mutable vertex matrix
 does not force an unrelated fragment `sampler2D` shader back through the
@@ -690,9 +694,9 @@ rejected, with scalar `float(...)`/`int(...)` the explicit typed conversion.
 This covers common uniform color modulation and matrix-transformed positions
 (`mat2 * vec2`, `mat3 * vec3`, or `mat4 * vec4`) plus a vector offset and the
 matching Float `matrixCompMult(matN, matN)` subset described above, while
-retaining explicit RSH1 resource and register limits; swizzles, matrix arrays,
-cross-dimension conversion, general matrix arithmetic, vector comparisons, and
-general control flow are still outside the profile. A bounded scalar
+retaining explicit RSH1 resource and register limits; dynamic matrix-array
+indexing, cross-dimension conversion, general matrix arithmetic, vector
+comparisons, and general control flow are still outside the profile. A bounded scalar
 `if (scalar-comparison) { stage-output = vec4(...); } else { stage-output =
 vec4(...); }` is executable: RinGL emits the original Float/i32 comparison,
 tests its i32 result against zero, and uses only forward RSH1 branches. The

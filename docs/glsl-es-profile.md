@@ -105,8 +105,10 @@ The current first-triangle slice supports:
   before module publication. `sampler2D name[N]` accepts a positive decimal
   `N` only within the eight-element total cap, and each lookup needs an
   in-range decimal constant index; every selected element has its own real
-  resource pair. Dynamic indexing, non-sampler arrays, non-2D/LOD/gradient
-  forms, and over-budget or otherwise unsupported expressions reject;
+  resource pair. The same constant-index rule applies to bounded numeric
+  uniform arrays (eight scalar/vector elements per type; four vertex matrices).
+  Dynamic indexing, non-2D/LOD/gradient forms, and over-budget or otherwise
+  unsupported expressions reject;
 - a constant-coordinate-only texture profile: one declared `sampler2D` may be
   sampled one through eight times, while a multi-declaration program uses each
   of one through eight declared samplers exactly once; results are added
@@ -210,7 +212,8 @@ Nonconstant coordinates in this profile, general swizzle writes outside the
 documented generic vertex-varying lvalue form, implicit float/integer
 conversion, vector constructors with mixed scalar types,
 matrices beyond the documented bounded `matrixCompMult`/matrix-vector vertex
-forms, uniform arrays other than the bounded scalar `float name[N]` profile,
+forms, dynamic uniform-array indexing (bounded scalar/vector integer/Boolean
+arrays use at most eight elements per type and vertex matrices at most four),
 additional varying types, loops, user functions,
 general/nested control flow, precision edge cases, and
 broader GLSL ES built-ins remain incremental work.

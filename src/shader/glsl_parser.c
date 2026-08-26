@@ -490,6 +490,65 @@ static int sampler_array_element_name(char* destination, size_t destination_size
     return written >= 0 && (size_t)written < destination_size;
 }
 
+/* Keep every supported uniform-array declaration in the same bounded
+ * representation: the source symbol retains its aggregate length, while the
+ * parser publishes contiguous element names for WebGL reflection/location
+ * state. `names` is the first byte of fixed RINGL_GLSL_NAME_MAX-byte slots. */
+static int uniform_array_declaration(Parser* parser, const Token* name,
+                                     SymbolKind kind, uint32_t width,
+                                     char* names, uint32_t* count,
+                                     uint32_t capacity,
+                                     const char* type_name)
+{
+    uint32_t array_length = 1u;
+    uint32_t index;
+    Symbol* symbol;
+
+    if (parser == NULL || name == NULL || names == NULL || count == NULL ||
+        type_name == NULL || *count > capacity)
+        return 0;
+    next_token(parser);
+    if (accept(parser, TOK_LBRACKET)) {
+        if (!token_unsigned_integer(&parser->token, &array_length) ||
+            array_length == 0u || array_length > capacity ||
+            !expect(parser, TOK_NUMBER,
+                    "uniform array length must be a positive integer") ||
+            !expect(parser, TOK_RBRACKET,
+                    "expected ']' after uniform array length")) {
+            fail(parser, "uniform array length is outside the supported range");
+            return 0;
+        }
+    }
+    if (array_length > capacity - *count) {
+        fail(parser, "too many uniform array elements");
+        return 0;
+    }
+    if (!add_symbol(parser, name, kind, width))
+        return 0;
+    symbol = find_symbol(parser, name);
+    if (symbol == NULL)
+        return 0;
+    symbol->sampler_array_length = array_length;
+    for (index = 0u; index < array_length; ++index) {
+        char* reflected_name = names + (*count + index) * RINGL_GLSL_NAME_MAX;
+
+        if (array_length == 1u) {
+            memcpy(reflected_name, name->begin, name->length);
+            reflected_name[name->length] = '\0';
+        } else if (!sampler_array_element_name(
+                       reflected_name, RINGL_GLSL_NAME_MAX, name, index)) {
+            fail(parser, "uniform array name is too long");
+            return 0;
+        }
+    }
+    *count += array_length;
+    if (!expect(parser, TOK_SEMI, "expected ';' after uniform"))
+        return 0;
+    parser->result->declaration_count++;
+    (void)type_name;
+    return 1;
+}
+
 static int expression(Parser* parser);
 
 static int constructor(Parser* parser, TokenKind kind)
@@ -1559,6 +1618,58 @@ static int uniform_declaration(Parser* parser)
         return 0;
     }
     name = parser->token;
+    if (type == TOK_SAMPLER2D)
+        return uniform_array_declaration(parser, &name, SYMBOL_SAMPLER2D, 0u,
+                                         (char*)parser->result->sampler_uniform_names,
+                                         &parser->result->sampler_uniform_count,
+                                         RINGL_GLSL_MAX_SAMPLER_UNIFORMS, "sampler2D");
+    if (type == TOK_FLOAT)
+        return uniform_array_declaration(parser, &name, SYMBOL_UNIFORM_FLOAT, 1u,
+                                         (char*)parser->result->float_uniform_names,
+                                         &parser->result->float_uniform_count,
+                                         RINGL_GLSL_MAX_FLOAT_UNIFORMS, "float");
+    if (type == TOK_INT)
+        return uniform_array_declaration(parser, &name, SYMBOL_UNIFORM_INT, 1u,
+                                         (char*)parser->result->int_uniform_names,
+                                         &parser->result->int_uniform_count,
+                                         RINGL_GLSL_MAX_INT_UNIFORMS, "int");
+    if (type == TOK_BOOL)
+        return uniform_array_declaration(parser, &name, SYMBOL_UNIFORM_BOOL, 1u,
+                                         (char*)parser->result->bool_uniform_names,
+                                         &parser->result->bool_uniform_count,
+                                         RINGL_GLSL_MAX_BOOL_UNIFORMS, "bool");
+    if (type == TOK_VEC2 || type == TOK_IVEC2 || type == TOK_BVEC2)
+        return uniform_array_declaration(parser, &name,
+                                         type == TOK_VEC2 ? SYMBOL_UNIFORM_VEC2 : type == TOK_IVEC2 ? SYMBOL_UNIFORM_IVEC2 : SYMBOL_UNIFORM_BVEC2,
+                                         2u,
+                                         type == TOK_VEC2 ? (char*)parser->result->vec2_uniform_names : type == TOK_IVEC2 ? (char*)parser->result->ivec2_uniform_names : (char*)parser->result->bvec2_uniform_names,
+                                         type == TOK_VEC2 ? &parser->result->vec2_uniform_count : type == TOK_IVEC2 ? &parser->result->ivec2_uniform_count : &parser->result->bvec2_uniform_count,
+                                         type == TOK_VEC2 ? RINGL_GLSL_MAX_VEC2_UNIFORMS : type == TOK_IVEC2 ? RINGL_GLSL_MAX_IVEC2_UNIFORMS : RINGL_GLSL_MAX_BVEC2_UNIFORMS,
+                                         "vec2");
+    if (type == TOK_VEC3 || type == TOK_IVEC3 || type == TOK_BVEC3)
+        return uniform_array_declaration(parser, &name,
+                                         type == TOK_VEC3 ? SYMBOL_UNIFORM_VEC3 : type == TOK_IVEC3 ? SYMBOL_UNIFORM_IVEC3 : SYMBOL_UNIFORM_BVEC3,
+                                         3u,
+                                         type == TOK_VEC3 ? (char*)parser->result->vec3_uniform_names : type == TOK_IVEC3 ? (char*)parser->result->ivec3_uniform_names : (char*)parser->result->bvec3_uniform_names,
+                                         type == TOK_VEC3 ? &parser->result->vec3_uniform_count : type == TOK_IVEC3 ? &parser->result->ivec3_uniform_count : &parser->result->bvec3_uniform_count,
+                                         type == TOK_VEC3 ? RINGL_GLSL_MAX_VEC3_UNIFORMS : type == TOK_IVEC3 ? RINGL_GLSL_MAX_IVEC3_UNIFORMS : RINGL_GLSL_MAX_BVEC3_UNIFORMS,
+                                         "vec3");
+    if (type == TOK_VEC4 || type == TOK_IVEC4 || type == TOK_BVEC4)
+        return uniform_array_declaration(parser, &name,
+                                         type == TOK_VEC4 ? SYMBOL_UNIFORM_VEC4 : type == TOK_IVEC4 ? SYMBOL_UNIFORM_IVEC4 : SYMBOL_UNIFORM_BVEC4,
+                                         4u,
+                                         type == TOK_VEC4 ? (char*)parser->result->vec4_uniform_names : type == TOK_IVEC4 ? (char*)parser->result->ivec4_uniform_names : (char*)parser->result->bvec4_uniform_names,
+                                         type == TOK_VEC4 ? &parser->result->vec4_uniform_count : type == TOK_IVEC4 ? &parser->result->ivec4_uniform_count : &parser->result->bvec4_uniform_count,
+                                         type == TOK_VEC4 ? RINGL_GLSL_MAX_VEC4_UNIFORMS : type == TOK_IVEC4 ? RINGL_GLSL_MAX_IVEC4_UNIFORMS : RINGL_GLSL_MAX_BVEC4_UNIFORMS,
+                                         "vec4");
+    if (type == TOK_MAT2 || type == TOK_MAT3 || type == TOK_MAT4)
+        return uniform_array_declaration(parser, &name,
+                                         type == TOK_MAT2 ? SYMBOL_UNIFORM_MAT2 : type == TOK_MAT3 ? SYMBOL_UNIFORM_MAT3 : SYMBOL_UNIFORM_MAT4,
+                                         type == TOK_MAT2 ? 4u : type == TOK_MAT3 ? 9u : 16u,
+                                         type == TOK_MAT2 ? (char*)parser->result->mat2_uniform_names : type == TOK_MAT3 ? (char*)parser->result->mat3_uniform_names : (char*)parser->result->mat4_uniform_names,
+                                         type == TOK_MAT2 ? &parser->result->mat2_uniform_count : type == TOK_MAT3 ? &parser->result->mat3_uniform_count : &parser->result->mat4_uniform_count,
+                                         type == TOK_MAT2 ? RINGL_GLSL_MAX_MAT2_UNIFORMS : type == TOK_MAT3 ? RINGL_GLSL_MAX_MAT3_UNIFORMS : RINGL_GLSL_MAX_MAT4_UNIFORMS,
+                                         "matrix");
     if (type == TOK_SAMPLER2D) {
         uint32_t sampler_array_length = 1u;
 

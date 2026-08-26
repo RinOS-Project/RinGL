@@ -90,7 +90,11 @@ typedef struct Value {
 
 typedef struct Symbol {
     char name[64];
-    uint16_t regs[16];
+    /* One source symbol represents a whole bounded uniform array.  A mat4
+     * array reaches four 16-component elements, while vec4 arrays reach
+     * eight elements; keep their constants addressable until a compile-time
+     * array index selects one element. */
+    uint16_t regs[64];
     uint16_t input;
     uint16_t output;
     uint8_t width;
@@ -4082,21 +4086,35 @@ static int parse_all(Lower* lower)
             }
             name = lower->token;
             next(lower);
-            if (uniform_type == RINGL_FLOAT && take(lower, T_LBRACKET)) {
+            if (take(lower, T_LBRACKET)) {
+                uint32_t uniform_array_capacity =
+                    uniform_type == RINGL_FLOAT ? RINGL_MAX_FLOAT_UNIFORMS
+                    : uniform_type == RINGL_INT ? RINGL_MAX_INT_UNIFORMS
+                    : uniform_type == RINGL_BOOL ? RINGL_MAX_BOOL_UNIFORMS
+                    : uniform_type == RINGL_FLOAT_VEC2 ? RINGL_MAX_VEC2_UNIFORMS
+                    : uniform_type == RINGL_FLOAT_VEC3 ? RINGL_MAX_VEC3_UNIFORMS
+                    : uniform_type == RINGL_FLOAT_VEC4 ? RINGL_MAX_VEC4_UNIFORMS
+                    : uniform_type == RINGL_INT_VEC2 ? RINGL_MAX_IVEC2_UNIFORMS
+                    : uniform_type == RINGL_INT_VEC3 ? RINGL_MAX_IVEC3_UNIFORMS
+                    : uniform_type == RINGL_INT_VEC4 ? RINGL_MAX_IVEC4_UNIFORMS
+                    : uniform_type == RINGL_BOOL_VEC2 ? RINGL_MAX_BVEC2_UNIFORMS
+                    : uniform_type == RINGL_BOOL_VEC3 ? RINGL_MAX_BVEC3_UNIFORMS
+                    : uniform_type == RINGL_BOOL_VEC4 ? RINGL_MAX_BVEC4_UNIFORMS
+                    : uniform_type == RINGL_FLOAT_MAT2 ? RINGL_MAX_MAT2_UNIFORMS
+                    : uniform_type == RINGL_FLOAT_MAT3 ? RINGL_MAX_MAT3_UNIFORMS
+                    : RINGL_MAX_MAT4_UNIFORMS;
+
                 if (!token_unsigned_integer(&lower->token,
                                             &uniform_array_length) ||
                     uniform_array_length == 0u ||
-                    uniform_array_length > RINGL_MAX_FLOAT_UNIFORMS ||
+                    uniform_array_length > uniform_array_capacity ||
                     !need(lower, T_NUMBER,
-                          "float array length must be a positive integer") ||
+                          "uniform array length must be a positive integer") ||
                     !need(lower, T_RBRACKET,
                           "expected ']' after float array length")) {
-                    fail(lower, "float array length is outside the supported range");
+                    fail(lower, "uniform array length is outside the supported range");
                     return 0;
                 }
-            } else if (lower->token.kind == T_LBRACKET) {
-                fail(lower, "only bounded float uniform arrays are supported");
-                return 0;
             }
             if (find_symbol(lower, &name) != NULL ||
                 (symbol = add_symbol(lower, &name, 0,

@@ -1767,9 +1767,18 @@ void ringl_uniform_1iv(int32_t location, uint32_t count,
 int ringl_get_uniform_1i(uint32_t program, int32_t location,
                           int32_t* value_out);
 void ringl_uniform_2i(int32_t location, int32_t x, int32_t y);
+/* Applies `count` ivec2/bvec2 values to one contiguous linked array range. */
+void ringl_uniform_2iv(int32_t location, uint32_t count,
+                       const int32_t* values);
 void ringl_uniform_3i(int32_t location, int32_t x, int32_t y, int32_t z);
+/* Applies `count` ivec3/bvec3 values to one contiguous linked array range. */
+void ringl_uniform_3iv(int32_t location, uint32_t count,
+                       const int32_t* values);
 void ringl_uniform_4i(int32_t location, int32_t x, int32_t y, int32_t z,
                       int32_t w);
+/* Applies `count` ivec4/bvec4 values to one contiguous linked array range. */
+void ringl_uniform_4iv(int32_t location, uint32_t count,
+                       const int32_t* values);
 int ringl_get_uniform_2i(uint32_t program, int32_t location,
                           int32_t values_out[2]);
 int ringl_get_uniform_3i(uint32_t program, int32_t location,
@@ -1794,6 +1803,9 @@ int ringl_get_uniform_1f(uint32_t program, int32_t location,
  * setter applies only to the currently used linked program and atomically
  * replaces its program-owned RinGPU shader modules after finite-value checks. */
 void ringl_uniform_2f(int32_t location, float x, float y);
+/* Applies `count` vec2 values to one contiguous linked array range. */
+void ringl_uniform_2fv(int32_t location, uint32_t count,
+                       const float* values);
 /* Reads an active vec2 uniform into exactly two caller-owned floats. */
 int ringl_get_uniform_2f(uint32_t program, int32_t location,
                           float values_out[2]);
@@ -1801,6 +1813,9 @@ int ringl_get_uniform_2f(uint32_t program, int32_t location,
  * setter applies only to the currently used linked program and atomically
  * replaces its program-owned RinGPU shader modules after finite-value checks. */
 void ringl_uniform_3f(int32_t location, float x, float y, float z);
+/* Applies `count` vec3 values to one contiguous linked array range. */
+void ringl_uniform_3fv(int32_t location, uint32_t count,
+                       const float* values);
 /* Reads an active vec3 uniform into exactly three caller-owned floats. */
 int ringl_get_uniform_3f(uint32_t program, int32_t location,
                           float values_out[3]);
@@ -1809,6 +1824,9 @@ int ringl_get_uniform_3f(uint32_t program, int32_t location,
  * program-owned RinGPU shader module before replacing the prior executable,
  * so modules are never shared between programs with different values. */
 void ringl_uniform_4f(int32_t location, float x, float y, float z, float w);
+/* Applies `count` vec4 values to one contiguous linked array range. */
+void ringl_uniform_4fv(int32_t location, uint32_t count,
+                       const float* values);
 /* Reads an active vec4 uniform into exactly four caller-owned floats.
  * Invalid program/location/type inputs leave values_out unchanged and record
  * an error. */
@@ -1820,10 +1838,19 @@ int ringl_get_uniform_4f(uint32_t program, int32_t location,
  * transpose must be zero. */
 void ringl_uniform_matrix2fv(int32_t location, uint32_t transpose,
                              const float values[4]);
+/* Applies `count` column-major mat2 values to a contiguous linked array. */
+void ringl_uniform_matrix2fv_array(int32_t location, uint32_t count,
+                                   uint32_t transpose, const float* values);
 void ringl_uniform_matrix3fv(int32_t location, uint32_t transpose,
                              const float values[9]);
+/* Applies `count` column-major mat3 values to a contiguous linked array. */
+void ringl_uniform_matrix3fv_array(int32_t location, uint32_t count,
+                                   uint32_t transpose, const float* values);
 void ringl_uniform_matrix4fv(int32_t location, uint32_t transpose,
                              const float values[16]);
+/* Applies `count` column-major mat4 values to a contiguous linked array. */
+void ringl_uniform_matrix4fv_array(int32_t location, uint32_t count,
+                                   uint32_t transpose, const float* values);
 /* Reads an active square matrix uniform in WebGL column-major order. */
 int ringl_get_uniform_matrix2f(uint32_t program, int32_t location,
                                 float values_out[4]);

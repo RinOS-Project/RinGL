@@ -711,6 +711,12 @@ static int primary(Parser* parser)
         uint32_t value_width = symbol ? symbol->width : 0u;
         if (token_is_ident(&ident, "texture2D"))
             return texture2d_call(parser);
+        if (token_is_ident(&ident, "equal") ||
+            token_is_ident(&ident, "notEqual"))
+            return common_math_builtin_call(parser, 2u);
+        if (token_is_ident(&ident, "not") || token_is_ident(&ident, "any") ||
+            token_is_ident(&ident, "all"))
+            return common_math_builtin_call(parser, 1u);
         if (token_is_ident(&ident, "min") || token_is_ident(&ident, "max") ||
             token_is_ident(&ident, "dot") || token_is_ident(&ident, "mod") ||
             token_is_ident(&ident, "step") || token_is_ident(&ident, "distance") ||

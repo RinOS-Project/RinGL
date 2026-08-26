@@ -578,7 +578,10 @@ int main(void)
     ringl_shader_source(bvec_fragment,
                         "precision mediump float; precision highp int; "
                         "uniform bvec2 pair; uniform bvec3 triple; uniform bvec4 quad; "
-                        "void main() { if (pair.x) { "
+                        "void main() { bvec3 inverse = not(triple); "
+                        "bvec4 difference = notEqual(quad, bvec4(false)); "
+                        "bool has_true = any(inverse); "
+                        "if (all(equal(pair, bvec2(true, false)))) { "
                         "gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); } else { "
                         "gl_FragColor = vec4(0.0, 0.0, 1.0, 1.0); } }",
                         -1);
@@ -627,6 +630,24 @@ int main(void)
         assert(pair[0] == 0 && pair[1] == 0);
     }
     ringl_delete_program(bvec_peer_program);
+    ringl_delete_program(bvec_program);
+
+    /* Source validation admits builtin syntax, while linking owns the exact
+     * typed lowering contract. A scalar passed to all() must therefore fail
+     * closed before an RSH1 module can be published. */
+    bvec_program = ringl_create_program();
+    assert(bvec_program != 0u);
+    ringl_shader_source(bvec_fragment,
+                        "uniform bvec2 pair; void main() { if (all(pair.x)) { "
+                        "gl_FragColor = vec4(1.0); } else { "
+                        "gl_FragColor = vec4(0.0); } }",
+                        -1);
+    ringl_compile_shader(bvec_fragment);
+    assert(ringl_get_shader_compile_status(bvec_fragment) == RINGL_TRUE);
+    ringl_attach_shader(bvec_program, bvec_vertex);
+    ringl_attach_shader(bvec_program, bvec_fragment);
+    ringl_link_program(bvec_program);
+    assert(ringl_get_program_link_status(bvec_program) == RINGL_FALSE);
     ringl_delete_program(bvec_program);
 
     /* A vertex mat4 is lowered to a real column-major RSH1 matrix/vector

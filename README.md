@@ -500,9 +500,12 @@ Boolean writes instead normalize each component to exact zero or one before
 the replacement module is built. All numeric setters stage a replacement
 program-owned module before publishing it, so a failed backend creation retains
 both the old values and executable. Boolean values allow scalar or
-single-component `.x/.y/.z/.w` (and color-alias) control flow only; uniform
-arrays, multi-component Boolean swizzles/general operators, local-mutating
-integer control flow, and implicit numeric conversions remain unavailable.
+single-component `.x/.y/.z/.w` (and color-alias) control flow plus the bounded
+GLSL `not`, `equal`, `notEqual`, `any`, and `all` builtins. Boolean vector
+builtins lower to scalar RSH1 integer comparisons/additions and therefore run
+through the same generic RinGPU backend as every other program. Uniform arrays,
+multi-component Boolean swizzles/general operators, local-mutating integer
+control flow, and implicit numeric conversions remain unavailable.
 
 Program-owned uniform artifacts are stage-selective. A mutable vertex matrix
 does not force an unrelated fragment `sampler2D` shader back through the

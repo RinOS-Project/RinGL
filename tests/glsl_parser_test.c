@@ -193,11 +193,11 @@ int main(void)
     assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
     assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) == 0u);
 
-    /* Boolean vectors share the typed uniform path with scalar bool. A
-     * component may drive control flow, while arrays remain outside the
-     * bounded profile and must fail during source validation. */
+    /* Boolean vectors share the typed uniform path with scalar bool and can
+     * use the GLSL Boolean vector builtins. Arrays remain outside the bounded
+     * profile and must fail during source validation. */
     ringl_shader_source(fragment,
-        "uniform bvec2 enabled; void main() { if (enabled.x) { "
+        "uniform bvec2 enabled; void main() { if (all(equal(enabled, bvec2(true, false)))) { "
         "gl_FragColor = vec4(1.0); } else { gl_FragColor = vec4(0.0); } }", -1);
     ringl_compile_shader(fragment);
     assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);

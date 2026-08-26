@@ -754,6 +754,142 @@ static Value constructor_value(Lower* lower, uint8_t target_width,
     return result;
 }
 
+/* RSH1 deliberately stores vector values as scalar registers. Keep Boolean
+ * vector builtins on that same path: comparison instructions produce the
+ * normalized 0/1 values required by the WebGL uniform contract, so no
+ * Aquamarine- or backend-specific Boolean operation is needed. */
+static Value boolean_not_value(Lower* lower)
+{
+    Value value;
+    Value result = invalid_value();
+    uint16_t zero;
+    uint32_t index;
+
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after not"))
+        return result;
+    value = expression(lower);
+    if (value.width == 0u || !need(lower, T_RPAREN, "expected ')' after not"))
+        return result;
+    if (value.matrix || !value.is_i32 || !value.is_bool) {
+        fail(lower, "not requires a Boolean scalar or vector");
+        return result;
+    }
+    zero = new_reg(lower);
+    if (zero == RINGL_RSH1_UNUSED ||
+        !emit(lower, RINGL_RSH1_OP_CONST_I32, zero, RINGL_RSH1_UNUSED,
+              RINGL_RSH1_UNUSED, 0u)) {
+        return result;
+    }
+    for (index = 0u; index < value.width; ++index) {
+        uint16_t destination = new_reg(lower);
+
+        if (destination == RINGL_RSH1_UNUSED ||
+            !emit(lower, RINGL_RSH1_OP_CMP_EQ_I32, destination,
+                  value.regs[index], zero, 0u)) {
+            return invalid_value();
+        }
+        result.regs[index] = destination;
+    }
+    result.width = value.width;
+    result.is_i32 = 1u;
+    result.is_bool = 1u;
+    return result;
+}
+
+static Value boolean_compare_value(Lower* lower, uint16_t opcode,
+                                   const char* name)
+{
+    Value left;
+    Value right;
+    Value result = invalid_value();
+    uint32_t index;
+
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after Boolean comparison builtin"))
+        return result;
+    left = expression(lower);
+    if (left.width == 0u || !need(lower, T_COMMA,
+                                  "expected ',' in Boolean comparison builtin")) {
+        return result;
+    }
+    right = expression(lower);
+    if (right.width == 0u ||
+        !need(lower, T_RPAREN, "expected ')' after Boolean comparison builtin")) {
+        return result;
+    }
+    if (left.matrix || right.matrix || left.width < 2u || left.width > 4u ||
+        left.width != right.width || !left.is_i32 || !right.is_i32 ||
+        !left.is_bool || !right.is_bool) {
+        fail(lower, name);
+        return result;
+    }
+    for (index = 0u; index < left.width; ++index) {
+        uint16_t destination = new_reg(lower);
+
+        if (destination == RINGL_RSH1_UNUSED ||
+            !emit(lower, opcode, destination, left.regs[index],
+                  right.regs[index], 0u)) {
+            return invalid_value();
+        }
+        result.regs[index] = destination;
+    }
+    result.width = left.width;
+    result.is_i32 = 1u;
+    result.is_bool = 1u;
+    return result;
+}
+
+static Value boolean_reduce_value(Lower* lower, int require_all)
+{
+    Value value;
+    Value result = invalid_value();
+    uint16_t sum;
+    uint16_t expected;
+    uint16_t destination;
+    uint32_t index;
+
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after Boolean reduction builtin"))
+        return result;
+    value = expression(lower);
+    if (value.width == 0u ||
+        !need(lower, T_RPAREN, "expected ')' after Boolean reduction builtin")) {
+        return result;
+    }
+    if (value.matrix || value.width < 2u || value.width > 4u ||
+        !value.is_i32 || !value.is_bool) {
+        fail(lower, "any and all require a Boolean vector");
+        return result;
+    }
+    sum = value.regs[0];
+    for (index = 1u; index < value.width; ++index) {
+        uint16_t next_sum = new_reg(lower);
+
+        if (next_sum == RINGL_RSH1_UNUSED ||
+            !emit(lower, RINGL_RSH1_OP_ADD_I32, next_sum, sum,
+                  value.regs[index], 0u)) {
+            return result;
+        }
+        sum = next_sum;
+    }
+    expected = new_reg(lower);
+    destination = new_reg(lower);
+    if (expected == RINGL_RSH1_UNUSED || destination == RINGL_RSH1_UNUSED ||
+        !emit(lower, RINGL_RSH1_OP_CONST_I32, expected, RINGL_RSH1_UNUSED,
+              RINGL_RSH1_UNUSED, require_all ? value.width : 0u) ||
+        !emit(lower, require_all ? RINGL_RSH1_OP_CMP_EQ_I32
+                                 : RINGL_RSH1_OP_CMP_NE_I32,
+              destination, sum, expected, 0u)) {
+        return result;
+    }
+    result.regs[0] = destination;
+    result.width = 1u;
+    result.is_i32 = 1u;
+    result.is_bool = 1u;
+    return result;
+}
+
 /* Matrices stay column-major all the way to matrix_times_vector(): element
  * (column, row) is regs[column * dimension + row].  Do the constructor
  * expansion here, rather than leave matrixCompMult to an embedding, so the
@@ -2195,6 +2331,20 @@ static Value primary(Lower* lower)
         return constructor_value(lower, 3u, 1, 1);
     if (lower->token.kind == T_BVEC4)
         return constructor_value(lower, 4u, 1, 1);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "not"))
+        return boolean_not_value(lower);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "equal"))
+        return boolean_compare_value(
+            lower, RINGL_RSH1_OP_CMP_EQ_I32,
+            "equal requires Boolean vectors with matching dimensions");
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "notEqual"))
+        return boolean_compare_value(
+            lower, RINGL_RSH1_OP_CMP_NE_I32,
+            "notEqual requires Boolean vectors with matching dimensions");
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "any"))
+        return boolean_reduce_value(lower, 0);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "all"))
+        return boolean_reduce_value(lower, 1);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "dFdx"))
         return derivative_value(lower, RINGL_RSH1_OP_DFDX_F32);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "dFdy"))

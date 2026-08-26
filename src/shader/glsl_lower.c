@@ -885,7 +885,7 @@ static Value symbol_value(Lower* lower)
         if (symbol != NULL && symbol->sampler)
             fail(lower, "sampler2D values are only valid as texture2D arguments");
         else
-        fail(lower, "use of unavailable value");
+            fail(lower, "use of unavailable value");
         return value;
     }
     next(lower);

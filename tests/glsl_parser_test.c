@@ -59,6 +59,13 @@ int main(void)
         static const char invalid_generic_texture_source[] =
             "uniform sampler2D image; void main() { "
             "gl_FragColor = texture2D(missing, vec2(0.0)); }";
+        static const char sampler_array_texture_source[] =
+            "uniform sampler2D unused[2]; uniform sampler2D image[2]; "
+            "varying vec2 uv; void main() { vec2 coordinates = uv * 0.5 + "
+            "vec2(0.25, 0.25); gl_FragColor = texture2D(image[1], coordinates); }";
+        static const char dynamic_sampler_array_index_source[] =
+            "uniform sampler2D image[2]; uniform int selected; "
+            "void main() { gl_FragColor = texture2D(image[selected], vec2(0.0)); }";
         RinGLGlslLowerResult lowered;
         RinGLRsh1HeaderV1 header;
         const RinGLRsh1InstructionV1* instructions;
@@ -89,6 +96,20 @@ int main(void)
                    RINGL_FRAGMENT_SHADER, invalid_generic_texture_source,
                    sizeof(invalid_generic_texture_source) - 1u, &lowered) != 0);
         assert(strstr(lowered.diagnostic, "sampler2D") != NULL);
+        assert(ringl_glsl_lower_rsh1(
+                   RINGL_FRAGMENT_SHADER, sampler_array_texture_source,
+                   sizeof(sampler_array_texture_source) - 1u, &lowered) == 0);
+        assert(lowered.ok != 0u);
+        assert(lowered.sampler_binding_count == 1u);
+        assert(lowered.sampler_binding_indices[0] == 3u);
+        memcpy(&header, lowered.bytes, sizeof(header));
+        assert(header.resource_count == 2u);
+        assert(ringl_glsl_lower_rsh1(
+                   RINGL_FRAGMENT_SHADER, dynamic_sampler_array_index_source,
+                   sizeof(dynamic_sampler_array_index_source) - 1u,
+                   &lowered) != 0);
+        assert(strstr(lowered.diagnostic, "constant index") != NULL ||
+               strstr(lowered.diagnostic, "declared range") != NULL);
     }
 
     ringl_shader_source(vertex,

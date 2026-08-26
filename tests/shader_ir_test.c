@@ -799,6 +799,12 @@ int main(void)
     assert(ringl_lower_shader_rsh1(vertex) != 0);
     assert(ringl_get_shader_rsh1_size(vertex) == 0u);
 
+    ringl_shader_source(fragment,
+                        "void main() { if (1.0 < 2.0) { discard; } "
+                        "else { discard; } }", -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
+
     /* GLES vector constructors require matching basic types. Preserve that
      * boundary while adding same-type scalar splats above. */
     ringl_shader_source(vertex,

@@ -1605,17 +1605,7 @@ static int uniform_declaration(Parser* parser)
                     : type == TOK_VEC4 || type == TOK_IVEC4 || type == TOK_BVEC4 ? 4u
                     : type == TOK_MAT2 ? 4u : type == TOK_MAT3 ? 9u : 16u))
         return 0;
-    if (type == TOK_SAMPLER2D) {
-        if (parser->result->sampler_uniform_count >=
-            RINGL_GLSL_MAX_SAMPLER_UNIFORMS) {
-            fail(parser, "too many sampler uniforms");
-            return 0;
-        }
-        index = parser->result->sampler_uniform_count++;
-        memcpy(parser->result->sampler_uniform_names[index], name.begin,
-               name.length);
-        parser->result->sampler_uniform_names[index][name.length] = '\0';
-    } else if (type == TOK_FLOAT) {
+    if (type == TOK_FLOAT) {
         if (parser->result->float_uniform_count >=
             RINGL_GLSL_MAX_FLOAT_UNIFORMS) {
             fail(parser, "too many float uniforms");

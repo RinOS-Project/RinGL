@@ -176,13 +176,26 @@ int main(void)
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(ringl_get_uniform_1i(program, location, &uniform_value) == 0);
     assert(uniform_value == 3);
+    ringl_uniform_1i(-1, 7);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_uniform_1i(99, 0);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    uniform_value = -1;
+    assert(ringl_get_uniform_1i(program, 99, &uniform_value) == -1);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    assert(uniform_value == -1);
 
+    /* sampler2D arrays retain their individual shader reflection slots, with
+     * WebGL's base-name alias and atomic uniform1iv updates reaching the
+     * matching RinGPU resource pairs. Dynamic source indices stay rejected by
+     * the compiler, so a program never chooses a resource at draw time. */
     {
         uint32_t array_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
         uint32_t array_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
         uint32_t array_program = ringl_create_program();
         int32_t array_units[2] = { 1, 3 };
         int32_t array_base_location;
+        int32_t array_first_location;
         int32_t array_second_location;
 
         assert(array_vertex != 0u && array_fragment != 0u &&
@@ -206,15 +219,20 @@ int main(void)
         assert(ringl_get_active_uniform(array_program, 0u, &active_info) == 0);
         assert(active_info.type == RINGL_SAMPLER_2D && active_info.size == 2u &&
                strcmp(active_info.name, "palette[0]") == 0);
+        assert(ringl_get_active_uniform(array_program, 1u, &active_info) == -1);
+        assert(ringl_get_error() == RINGL_INVALID_VALUE);
         array_base_location = ringl_get_uniform_location(array_program, "palette");
+        array_first_location = ringl_get_uniform_location(array_program, "palette[0]");
         array_second_location = ringl_get_uniform_location(array_program, "palette[1]");
         assert(array_base_location >= 0 &&
-               array_base_location == ringl_get_uniform_location(array_program,
-                                                                  "palette[0]") &&
-               array_second_location == array_base_location + 1);
+               array_base_location == array_first_location &&
+               array_second_location == array_first_location + 1);
         ringl_use_program(array_program);
         ringl_uniform_1iv(array_base_location, 2u, array_units);
         assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_1i(array_program, array_first_location,
+                                    &uniform_value) == 0);
+        assert(uniform_value == 1);
         assert(ringl_get_uniform_1i(array_program, array_second_location,
                                     &uniform_value) == 0);
         assert(uniform_value == 3);
@@ -223,24 +241,15 @@ int main(void)
         assert(ringl_get_uniform_1i(array_program, array_second_location,
                                     &uniform_value) == 0);
         assert(uniform_value == 3);
+        ringl_uniform_1iv(array_base_location, 2u, NULL);
+        assert(ringl_get_error() == RINGL_INVALID_VALUE);
         ringl_delete_program(array_program);
         ringl_delete_shader(array_vertex);
         ringl_delete_shader(array_fragment);
     }
 
-    {
-        uint32_t dynamic_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
-
-        assert(dynamic_fragment != 0u);
-        ringl_shader_source(dynamic_fragment,
-                            "uniform sampler2D palette[2]; uniform int i; "
-                            "void main() { gl_FragColor = "
-                            "texture2D(palette[i], vec2(0.5, 0.5)); }", -1);
-        ringl_compile_shader(dynamic_fragment);
-        assert(ringl_get_shader_compile_status(dynamic_fragment) == RINGL_FALSE);
-        ringl_delete_shader(dynamic_fragment);
-    }
-
+    /* A same-name sampler must have one compatible interface across stages;
+     * do not create an executable with ambiguous array element bindings. */
     {
         uint32_t mismatch_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
         uint32_t mismatch_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
@@ -269,15 +278,6 @@ int main(void)
         ringl_delete_shader(mismatch_vertex);
         ringl_delete_shader(mismatch_fragment);
     }
-
-    ringl_uniform_1i(-1, 7);
-    assert(ringl_get_error() == RINGL_NO_ERROR);
-    ringl_uniform_1i(99, 0);
-    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
-    uniform_value = -1;
-    assert(ringl_get_uniform_1i(program, 99, &uniform_value) == -1);
-    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
-    assert(uniform_value == -1);
 
     /* Vec4 uniforms are linked program state, not shader-object state. A
      * second program sharing the same shader pair keeps WebGL's zero default

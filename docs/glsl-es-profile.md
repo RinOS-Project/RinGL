@@ -102,11 +102,12 @@ The current first-triangle slice supports:
   swizzles, arithmetic, and numeric uniforms). Each active sampler is reflected
   as an adjacent RSH1 image/sampler pair and each lookup emits four scalar
   samples; the generic 128-instruction/96-register RSH1 budget is enforced
-  before module publication. `sampler2D name[N]` accepts a positive decimal
-  `N` only within the eight-element total cap, and each lookup needs an
-  in-range decimal constant index; every selected element has its own real
-  resource pair. Dynamic indexing, non-sampler arrays, non-2D/LOD/gradient
-  forms, and over-budget or otherwise unsupported expressions reject;
+  before module publication. `sampler2D name[N]` is admitted only for a
+  positive decimal `N` within the eight-element total cap and an in-range
+  decimal constant `name[index]` at every lookup; each selected element has a
+  real reflected image/sampler pair. Dynamic indexing, non-sampler uniform
+  arrays, non-2D/LOD/gradient forms, and over-budget or otherwise unsupported
+  expressions reject;
 - a constant-coordinate-only texture profile: one declared `sampler2D` may be
   sampled one through eight times, while a multi-declaration program uses each
   of one through eight declared samplers exactly once; results are added
@@ -206,11 +207,12 @@ bindings for only those declarations. The direct-coordinate maximum is 69
 instructions and 64 registers; with an offset on every call it is 101
 instructions and 68 registers. Coordinates derived from locals or different
 varyings, other expressions, and larger chains are not yet accepted.
-Nonconstant coordinates in this profile, general swizzle writes outside the
+Nonconstant coordinates in this profile, dynamic sampler indices, non-sampler
+uniform arrays, general swizzle writes outside the
 documented generic vertex-varying lvalue form, implicit float/integer
 conversion, vector constructors with mixed scalar types,
 matrices beyond the documented bounded `matrixCompMult`/matrix-vector vertex
-forms, uniform arrays, additional varying types, loops, user functions,
+forms, additional varying types, loops, user functions,
 general/nested control flow, precision edge cases, and
 broader GLSL ES built-ins remain incremental work.
 

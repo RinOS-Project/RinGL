@@ -2570,8 +2570,12 @@ static int ringl_sampler_array_range_is_valid(const RinGLProgramObject* object,
         count > object->sampler_uniform_count - first_location) {
         return 0;
     }
+
+    /* uniform1iv is also the legal one-element setter for scalar samplers.
+     * Only multi-element writes require array-name continuity below. */
     if (count == 1u)
         return 1;
+
     if (!ringl_sampler_array_element_index(
             object->sampler_uniforms[first_location].name, &base_length,
             &first_element_index) ||
@@ -2614,6 +2618,9 @@ int32_t ringl_get_uniform_location(uint32_t program, const char* name)
         if (strcmp(object->sampler_uniforms[i].name, name) == 0)
             return (int32_t)i;
     }
+    /* WebGL aliases an array's base identifier to its first element. Keep the
+     * linked reflection normalized as `name[0]`, but expose that alias before
+     * looking at other uniform classes. */
     if (strchr(name, '[') == NULL) {
         char first_element_name[RINGL_UNIFORM_NAME_MAX];
         int written = snprintf(first_element_name, sizeof(first_element_name),

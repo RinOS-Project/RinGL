@@ -102,6 +102,9 @@ static void ringl_shader_reset_compile_state(RinGLContext* context,
     object->float_uniform_count = 0u;
     object->int_uniform_count = 0u;
     object->bool_uniform_count = 0u;
+    object->bvec2_uniform_count = 0u;
+    object->bvec3_uniform_count = 0u;
+    object->bvec4_uniform_count = 0u;
     object->vec2_uniform_count = 0u;
     object->vec3_uniform_count = 0u;
     object->vec4_uniform_count = 0u;
@@ -121,6 +124,9 @@ static void ringl_shader_reset_compile_state(RinGLContext* context,
            sizeof(object->float_uniform_names));
     memset(object->int_uniform_names, 0, sizeof(object->int_uniform_names));
     memset(object->bool_uniform_names, 0, sizeof(object->bool_uniform_names));
+    memset(object->bvec2_uniform_names, 0, sizeof(object->bvec2_uniform_names));
+    memset(object->bvec3_uniform_names, 0, sizeof(object->bvec3_uniform_names));
+    memset(object->bvec4_uniform_names, 0, sizeof(object->bvec4_uniform_names));
     memset(object->vec2_uniform_names, 0,
            sizeof(object->vec2_uniform_names));
     memset(object->vec3_uniform_names, 0,
@@ -332,6 +338,15 @@ void ringl_compile_shader(uint32_t shader)
     object->bool_uniform_count = result.bool_uniform_count;
     memcpy(object->bool_uniform_names, result.bool_uniform_names,
            sizeof(object->bool_uniform_names));
+    object->bvec2_uniform_count = result.bvec2_uniform_count;
+    memcpy(object->bvec2_uniform_names, result.bvec2_uniform_names,
+           sizeof(object->bvec2_uniform_names));
+    object->bvec3_uniform_count = result.bvec3_uniform_count;
+    memcpy(object->bvec3_uniform_names, result.bvec3_uniform_names,
+           sizeof(object->bvec3_uniform_names));
+    object->bvec4_uniform_count = result.bvec4_uniform_count;
+    memcpy(object->bvec4_uniform_names, result.bvec4_uniform_names,
+           sizeof(object->bvec4_uniform_names));
     object->vec2_uniform_count = result.vec2_uniform_count;
     memcpy(object->vec2_uniform_names, result.vec2_uniform_names,
            sizeof(object->vec2_uniform_names));

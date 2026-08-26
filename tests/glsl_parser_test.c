@@ -193,11 +193,18 @@ int main(void)
     assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
     assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) == 0u);
 
-    /* The current executable profile deliberately admits scalar bool only.
-     * bvec/arrays must fail during source validation rather than appearing as
-     * a reflected type that cannot be lowered or read back. */
+    /* Boolean vectors share the typed uniform path with scalar bool. A
+     * component may drive control flow, while arrays remain outside the
+     * bounded profile and must fail during source validation. */
     ringl_shader_source(fragment,
-        "uniform bvec2 invalid; void main() { gl_FragColor = vec4(1.0); }", -1);
+        "uniform bvec2 enabled; void main() { if (enabled.x) { "
+        "gl_FragColor = vec4(1.0); } else { gl_FragColor = vec4(0.0); } }", -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+    assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) == 0u);
+
+    ringl_shader_source(fragment,
+        "uniform bvec2 invalid[2]; void main() { gl_FragColor = vec4(1.0); }", -1);
     ringl_compile_shader(fragment);
     assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
     assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) > 0u);

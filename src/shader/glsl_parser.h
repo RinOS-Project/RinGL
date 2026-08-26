@@ -12,6 +12,9 @@
 #define RINGL_GLSL_MAX_FLOAT_UNIFORMS 8u
 #define RINGL_GLSL_MAX_INT_UNIFORMS 8u
 #define RINGL_GLSL_MAX_BOOL_UNIFORMS 8u
+#define RINGL_GLSL_MAX_BVEC2_UNIFORMS 8u
+#define RINGL_GLSL_MAX_BVEC3_UNIFORMS 8u
+#define RINGL_GLSL_MAX_BVEC4_UNIFORMS 8u
 #define RINGL_GLSL_MAX_VEC2_UNIFORMS 8u
 #define RINGL_GLSL_MAX_VEC3_UNIFORMS 8u
 #define RINGL_GLSL_MAX_VEC4_UNIFORMS 8u
@@ -47,6 +50,9 @@ typedef struct RinGLGlslParseResult {
     uint32_t float_uniform_count;
     uint32_t int_uniform_count;
     uint32_t bool_uniform_count;
+    uint32_t bvec2_uniform_count;
+    uint32_t bvec3_uniform_count;
+    uint32_t bvec4_uniform_count;
     uint32_t vec2_uniform_count;
     uint32_t vec3_uniform_count;
     uint32_t vec4_uniform_count;
@@ -63,6 +69,9 @@ typedef struct RinGLGlslParseResult {
     char float_uniform_names[RINGL_GLSL_MAX_FLOAT_UNIFORMS][RINGL_GLSL_NAME_MAX];
     char int_uniform_names[RINGL_GLSL_MAX_INT_UNIFORMS][RINGL_GLSL_NAME_MAX];
     char bool_uniform_names[RINGL_GLSL_MAX_BOOL_UNIFORMS][RINGL_GLSL_NAME_MAX];
+    char bvec2_uniform_names[RINGL_GLSL_MAX_BVEC2_UNIFORMS][RINGL_GLSL_NAME_MAX];
+    char bvec3_uniform_names[RINGL_GLSL_MAX_BVEC3_UNIFORMS][RINGL_GLSL_NAME_MAX];
+    char bvec4_uniform_names[RINGL_GLSL_MAX_BVEC4_UNIFORMS][RINGL_GLSL_NAME_MAX];
     char vec2_uniform_names[RINGL_GLSL_MAX_VEC2_UNIFORMS][RINGL_GLSL_NAME_MAX];
     char vec3_uniform_names[RINGL_GLSL_MAX_VEC3_UNIFORMS][RINGL_GLSL_NAME_MAX];
     char vec4_uniform_names[RINGL_GLSL_MAX_VEC4_UNIFORMS][RINGL_GLSL_NAME_MAX];

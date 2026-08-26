@@ -25,6 +25,9 @@
 #define RINGL_MAX_FLOAT_UNIFORMS 8u
 #define RINGL_MAX_INT_UNIFORMS 8u
 #define RINGL_MAX_BOOL_UNIFORMS 8u
+#define RINGL_MAX_BVEC2_UNIFORMS 8u
+#define RINGL_MAX_BVEC3_UNIFORMS 8u
+#define RINGL_MAX_BVEC4_UNIFORMS 8u
 #define RINGL_MAX_VEC2_UNIFORMS 8u
 #define RINGL_MAX_VEC3_UNIFORMS 8u
 #define RINGL_MAX_VEC4_UNIFORMS 8u
@@ -142,6 +145,9 @@ typedef struct RinGLShaderObject {
     uint32_t float_uniform_count;
     uint32_t int_uniform_count;
     uint32_t bool_uniform_count;
+    uint32_t bvec2_uniform_count;
+    uint32_t bvec3_uniform_count;
+    uint32_t bvec4_uniform_count;
     uint32_t vec2_uniform_count;
     uint32_t vec3_uniform_count;
     uint32_t vec4_uniform_count;
@@ -161,6 +167,9 @@ typedef struct RinGLShaderObject {
     char float_uniform_names[RINGL_MAX_FLOAT_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char int_uniform_names[RINGL_MAX_INT_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char bool_uniform_names[RINGL_MAX_BOOL_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
+    char bvec2_uniform_names[RINGL_MAX_BVEC2_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
+    char bvec3_uniform_names[RINGL_MAX_BVEC3_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
+    char bvec4_uniform_names[RINGL_MAX_BVEC4_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char vec2_uniform_names[RINGL_MAX_VEC2_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char vec3_uniform_names[RINGL_MAX_VEC3_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char vec4_uniform_names[RINGL_MAX_VEC4_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
@@ -197,6 +206,24 @@ typedef struct RinGLProgramBoolUniform {
     char name[RINGL_UNIFORM_NAME_MAX];
     int32_t value;
 } RinGLProgramBoolUniform;
+
+/* Boolean vectors use RSH1's i32 registers but retain their public GLSL
+ * boolean-vector reflection type. Every component is normalized to 0 or 1
+ * before the replacement shader module is published. */
+typedef struct RinGLProgramBVec2Uniform {
+    char name[RINGL_UNIFORM_NAME_MAX];
+    int32_t values[2];
+} RinGLProgramBVec2Uniform;
+
+typedef struct RinGLProgramBVec3Uniform {
+    char name[RINGL_UNIFORM_NAME_MAX];
+    int32_t values[3];
+} RinGLProgramBVec3Uniform;
+
+typedef struct RinGLProgramBVec4Uniform {
+    char name[RINGL_UNIFORM_NAME_MAX];
+    int32_t values[4];
+} RinGLProgramBVec4Uniform;
 
 typedef struct RinGLProgramVec2Uniform {
     char name[RINGL_UNIFORM_NAME_MAX];
@@ -278,6 +305,9 @@ typedef struct RinGLProgramObject {
     uint32_t float_uniform_count;
     uint32_t int_uniform_count;
     uint32_t bool_uniform_count;
+    uint32_t bvec2_uniform_count;
+    uint32_t bvec3_uniform_count;
+    uint32_t bvec4_uniform_count;
     uint32_t vec2_uniform_count;
     uint32_t vec3_uniform_count;
     uint32_t vec4_uniform_count;
@@ -298,6 +328,9 @@ typedef struct RinGLProgramObject {
     RinGLProgramFloatUniform float_uniforms[RINGL_MAX_FLOAT_UNIFORMS];
     RinGLProgramIntUniform int_uniforms[RINGL_MAX_INT_UNIFORMS];
     RinGLProgramBoolUniform bool_uniforms[RINGL_MAX_BOOL_UNIFORMS];
+    RinGLProgramBVec2Uniform bvec2_uniforms[RINGL_MAX_BVEC2_UNIFORMS];
+    RinGLProgramBVec3Uniform bvec3_uniforms[RINGL_MAX_BVEC3_UNIFORMS];
+    RinGLProgramBVec4Uniform bvec4_uniforms[RINGL_MAX_BVEC4_UNIFORMS];
     RinGLProgramVec2Uniform vec2_uniforms[RINGL_MAX_VEC2_UNIFORMS];
     RinGLProgramVec3Uniform vec3_uniforms[RINGL_MAX_VEC3_UNIFORMS];
     RinGLProgramVec4Uniform vec4_uniforms[RINGL_MAX_VEC4_UNIFORMS];

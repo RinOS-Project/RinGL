@@ -44,6 +44,10 @@ int main(void)
     uint32_t bool_fragment;
     uint32_t bool_program;
     uint32_t bool_peer_program;
+    uint32_t bvec_vertex;
+    uint32_t bvec_fragment;
+    uint32_t bvec_program;
+    uint32_t bvec_peer_program;
     uint32_t mat4_vertex;
     uint32_t mat4_fragment;
     uint32_t mat4_program;
@@ -558,6 +562,72 @@ int main(void)
     }
     ringl_delete_program(bool_peer_program);
     ringl_delete_program(bool_program);
+
+    /* bvec2/3/4 keep their WebGL-visible types while uniform*i updates are
+     * normalized componentwise before RinGL regenerates the program-owned
+     * RSH1 executable. The peer link verifies no state escapes its program. */
+    bvec_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+    bvec_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+    bvec_program = ringl_create_program();
+    bvec_peer_program = ringl_create_program();
+    assert(bvec_vertex != 0u && bvec_fragment != 0u && bvec_program != 0u &&
+           bvec_peer_program != 0u);
+    ringl_shader_source(bvec_vertex,
+                        "void main() { gl_Position = vec4(-1.0, -1.0, 0.0, 1.0); }",
+                        -1);
+    ringl_shader_source(bvec_fragment,
+                        "precision mediump float; precision highp int; "
+                        "uniform bvec2 pair; uniform bvec3 triple; uniform bvec4 quad; "
+                        "void main() { if (pair.x) { "
+                        "gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); } else { "
+                        "gl_FragColor = vec4(0.0, 0.0, 1.0, 1.0); } }",
+                        -1);
+    ringl_compile_shader(bvec_vertex);
+    ringl_compile_shader(bvec_fragment);
+    assert(ringl_get_shader_compile_status(bvec_vertex) == RINGL_TRUE);
+    assert(ringl_get_shader_compile_status(bvec_fragment) == RINGL_TRUE);
+    ringl_attach_shader(bvec_program, bvec_vertex);
+    ringl_attach_shader(bvec_program, bvec_fragment);
+    ringl_attach_shader(bvec_peer_program, bvec_vertex);
+    ringl_attach_shader(bvec_peer_program, bvec_fragment);
+    ringl_link_program(bvec_program);
+    ringl_link_program(bvec_peer_program);
+    assert(ringl_get_program_link_status(bvec_program) == RINGL_TRUE);
+    assert(ringl_get_program_link_status(bvec_peer_program) == RINGL_TRUE);
+    assert(ringl_get_program_info(bvec_program, &info) == 0);
+    assert(info.active_uniform_count == 3u);
+    assert(ringl_get_active_uniform(bvec_program, 0u, &active_info) == 0);
+    assert(active_info.type == RINGL_BOOL_VEC2 && strcmp(active_info.name, "pair") == 0);
+    assert(ringl_get_active_uniform(bvec_program, 1u, &active_info) == 0);
+    assert(active_info.type == RINGL_BOOL_VEC3 && strcmp(active_info.name, "triple") == 0);
+    assert(ringl_get_active_uniform(bvec_program, 2u, &active_info) == 0);
+    assert(active_info.type == RINGL_BOOL_VEC4 && strcmp(active_info.name, "quad") == 0);
+    {
+        int32_t pair_location = ringl_get_uniform_location(bvec_program, "pair");
+        int32_t triple_location = ringl_get_uniform_location(bvec_program, "triple");
+        int32_t quad_location = ringl_get_uniform_location(bvec_program, "quad");
+        int32_t pair[2] = { -1, -1 };
+        int32_t triple[3] = { -1, -1, -1 };
+        int32_t quad[4] = { -1, -1, -1, -1 };
+
+        assert(pair_location == 0 && triple_location == 1 && quad_location == 2);
+        ringl_use_program(bvec_program);
+        ringl_uniform_2i(pair_location, -7, 0);
+        ringl_uniform_3i(triple_location, 0, 5, -1);
+        ringl_uniform_4i(quad_location, 0, -3, 2, 0);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_2i(bvec_program, pair_location, pair) == 0);
+        assert(ringl_get_uniform_3i(bvec_program, triple_location, triple) == 0);
+        assert(ringl_get_uniform_4i(bvec_program, quad_location, quad) == 0);
+        assert(pair[0] == 1 && pair[1] == 0);
+        assert(triple[0] == 0 && triple[1] == 1 && triple[2] == 1);
+        assert(quad[0] == 0 && quad[1] == 1 && quad[2] == 1 && quad[3] == 0);
+        memset(pair, 0xff, sizeof(pair));
+        assert(ringl_get_uniform_2i(bvec_peer_program, pair_location, pair) == 0);
+        assert(pair[0] == 0 && pair[1] == 0);
+    }
+    ringl_delete_program(bvec_peer_program);
+    ringl_delete_program(bvec_program);
 
     /* A vertex mat4 is lowered to a real column-major RSH1 matrix/vector
      * multiply. It is program-owned just like the scalar/vector profile. */

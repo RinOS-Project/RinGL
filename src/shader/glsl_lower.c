@@ -26,6 +26,9 @@ typedef enum Tok {
     T_BOOL,
     T_TRUE,
     T_FALSE,
+    T_BVEC2,
+    T_BVEC3,
+    T_BVEC4,
     T_IVEC2,
     T_IVEC3,
     T_IVEC4,
@@ -197,6 +200,12 @@ static Tok keyword(const char* begin, size_t length)
         return T_TRUE;
     if (length == 5u && memcmp(begin, "false", 5u) == 0)
         return T_FALSE;
+    if (length == 5u && memcmp(begin, "bvec2", 5u) == 0)
+        return T_BVEC2;
+    if (length == 5u && memcmp(begin, "bvec3", 5u) == 0)
+        return T_BVEC3;
+    if (length == 5u && memcmp(begin, "bvec4", 5u) == 0)
+        return T_BVEC4;
     if (length == 5u && memcmp(begin, "ivec2", 5u) == 0)
         return T_IVEC2;
     if (length == 5u && memcmp(begin, "ivec3", 5u) == 0)
@@ -452,7 +461,9 @@ static int initialize_uniform(Lower* lower, Symbol* symbol,
     const RinGLGlslUniformValue* uniform;
     uint32_t zero_values[16] = { 0u };
     const uint32_t* values = zero_values;
-    int is_i32 = type == RINGL_INT || type == RINGL_BOOL || type == RINGL_INT_VEC2 ||
+    int is_i32 = type == RINGL_INT || type == RINGL_BOOL ||
+                 type == RINGL_BOOL_VEC2 || type == RINGL_BOOL_VEC3 ||
+                 type == RINGL_BOOL_VEC4 || type == RINGL_INT_VEC2 ||
                  type == RINGL_INT_VEC3 || type == RINGL_INT_VEC4;
     uint32_t index;
 
@@ -468,7 +479,8 @@ static int initialize_uniform(Lower* lower, Symbol* symbol,
                          : (const uint32_t*)uniform->values;
     symbol->uniform = 1u;
     symbol->is_i32 = (uint8_t)is_i32;
-    symbol->is_bool = type == RINGL_BOOL;
+    symbol->is_bool = type == RINGL_BOOL || type == RINGL_BOOL_VEC2 ||
+                      type == RINGL_BOOL_VEC3 || type == RINGL_BOOL_VEC4;
     for (index = 0u; index < (symbol->matrix
                                   ? (uint32_t)symbol->matrix * symbol->matrix
                                   : symbol->width); ++index) {
@@ -606,7 +618,7 @@ static Value apply_swizzle(Lower* lower, Value value)
          * mixed alphabet would assign a meaning that GLSL deliberately does
          * not give it. Keep this as register selection rather than emitting
          * fake vector instructions; RSH1 remains a scalar IR. */
-        if (value.matrix || value.is_bool || value.width == 1u || swizzle.kind != T_IDENT ||
+        if (value.matrix || value.width == 1u || swizzle.kind != T_IDENT ||
             swizzle.length == 0u || swizzle.length > 4u) {
             fail(lower, "invalid vector component selection");
             return invalid_value();
@@ -686,7 +698,7 @@ static Value symbol_value(Lower* lower)
 }
 
 static Value constructor_value(Lower* lower, uint8_t target_width,
-                               int target_is_i32)
+                               int target_is_i32, int target_is_bool)
 {
     Value result = invalid_value();
     uint32_t argument_count = 0u;
@@ -704,7 +716,8 @@ static Value constructor_value(Lower* lower, uint8_t target_width,
         uint32_t index;
         if (argument.width == 0u || argument.matrix)
             return result;
-        if (argument.is_i32 != (uint8_t)target_is_i32) {
+        if (argument.is_i32 != (uint8_t)target_is_i32 ||
+            argument.is_bool != (uint8_t)target_is_bool) {
             fail(lower, "vector constructor component type mismatch");
             return result;
         }
@@ -737,6 +750,7 @@ static Value constructor_value(Lower* lower, uint8_t target_width,
     }
     result.width = target_width;
     result.is_i32 = (uint8_t)target_is_i32;
+    result.is_bool = (uint8_t)target_is_bool;
     return result;
 }
 
@@ -2158,11 +2172,11 @@ static Value primary(Lower* lower)
     if (lower->token.kind == T_INT)
         return conversion_value(lower, 1);
     if (lower->token.kind == T_VEC2)
-        return constructor_value(lower, 2u, 0);
+        return constructor_value(lower, 2u, 0, 0);
     if (lower->token.kind == T_VEC3)
-        return constructor_value(lower, 3u, 0);
+        return constructor_value(lower, 3u, 0, 0);
     if (lower->token.kind == T_VEC4)
-        return constructor_value(lower, 4u, 0);
+        return constructor_value(lower, 4u, 0, 0);
     if (lower->token.kind == T_MAT2)
         return matrix_constructor_value(lower, 2u);
     if (lower->token.kind == T_MAT3)
@@ -2170,11 +2184,17 @@ static Value primary(Lower* lower)
     if (lower->token.kind == T_MAT4)
         return matrix_constructor_value(lower, 4u);
     if (lower->token.kind == T_IVEC2)
-        return constructor_value(lower, 2u, 1);
+        return constructor_value(lower, 2u, 1, 0);
     if (lower->token.kind == T_IVEC3)
-        return constructor_value(lower, 3u, 1);
+        return constructor_value(lower, 3u, 1, 0);
     if (lower->token.kind == T_IVEC4)
-        return constructor_value(lower, 4u, 1);
+        return constructor_value(lower, 4u, 1, 0);
+    if (lower->token.kind == T_BVEC2)
+        return constructor_value(lower, 2u, 1, 1);
+    if (lower->token.kind == T_BVEC3)
+        return constructor_value(lower, 3u, 1, 1);
+    if (lower->token.kind == T_BVEC4)
+        return constructor_value(lower, 4u, 1, 1);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "dFdx"))
         return derivative_value(lower, RINGL_RSH1_OP_DFDX_F32);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "dFdy"))
@@ -2945,6 +2965,12 @@ static int parse_all(Lower* lower)
                 uniform_type = RINGL_INT;
             } else if (lower->token.kind == T_BOOL) {
                 uniform_type = RINGL_BOOL;
+            } else if (lower->token.kind == T_BVEC2) {
+                uniform_type = RINGL_BOOL_VEC2;
+            } else if (lower->token.kind == T_BVEC3) {
+                uniform_type = RINGL_BOOL_VEC3;
+            } else if (lower->token.kind == T_BVEC4) {
+                uniform_type = RINGL_BOOL_VEC4;
             } else if (lower->token.kind == T_VEC2) {
                 uniform_type = RINGL_FLOAT_VEC2;
             } else if (lower->token.kind == T_IVEC2) {
@@ -2979,8 +3005,8 @@ static int parse_all(Lower* lower)
             if (find_symbol(lower, &name) != NULL ||
                 (symbol = add_symbol(lower, &name, 0,
                                      uniform_type == RINGL_FLOAT || uniform_type == RINGL_INT || uniform_type == RINGL_BOOL ? 1u
-                                     : uniform_type == RINGL_FLOAT_VEC2 || uniform_type == RINGL_INT_VEC2 ? 2u
-                                     : uniform_type == RINGL_FLOAT_VEC3 || uniform_type == RINGL_INT_VEC3 ? 3u
+                                     : uniform_type == RINGL_FLOAT_VEC2 || uniform_type == RINGL_INT_VEC2 || uniform_type == RINGL_BOOL_VEC2 ? 2u
+                                     : uniform_type == RINGL_FLOAT_VEC3 || uniform_type == RINGL_INT_VEC3 || uniform_type == RINGL_BOOL_VEC3 ? 3u
                                      : uniform_type == RINGL_FLOAT_MAT2 ? 2u
                                      : uniform_type == RINGL_FLOAT_MAT3 ? 3u
                                      : 4u,
@@ -3052,6 +3078,9 @@ static int parse_all(Lower* lower)
                     lower->token.kind == T_VEC4 ||
                     lower->token.kind == T_INT ||
                     lower->token.kind == T_BOOL ||
+                    lower->token.kind == T_BVEC2 ||
+                    lower->token.kind == T_BVEC3 ||
+                    lower->token.kind == T_BVEC4 ||
                     lower->token.kind == T_IVEC2 ||
                     lower->token.kind == T_IVEC3 ||
                     lower->token.kind == T_IVEC4 ||
@@ -3061,11 +3090,16 @@ static int parse_all(Lower* lower)
                     uint8_t width = lower->token.kind == T_FLOAT ||
                                      lower->token.kind == T_INT || lower->token.kind == T_BOOL ? 1u
                         : lower->token.kind == T_VEC2 || lower->token.kind == T_IVEC2 ||
+                          lower->token.kind == T_BVEC2 ||
                           lower->token.kind == T_MAT2 ? 2u
                         : lower->token.kind == T_VEC3 || lower->token.kind == T_IVEC3 ||
+                          lower->token.kind == T_BVEC3 ||
                           lower->token.kind == T_MAT3 ? 3u : 4u;
                     int is_i32 = lower->token.kind == T_INT ||
                                  lower->token.kind == T_BOOL ||
+                                 lower->token.kind == T_BVEC2 ||
+                                 lower->token.kind == T_BVEC3 ||
+                                 lower->token.kind == T_BVEC4 ||
                                  lower->token.kind == T_IVEC2 ||
                                  lower->token.kind == T_IVEC3 ||
                                  lower->token.kind == T_IVEC4;
@@ -3073,7 +3107,10 @@ static int parse_all(Lower* lower)
                         : lower->token.kind == T_MAT3 ? 3u
                         : lower->token.kind == T_MAT4 ? 4u : 0u;
                     if (!local_decl(lower, width, is_i32,
-                                    lower->token.kind == T_BOOL,
+                                    lower->token.kind == T_BOOL ||
+                                    lower->token.kind == T_BVEC2 ||
+                                    lower->token.kind == T_BVEC3 ||
+                                    lower->token.kind == T_BVEC4,
                                     matrix_dimension))
                         return 0;
                 } else if (lower->token.kind == T_IF) {

@@ -48,6 +48,9 @@ extern "C" {
 #define RINGL_INT_VEC3       0x8b54u
 #define RINGL_INT_VEC4       0x8b55u
 #define RINGL_BOOL           0x8b56u
+#define RINGL_BOOL_VEC2      0x8b57u
+#define RINGL_BOOL_VEC3      0x8b58u
+#define RINGL_BOOL_VEC4      0x8b59u
 #define RINGL_FLOAT_MAT2     0x8b5au
 #define RINGL_FLOAT_MAT3     0x8b5bu
 #define RINGL_FLOAT_MAT4     0x8b5cu
@@ -1752,8 +1755,9 @@ uint32_t ringl_get_current_program(void);
 int32_t ringl_get_attrib_location(uint32_t program, const char* name);
 int32_t ringl_get_uniform_location(uint32_t program, const char* name);
 void ringl_uniform_1i(int32_t location, int32_t value);
-/* Applies to an active sampler or scalar int uniform. Scalar int values are
- * lowered into a new program-owned RSH1 module before state is committed. */
+/* Applies to an active sampler, scalar int, or scalar bool uniform. Boolean
+ * values are normalized to zero/one and all numeric values are lowered into a
+ * new program-owned RSH1 module before state is committed. */
 /* Reads a linked sampler or scalar int uniform without borrowing program
  * storage. Invalid program/location inputs leave value_out unchanged. */
 int ringl_get_uniform_1i(uint32_t program, int32_t location,

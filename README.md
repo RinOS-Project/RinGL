@@ -471,10 +471,11 @@ embeddings therefore query the same RinGL ownership state they execute rather
 than treating a local object cache as a second backend.
 
 The current bounded uniform profile consists of linked `sampler2D`, scalar
-`float`/`int`, `vec2`/`vec3`/`vec4`, `ivec2`/`ivec3`/`ivec4`, and vertex-only
-`mat2`, `mat3`, or `mat4` position transforms. `ringl_get_uniform_1i()` reads either a
-selected texture unit or scalar integer; `ringl_get_uniform_{2,3,4}i()` read
-complete integer vectors. The corresponding float getters and
+`float`/`int`/`bool`, `vec2`/`vec3`/`vec4`, `ivec2`/`ivec3`/`ivec4`,
+`bvec2`/`bvec3`/`bvec4`, and vertex-only `mat2`, `mat3`, or `mat4` position
+transforms. `ringl_get_uniform_1i()` reads either a selected texture unit or
+scalar integer/Boolean; `ringl_get_uniform_{2,3,4}i()` read complete integer
+or Boolean vectors. The corresponding float getters and
 `ringl_get_uniform_matrix{2,3,4}f()` read the scalar/vector or complete
 column-major matrix values for a specific linked program and location without
 depending on the current program binding. Each validates its complete input
@@ -490,16 +491,18 @@ its derived executable unchanged. This lets embeddings preserve atomic
 WebGL-visible uniform state while the bounded RSH1 lowering path has no
 non-finite literal representation.
 
-`ringl_uniform_1i()` accepts the linked sampler or scalar-`int` location;
-`ringl_uniform_{2,3,4}i()` update the matching `ivec` location. Integer
-updates retain signed i32 values in RSH1 (`CONST_I32` plus integer arithmetic)
-until an explicit GLSL `float(...)` conversion emits `I32_TO_F32`; they never
-reinterpret the integer bit pattern as a float. All numeric setters stage a
-replacement program-owned module before publishing it, so a failed backend
-creation retains both the old integer values and executable. This profile
-supports single-component `.x/.y/.z/.w` (and color aliases) reads only; uniform
-arrays, multi-component swizzles, local-mutating/general integer control flow, and implicit
-numeric conversions remain unavailable.
+`ringl_uniform_1i()` accepts the linked sampler, scalar-`int`, or scalar-`bool`
+location; `ringl_uniform_{2,3,4}i()` update the matching `ivec` or `bvec`
+location. Integer updates retain signed i32 values in RSH1 (`CONST_I32` plus
+integer arithmetic) until an explicit GLSL `float(...)` conversion emits
+`I32_TO_F32`; they never reinterpret the integer bit pattern as a float.
+Boolean writes instead normalize each component to exact zero or one before
+the replacement module is built. All numeric setters stage a replacement
+program-owned module before publishing it, so a failed backend creation retains
+both the old values and executable. Boolean values allow scalar or
+single-component `.x/.y/.z/.w` (and color-alias) control flow only; uniform
+arrays, multi-component Boolean swizzles/general operators, local-mutating
+integer control flow, and implicit numeric conversions remain unavailable.
 
 Program-owned uniform artifacts are stage-selective. A mutable vertex matrix
 does not force an unrelated fragment `sampler2D` shader back through the

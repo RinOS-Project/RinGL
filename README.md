@@ -1016,6 +1016,14 @@ definition and realized RinGPU image remain intact unless snapshot completion
 succeeds. This profile does not yet define zero-sized, depth/stencil, or
 multisample copy definitions.
 
+For native packed storage, that retained representation is the exact WebGL
+upload type (`UNSIGNED_SHORT_5_6_5`, `UNSIGNED_SHORT_4_4_4_4`, or
+`UNSIGNED_SHORT_5_5_5_1`), never a fabricated `UNSIGNED_BYTE` substitute.
+An attached texture therefore re-realizes as a RinGPU color target after a
+replacement definition, while a sampled-only texture remains sampled-only. The
+sync and texture-GPU tests cover both cases through the actual fenced readback
+boundary.
+
 The RinGL-to-RinGPU-to-Aquamarine integration test also performs the full
 observable ordering sequence: it draws to a source texture FBO, snapshots it
 with both `copyTexSubImage2D` and `copyTexImage2D`, reads the copied Float FBO,

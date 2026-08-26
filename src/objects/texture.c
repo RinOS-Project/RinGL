@@ -301,6 +301,28 @@ static int texture_packed_color_format(uint32_t format)
            format == RINGL_RGB5_A1;
 }
 
+static int texture_packed_component_type_valid(uint32_t format,
+                                               uint32_t component_type)
+{
+    return (format == RINGL_RGB565 &&
+            component_type == RINGL_UNSIGNED_SHORT_5_6_5) ||
+           (format == RINGL_RGBA4 &&
+            component_type == RINGL_UNSIGNED_SHORT_4_4_4_4) ||
+           (format == RINGL_RGB5_A1 &&
+            component_type == RINGL_UNSIGNED_SHORT_5_5_5_1);
+}
+
+static uint32_t texture_packed_component_type(uint32_t format)
+{
+    if (format == RINGL_RGB565)
+        return RINGL_UNSIGNED_SHORT_5_6_5;
+    if (format == RINGL_RGBA4)
+        return RINGL_UNSIGNED_SHORT_4_4_4_4;
+    if (format == RINGL_RGB5_A1)
+        return RINGL_UNSIGNED_SHORT_5_5_5_1;
+    return 0u;
+}
+
 static int texture_srgb_internal_format(uint32_t internal_format)
 {
     return internal_format == RINGL_SRGB_EXT ||
@@ -919,9 +941,14 @@ static int texture_copy_canonical_rgba_to_typed_copy_image_storage(
 
     if (destination == NULL || source == NULL ||
         (source_type != RINGL_UNSIGNED_BYTE && source_type != RINGL_FLOAT) ||
-        (!srgb_encoding && storage_component_type != RINGL_UNSIGNED_BYTE &&
-         storage_component_type != RINGL_FLOAT &&
-         storage_component_type != RINGL_HALF_FLOAT_OES)) {
+        (!srgb_encoding &&
+         ((texture_packed_color_format(storage_format) &&
+           !texture_packed_component_type_valid(storage_format,
+                                                storage_component_type)) ||
+          (!texture_packed_color_format(storage_format) &&
+           storage_component_type != RINGL_UNSIGNED_BYTE &&
+           storage_component_type != RINGL_FLOAT &&
+           storage_component_type != RINGL_HALF_FLOAT_OES)))) {
         return -1;
     }
     if (source_type == RINGL_FLOAT &&
@@ -3261,7 +3288,8 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
     storage_component_type = srgb_encoding != RINGL_FALSE
         ? RINGL_FLOAT
         : texture_packed_color_format(storage_format)
-            ? RINGL_UNSIGNED_BYTE : snapshot_component_type;
+            ? texture_packed_component_type(storage_format)
+            : snapshot_component_type;
     if (level != 0) {
         uint32_t mip_level = (uint32_t)level;
 
@@ -3281,7 +3309,8 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
                texture->color_component_type != RINGL_FLOAT &&
                texture->color_component_type != RINGL_HALF_FLOAT_OES) ||
               (texture_packed_color_format(texture->format) &&
-               texture->color_component_type != RINGL_UNSIGNED_BYTE))) ||
+               !texture_packed_component_type_valid(
+                   texture->format, texture->color_component_type)))) ||
             texture->compressed_format != 0u) {
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return;

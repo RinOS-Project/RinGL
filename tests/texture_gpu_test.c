@@ -76,6 +76,34 @@ static int fake_create_image(void* session,
     return 0;
 }
 
+/* A texture that remains attached to an FBO must be re-realized as a native
+ * color target after texImage2D replaces its storage.  Keep this fake backend
+ * honest about that different RinGPU descriptor instead of pretending that an
+ * attachment can fall back to a sampled-only image. */
+static int fake_create_color_image(void* session,
+                                   const RinGLRinGpuImage2DV1* desc,
+                                   uint64_t* image_out)
+{
+    FakeBackend* backend = session;
+
+    assert(desc != NULL && image_out != NULL);
+    assert(desc->width == 2u && desc->height == 2u);
+    assert(desc->format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM ||
+           desc->format == RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT ||
+           desc->format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT ||
+           desc->format == RINGL_RIN_GPU_FORMAT_RGB565_UNORM ||
+           desc->format == RINGL_RIN_GPU_FORMAT_RGBA4_UNORM ||
+           desc->format == RINGL_RIN_GPU_FORMAT_RGB5_A1_UNORM);
+    assert(desc->usage == (RINGL_RIN_GPU_IMAGE_USAGE_COPY_DESTINATION |
+                           RINGL_RIN_GPU_IMAGE_USAGE_SAMPLED |
+                           RINGL_RIN_GPU_IMAGE_USAGE_COLOR_TARGET |
+                           RINGL_RIN_GPU_IMAGE_USAGE_COPY_SOURCE));
+    backend->last_format = desc->format;
+    backend->image_creates++;
+    *image_out = ++backend->next_handle;
+    return 0;
+}
+
 static int fake_upload_image(void* session, uint64_t image,
                              const RinGLRinGpuImageUpload2DV1* upload,
                              const void* data, uint64_t size_bytes)
@@ -197,6 +225,7 @@ int main(void)
         .upload_buffer = fake_upload_buffer,
         .destroy_object = fake_destroy,
         .create_sampled_image_2d = fake_create_image,
+        .create_image_2d = fake_create_color_image,
         .upload_image_2d = fake_upload_image,
         .create_image_2d_mip_v2 = fake_create_mip_image,
         .upload_image_2d_mip_v2 = fake_upload_mip_image,

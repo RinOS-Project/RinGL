@@ -301,6 +301,27 @@ making RGB565 alpha opaque. RinGL mock-backend tests verify physical format,
 upload, and sub-image bytes; the actual RinGL-to-RinGPU bridge verifies
 `texture2D()` RGBA output for all three formats.
 
+## Generic fragment sampler lowering
+
+The generic GLSL ES lowerer now owns `uniform sampler2D` declarations and
+`texture2D()` expressions that the older texture-coordinate profile matchers
+cannot admit. A sampler has no synthetic scalar value: only an actual call
+marks it active, compacts its declaration index into a dense RSH1
+image/sampler pair, and emits four scalar `SAMPLE_IMAGE_2D_F32` operations
+with the exact computed Float `vec2` registers. Program binding then resolves
+that reflected declaration index to the linked texture unit and creates the
+normal typed RinGPU bind group. This makes generic local arithmetic, matching
+varyings, swizzles, and numeric-uniform module rebuilds part of one
+RinGL→RinGPU execution path; it does not evaluate a coordinate or texture in
+Ladybird or Aquamarine.
+
+The generic path has the same finite RSH1 admission limits as every other
+RinGL shader (128 instructions and 96 registers). Unsupported GLSL ES sampler
+forms—arrays/dynamic indexing, non-2D sampler types, explicit LOD/gradient
+forms, unsupported control flow/types, and over-limit modules—fail before a
+module or target update is published. The older bounded profiles remain only
+for their stable layouts on forms they already admit.
+
 ## Current bounded texture-coordinate extension
 
 The shared perspective-UV texture profile now executes one through eight

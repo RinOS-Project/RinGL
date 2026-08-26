@@ -1704,12 +1704,22 @@ int main(void)
         assert(third_sample->source0 == 32u && third_sample->source1 == 33u);
     }
 
-    /* Only the remaining third pair may extend a distinct-pair local. */
+    /* The historic three-UV shape matcher intentionally rejects reusing a
+     * pair in a second local combination. The generic sampler lowerer must
+     * still accept this typed, finite RSH1 expression and retain all three
+     * fragment inputs plus the real image/sampler resource pair. */
     ringl_shader_source(shader, varying_three_coordinate_reused_pair_source,
                         -1);
     ringl_compile_shader(shader);
     assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
-    assert(ringl_lower_shader_rsh1(shader) != 0);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size > sizeof(header));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.input_count == 6u && header.output_count == 4u &&
+           header.resource_count == 2u);
+    assert(header.instruction_count >= 16u && header.register_count >= 14u);
 
     ringl_context_destroy(context);
     return 0;

@@ -64,8 +64,16 @@ int ringl_lower_shader_rsh1(uint32_t shader)
             object->source, (size_t)object->source_length,
             &object->sampler_uniform_names[0][0],
             sizeof(object->sampler_uniform_names[0]),
-            object->sampler_uniform_count,
-            &lowered);
+            object->sampler_uniform_count, &lowered);
+        /* The compact no-varying sampler profile is intentionally retained
+         * for its stable module layout. Its rejection is not a semantic
+         * rejection: let the generic sampler lowerer handle supported local
+         * expressions with the same real RinGPU image/sampler ABI. */
+        if (rc != 0 || !lowered.ok || lowered.byte_size == 0u) {
+            rc = ringl_glsl_lower_rsh1(
+                object->shader_type, object->source,
+                (size_t)object->source_length, &lowered);
+        }
     } else {
         rc = ringl_glsl_lower_rsh1(object->shader_type, object->source,
                                    (size_t)object->source_length, &lowered);

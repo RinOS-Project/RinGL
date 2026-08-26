@@ -2,6 +2,7 @@
 #include <ringl/ringl.h>
 
 #include "shader/glsl_lower.h"
+#include "shader/rsh1_abi.h"
 
 #include <assert.h>
 #include <string.h>
@@ -45,6 +46,50 @@ int main(void)
     ringl_compile_shader(fragment);
     assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
     assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) == 0u);
+
+    /* Generic texture lowering owns the sampler reflection and emits actual
+     * RinGPU resource-pair samples. The first declaration is deliberately
+     * inactive: the resource binding must point at the second shader sampler
+     * rather than assuming declaration zero or a host-side texture result. */
+    {
+        static const char generic_texture_source[] =
+            "uniform sampler2D unused; uniform sampler2D image; varying vec2 uv; "
+            "void main() { vec2 coordinates = uv * 0.5 + vec2(0.25, 0.25); "
+            "gl_FragColor = texture2D(image, coordinates); }";
+        static const char invalid_generic_texture_source[] =
+            "uniform sampler2D image; void main() { "
+            "gl_FragColor = texture2D(missing, vec2(0.0)); }";
+        RinGLGlslLowerResult lowered;
+        RinGLRsh1HeaderV1 header;
+        const RinGLRsh1InstructionV1* instructions;
+        uint32_t sample_count = 0u;
+
+        assert(ringl_glsl_lower_rsh1(
+                   RINGL_FRAGMENT_SHADER, generic_texture_source,
+                   sizeof(generic_texture_source) - 1u, &lowered) == 0);
+        assert(lowered.ok != 0u);
+        assert(lowered.sampler_binding_count == 1u);
+        assert(lowered.sampler_binding_indices[0] == 1u);
+        memcpy(&header, lowered.bytes, sizeof(header));
+        assert(header.resource_count == 2u);
+        instructions = (const RinGLRsh1InstructionV1*)(
+            lowered.bytes + sizeof(header));
+        for (uint32_t index = 0u; index < header.instruction_count; ++index) {
+            if (instructions[index].opcode != RINGL_RSH1_OP_SAMPLE_IMAGE_2D_F32)
+                continue;
+            assert(instructions[index].flags == sample_count);
+            assert(instructions[index].resource == 0u);
+            assert(instructions[index].immediate == 1u);
+            assert(instructions[index].source0 != RINGL_RSH1_UNUSED);
+            assert(instructions[index].source1 != RINGL_RSH1_UNUSED);
+            ++sample_count;
+        }
+        assert(sample_count == 4u);
+        assert(ringl_glsl_lower_rsh1(
+                   RINGL_FRAGMENT_SHADER, invalid_generic_texture_source,
+                   sizeof(invalid_generic_texture_source) - 1u, &lowered) != 0);
+        assert(strstr(lowered.diagnostic, "sampler2D") != NULL);
+    }
 
     ringl_shader_source(vertex,
         "attribute vec2 position; attribute vec4 color; varying vec4 vertexColor;\n"

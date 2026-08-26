@@ -34,6 +34,7 @@ typedef enum Tok {
     T_IVEC2,
     T_IVEC3,
     T_IVEC4,
+    T_SAMPLER2D,
     T_ATTRIBUTE,
     T_UNIFORM,
     T_VARYING,
@@ -80,6 +81,7 @@ typedef struct Token {
 
 typedef struct Value {
     uint16_t regs[16];
+    uint16_t known_zero_components;
     uint8_t width;
     uint8_t matrix;
     uint8_t is_i32;
@@ -97,9 +99,12 @@ typedef struct Symbol {
     uint8_t varying;
     uint8_t initialized;
     uint16_t initialized_components;
+    uint16_t known_zero_components;
     uint8_t matrix;
     uint8_t is_i32;
     uint8_t is_bool;
+    uint8_t sampler;
+    uint16_t sampler_index;
 } Symbol;
 
 typedef struct Lower {
@@ -125,6 +130,9 @@ typedef struct Lower {
     uint32_t uses_draw_buffers;
     uint32_t stage_output_components;
     uint32_t uses_stage_output_selector;
+    uint32_t sampler_declaration_count;
+    uint32_t sampler_binding_count;
+    uint32_t sampler_binding_indices[RINGL_GLSL_MAX_SAMPLER_UNIFORMS];
     RinGLGlslLowerResult* result;
 } Lower;
 
@@ -224,6 +232,8 @@ static Tok keyword(const char* begin, size_t length)
         return T_IVEC3;
     if (length == 5u && memcmp(begin, "ivec4", 5u) == 0)
         return T_IVEC4;
+    if (length == 9u && memcmp(begin, "sampler2D", 9u) == 0)
+        return T_SAMPLER2D;
     if (length == 9u && memcmp(begin, "attribute", 9u) == 0)
         return T_ATTRIBUTE;
     if (length == 7u && memcmp(begin, "uniform", 7u) == 0)
@@ -511,6 +521,28 @@ static Symbol* add_symbol(Lower* lower, const Token* token,
     return symbol;
 }
 
+/* Samplers have no scalar RSH1 value. Keep their source declaration index so
+ * the executable module can reflect each sampled pair back to the shader
+ * object, whose existing draw path resolves that index to the program's
+ * texture unit. */
+static Symbol* add_sampler_symbol(Lower* lower, const Token* token)
+{
+    Symbol* symbol;
+
+    if (lower == NULL || token == NULL ||
+        lower->sampler_declaration_count >= RINGL_GLSL_MAX_SAMPLER_UNIFORMS) {
+        fail(lower, "sampler uniform limit exceeded");
+        return NULL;
+    }
+    symbol = add_symbol(lower, token, 0, 1u, 0u);
+    if (symbol == NULL)
+        return NULL;
+    symbol->uniform = 1u;
+    symbol->sampler = 1u;
+    symbol->sampler_index = (uint16_t)lower->sampler_declaration_count++;
+    return symbol;
+}
+
 /* A vertex varying is a writable RSH1 output after clip position; a fragment
  * varying is a read-only RSH1 input. Keep this distinction in the generic
  * lowerer instead of routing mixed vec2/vec3/vec4 interfaces through the old
@@ -652,6 +684,25 @@ static int emit(Lower* lower, uint16_t opcode, uint16_t dst,
     return 1;
 }
 
+static int emit_texture_sample(Lower* lower, uint16_t destination,
+                               uint16_t coordinate_u, uint16_t coordinate_v,
+                               uint16_t component, uint16_t resource)
+{
+    RinGLRsh1InstructionV1* instruction;
+
+    if (lower == NULL || component >= 4u || resource == RINGL_RSH1_UNUSED ||
+        resource >= UINT16_MAX - 1u ||
+        !emit(lower, RINGL_RSH1_OP_SAMPLE_IMAGE_2D_F32, destination,
+              coordinate_u, coordinate_v, 0u)) {
+        return 0;
+    }
+    instruction = &lower->ins[lower->ins_count - 1u];
+    instruction->flags = component;
+    instruction->resource = resource;
+    instruction->immediate = (uint32_t)resource + 1u;
+    return 1;
+}
+
 static Value expression(Lower* lower);
 static Value componentwise_binary(Lower* lower, const Value* left,
                                    const Value* right, uint16_t opcode,
@@ -709,6 +760,8 @@ static Value number_value(Lower* lower)
     value.regs[0] = reg;
     value.width = 1u;
     value.is_i32 = (uint8_t)integer;
+    if (bits == 0u)
+        value.known_zero_components = 1u;
     return value;
 }
 
@@ -735,6 +788,7 @@ static Value apply_swizzle(Lower* lower, Value value)
     while (take(lower, T_DOT)) {
         Token swizzle = lower->token;
         uint16_t selected[4];
+        uint16_t selected_zero_components = 0u;
         uint8_t family = 0u;
         uint32_t index;
 
@@ -778,9 +832,14 @@ static Value apply_swizzle(Lower* lower, Value value)
             }
             family = component_family;
             selected[index] = value.regs[component_index];
+            if ((value.known_zero_components &
+                 (UINT32_C(1) << component_index)) != 0u) {
+                selected_zero_components |= (uint16_t)(UINT32_C(1) << index);
+            }
         }
         for (index = 0u; index < swizzle.length; ++index)
             value.regs[index] = selected[index];
+        value.known_zero_components = selected_zero_components;
         value.width = (uint8_t)swizzle.length;
         next(lower);
     }
@@ -794,7 +853,10 @@ static Value symbol_value(Lower* lower)
     Symbol* symbol = find_symbol(lower, &name);
     uint32_t index;
 
-    if (symbol == NULL || !symbol->initialized) {
+    if (symbol == NULL || !symbol->initialized || symbol->sampler) {
+        if (symbol != NULL && symbol->sampler)
+            fail(lower, "sampler2D values are only valid as texture2D arguments");
+        else
         fail(lower, "use of unavailable value");
         return value;
     }
@@ -803,6 +865,7 @@ static Value symbol_value(Lower* lower)
     value.matrix = symbol->matrix;
     value.is_i32 = symbol->is_i32;
     value.is_bool = symbol->is_bool;
+    value.known_zero_components = symbol->known_zero_components;
     if (symbol->attribute && !symbol->varying) {
         for (index = 0u; index < symbol->width; ++index) {
             uint16_t reg = new_reg(lower);
@@ -851,8 +914,12 @@ static Value constructor_value(Lower* lower, uint8_t target_width,
             fail(lower, "too many vector constructor components");
             return result;
         }
-        for (index = 0u; index < argument.width; ++index)
-            result.regs[width++] = argument.regs[index];
+        for (index = 0u; index < argument.width; ++index) {
+            result.regs[width] = argument.regs[index];
+            if ((argument.known_zero_components & (UINT32_C(1) << index)) != 0u)
+                result.known_zero_components |= (uint16_t)(UINT32_C(1) << width);
+            ++width;
+        }
         argument_count++;
         if (!take(lower, T_COMMA))
             break;
@@ -868,6 +935,10 @@ static Value constructor_value(Lower* lower, uint8_t target_width,
 
         for (index = 1u; index < target_width; ++index)
             result.regs[index] = result.regs[0];
+        if (result.known_zero_components != 0u) {
+            result.known_zero_components =
+                (uint16_t)((UINT32_C(1) << target_width) - UINT32_C(1));
+        }
         width = target_width;
     }
     if (width != target_width) {
@@ -1241,6 +1312,8 @@ static Value float_constant_value(Lower* lower, float number)
     }
     value.regs[0] = reg;
     value.width = 1u;
+    if (bits == 0u)
+        value.known_zero_components = 1u;
     return value;
 }
 
@@ -2471,6 +2544,91 @@ static Value frag_coord_value(Lower* lower)
     return apply_swizzle(lower, value);
 }
 
+/* RSH1 reserves an adjacent image/sampler resource pair for every active
+ * sampler. Deduplicate calls by source declaration, and publish the original
+ * declaration index for the normal RinGL program binding path. An inactive
+ * declared sampler consumes no GPU resource. */
+static uint16_t active_sampler_resource(Lower* lower, const Symbol* sampler)
+{
+    uint32_t index;
+
+    if (lower == NULL || sampler == NULL || !sampler->sampler) {
+        if (lower != NULL)
+            fail(lower, "texture2D requires a sampler2D uniform");
+        return RINGL_RSH1_UNUSED;
+    }
+    for (index = 0u; index < lower->sampler_binding_count; ++index) {
+        if (lower->sampler_binding_indices[index] == sampler->sampler_index)
+            return (uint16_t)(index * 2u);
+    }
+    if (lower->sampler_binding_count >= RINGL_GLSL_MAX_SAMPLER_UNIFORMS) {
+        fail(lower, "active sampler limit exceeded");
+        return RINGL_RSH1_UNUSED;
+    }
+    index = lower->sampler_binding_count++;
+    lower->sampler_binding_indices[index] = sampler->sampler_index;
+    return (uint16_t)(index * 2u);
+}
+
+/* Lower a GLSL ES texture lookup to four scalar RinGPU samples. Coordinates
+ * are ordinary generic values, so locals, generic varyings, swizzles,
+ * arithmetic, and numeric uniforms all share the same expression path; no
+ * source-shape profile or host-side texture evaluation participates. */
+static Value texture2d_value(Lower* lower)
+{
+    Value result = invalid_value();
+    Value coordinates;
+    Token name;
+    Symbol* sampler;
+    uint16_t resource;
+    uint32_t component;
+
+    if (lower->shader_type != RINGL_FRAGMENT_SHADER) {
+        fail(lower, "texture2D is only supported in fragment shaders");
+        return result;
+    }
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after texture2D") ||
+        lower->token.kind != T_IDENT) {
+        if (lower->result->diagnostic[0] == '\0')
+            fail(lower, "texture2D requires a sampler2D uniform");
+        return result;
+    }
+    name = lower->token;
+    sampler = find_symbol(lower, &name);
+    if (sampler == NULL || !sampler->sampler) {
+        fail(lower, "texture2D first argument must be sampler2D");
+        return result;
+    }
+    next(lower);
+    if (!need(lower, T_COMMA, "expected ',' after texture2D sampler"))
+        return result;
+    coordinates = expression(lower);
+    if (coordinates.width != 2u || coordinates.matrix || coordinates.is_i32 ||
+        coordinates.is_bool ||
+        !need(lower, T_RPAREN, "expected ')' after texture2D coordinates")) {
+        if (lower->result->diagnostic[0] == '\0')
+            fail(lower, "texture2D coordinates must be floating-point vec2");
+        return result;
+    }
+    resource = active_sampler_resource(lower, sampler);
+    if (resource == RINGL_RSH1_UNUSED)
+        return result;
+    for (component = 0u; component < 4u; ++component) {
+        uint16_t register_index = new_reg(lower);
+
+        if (register_index == RINGL_RSH1_UNUSED ||
+            !emit_texture_sample(lower, register_index, coordinates.regs[0],
+                                 coordinates.regs[1], (uint16_t)component,
+                                 resource)) {
+            return invalid_value();
+        }
+        result.regs[component] = register_index;
+    }
+    result.width = 4u;
+    return apply_swizzle(lower, result);
+}
+
 static Value primary(Lower* lower)
 {
     Value value;
@@ -2606,6 +2764,8 @@ static Value primary(Lower* lower)
         return step_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "smoothstep"))
         return smoothstep_value(lower);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "texture2D"))
+        return texture2d_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "gl_FragCoord"))
         return frag_coord_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "gl_PointCoord"))
@@ -2722,6 +2882,8 @@ static Value componentwise_binary(Lower* lower, const Value* left,
     Value result = invalid_value();
     uint8_t width;
     uint32_t index;
+    int division = opcode == RINGL_RSH1_OP_DIV_F32 ||
+                   opcode == RINGL_RSH1_OP_DIV_I32;
 
     if (left == NULL || right == NULL || left->matrix || right->matrix ||
         left->width == 0u || right->width == 0u) {
@@ -2762,12 +2924,32 @@ static Value componentwise_binary(Lower* lower, const Value* left,
         uint16_t destination = new_reg(lower);
         uint16_t left_reg = left->regs[left->width == 1u ? 0u : index];
         uint16_t right_reg = right->regs[right->width == 1u ? 0u : index];
+        uint32_t left_component = left->width == 1u ? 0u : index;
+        uint32_t right_component = right->width == 1u ? 0u : index;
+        int left_is_zero = (left->known_zero_components &
+                            (UINT32_C(1) << left_component)) != 0u;
+        int right_is_zero = (right->known_zero_components &
+                             (UINT32_C(1) << right_component)) != 0u;
 
+        if (division && right_is_zero) {
+            fail(lower, "division by a zero literal is not supported");
+            return invalid_value();
+        }
         if (destination == RINGL_RSH1_UNUSED ||
             !emit(lower, opcode, destination, left_reg, right_reg, 0u)) {
             return invalid_value();
         }
         result.regs[index] = destination;
+        if ((opcode == RINGL_RSH1_OP_ADD_F32 || opcode == RINGL_RSH1_OP_ADD_I32 ||
+             opcode == RINGL_RSH1_OP_SUB_F32 || opcode == RINGL_RSH1_OP_SUB_I32) &&
+            left_is_zero && right_is_zero) {
+            result.known_zero_components |= (uint16_t)(UINT32_C(1) << index);
+        } else if ((opcode == RINGL_RSH1_OP_MUL_F32 || opcode == RINGL_RSH1_OP_MUL_I32) &&
+                   (left_is_zero || right_is_zero)) {
+            result.known_zero_components |= (uint16_t)(UINT32_C(1) << index);
+        } else if (division && left_is_zero) {
+            result.known_zero_components |= (uint16_t)(UINT32_C(1) << index);
+        }
     }
     result.width = width;
     result.is_i32 = left->is_i32;
@@ -2845,6 +3027,7 @@ static int local_decl(Lower* lower, uint8_t width, int is_i32, int is_bool,
         memcpy(symbol->regs, value.regs,
                (size_t)(matrix_dimension ? (uint32_t)matrix_dimension * matrix_dimension
                                          : width) * sizeof(value.regs[0]));
+        symbol->known_zero_components = value.known_zero_components;
         symbol_mark_all_initialized(symbol);
     }
     return need(lower, T_SEMI, "expected ';' after local");
@@ -3012,6 +3195,12 @@ static int store_varying_components(Lower* lower, Symbol* symbol,
         if (lower->output_count < output + 1u)
             lower->output_count = (uint16_t)(output + 1u);
         symbol->regs[components[index]] = value->regs[index];
+        if ((value->known_zero_components & (UINT32_C(1) << index)) != 0u)
+            symbol->known_zero_components |=
+                (uint16_t)(UINT32_C(1) << components[index]);
+        else
+            symbol->known_zero_components &=
+                (uint16_t)~(UINT32_C(1) << components[index]);
         initialized |= (uint16_t)(UINT32_C(1) << components[index]);
     }
     symbol_mark_initialized(symbol, initialized);
@@ -3125,6 +3314,15 @@ static int assignment(Lower* lower)
     if (!need(lower, T_SEMI, "expected ';' after assignment"))
         return 0;
     if (output) {
+        /* The generic point-size expression route has a five-output raster
+         * ABI. A shader that also carries generic varyings must use one of
+         * the structural profiles, which proves the combined output layout;
+         * do not publish an arbitrary mixed interface merely because scalar
+         * expression lowering happened to succeed. */
+        if (point_size && lower->next_varying_output != 4u) {
+            fail(lower, "generic gl_PointSize cannot be combined with varyings");
+            return 0;
+        }
         if (frag_data && has_lvalue_swizzle) {
             if (value.matrix || value.is_i32 ||
                 value.width != lvalue_component_count) {
@@ -3195,6 +3393,7 @@ static int assignment(Lower* lower)
             return 0;
         memcpy(symbol->regs, value.regs,
                (size_t)value.width * sizeof(value.regs[0]));
+        symbol->known_zero_components = value.known_zero_components;
         symbol_mark_all_initialized(symbol);
         return 1;
     }
@@ -3215,6 +3414,12 @@ static int assignment(Lower* lower)
 
         for (index = 0u; index < lvalue_component_count; ++index) {
             symbol->regs[lvalue_components[index]] = value.regs[index];
+            if ((value.known_zero_components & (UINT32_C(1) << index)) != 0u)
+                symbol->known_zero_components |=
+                    (uint16_t)(UINT32_C(1) << lvalue_components[index]);
+            else
+                symbol->known_zero_components &=
+                    (uint16_t)~(UINT32_C(1) << lvalue_components[index]);
             initialized |= (uint16_t)(UINT32_C(1) << lvalue_components[index]);
         }
         symbol_mark_initialized(symbol, initialized);
@@ -3223,6 +3428,7 @@ static int assignment(Lower* lower)
     memcpy(symbol->regs, value.regs,
            (size_t)(value.matrix ? (uint32_t)value.matrix * value.matrix
                                  : value.width) * sizeof(value.regs[0]));
+    symbol->known_zero_components = value.known_zero_components;
     symbol_mark_all_initialized(symbol);
     return 1;
 }
@@ -3692,6 +3898,22 @@ static int parse_all(Lower* lower)
             Symbol* symbol;
 
             next(lower);
+            if (lower->token.kind == T_SAMPLER2D) {
+                next(lower);
+                if (lower->token.kind != T_IDENT) {
+                    fail(lower, "expected sampler uniform name");
+                    return 0;
+                }
+                name = lower->token;
+                if (find_symbol(lower, &name) != NULL ||
+                    add_sampler_symbol(lower, &name) == NULL) {
+                    return 0;
+                }
+                next(lower);
+                if (!need(lower, T_SEMI, "expected ';' after sampler uniform"))
+                    return 0;
+                continue;
+            }
             uint32_t uniform_type;
 
             if (lower->token.kind == T_FLOAT) {
@@ -4116,6 +4338,7 @@ int ringl_glsl_lower_rsh1_with_uniforms(
     header.register_count = lower.next_reg;
     header.input_count = lower.next_input;
     header.output_count = lower.output_count;
+    header.resource_count = lower.sampler_binding_count * 2u;
     header.entry_instruction = 0u;
     total = sizeof(header) +
             (size_t)lower.ins_count * sizeof(lower.ins[0]);
@@ -4129,6 +4352,10 @@ int ringl_glsl_lower_rsh1_with_uniforms(
     result->input_count = lower.next_input;
     result->output_count = lower.output_count;
     result->byte_size = (uint32_t)total;
+    result->sampler_binding_count = lower.sampler_binding_count;
+    memcpy(result->sampler_binding_indices, lower.sampler_binding_indices,
+           (size_t)lower.sampler_binding_count *
+               sizeof(lower.sampler_binding_indices[0]));
     return 0;
 }
 

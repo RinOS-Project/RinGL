@@ -97,6 +97,13 @@ The current first-triangle slice supports:
   `texture2D()` calls over one through eight `uniform sampler2D` declarations,
   where each coordinate is either the shared varying or that varying plus/minus
   one finite literal `vec2` offset;
+- generic fragment `texture2D(sampler2D, vec2)` lowering for coordinates made
+  from other accepted generic Float `vec2` values (locals, matching varyings,
+  swizzles, arithmetic, and numeric uniforms). Each active sampler is reflected
+  as an adjacent RSH1 image/sampler pair and each lookup emits four scalar
+  samples; the generic 128-instruction/96-register RSH1 budget is enforced
+  before module publication. Sampler arrays/dynamic indexing, non-2D/LOD/
+  gradient forms, and over-budget or otherwise unsupported expressions reject;
 - a constant-coordinate-only texture profile: one declared `sampler2D` may be
   sampled one through eight times, while a multi-declaration program uses each
   of one through eight declared samplers exactly once; results are added

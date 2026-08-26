@@ -315,12 +315,21 @@ varyings, swizzles, and numeric-uniform module rebuilds part of one
 RinGL→RinGPU execution path; it does not evaluate a coordinate or texture in
 Ladybird or Aquamarine.
 
+The generic path also executes bounded `sampler2D name[N]` arrays: the total
+number of elements is at most eight, and each `texture2D(name[index], uv)`
+uses an in-range decimal constant index that maps to its own real RSH1
+image/sampler pair. Reflection exposes one `name[0]` uniform of size `N`, the
+base name aliases element zero, and `ringl_uniform_1iv()` atomically updates a
+complete contiguous range after validating every element. Dynamic indices and
+non-sampler uniform arrays remain outside the profile. Vertex/fragment
+same-name sampler arrays must have matching lengths or linking fails.
+
 The generic path has the same finite RSH1 admission limits as every other
 RinGL shader (128 instructions and 96 registers). Unsupported GLSL ES sampler
-forms—arrays/dynamic indexing, non-2D sampler types, explicit LOD/gradient
-forms, unsupported control flow/types, and over-limit modules—fail before a
-module or target update is published. The older bounded profiles remain only
-for their stable layouts on forms they already admit.
+forms—dynamic indexing, non-2D sampler types, explicit LOD/gradient forms,
+unsupported control flow/types, and over-limit modules—fail before a module or
+target update is published. The older bounded profiles remain only for their
+stable layouts on forms they already admit.
 
 ## Current bounded texture-coordinate extension
 

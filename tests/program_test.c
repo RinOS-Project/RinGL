@@ -168,10 +168,108 @@ int main(void)
 
     ringl_use_program(program);
     assert(ringl_get_current_program() == program);
-    ringl_uniform_1i(location, 3);
+    {
+        const int32_t scalar_sampler_unit = 3;
+
+        ringl_uniform_1iv(location, 1u, &scalar_sampler_unit);
+    }
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(ringl_get_uniform_1i(program, location, &uniform_value) == 0);
     assert(uniform_value == 3);
+
+    {
+        uint32_t array_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+        uint32_t array_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+        uint32_t array_program = ringl_create_program();
+        int32_t array_units[2] = { 1, 3 };
+        int32_t array_base_location;
+        int32_t array_second_location;
+
+        assert(array_vertex != 0u && array_fragment != 0u &&
+               array_program != 0u);
+        ringl_shader_source(array_vertex,
+                            "void main() { gl_Position = vec4(0.0); }", -1);
+        ringl_shader_source(array_fragment,
+                            "uniform sampler2D palette[2]; "
+                            "void main() { gl_FragColor = "
+                            "texture2D(palette[1], vec2(0.5, 0.5)); }", -1);
+        ringl_compile_shader(array_vertex);
+        ringl_compile_shader(array_fragment);
+        assert(ringl_get_shader_compile_status(array_vertex) == RINGL_TRUE);
+        assert(ringl_get_shader_compile_status(array_fragment) == RINGL_TRUE);
+        ringl_attach_shader(array_program, array_vertex);
+        ringl_attach_shader(array_program, array_fragment);
+        ringl_link_program(array_program);
+        assert(ringl_get_program_link_status(array_program) == RINGL_TRUE);
+        assert(ringl_get_program_info(array_program, &info) == 0);
+        assert(info.active_uniform_count == 1u);
+        assert(ringl_get_active_uniform(array_program, 0u, &active_info) == 0);
+        assert(active_info.type == RINGL_SAMPLER_2D && active_info.size == 2u &&
+               strcmp(active_info.name, "palette[0]") == 0);
+        array_base_location = ringl_get_uniform_location(array_program, "palette");
+        array_second_location = ringl_get_uniform_location(array_program, "palette[1]");
+        assert(array_base_location >= 0 &&
+               array_base_location == ringl_get_uniform_location(array_program,
+                                                                  "palette[0]") &&
+               array_second_location == array_base_location + 1);
+        ringl_use_program(array_program);
+        ringl_uniform_1iv(array_base_location, 2u, array_units);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_1i(array_program, array_second_location,
+                                    &uniform_value) == 0);
+        assert(uniform_value == 3);
+        ringl_uniform_1iv(array_second_location, 2u, array_units);
+        assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+        assert(ringl_get_uniform_1i(array_program, array_second_location,
+                                    &uniform_value) == 0);
+        assert(uniform_value == 3);
+        ringl_delete_program(array_program);
+        ringl_delete_shader(array_vertex);
+        ringl_delete_shader(array_fragment);
+    }
+
+    {
+        uint32_t dynamic_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+
+        assert(dynamic_fragment != 0u);
+        ringl_shader_source(dynamic_fragment,
+                            "uniform sampler2D palette[2]; uniform int i; "
+                            "void main() { gl_FragColor = "
+                            "texture2D(palette[i], vec2(0.5, 0.5)); }", -1);
+        ringl_compile_shader(dynamic_fragment);
+        assert(ringl_get_shader_compile_status(dynamic_fragment) == RINGL_FALSE);
+        ringl_delete_shader(dynamic_fragment);
+    }
+
+    {
+        uint32_t mismatch_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+        uint32_t mismatch_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+        uint32_t mismatch_program = ringl_create_program();
+
+        assert(mismatch_vertex != 0u && mismatch_fragment != 0u &&
+               mismatch_program != 0u);
+        ringl_shader_source(mismatch_vertex,
+                            "uniform sampler2D palette[1]; "
+                            "void main() { gl_Position = vec4(0.0); }", -1);
+        ringl_shader_source(mismatch_fragment,
+                            "uniform sampler2D palette[2]; "
+                            "void main() { gl_FragColor = "
+                            "texture2D(palette[1], vec2(0.5, 0.5)); }", -1);
+        ringl_compile_shader(mismatch_vertex);
+        ringl_compile_shader(mismatch_fragment);
+        assert(ringl_get_shader_compile_status(mismatch_vertex) == RINGL_TRUE);
+        assert(ringl_get_shader_compile_status(mismatch_fragment) == RINGL_TRUE);
+        ringl_attach_shader(mismatch_program, mismatch_vertex);
+        ringl_attach_shader(mismatch_program, mismatch_fragment);
+        ringl_link_program(mismatch_program);
+        assert(ringl_get_program_link_status(mismatch_program) == RINGL_FALSE);
+        assert(ringl_get_program_info_log(mismatch_program, log, sizeof(log)) > 0u);
+        assert(strstr(log, "incompatible") != NULL);
+        ringl_delete_program(mismatch_program);
+        ringl_delete_shader(mismatch_vertex);
+        ringl_delete_shader(mismatch_fragment);
+    }
+
     ringl_uniform_1i(-1, 7);
     assert(ringl_get_error() == RINGL_NO_ERROR);
     ringl_uniform_1i(99, 0);

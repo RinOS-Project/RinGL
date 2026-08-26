@@ -5,8 +5,121 @@
 #include "varying_lower.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static int ringl_sampler_array_element_index(const char* name,
+                                             size_t* base_length_out,
+                                             uint32_t* element_index_out);
+
+static uint32_t ringl_shader_sampler_array_length(
+    const RinGLShaderObject* shader, uint32_t first_sampler,
+    size_t base_length)
+{
+    const char* base_name;
+    uint32_t length = 1u;
+
+    if (shader == NULL || first_sampler >= shader->sampler_uniform_count)
+        return 0u;
+    base_name = shader->sampler_uniform_names[first_sampler];
+    while (first_sampler + length < shader->sampler_uniform_count) {
+        size_t candidate_base_length;
+        uint32_t candidate_element_index;
+
+        if (!ringl_sampler_array_element_index(
+                shader->sampler_uniform_names[first_sampler + length],
+                &candidate_base_length, &candidate_element_index) ||
+            candidate_base_length != base_length ||
+            memcmp(base_name,
+                   shader->sampler_uniform_names[first_sampler + length],
+                   base_length) != 0 || candidate_element_index != length) {
+            break;
+        }
+        ++length;
+    }
+    return length;
+}
+
+static int ringl_shader_sampler_group_at(const RinGLShaderObject* shader,
+                                         uint32_t first_sampler,
+                                         char* base_name,
+                                         size_t base_name_capacity,
+                                         uint32_t* length_out,
+                                         uint32_t* next_sampler_out)
+{
+    const char* name;
+    size_t base_length;
+    uint32_t element_index;
+    uint32_t length;
+
+    if (shader == NULL || base_name == NULL || base_name_capacity == 0u ||
+        length_out == NULL || next_sampler_out == NULL ||
+        first_sampler >= shader->sampler_uniform_count) {
+        return 0;
+    }
+    name = shader->sampler_uniform_names[first_sampler];
+    if (ringl_sampler_array_element_index(name, &base_length,
+                                          &element_index)) {
+        if (element_index != 0u || base_length >= base_name_capacity)
+            return 0;
+        memcpy(base_name, name, base_length);
+        base_name[base_length] = '\0';
+        length = ringl_shader_sampler_array_length(shader, first_sampler,
+                                                   base_length);
+        if (length == 0u)
+            return 0;
+    } else {
+        if (strlen(name) >= base_name_capacity)
+            return 0;
+        ringl_copy_c_string(base_name, base_name_capacity, name);
+        length = 1u;
+    }
+    *length_out = length;
+    *next_sampler_out = first_sampler + length;
+    return 1;
+}
+
+static int ringl_program_sampler_interfaces_match(
+    const RinGLShaderObject* vertex, const RinGLShaderObject* fragment)
+{
+    uint32_t vertex_sampler = 0u;
+
+    if (vertex == NULL || fragment == NULL)
+        return 0;
+    while (vertex_sampler < vertex->sampler_uniform_count) {
+        char vertex_base_name[RINGL_UNIFORM_NAME_MAX];
+        uint32_t vertex_length;
+        uint32_t vertex_next_sampler;
+        uint32_t fragment_sampler = 0u;
+
+        if (!ringl_shader_sampler_group_at(
+                vertex, vertex_sampler, vertex_base_name,
+                sizeof(vertex_base_name), &vertex_length,
+                &vertex_next_sampler)) {
+            return 0;
+        }
+        while (fragment_sampler < fragment->sampler_uniform_count) {
+            char fragment_base_name[RINGL_UNIFORM_NAME_MAX];
+            uint32_t fragment_length;
+            uint32_t fragment_next_sampler;
+
+            if (!ringl_shader_sampler_group_at(
+                    fragment, fragment_sampler, fragment_base_name,
+                    sizeof(fragment_base_name), &fragment_length,
+                    &fragment_next_sampler)) {
+                return 0;
+            }
+            if (strcmp(vertex_base_name, fragment_base_name) == 0 &&
+                vertex_length != fragment_length) {
+                return 0;
+            }
+            fragment_sampler = fragment_next_sampler;
+        }
+        vertex_sampler = vertex_next_sampler;
+    }
+    return 1;
+}
 
 static RinGLProgramObject* ringl_program_object(RinGLContext* context,
                                                 uint32_t program)
@@ -89,6 +202,9 @@ static int ringl_program_collect_sampler_uniforms(RinGLProgramObject* program,
                                                   const RinGLShaderObject* fragment)
 {
     uint32_t i;
+
+    if (!ringl_program_sampler_interfaces_match(vertex, fragment))
+        return 0;
     program->sampler_uniform_count = 0u;
     memset(program->sampler_uniforms, 0, sizeof(program->sampler_uniforms));
     for (i = 0u; i < vertex->sampler_uniform_count; ++i) {
@@ -1660,7 +1776,8 @@ void ringl_link_program(uint32_t program)
         return;
     }
     if (!ringl_program_collect_sampler_uniforms(object, vertex, fragment)) {
-        ringl_program_set_log(object, "too many active sampler uniforms");
+        ringl_program_set_log(object,
+                              "incompatible or excessive active sampler uniforms");
         return;
     }
     if (!ringl_program_collect_float_uniforms(object, vertex, fragment)) {
@@ -1799,6 +1916,81 @@ void ringl_validate_program(uint32_t program)
     object->validate_status = object->link_status ? RINGL_TRUE : RINGL_FALSE;
 }
 
+static uint32_t ringl_sampler_active_uniform_length(
+    const RinGLProgramObject* object, uint32_t first_sampler)
+{
+    const char* base_name;
+    size_t base_length;
+    uint32_t element_index;
+    uint32_t length = 1u;
+
+    if (object == NULL || first_sampler >= object->sampler_uniform_count ||
+        !ringl_sampler_array_element_index(
+            object->sampler_uniforms[first_sampler].name, &base_length,
+            &element_index) ||
+        element_index != 0u) {
+        return 1u;
+    }
+    base_name = object->sampler_uniforms[first_sampler].name;
+    while (first_sampler + length < object->sampler_uniform_count) {
+        size_t candidate_base_length;
+        uint32_t candidate_element_index;
+
+        if (!ringl_sampler_array_element_index(
+                object->sampler_uniforms[first_sampler + length].name,
+                &candidate_base_length, &candidate_element_index) ||
+            candidate_base_length != base_length ||
+            memcmp(base_name,
+                   object->sampler_uniforms[first_sampler + length].name,
+                   base_length) != 0 || candidate_element_index != length) {
+            break;
+        }
+        ++length;
+    }
+    return length;
+}
+
+static uint32_t ringl_program_active_sampler_uniform_count(
+    const RinGLProgramObject* object)
+{
+    uint32_t sampler_index = 0u;
+    uint32_t active_count = 0u;
+
+    if (object == NULL)
+        return 0u;
+    while (sampler_index < object->sampler_uniform_count) {
+        sampler_index +=
+            ringl_sampler_active_uniform_length(object, sampler_index);
+        ++active_count;
+    }
+    return active_count;
+}
+
+static int ringl_program_active_sampler_uniform_at(
+    const RinGLProgramObject* object, uint32_t active_index,
+    uint32_t* sampler_index_out, uint32_t* array_length_out)
+{
+    uint32_t sampler_index = 0u;
+    uint32_t current_active_index = 0u;
+
+    if (object == NULL || sampler_index_out == NULL ||
+        array_length_out == NULL)
+        return -1;
+    while (sampler_index < object->sampler_uniform_count) {
+        uint32_t array_length =
+            ringl_sampler_active_uniform_length(object, sampler_index);
+
+        if (current_active_index == active_index) {
+            *sampler_index_out = sampler_index;
+            *array_length_out = array_length;
+            return 0;
+        }
+        sampler_index += array_length;
+        ++current_active_index;
+    }
+    return -1;
+}
+
 int ringl_get_program_info(uint32_t program, RinGLProgramInfoV1* info)
 {
     RinGLContext* context = ringl_get_current_context();
@@ -1825,7 +2017,7 @@ int ringl_get_program_info(uint32_t program, RinGLProgramInfoV1* info)
         (object->fragment_shader != 0u ? 1u : 0u);
     if (object->link_status) {
         result.active_attribute_count = object->attribute_count;
-        result.active_uniform_count = object->sampler_uniform_count +
+        result.active_uniform_count = ringl_program_active_sampler_uniform_count(object) +
                                        object->float_uniform_count +
                                        object->int_uniform_count +
                                        object->bool_uniform_count +
@@ -1952,6 +2144,7 @@ int ringl_get_active_uniform(uint32_t program, uint32_t index,
     RinGLContext* context = ringl_get_current_context();
     RinGLProgramObject* object;
     RinGLActiveInfoV1 result;
+    uint32_t active_sampler_count;
 
     if (context == NULL || !ringl_active_info_header_valid(info))
         return -1;
@@ -1964,7 +2157,8 @@ int ringl_get_active_uniform(uint32_t program, uint32_t index,
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return -1;
     }
-    if (index >= object->sampler_uniform_count + object->float_uniform_count +
+    active_sampler_count = ringl_program_active_sampler_uniform_count(object);
+    if (index >= active_sampler_count + object->float_uniform_count +
                      object->vec2_uniform_count + object->vec3_uniform_count +
                      object->vec4_uniform_count + object->mat4_uniform_count +
                      object->mat2_uniform_count + object->mat3_uniform_count +
@@ -1975,10 +2169,23 @@ int ringl_get_active_uniform(uint32_t program, uint32_t index,
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return -1;
     }
-    if (index < object->sampler_uniform_count) {
+    if (index < active_sampler_count) {
+        uint32_t sampler_index;
+        uint32_t array_length;
+
+        if (ringl_program_active_sampler_uniform_at(
+                object, index, &sampler_index, &array_length) != 0) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return -1;
+        }
         ringl_active_info_set(&result, RINGL_SAMPLER_2D,
-                              object->sampler_uniforms[index].name);
-    } else if (index < object->sampler_uniform_count +
+                              object->sampler_uniforms[sampler_index].name);
+        result.size = array_length;
+        *info = result;
+        return 0;
+    }
+    index = index - active_sampler_count + object->sampler_uniform_count;
+    if (index < object->sampler_uniform_count +
                            object->float_uniform_count) {
         ringl_active_info_set(&result, RINGL_FLOAT,
                               object->float_uniforms[
@@ -2314,6 +2521,79 @@ int32_t ringl_get_attrib_location(uint32_t program, const char* name)
     return -1;
 }
 
+static int ringl_sampler_array_element_index(const char* name,
+                                             size_t* base_length_out,
+                                             uint32_t* element_index_out)
+{
+    const char* bracket;
+    size_t base_length;
+    uint32_t value = 0u;
+
+    if (name == NULL || base_length_out == NULL || element_index_out == NULL)
+        return 0;
+    bracket = strrchr(name, '[');
+    if (bracket == NULL || bracket == name || bracket[1] == '\0')
+        return 0;
+    base_length = (size_t)(bracket - name);
+    for (++bracket; *bracket != '\0'; ++bracket) {
+        uint32_t digit;
+
+        if (*bracket == ']') {
+            if (bracket[1] != '\0')
+                return 0;
+            *base_length_out = base_length;
+            *element_index_out = value;
+            return 1;
+        }
+        if (*bracket < '0' || *bracket > '9')
+            return 0;
+        digit = (uint32_t)(*bracket - '0');
+        if (value > (UINT32_MAX - digit) / 10u)
+            return 0;
+        value = value * 10u + digit;
+    }
+    return 0;
+}
+
+static int ringl_sampler_array_range_is_valid(const RinGLProgramObject* object,
+                                              uint32_t first_location,
+                                              uint32_t count)
+{
+    char expected_name[RINGL_UNIFORM_NAME_MAX];
+    const char* base_name;
+    size_t base_length;
+    uint32_t first_element_index;
+    uint32_t offset;
+
+    if (object == NULL || count == 0u ||
+        first_location >= object->sampler_uniform_count ||
+        count > object->sampler_uniform_count - first_location) {
+        return 0;
+    }
+    if (count == 1u)
+        return 1;
+    if (!ringl_sampler_array_element_index(
+            object->sampler_uniforms[first_location].name, &base_length,
+            &first_element_index) ||
+        base_length >= sizeof(expected_name) ||
+        first_element_index > UINT32_MAX - (count - 1u)) {
+        return 0;
+    }
+    base_name = object->sampler_uniforms[first_location].name;
+    for (offset = 0u; offset < count; ++offset) {
+        int written = snprintf(expected_name, sizeof(expected_name), "%.*s[%u]",
+                               (int)base_length, base_name,
+                               first_element_index + offset);
+
+        if (written < 0 || (size_t)written >= sizeof(expected_name) ||
+            strcmp(object->sampler_uniforms[first_location + offset].name,
+                   expected_name) != 0) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 int32_t ringl_get_uniform_location(uint32_t program, const char* name)
 {
     RinGLContext* context = ringl_get_current_context();
@@ -2333,6 +2613,20 @@ int32_t ringl_get_uniform_location(uint32_t program, const char* name)
     for (i = 0u; i < object->sampler_uniform_count; ++i) {
         if (strcmp(object->sampler_uniforms[i].name, name) == 0)
             return (int32_t)i;
+    }
+    if (strchr(name, '[') == NULL) {
+        char first_element_name[RINGL_UNIFORM_NAME_MAX];
+        int written = snprintf(first_element_name, sizeof(first_element_name),
+                               "%s[0]", name);
+
+        if (written >= 0 && (size_t)written < sizeof(first_element_name)) {
+            for (i = 0u; i < object->sampler_uniform_count; ++i) {
+                if (strcmp(object->sampler_uniforms[i].name,
+                           first_element_name) == 0) {
+                    return (int32_t)i;
+                }
+            }
+        }
     }
     for (i = 0u; i < object->float_uniform_count; ++i) {
         if (strcmp(object->float_uniforms[i].name, name) == 0)
@@ -2621,6 +2915,55 @@ void ringl_uniform_1i(int32_t location, int32_t value)
         *stored_uniform = previous_value;
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
     }
+}
+
+void ringl_uniform_1iv(int32_t location, uint32_t count,
+                       const int32_t* values)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLProgramObject* object;
+    uint32_t sampler_index;
+    uint32_t changed = 0u;
+
+    if (context == NULL || location == -1 || count == 0u)
+        return;
+    if (values == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if (context->current_program == 0u) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    object = ringl_program_object(context, context->current_program);
+    if (object == NULL || !object->link_status || location < 0) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    if ((uint32_t)location >= object->sampler_uniform_count) {
+        if (count != 1u) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return;
+        }
+        ringl_uniform_1i(location, values[0]);
+        return;
+    }
+    if (!ringl_sampler_array_range_is_valid(object, (uint32_t)location,
+                                            count)) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    for (sampler_index = 0u; sampler_index < count; ++sampler_index) {
+        RinGLProgramSamplerUniform* uniform =
+            &object->sampler_uniforms[(uint32_t)location + sampler_index];
+
+        if (uniform->texture_unit != values[sampler_index]) {
+            uniform->texture_unit = values[sampler_index];
+            changed = 1u;
+        }
+    }
+    if (changed)
+        ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
 }
 
 int ringl_get_uniform_1i(uint32_t program, int32_t location,

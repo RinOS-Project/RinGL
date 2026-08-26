@@ -1755,6 +1755,10 @@ uint32_t ringl_get_current_program(void);
 int32_t ringl_get_attrib_location(uint32_t program, const char* name);
 int32_t ringl_get_uniform_location(uint32_t program, const char* name);
 void ringl_uniform_1i(int32_t location, int32_t value);
+/* Applies a contiguous sampler-array range after validating every element.
+ * Scalar int/bool/sampler uniforms accept count one for WebGL uniform1iv. */
+void ringl_uniform_1iv(int32_t location, uint32_t count,
+                       const int32_t* values);
 /* Applies to an active sampler, scalar int, or scalar bool uniform. Boolean
  * values are normalized to zero/one and all numeric values are lowered into a
  * new program-owned RSH1 module before state is committed. */

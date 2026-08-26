@@ -102,8 +102,11 @@ The current first-triangle slice supports:
   swizzles, arithmetic, and numeric uniforms). Each active sampler is reflected
   as an adjacent RSH1 image/sampler pair and each lookup emits four scalar
   samples; the generic 128-instruction/96-register RSH1 budget is enforced
-  before module publication. Sampler arrays/dynamic indexing, non-2D/LOD/
-  gradient forms, and over-budget or otherwise unsupported expressions reject;
+  before module publication. `sampler2D name[N]` accepts a positive decimal
+  `N` only within the eight-element total cap, and each lookup needs an
+  in-range decimal constant index; every selected element has its own real
+  resource pair. Dynamic indexing, non-sampler arrays, non-2D/LOD/gradient
+  forms, and over-budget or otherwise unsupported expressions reject;
 - a constant-coordinate-only texture profile: one declared `sampler2D` may be
   sampled one through eight times, while a multi-declaration program uses each
   of one through eight declared samplers exactly once; results are added

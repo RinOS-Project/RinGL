@@ -103,6 +103,7 @@ typedef struct Symbol {
     char name[64];
     uint32_t kind;
     uint32_t width;
+    uint32_t sampler_array_length;
 } Symbol;
 
 typedef struct Parser {
@@ -447,7 +448,44 @@ static int add_symbol(Parser* parser, const Token* token,
     symbol->name[token->length] = '\0';
     symbol->kind = kind;
     symbol->width = width;
+    symbol->sampler_array_length = 1u;
     return 1;
+}
+
+static int token_unsigned_integer(const Token* token, uint32_t* value_out)
+{
+    uint32_t value = 0u;
+    size_t index;
+
+    if (token == NULL || value_out == NULL || token->kind != TOK_NUMBER ||
+        token->length == 0u)
+        return 0;
+    for (index = 0u; index < token->length; ++index) {
+        uint32_t digit;
+
+        if (token->begin[index] < '0' || token->begin[index] > '9')
+            return 0;
+        digit = (uint32_t)(token->begin[index] - '0');
+        if (value > (UINT32_MAX - digit) / 10u)
+            return 0;
+        value = value * 10u + digit;
+    }
+    *value_out = value;
+    return 1;
+}
+
+static int sampler_array_element_name(char* destination, size_t destination_size,
+                                      const Token* base_name,
+                                      uint32_t element_index)
+{
+    int written;
+
+    if (destination == NULL || destination_size == 0u || base_name == NULL ||
+        base_name->length == 0u || base_name->length >= destination_size)
+        return 0;
+    written = snprintf(destination, destination_size, "%.*s[%u]",
+                       (int)base_name->length, base_name->begin, element_index);
+    return written >= 0 && (size_t)written < destination_size;
 }
 
 static int expression(Parser* parser);
@@ -628,6 +666,7 @@ static int texture2d_call(Parser* parser)
 {
     Token sampler_name;
     Symbol* sampler;
+    uint32_t sampler_index = 0u;
 
     if (parser->shader_type != RINGL_FRAGMENT_SHADER) {
         fail(parser, "texture2D is only supported in fragment shaders");
@@ -647,6 +686,22 @@ static int texture2d_call(Parser* parser)
         return 0;
     }
     next_token(parser);
+    if (sampler->sampler_array_length > 1u) {
+        if (!expect(parser, TOK_LBRACKET,
+                    "texture2D sampler array requires a constant index") ||
+            !token_unsigned_integer(&parser->token, &sampler_index) ||
+            sampler_index >= sampler->sampler_array_length) {
+            fail(parser, "texture2D sampler array index is outside the declared range");
+            return 0;
+        }
+        next_token(parser);
+        if (!expect(parser, TOK_RBRACKET,
+                    "expected ']' after texture2D sampler array index"))
+            return 0;
+    } else if (parser->token.kind == TOK_LBRACKET) {
+        fail(parser, "texture2D scalar sampler cannot be indexed");
+        return 0;
+    }
     if (!expect(parser, TOK_COMMA, "expected ',' after texture2D sampler"))
         return 0;
 
@@ -1483,6 +1538,49 @@ static int uniform_declaration(Parser* parser)
         return 0;
     }
     name = parser->token;
+    if (type == TOK_SAMPLER2D) {
+        uint32_t sampler_array_length = 1u;
+
+        next_token(parser);
+        if (accept(parser, TOK_LBRACKET)) {
+            if (!token_unsigned_integer(&parser->token, &sampler_array_length) ||
+                sampler_array_length == 0u ||
+                sampler_array_length > RINGL_GLSL_MAX_SAMPLER_UNIFORMS ||
+                !expect(parser, TOK_NUMBER,
+                        "sampler array length must be a positive integer") ||
+                !expect(parser, TOK_RBRACKET,
+                        "expected ']' after sampler array length")) {
+                fail(parser, "sampler array length is outside the supported range");
+                return 0;
+            }
+        }
+        if (sampler_array_length > RINGL_GLSL_MAX_SAMPLER_UNIFORMS -
+                                       parser->result->sampler_uniform_count) {
+            fail(parser, "too many sampler uniforms");
+            return 0;
+        }
+        if (!add_symbol(parser, &name, SYMBOL_SAMPLER2D, 0u))
+            return 0;
+        find_symbol(parser, &name)->sampler_array_length = sampler_array_length;
+        for (index = 0u; index < sampler_array_length; ++index) {
+            char* reflected_name =
+                parser->result->sampler_uniform_names[
+                    parser->result->sampler_uniform_count++];
+
+            if (sampler_array_length == 1u) {
+                memcpy(reflected_name, name.begin, name.length);
+                reflected_name[name.length] = '\0';
+            } else if (!sampler_array_element_name(
+                           reflected_name, RINGL_GLSL_NAME_MAX, &name, index)) {
+                fail(parser, "sampler array name is too long");
+                return 0;
+            }
+        }
+        if (!expect(parser, TOK_SEMI, "expected ';' after sampler uniform"))
+            return 0;
+        parser->result->declaration_count++;
+        return 1;
+    }
     if (!add_symbol(parser, &name,
                     type == TOK_SAMPLER2D ? SYMBOL_SAMPLER2D
                     : type == TOK_FLOAT ? SYMBOL_UNIFORM_FLOAT

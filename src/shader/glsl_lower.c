@@ -105,6 +105,7 @@ typedef struct Symbol {
     uint8_t is_bool;
     uint8_t sampler;
     uint16_t sampler_index;
+    uint16_t sampler_array_length;
 } Symbol;
 
 typedef struct Lower {
@@ -525,12 +526,37 @@ static Symbol* add_symbol(Lower* lower, const Token* token,
  * the executable module can reflect each sampled pair back to the shader
  * object, whose existing draw path resolves that index to the program's
  * texture unit. */
-static Symbol* add_sampler_symbol(Lower* lower, const Token* token)
+static int token_unsigned_integer(const Token* token, uint32_t* value_out)
+{
+    uint32_t value = 0u;
+    size_t index;
+
+    if (token == NULL || value_out == NULL || token->kind != T_NUMBER ||
+        token->length == 0u)
+        return 0;
+    for (index = 0u; index < token->length; ++index) {
+        uint32_t digit;
+
+        if (token->begin[index] < '0' || token->begin[index] > '9')
+            return 0;
+        digit = (uint32_t)(token->begin[index] - '0');
+        if (value > (UINT32_MAX - digit) / 10u)
+            return 0;
+        value = value * 10u + digit;
+    }
+    *value_out = value;
+    return 1;
+}
+
+static Symbol* add_sampler_symbol(Lower* lower, const Token* token,
+                                  uint32_t array_length)
 {
     Symbol* symbol;
 
     if (lower == NULL || token == NULL ||
-        lower->sampler_declaration_count >= RINGL_GLSL_MAX_SAMPLER_UNIFORMS) {
+        array_length == 0u ||
+        array_length > RINGL_GLSL_MAX_SAMPLER_UNIFORMS -
+                           lower->sampler_declaration_count) {
         fail(lower, "sampler uniform limit exceeded");
         return NULL;
     }
@@ -539,7 +565,9 @@ static Symbol* add_sampler_symbol(Lower* lower, const Token* token)
         return NULL;
     symbol->uniform = 1u;
     symbol->sampler = 1u;
-    symbol->sampler_index = (uint16_t)lower->sampler_declaration_count++;
+    symbol->sampler_index = (uint16_t)lower->sampler_declaration_count;
+    symbol->sampler_array_length = (uint16_t)array_length;
+    lower->sampler_declaration_count += array_length;
     return symbol;
 }
 
@@ -2548,17 +2576,21 @@ static Value frag_coord_value(Lower* lower)
  * sampler. Deduplicate calls by source declaration, and publish the original
  * declaration index for the normal RinGL program binding path. An inactive
  * declared sampler consumes no GPU resource. */
-static uint16_t active_sampler_resource(Lower* lower, const Symbol* sampler)
+static uint16_t active_sampler_resource(Lower* lower, const Symbol* sampler,
+                                        uint32_t sampler_array_index)
 {
     uint32_t index;
+    uint32_t sampler_index;
 
-    if (lower == NULL || sampler == NULL || !sampler->sampler) {
+    if (lower == NULL || sampler == NULL || !sampler->sampler ||
+        sampler_array_index >= sampler->sampler_array_length) {
         if (lower != NULL)
             fail(lower, "texture2D requires a sampler2D uniform");
         return RINGL_RSH1_UNUSED;
     }
+    sampler_index = sampler->sampler_index + sampler_array_index;
     for (index = 0u; index < lower->sampler_binding_count; ++index) {
-        if (lower->sampler_binding_indices[index] == sampler->sampler_index)
+        if (lower->sampler_binding_indices[index] == sampler_index)
             return (uint16_t)(index * 2u);
     }
     if (lower->sampler_binding_count >= RINGL_GLSL_MAX_SAMPLER_UNIFORMS) {
@@ -2566,7 +2598,7 @@ static uint16_t active_sampler_resource(Lower* lower, const Symbol* sampler)
         return RINGL_RSH1_UNUSED;
     }
     index = lower->sampler_binding_count++;
-    lower->sampler_binding_indices[index] = sampler->sampler_index;
+    lower->sampler_binding_indices[index] = sampler_index;
     return (uint16_t)(index * 2u);
 }
 
@@ -2582,6 +2614,7 @@ static Value texture2d_value(Lower* lower)
     Symbol* sampler;
     uint16_t resource;
     uint32_t component;
+    uint32_t sampler_array_index = 0u;
 
     if (lower->shader_type != RINGL_FRAGMENT_SHADER) {
         fail(lower, "texture2D is only supported in fragment shaders");
@@ -2601,6 +2634,22 @@ static Value texture2d_value(Lower* lower)
         return result;
     }
     next(lower);
+    if (sampler->sampler_array_length > 1u) {
+        if (!need(lower, T_LBRACKET,
+                  "texture2D sampler array requires a constant index") ||
+            !token_unsigned_integer(&lower->token, &sampler_array_index) ||
+            sampler_array_index >= sampler->sampler_array_length) {
+            fail(lower, "texture2D sampler array index is outside the declared range");
+            return result;
+        }
+        next(lower);
+        if (!need(lower, T_RBRACKET,
+                  "expected ']' after texture2D sampler array index"))
+            return result;
+    } else if (lower->token.kind == T_LBRACKET) {
+        fail(lower, "texture2D scalar sampler cannot be indexed");
+        return result;
+    }
     if (!need(lower, T_COMMA, "expected ',' after texture2D sampler"))
         return result;
     coordinates = expression(lower);
@@ -2611,7 +2660,7 @@ static Value texture2d_value(Lower* lower)
             fail(lower, "texture2D coordinates must be floating-point vec2");
         return result;
     }
-    resource = active_sampler_resource(lower, sampler);
+    resource = active_sampler_resource(lower, sampler, sampler_array_index);
     if (resource == RINGL_RSH1_UNUSED)
         return result;
     for (component = 0u; component < 4u; ++component) {
@@ -3899,17 +3948,31 @@ static int parse_all(Lower* lower)
 
             next(lower);
             if (lower->token.kind == T_SAMPLER2D) {
+                uint32_t sampler_array_length = 1u;
+
                 next(lower);
                 if (lower->token.kind != T_IDENT) {
                     fail(lower, "expected sampler uniform name");
                     return 0;
                 }
                 name = lower->token;
+                next(lower);
+                if (take(lower, T_LBRACKET)) {
+                    if (!token_unsigned_integer(&lower->token,
+                                                &sampler_array_length) ||
+                        sampler_array_length == 0u ||
+                        !need(lower, T_NUMBER,
+                              "sampler array length must be a positive integer") ||
+                        !need(lower, T_RBRACKET,
+                              "expected ']' after sampler array length")) {
+                        fail(lower, "sampler array length is outside the supported range");
+                        return 0;
+                    }
+                }
                 if (find_symbol(lower, &name) != NULL ||
-                    add_sampler_symbol(lower, &name) == NULL) {
+                    add_sampler_symbol(lower, &name, sampler_array_length) == NULL) {
                     return 0;
                 }
-                next(lower);
                 if (!need(lower, T_SEMI, "expected ';' after sampler uniform"))
                     return 0;
                 continue;

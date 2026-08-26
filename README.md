@@ -160,7 +160,11 @@ the texture upload APIs. RinGL decodes sRGB RGB through IEC 61966-2-1 into
 linear RGBA32F RinGPU storage. `SRGB_ALPHA_EXT` retains linear alpha, whereas
 alpha-less `SRGB_EXT` keeps the physical alpha one and never exposes it. Its
 framebuffer metadata therefore reports the logical sRGB encoding and
-unsigned-byte component type, and byte readback re-encodes only RGB. Mipmap generation for a
+unsigned-byte component type. `ringl_framebuffer_color_attachment_is_srgb_at()`
+and `ringl_framebuffer_color_attachment_component_type_at()` inspect the exact
+bound `COLOR_ATTACHMENTi`; nonzero slots are gated by
+`ringl_enable_webgl_draw_buffers()` and both queries leave caller output
+unchanged on failure. Byte readback re-encodes only RGB. Mipmap generation for a
 logical sRGB texture rejects instead of creating a chain with unspecified
 transfer semantics. A browser must gate these tokens through its acquired
 `EXT_sRGB` object; RinGL itself remains on the RinGPU adapter/private
@@ -315,21 +319,18 @@ varyings, swizzles, and numeric-uniform module rebuilds part of one
 RinGL→RinGPU execution path; it does not evaluate a coordinate or texture in
 Ladybird or Aquamarine.
 
-The generic path also executes bounded `sampler2D name[N]` arrays: the total
-number of elements is at most eight, and each `texture2D(name[index], uv)`
-uses an in-range decimal constant index that maps to its own real RSH1
-image/sampler pair. Reflection exposes one `name[0]` uniform of size `N`, the
-base name aliases element zero, and `ringl_uniform_1iv()` atomically updates a
-complete contiguous range after validating every element. Dynamic indices and
-non-sampler uniform arrays remain outside the profile. Vertex/fragment
-same-name sampler arrays must have matching lengths or linking fails.
-
-The generic path has the same finite RSH1 admission limits as every other
-RinGL shader (128 instructions and 96 registers). Unsupported GLSL ES sampler
-forms—dynamic indexing, non-2D sampler types, explicit LOD/gradient forms,
-unsupported control flow/types, and over-limit modules—fail before a module or
-target update is published. The older bounded profiles remain only for their
-stable layouts on forms they already admit.
+The generic path also executes bounded `uniform sampler2D name[N]` arrays:
+`N` and the total sampler-element count are limited to eight, and every lookup
+must use an in-range decimal constant such as `texture2D(name[1], uv)`. Array
+elements retain their own declaration indices and therefore resolve to actual
+RinGPU image/sampler pairs, while `getUniformLocation("name")` aliases
+`name[0]`. `ringl_uniform_1iv()` first verifies that a complete update remains
+within one reflected array, then changes the selected texture units together.
+`getActiveUniform` reports one `name[0]` record with the array length. Dynamic
+indexing, non-sampler uniform arrays, non-2D sampler types, explicit
+LOD/gradient forms, unsupported control flow/types, and over-limit modules
+still fail before a module or target update is published. The older bounded
+profiles remain only for their stable layouts on forms they already admit.
 
 ## Current bounded texture-coordinate extension
 
@@ -565,9 +566,10 @@ also admit precedence-correct `!`, `&&`, `^^`, and `||`; the profile forbids
 expression side effects, so their RSH1 Boolean evaluation preserves observable
 GLSL behavior without a second backend. Boolean vector builtins lower to scalar
 RSH1 integer comparisons/additions and therefore run through the same generic
-RinGPU backend as every other program. Uniform arrays, multi-component Boolean
-swizzles, local-mutating integer control flow, and implicit numeric conversions
-remain unavailable.
+RinGPU backend as every other program. `sampler2D` arrays use the separately
+bounded texture path described above; numeric/Boolean uniform arrays,
+multi-component Boolean swizzles, local-mutating integer control flow, and
+implicit numeric conversions remain unavailable.
 
 Program-owned uniform artifacts are stage-selective. A mutable vertex matrix
 does not force an unrelated fragment `sampler2D` shader back through the

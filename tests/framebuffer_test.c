@@ -347,6 +347,31 @@ int main(void)
                                    RINGL_RENDERBUFFER, renderbuffers[4]);
     assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
            RINGL_FRAMEBUFFER_COMPLETE);
+    {
+        uint32_t component_type = 0u;
+        uint32_t is_srgb = RINGL_TRUE;
+
+        assert(ringl_framebuffer_color_attachment_component_type_at(
+                   RINGL_COLOR_ATTACHMENT0, &component_type) == 0);
+        assert(component_type == RINGL_UNSIGNED_BYTE);
+        assert(ringl_framebuffer_color_attachment_is_srgb_at(
+                   RINGL_COLOR_ATTACHMENT0, &is_srgb) == 0);
+        assert(is_srgb == RINGL_FALSE);
+
+        /* Nonzero slots stay inaccessible until WEBGL_draw_buffers has been
+         * enabled by a compatible embedding, and failed inspection leaves
+         * caller storage intact. */
+        component_type = 0xfeedfaceu;
+        assert(ringl_framebuffer_color_attachment_component_type_at(
+                   RINGL_COLOR_ATTACHMENT0 + 1u, &component_type) == -1);
+        assert(component_type == 0xfeedfaceu);
+        assert(ringl_get_error() == RINGL_INVALID_ENUM);
+        is_srgb = 0xfeedfaceu;
+        assert(ringl_framebuffer_color_attachment_is_srgb_at(
+                   RINGL_COLOR_ATTACHMENT0 + 1u, &is_srgb) == -1);
+        assert(is_srgb == 0xfeedfaceu);
+        assert(ringl_get_error() == RINGL_INVALID_ENUM);
+    }
     ringl_bind_framebuffer(RINGL_FRAMEBUFFER, 0u);
 
     ringl_context_destroy(context);

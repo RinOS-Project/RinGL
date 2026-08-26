@@ -46,7 +46,7 @@ Status meanings:
 | `glDrawArrays`, `glDrawElements` | B | All seven listed primitive topologies; bounded RSH1/linker and validated buffers. |
 | `glFinish`, `glFlush` | B | Immediate submission; `finish` uses the optional fenced-sync extension. |
 | `glGenerateMipmap` | B | Bounded 2D canonical/native packed color chains only; logical `EXT_sRGB` textures reject rather than deriving an unspecified sRGB chain. |
-| `glGetActiveAttrib`, `glGetActiveUniform` | P | Versioned `RinGLActiveInfoV1`; current linker exposes bounded attributes plus `sampler2D`, scalar/vector float, signed integer, and Boolean (`bool`/`bvec2`/`bvec3`/`bvec4`) uniforms, and vertex `mat2`/`mat3`/`mat4` uniforms. |
+| `glGetActiveAttrib`, `glGetActiveUniform` | P | Versioned `RinGLActiveInfoV1`; current linker exposes bounded attributes plus `sampler2D`, scalar/vector float, signed integer, and Boolean (`bool`/`bvec2`/`bvec3`/`bvec4`) uniforms, and vertex `mat2`/`mat3`/`mat4` uniforms. A sampler array is one active `name[0]` record with its declared size. |
 | `glGetAttachedShaders` | B | `ringl_get_attached_shaders` copies the pending vertex/fragment names in deterministic order, including delete-pending shaders retained by a program. |
 | `glGetBooleanv`, `glGetFloatv` | P | Dedicated state snapshots exist; no generic typed getter. |
 | `glGetBufferParameteriv` | P | `ringl_get_buffer_size` / `ringl_get_buffer_usage` only. |
@@ -60,9 +60,9 @@ Status meanings:
 | `glGetString` | P | `ringl_get_string` returns only RinGL's static vendor, renderer, bounded-profile version, and RSH1 language-profile strings; extension strings remain unavailable. |
 | `glGetTexParameteriv` | P | Integer values for `MIN_FILTER`, `MAG_FILTER`, `WRAP_S`, `WRAP_T` only. |
 | `glGetTexParameterfv` | P | `ringl_get_tex_parameterf` exposes only the gated `TEXTURE_MAX_ANISOTROPY_EXT` value; it does not manufacture float views of enum-valued sampler state. |
-| `glGetUniformiv` | P | `ringl_get_uniform_1i` for linked scalar `sampler2D`, `int`, or `bool`, plus `ringl_get_uniform_{2,3,4}i` for complete `ivec` or normalized `bvec` values; no arrays. |
+| `glGetUniformiv` | P | `ringl_get_uniform_1i` for linked scalar `sampler2D`, any individual bounded sampler-array element, `int`, or `bool`, plus `ringl_get_uniform_{2,3,4}i` for complete `ivec` or normalized `bvec` values; numeric/Boolean arrays are unavailable. |
 | `glGetUniformfv` | P | `ringl_get_uniform_{1,2,3,4}f` for linked `float`/`vec2`/`vec3`/`vec4` locations, and `ringl_get_uniform_matrix{2,3,4}f` for bounded vertex square-matrix profiles. |
-| `glGetUniformLocation` | P | Linked `sampler2D`, scalar/vector float, signed integer, scalar/vector Boolean, and bounded vertex `mat2`/`mat3`/`mat4` uniforms only. |
+| `glGetUniformLocation` | P | Linked `sampler2D` (including `name` -> `name[0]` and individual bounded sampler-array elements), scalar/vector float, signed integer, scalar/vector Boolean, and bounded vertex `mat2`/`mat3`/`mat4` uniforms only. |
 | `glGetVertexAttribfv`, `glGetVertexAttribiv`, `glGetVertexAttribPointerv` | P | Versioned attribute record/current-value copy; no generic GLES getter. |
 | `glHint` | P | `GENERATE_MIPMAP_HINT` is advisory. `FRAGMENT_SHADER_DERIVATIVE_HINT` is stored/queryable only after the WebGL `OES_standard_derivatives` context gate; it does not claim a general driver-quality control API. |
 | `glLineWidth`, `glPolygonOffset`, `glSampleCoverage`, `glScissor`, `glViewport` | B | Bounded native raster state; viewport dimensions above the 4096 image limit reject without mutating state. |
@@ -149,7 +149,10 @@ failure. It accepts these exact pnames:
 Dedicated versioned records provide depth range, line width/range, sample
 coverage, blend color, clear values, shader precision, renderbuffer metadata,
 framebuffer attachment metadata, program status, active names, and
-vertex-attribute state. `ringl_get_string()` separately provides only the four
+vertex-attribute state. The framebuffer metadata boundary also exposes logical
+sRGB encoding and component type per live `COLOR_ATTACHMENTi`; nonzero slots
+require the `WEBGL_draw_buffers` gate and failed queries preserve caller output.
+`ringl_get_string()` separately provides only the four
 explicit core identity strings; it does not fabricate extension support.
 Every other GLES query must remain unavailable until it has an equally explicit
 RinGL representation and test coverage.

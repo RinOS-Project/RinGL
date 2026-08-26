@@ -1637,15 +1637,23 @@ int ringl_get_framebuffer_color_attachment(
  * slot report zero. It is an inspection API only: callers must still use
  * ringl_check_framebuffer_status() before issuing a render or readback. */
 int ringl_framebuffer_color_attachment_is_float(uint32_t* is_float_out);
-/* Reports whether COLOR_ATTACHMENT0 has the logical EXT_sRGB encoding. The
- * physical target remains linear inside RinGL, so this is intentionally a
- * separate query from the component-type inspection API. */
+/* Reports whether a bound custom framebuffer color attachment has the logical
+ * EXT_sRGB encoding. `attachment` must be COLOR_ATTACHMENT0 through the
+ * highest enabled draw-buffers slot. The physical target remains linear inside
+ * RinGL, so this is intentionally a separate query from the component-type
+ * inspection API. */
+int ringl_framebuffer_color_attachment_is_srgb_at(
+    uint32_t attachment, uint32_t* is_srgb_out);
+/* Compatibility shorthand for COLOR_ATTACHMENT0. */
 int ringl_framebuffer_color_attachment_is_srgb(uint32_t* is_srgb_out);
-/* Reports the declared color component type of the currently bound FBO's
- * color attachment: RINGL_UNSIGNED_BYTE for normalized/default storage,
+/* Reports the declared component type of a bound custom framebuffer color
+ * attachment: RINGL_UNSIGNED_BYTE for normalized/default storage,
  * RINGL_FLOAT for Float32, or RINGL_HALF_FLOAT_OES for a half-float upload
  * normalized into RinGL's private Float32 shadow. The query is inspection
  * only and leaves the output untouched on failure. */
+int ringl_framebuffer_color_attachment_component_type_at(
+    uint32_t attachment, uint32_t* type_out);
+/* Compatibility shorthand for COLOR_ATTACHMENT0. */
 int ringl_framebuffer_color_attachment_component_type(uint32_t* type_out);
 uint32_t ringl_check_framebuffer_status(uint32_t target);
 
@@ -1755,8 +1763,10 @@ uint32_t ringl_get_current_program(void);
 int32_t ringl_get_attrib_location(uint32_t program, const char* name);
 int32_t ringl_get_uniform_location(uint32_t program, const char* name);
 void ringl_uniform_1i(int32_t location, int32_t value);
-/* Applies a contiguous sampler-array range after validating every element.
- * Scalar int/bool/sampler uniforms accept count one for WebGL uniform1iv. */
+/* Applies a contiguous range of an active sampler array. `location` may name
+ * any element, but `count` must remain inside that declared array. A count of
+ * zero and location -1 are no-ops. Scalar int/bool uniforms accept count one
+ * through this entry point for WebGL uniform1iv compatibility. */
 void ringl_uniform_1iv(int32_t location, uint32_t count,
                        const int32_t* values);
 /* Applies to an active sampler, scalar int, or scalar bool uniform. Boolean

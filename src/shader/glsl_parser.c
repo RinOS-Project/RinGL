@@ -676,9 +676,10 @@ static int texture2d_call(Parser* parser)
 
             if (parser->token.kind != TOK_PLUS &&
                 parser->token.kind != TOK_MINUS &&
-                parser->token.kind != TOK_STAR) {
+                parser->token.kind != TOK_STAR &&
+                parser->token.kind != TOK_SLASH) {
                 fail(parser,
-                     "texture2D uniform coordinate requires +, -, or * vec2");
+                     "texture2D uniform coordinate requires +, -, *, or / vec2");
                 return 0;
             }
             next_token(parser);

@@ -309,9 +309,9 @@ supports `firstUv + secondUv` and `firstUv - secondUv` as sampler coordinates.
 One declared fragment `uniform vec2` may be the right operand of the bounded
 coordinate `+`, `-`, `*`, or `/` forms, including direct sampler calls and the
 existing source-order local-coordinate chains. It may also be the left operand
-of a direct sampler-coordinate `+`, `-`, or `*` expression; `-` preserves the
-uniform-minus-varying operand order in RSH1 rather than normalizing it to the
-opposite subtraction. Its full-width read-only
+of a direct sampler-coordinate `+`, `-`, `*`, or `/` expression; `-` and `/`
+preserve uniform-minus-varying and uniform-divided-by-varying operand order in
+RSH1 rather than normalizing them to their opposite operations. Its full-width read-only
 `xy`/`yx`, `rg`/`gr`, or `st`/`ts` selector is materialized as the exact RSH1
 constant permutation; partial-width and mixed-family selectors are rejected.
 RinGL materializes the live, finite pair as the same two RSH1 Float32 constants
@@ -320,8 +320,8 @@ replacement fragment module before the next native RinGPU draw. A zero default
 or later zero uniform divisor is rejected by generic RinGPU fragment preflight
 before target publication, while a zero literal divisor is rejected during
 lowering. It never routes the coordinate through an Aquamarine renderer or a
-Ladybird-side texture shortcut. Uniform-led division, uniform-led local
-initializers, and general vector expressions remain outside this profile.
+Ladybird-side texture shortcut. Uniform-led local initializers and general
+vector expressions remain outside this profile.
 The same bounded two-UV operation may be named first as
 `vec2 mixedUv = firstUv +/- secondUv;` and then passed to `texture2D()`.
 That result can also feed a direct/finite-affine local chain of up to eight

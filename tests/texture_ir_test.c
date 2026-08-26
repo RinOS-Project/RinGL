@@ -322,6 +322,9 @@ int main(void)
     const char* varying_uniform_right_divide_source =
         "uniform sampler2D colorTexture; uniform vec2 offset; varying vec2 uv; "
         "void main() { gl_FragColor = texture2D(colorTexture, uv / offset.yx); }";
+    const char* varying_uniform_left_divide_source =
+        "uniform sampler2D colorTexture; uniform vec2 offset; varying vec2 uv; "
+        "void main() { gl_FragColor = texture2D(colorTexture, offset.yx / uv); }";
     const char* varying_repeated_partial_source =
         "uniform sampler2D unusedTexture; uniform sampler2D activeTexture; "
         "varying vec2 uv; void main() { gl_FragColor = "
@@ -1307,6 +1310,25 @@ int main(void)
         assert(divide->destination == 10u + component);
         assert(divide->source0 == component);
         assert(divide->source1 == 8u + component);
+    }
+
+    /* The same generic preflight makes a uniform-led division executable.
+     * Its operands must be constant / varying rather than silently reversed. */
+    ringl_shader_source(shader, varying_uniform_left_divide_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 17u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    for (component = 0u; component < 2u; ++component) {
+        const Instruction* divide =
+            (const Instruction*)(blob + sizeof(header)) + 6u + component;
+
+        assert(divide->opcode == RSH1_DIV_F32);
+        assert(divide->destination == 10u + component);
+        assert(divide->source0 == 8u + component);
+        assert(divide->source1 == component);
     }
 
     /* A coordinate uniform may also be the left operand. The constants still

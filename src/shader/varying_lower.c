@@ -158,6 +158,8 @@ enum VaryingTextureCoordinateKind {
     RINGL_VARYING_TEXTURE_COORD_REVERSE_SUB_OFFSET,
     RINGL_VARYING_TEXTURE_COORD_MUL_SCALE,
     RINGL_VARYING_TEXTURE_COORD_DIV_SCALE,
+    /* The finite vec2 constant is the left operand: `offset / uv`. */
+    RINGL_VARYING_TEXTURE_COORD_REVERSE_DIV_SCALE,
     RINGL_VARYING_TEXTURE_COORD_ADD_COORDINATE,
     RINGL_VARYING_TEXTURE_COORD_SUB_COORDINATE,
 };
@@ -690,7 +692,8 @@ static int parse_varying_texture_call(const char** cursor,
                 coordinate_uniform_components[0]]) ||
             !isfinite(coordinate_uniform[
                 coordinate_uniform_components[1]]) ||
-            (**cursor != '+' && **cursor != '-' && **cursor != '*')) {
+            (**cursor != '+' && **cursor != '-' && **cursor != '*' &&
+             **cursor != '/')) {
             return 0;
         }
         operator_kind = (uint32_t)**cursor;
@@ -716,7 +719,9 @@ static int parse_varying_texture_call(const char** cursor,
             ? RINGL_VARYING_TEXTURE_COORD_ADD_OFFSET
             : operator_kind == '-'
             ? RINGL_VARYING_TEXTURE_COORD_REVERSE_SUB_OFFSET
-            : RINGL_VARYING_TEXTURE_COORD_MUL_SCALE;
+            : operator_kind == '*'
+            ? RINGL_VARYING_TEXTURE_COORD_MUL_SCALE
+            : RINGL_VARYING_TEXTURE_COORD_REVERSE_DIV_SCALE;
         call->offset_u = coordinate_uniform[coordinate_uniform_components[0]];
         call->offset_v = coordinate_uniform[coordinate_uniform_components[1]];
         return 1;
@@ -1065,6 +1070,9 @@ static void emit_varying_texture_offset(RinGLRsh1InstructionV1* ins,
 {
     uint32_t offset_u_bits;
     uint32_t offset_v_bits;
+    int reverse_operands = coordinate_kind ==
+            RINGL_VARYING_TEXTURE_COORD_REVERSE_SUB_OFFSET ||
+        coordinate_kind == RINGL_VARYING_TEXTURE_COORD_REVERSE_DIV_SCALE;
     uint16_t opcode = coordinate_kind == RINGL_VARYING_TEXTURE_COORD_ADD_OFFSET
         ? RINGL_RSH1_OP_ADD_F32
         : coordinate_kind == RINGL_VARYING_TEXTURE_COORD_SUB_OFFSET
@@ -1083,19 +1091,15 @@ static void emit_varying_texture_offset(RinGLRsh1InstructionV1* ins,
     ins[(*instruction_cursor)++].immediate = offset_v_bits;
     init_instruction(&ins[*instruction_cursor], opcode);
     ins[*instruction_cursor].destination = (uint16_t)(temporary_base + 2u);
-    ins[*instruction_cursor].source0 = coordinate_kind ==
-            RINGL_VARYING_TEXTURE_COORD_REVERSE_SUB_OFFSET
+    ins[*instruction_cursor].source0 = reverse_operands != 0
         ? (uint16_t)temporary_base : (uint16_t)source_u;
-    ins[(*instruction_cursor)++].source1 = coordinate_kind ==
-            RINGL_VARYING_TEXTURE_COORD_REVERSE_SUB_OFFSET
+    ins[(*instruction_cursor)++].source1 = reverse_operands != 0
         ? (uint16_t)source_u : (uint16_t)temporary_base;
     init_instruction(&ins[*instruction_cursor], opcode);
     ins[*instruction_cursor].destination = (uint16_t)(temporary_base + 3u);
-    ins[*instruction_cursor].source0 = coordinate_kind ==
-            RINGL_VARYING_TEXTURE_COORD_REVERSE_SUB_OFFSET
+    ins[*instruction_cursor].source0 = reverse_operands != 0
         ? (uint16_t)(temporary_base + 1u) : (uint16_t)source_v;
-    ins[(*instruction_cursor)++].source1 = coordinate_kind ==
-            RINGL_VARYING_TEXTURE_COORD_REVERSE_SUB_OFFSET
+    ins[(*instruction_cursor)++].source1 = reverse_operands != 0
         ? (uint16_t)source_v : (uint16_t)(temporary_base + 1u);
 }
 

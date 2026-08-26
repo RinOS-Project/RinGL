@@ -879,17 +879,29 @@ int ringl_get_framebuffer_color_attachment(
                                             attachment);
 }
 
-int ringl_framebuffer_color_attachment_component_type(uint32_t* type_out)
+int ringl_framebuffer_color_attachment_component_type_at(uint32_t attachment,
+                                                         uint32_t* type_out)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLFramebufferObject* framebuffer;
     uint32_t component_type = RINGL_UNSIGNED_BYTE;
+    uint32_t attachment_index;
     uint32_t index;
 
     if (context == NULL)
         return -1;
     if (type_out == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+    if (!color_attachment_valid(attachment)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
+    attachment_index = color_attachment_index(attachment);
+    if (attachment_index != 0u &&
+        context->webgl_draw_buffers_enabled == RINGL_FALSE) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return -1;
     }
     /* The default drawing buffer is supplied by the embedding as a normalized
@@ -903,21 +915,23 @@ int ringl_framebuffer_color_attachment_component_type(uint32_t* type_out)
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return -1;
     }
-    if (framebuffer->color_attachment_kind[0] ==
+    if (framebuffer->color_attachment_kind[attachment_index] ==
         RINGL_FRAMEBUFFER_ATTACHMENT_NONE) {
         *type_out = component_type;
         return 0;
     }
-    index = ringl_object_slot_index(framebuffer->color_attachment_object[0]);
+    index = ringl_object_slot_index(
+        framebuffer->color_attachment_object[attachment_index]);
     if (index >= RINGL_OBJECT_SLOT_COUNT) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return -1;
     }
-    if (framebuffer->color_attachment_kind[0] ==
+    if (framebuffer->color_attachment_kind[attachment_index] ==
         RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D) {
         RinGLTextureObject* texture;
 
-        if (ringl_object_lookup(context, framebuffer->color_attachment_object[0],
+        if (ringl_object_lookup(context,
+                                framebuffer->color_attachment_object[attachment_index],
                                 RINGL_OBJECT_TEXTURE) == NULL) {
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return -1;
@@ -931,16 +945,18 @@ int ringl_framebuffer_color_attachment_component_type(uint32_t* type_out)
          * realizes a Float32 linear image for sampling and blending. */
         component_type = texture->srgb_encoding != 0u
             ? RINGL_UNSIGNED_BYTE : texture->color_component_type;
-    } else if (framebuffer->color_attachment_kind[0] ==
+    } else if (framebuffer->color_attachment_kind[attachment_index] ==
                RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER) {
         RinGLRenderbufferObject* renderbuffer;
 
-        if (ringl_object_lookup(context, framebuffer->color_attachment_object[0],
+        if (ringl_object_lookup(context,
+                                framebuffer->color_attachment_object[attachment_index],
                                 RINGL_OBJECT_RENDERBUFFER) == NULL) {
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return -1;
         }
-        index = ringl_object_slot_index(framebuffer->color_attachment_object[0]);
+        index = ringl_object_slot_index(
+            framebuffer->color_attachment_object[attachment_index]);
         if (index >= RINGL_OBJECT_SLOT_COUNT) {
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return -1;
@@ -963,13 +979,22 @@ int ringl_framebuffer_color_attachment_component_type(uint32_t* type_out)
     return 0;
 }
 
-int ringl_framebuffer_color_attachment_is_float(uint32_t* is_float_out)
+int ringl_framebuffer_color_attachment_component_type(uint32_t* type_out)
+{
+    return ringl_framebuffer_color_attachment_component_type_at(
+        RINGL_COLOR_ATTACHMENT0, type_out);
+}
+
+int ringl_framebuffer_color_attachment_is_float_at(uint32_t attachment,
+                                                    uint32_t* is_float_out)
 {
     uint32_t component_type;
 
     if (is_float_out == NULL)
-        return ringl_framebuffer_color_attachment_component_type(NULL);
-    if (ringl_framebuffer_color_attachment_component_type(&component_type) !=
+        return ringl_framebuffer_color_attachment_component_type_at(attachment,
+                                                                      NULL);
+    if (ringl_framebuffer_color_attachment_component_type_at(attachment,
+                                                              &component_type) !=
         0) {
         return -1;
     }
@@ -977,11 +1002,20 @@ int ringl_framebuffer_color_attachment_is_float(uint32_t* is_float_out)
     return 0;
 }
 
-int ringl_framebuffer_color_attachment_is_srgb(uint32_t* is_srgb_out)
+int ringl_framebuffer_color_attachment_is_float(uint32_t* is_float_out)
+{
+    return ringl_framebuffer_color_attachment_is_float_at(
+        RINGL_COLOR_ATTACHMENT0, is_float_out);
+}
+
+int ringl_framebuffer_color_attachment_is_srgb_at(uint32_t attachment,
+                                                   uint32_t* is_srgb_out)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLFramebufferObject* framebuffer;
+    uint32_t attachment_index;
     uint32_t index;
+    uint32_t is_srgb = RINGL_FALSE;
 
     if (context == NULL)
         return -1;
@@ -989,47 +1023,70 @@ int ringl_framebuffer_color_attachment_is_srgb(uint32_t* is_srgb_out)
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return -1;
     }
-    *is_srgb_out = RINGL_FALSE;
-    if (context->framebuffer_binding == 0u)
+    if (!color_attachment_valid(attachment)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
+    attachment_index = color_attachment_index(attachment);
+    if (attachment_index != 0u &&
+        context->webgl_draw_buffers_enabled == RINGL_FALSE) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
+    if (context->framebuffer_binding == 0u) {
+        *is_srgb_out = is_srgb;
         return 0;
+    }
     framebuffer = bound_framebuffer(context);
     if (framebuffer == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return -1;
     }
-    if (framebuffer->color_attachment_kind[0] ==
+    if (framebuffer->color_attachment_kind[attachment_index] ==
         RINGL_FRAMEBUFFER_ATTACHMENT_NONE) {
+        *is_srgb_out = is_srgb;
         return 0;
     }
-    index = ringl_object_slot_index(framebuffer->color_attachment_object[0]);
+    index = ringl_object_slot_index(
+        framebuffer->color_attachment_object[attachment_index]);
     if (index >= RINGL_OBJECT_SLOT_COUNT) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return -1;
     }
-    if (framebuffer->color_attachment_kind[0] ==
+    if (framebuffer->color_attachment_kind[attachment_index] ==
         RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D) {
-        if (ringl_object_lookup(context, framebuffer->color_attachment_object[0],
+        if (ringl_object_lookup(context,
+                                framebuffer->color_attachment_object[attachment_index],
                                 RINGL_OBJECT_TEXTURE) == NULL) {
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return -1;
         }
-        *is_srgb_out = context->textures[index].srgb_encoding != 0u
+        is_srgb = context->textures[index].srgb_encoding != 0u
             ? RINGL_TRUE : RINGL_FALSE;
+        *is_srgb_out = is_srgb;
         return 0;
     }
-    if (framebuffer->color_attachment_kind[0] ==
+    if (framebuffer->color_attachment_kind[attachment_index] ==
         RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER) {
-        if (ringl_object_lookup(context, framebuffer->color_attachment_object[0],
+        if (ringl_object_lookup(context,
+                                framebuffer->color_attachment_object[attachment_index],
                                 RINGL_OBJECT_RENDERBUFFER) == NULL) {
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return -1;
         }
-        *is_srgb_out = context->renderbuffers[index].srgb_encoding != 0u
+        is_srgb = context->renderbuffers[index].srgb_encoding != 0u
             ? RINGL_TRUE : RINGL_FALSE;
+        *is_srgb_out = is_srgb;
         return 0;
     }
     ringl_context_record_error(context, RINGL_INVALID_OPERATION);
     return -1;
+}
+
+int ringl_framebuffer_color_attachment_is_srgb(uint32_t* is_srgb_out)
+{
+    return ringl_framebuffer_color_attachment_is_srgb_at(
+        RINGL_COLOR_ATTACHMENT0, is_srgb_out);
 }
 
 uint32_t ringl_framebuffer_operation_error(const RinGLContext* context)

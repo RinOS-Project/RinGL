@@ -108,6 +108,13 @@ static int fake_transition_image(void* session, uint64_t command_list,
     return 0;
 }
 
+static int fake_begin_render_pass_mrt(void* session, uint64_t command_list,
+                                      const RinGLRinGpuRenderPassMrtV1* pass)
+{
+    (void)session;
+    return command_list != 0u && pass != NULL ? 0 : -1;
+}
+
 static int fake_close_command_list(void* session, uint64_t command_list)
 {
     (void)session;
@@ -184,6 +191,7 @@ int main(void)
         .create_command_list = fake_create_command_list,
         .reset_command_list = fake_reset_command_list,
         .transition_image = fake_transition_image,
+        .begin_render_pass_mrt_v1 = fake_begin_render_pass_mrt,
         .close_command_list = fake_close_command_list,
     };
     RinGLRinGpuBindingV1 binding = {
@@ -245,6 +253,24 @@ int main(void)
     assert(is_srgb == RINGL_TRUE);
     assert(ringl_framebuffer_color_attachment_component_type(&component_type) == 0);
     assert(component_type == RINGL_UNSIGNED_BYTE);
+    component_type = UINT32_C(0xdeadbeef);
+    assert(ringl_framebuffer_color_attachment_component_type_at(
+               RINGL_COLOR_ATTACHMENT1, &component_type) == -1);
+    assert(ringl_get_error() == RINGL_INVALID_ENUM);
+    assert(component_type == UINT32_C(0xdeadbeef));
+    assert(ringl_enable_webgl_draw_buffers() == 0);
+    ringl_framebuffer_texture_2d(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT1,
+                                 RINGL_TEXTURE_2D, texture, 0);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_framebuffer_color_attachment_is_srgb_at(
+               RINGL_COLOR_ATTACHMENT1, &is_srgb) == 0);
+    assert(is_srgb == RINGL_TRUE);
+    assert(ringl_framebuffer_color_attachment_component_type_at(
+               RINGL_COLOR_ATTACHMENT1, &component_type) == 0);
+    assert(component_type == RINGL_UNSIGNED_BYTE);
+    ringl_framebuffer_texture_2d(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT1,
+                                 RINGL_TEXTURE_2D, 0u, 0);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
 
     {
         RinGLColorTarget target;

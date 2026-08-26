@@ -1632,20 +1632,31 @@ int ringl_get_framebuffer_attachment(
  * and stencil state. */
 int ringl_get_framebuffer_color_attachment(
     RinGLFramebufferAttachmentInfoV1* attachment);
-/* Reports whether the bound framebuffer's COLOR_ATTACHMENT0 has native
- * floating-point components. The default framebuffer and an unattached color
- * slot report zero. It is an inspection API only: callers must still use
- * ringl_check_framebuffer_status() before issuing a render or readback. */
+/* Reports whether a bound framebuffer color attachment has native
+ * floating-point components. attachment must name COLOR_ATTACHMENT0 through
+ * COLOR_ATTACHMENT3; nonzero attachments require WEBGL_draw_buffers. The
+ * default framebuffer and an unattached color slot report zero. It is an
+ * inspection API only: callers must still use ringl_check_framebuffer_status()
+ * before issuing a render or readback. */
+int ringl_framebuffer_color_attachment_is_float_at(uint32_t attachment,
+                                                   uint32_t* is_float_out);
 int ringl_framebuffer_color_attachment_is_float(uint32_t* is_float_out);
-/* Reports whether COLOR_ATTACHMENT0 has the logical EXT_sRGB encoding. The
+/* Reports whether a color attachment has the logical EXT_sRGB encoding. The
  * physical target remains linear inside RinGL, so this is intentionally a
- * separate query from the component-type inspection API. */
+ * separate query from the component-type inspection API. The _at forms accept
+ * COLOR_ATTACHMENT0 through COLOR_ATTACHMENT3; nonzero attachments require
+ * WEBGL_draw_buffers. */
+int ringl_framebuffer_color_attachment_is_srgb_at(uint32_t attachment,
+                                                  uint32_t* is_srgb_out);
 int ringl_framebuffer_color_attachment_is_srgb(uint32_t* is_srgb_out);
-/* Reports the declared color component type of the currently bound FBO's
- * color attachment: RINGL_UNSIGNED_BYTE for normalized/default storage,
- * RINGL_FLOAT for Float32, or RINGL_HALF_FLOAT_OES for a half-float upload
- * normalized into RinGL's private Float32 shadow. The query is inspection
- * only and leaves the output untouched on failure. */
+/* Reports a color attachment's declared component type:
+ * RINGL_UNSIGNED_BYTE for normalized/default storage, RINGL_FLOAT for
+ * Float32, or RINGL_HALF_FLOAT_OES for a half-float upload normalized into
+ * RinGL's private Float32 shadow. The _at forms accept COLOR_ATTACHMENT0
+ * through COLOR_ATTACHMENT3; nonzero attachments require WEBGL_draw_buffers.
+ * The query is inspection only and leaves the output untouched on failure. */
+int ringl_framebuffer_color_attachment_component_type_at(uint32_t attachment,
+                                                         uint32_t* type_out);
 int ringl_framebuffer_color_attachment_component_type(uint32_t* type_out);
 uint32_t ringl_check_framebuffer_status(uint32_t target);
 

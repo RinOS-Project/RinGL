@@ -131,12 +131,21 @@ int main(void)
     assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) > 0u);
     assert(strstr(log, "read-only") != NULL);
 
+    /* A scalar float varying consumes one real native interpolant slot. It is
+     * not coerced into a vec2 profile or rejected before linker validation. */
     ringl_shader_source(fragment,
-        "varying float invalid; void main() { gl_FragColor = 1.0; }", -1);
+        "varying float intensity; void main() { gl_FragColor = intensity; }",
+        -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+    assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) == 0u);
+
+    ringl_shader_source(fragment,
+        "varying int invalid; void main() { gl_FragColor = 1.0; }", -1);
     ringl_compile_shader(fragment);
     assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
     assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) > 0u);
-    assert(strstr(log, "varying vec2") != NULL);
+    assert(strstr(log, "varying float") != NULL);
 
     ringl_shader_source(fragment,
         "#extension GL_OES_standard_derivatives : enable\n"

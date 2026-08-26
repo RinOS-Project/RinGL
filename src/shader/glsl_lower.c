@@ -519,7 +519,7 @@ static Symbol* add_varying_symbol(Lower* lower, const Token* token,
     Symbol* symbol;
 
     if (lower == NULL || token == NULL ||
-        (width != 2u && width != 3u && width != 4u))
+        (width < 1u || width > 4u))
         return NULL;
     symbol = add_symbol(lower, token,
                         lower->shader_type == RINGL_FRAGMENT_SHADER,
@@ -3646,14 +3646,17 @@ static int parse_all(Lower* lower)
             uint8_t width;
 
             next(lower);
-            if (lower->token.kind == T_VEC2)
+            if (lower->token.kind == T_FLOAT)
+                width = 1u;
+            else if (lower->token.kind == T_VEC2)
                 width = 2u;
             else if (lower->token.kind == T_VEC3)
                 width = 3u;
             else if (lower->token.kind == T_VEC4)
                 width = 4u;
             else {
-                fail(lower, "expected varying vec2, vec3, or vec4");
+                fail(lower,
+                     "expected varying float, vec2, vec3, or vec4");
                 return 0;
             }
             next(lower);

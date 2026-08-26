@@ -24,6 +24,9 @@
 #define RINGL_GLSL_MAX_MAT2_UNIFORMS 4u
 #define RINGL_GLSL_MAX_MAT3_UNIFORMS 4u
 #define RINGL_GLSL_MAX_MAT4_UNIFORMS 4u
+/* The bounded texture lowerer has its own eight-vec2 profile cap. Generic
+ * declaration parsing instead follows the full 28-scalar RinGPU interface. */
+#define RINGL_GLSL_MAX_GENERIC_VARYINGS 28u
 #define RINGL_GLSL_MAX_VARYINGS 8u
 #define RINGL_GLSL_NAME_MAX 64u
 
@@ -81,8 +84,8 @@ typedef struct RinGLGlslParseResult {
     char mat2_uniform_names[RINGL_GLSL_MAX_MAT2_UNIFORMS][RINGL_GLSL_NAME_MAX];
     char mat3_uniform_names[RINGL_GLSL_MAX_MAT3_UNIFORMS][RINGL_GLSL_NAME_MAX];
     char mat4_uniform_names[RINGL_GLSL_MAX_MAT4_UNIFORMS][RINGL_GLSL_NAME_MAX];
-    char varying_names[RINGL_GLSL_MAX_VARYINGS][RINGL_GLSL_NAME_MAX];
-    uint32_t varying_widths[RINGL_GLSL_MAX_VARYINGS];
+    char varying_names[RINGL_GLSL_MAX_GENERIC_VARYINGS][RINGL_GLSL_NAME_MAX];
+    uint32_t varying_widths[RINGL_GLSL_MAX_GENERIC_VARYINGS];
     char diagnostic[RINGL_GLSL_DIAGNOSTIC_MAX];
 } RinGLGlslParseResult;
 

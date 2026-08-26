@@ -37,10 +37,13 @@
 #define RINGL_MAX_MAT2_UNIFORMS 4u
 #define RINGL_MAX_MAT3_UNIFORMS 4u
 #define RINGL_MAX_MAT4_UNIFORMS 4u
-#define RINGL_MAX_VARYINGS 8u
 /* RSH1/RinGPU reserve vertex outputs 0..3 for clip position. The remaining
  * 28 scalar slots are the complete native perspective-varying interface. */
 #define RINGL_MAX_VARYING_COMPONENTS 28u
+/* A generic declaration may be scalar, so the number of declarations is not
+ * capped at the older eight-vec2 texture-profile limit. Keep program metadata
+ * large enough to name every real scalar slot. */
+#define RINGL_MAX_VARYINGS RINGL_MAX_VARYING_COMPONENTS
 #define RINGL_UNIFORM_NAME_MAX RINGL_ACTIVE_INFO_NAME_MAX
 /* RINGL_MAX_TEXTURE_SIZE is 4096, so a 2D texture has at most levels 0..12.
  * Keep the storage bound explicit rather than deriving an unchecked array

@@ -1658,14 +1658,18 @@ static int varying_declaration(Parser* parser)
     uint32_t width;
 
     next_token(parser);
-    if (parser->token.kind == TOK_VEC2) {
+    if (parser->token.kind == TOK_FLOAT) {
+        width = 1u;
+    } else if (parser->token.kind == TOK_VEC2) {
         width = 2u;
     } else if (parser->token.kind == TOK_VEC3) {
         width = 3u;
     } else if (parser->token.kind == TOK_VEC4) {
         width = 4u;
     } else {
-        fail(parser, "only 'varying vec2', 'varying vec3', or 'varying vec4' is supported");
+        fail(parser,
+             "only 'varying float', 'varying vec2', 'varying vec3', or "
+             "'varying vec4' is supported");
         return 0;
     }
     next_token(parser);
@@ -1676,7 +1680,7 @@ static int varying_declaration(Parser* parser)
     name = parser->token;
     if (!add_symbol(parser, &name, SYMBOL_VARYING, width))
         return 0;
-    if (parser->result->varying_count >= RINGL_GLSL_MAX_VARYINGS) {
+    if (parser->result->varying_count >= RINGL_GLSL_MAX_GENERIC_VARYINGS) {
         fail(parser, "too many varyings");
         return 0;
     }

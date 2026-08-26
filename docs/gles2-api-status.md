@@ -102,7 +102,7 @@ Implemented fixed limits are `MAX_VERTEX_ATTRIBS = 16`,
 MAX_COMBINED_TEXTURE_IMAGE_UNITS = 8`. They are real bounded limits, not a
 claim of the GLES-required minimums or of conformance.
 
-Matching generic `varying vec2`/`vec3`/`vec4` assignments use up to 28 scalar
+Matching generic `varying float`/`vec2`/`vec3`/`vec4` assignments use up to 28 scalar
 perspective interpolants. RinGPU reserves the other four scalar vertex outputs
 for clip position; interfaces that would require 29 or more varying components
 fail linking, and every declared fragment component is materialized as typed
@@ -110,8 +110,7 @@ RSH1 input even when it is unused by the fragment expression. Vertex lvalue
 selectors may write non-overlapping components through one exact selector
 alphabet, and RinGL links only after all declared components have been stored.
 Repeated, mixed-family, and out-of-range lvalue selectors fail compilation;
-partially written varyings fail linking. General varying expressions and
-generic texture-coordinate use remain outside this bounded status.
+partially written varyings fail linking. Component-wise Float `+`/`-`/`*`/`/` expressions may consume multiple declared generic varyings and scalar broadcasts through the same native slots; generic texture-coordinate expressions and broader GLSL linkage remain outside this bounded status.
 
 ## Query inventory
 

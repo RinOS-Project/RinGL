@@ -576,166 +576,41 @@ int main(void)
         ringl_destroy_array_test_program(&array_program);
     }
 
-    /* The per-type tests below keep each shader within its bounded RSH1
-     * register profile. */
-#if 0
-    /* Every bounded uniform class uses the same `name[0]` reflection shape
-     * and validates a whole setter span before publishing new RSH1 modules. */
+    /* Fragment matrices use the same program-owned RSH1 constants and
+     * column-major multiplication as the vertex profile.  Keep this as a
+     * real indexed array expression so the lowerer, linker, reflection, and
+     * contiguous setter path must all agree on the fragment-stage location. */
     {
-        static const uint32_t expected_types[] = {
-            RINGL_FLOAT, RINGL_FLOAT_VEC2, RINGL_FLOAT_VEC3, RINGL_FLOAT_VEC4,
-            RINGL_FLOAT_MAT4, RINGL_FLOAT_MAT2, RINGL_FLOAT_MAT3,
-            RINGL_INT, RINGL_INT_VEC2, RINGL_INT_VEC3, RINGL_INT_VEC4,
-            RINGL_BOOL, RINGL_BOOL_VEC2, RINGL_BOOL_VEC3, RINGL_BOOL_VEC4,
-        };
-        uint32_t array_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
-        uint32_t array_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
-        uint32_t array_program = ringl_create_program();
-        float floats[2] = { 0.25f, 0.75f };
-        float vec2s[4] = { 1.0f, 2.0f, 3.0f, 4.0f };
-        float vec3s[6] = { 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f };
-        float vec4s[8] = { 1.0f, 2.0f, 3.0f, 4.0f,
-                            5.0f, 6.0f, 7.0f, 8.0f };
-        int32_t ints[2] = { -2, 7 };
-        int32_t ivec2s[4] = { 1, 2, 3, 4 };
-        int32_t ivec3s[6] = { 1, 2, 3, 4, 5, 6 };
-        int32_t ivec4s[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
-        int32_t bools[2] = { 0, -9 };
-        int32_t bvec2s[4] = { 0, 1, -1, 0 };
-        int32_t bvec3s[6] = { 0, 1, -1, 0, 0, 2 };
-        int32_t bvec4s[8] = { 0, 1, -1, 0, 0, 0, 2, -4 };
-        float mat2s[8] = { 1.0f, 0.0f, 0.0f, 1.0f,
-                            2.0f, 0.0f, 0.0f, 2.0f };
-        float mat3s[18] = { 0.0f };
-        float mat4s[32] = { 0.0f };
-        float float_value = 0.0f;
-        float float_values[4] = { 0.0f };
-        int32_t integer_values[4] = { 0, 0, 0, 0 };
-        uint32_t index;
-        int32_t location;
+        RinGLArrayTestProgram array_program = ringl_create_array_test_program(
+            "uniform mat2 colors[2]; void main() { "
+            "vec2 color = colors[1] * vec2(0.25, 0.5); "
+            "gl_FragColor = vec4(color, 0.0, 1.0); }");
+        const float values[8] = { 1.0f, 0.0f, 0.0f, 1.0f,
+                                  0.5f, 0.2f, 0.1f, 0.6f };
+        float readback[4] = { 0.0f };
 
-        mat3s[0] = mat3s[4] = mat3s[8] = 1.0f;
-        mat3s[9] = mat3s[13] = mat3s[17] = 2.0f;
-        mat4s[0] = mat4s[5] = mat4s[10] = mat4s[15] = 1.0f;
-        mat4s[16] = mat4s[21] = mat4s[26] = mat4s[31] = 2.0f;
-        assert(array_vertex != 0u && array_fragment != 0u &&
-               array_program != 0u);
-        ringl_shader_source(array_vertex,
-                            "void main() { gl_Position = vec4(0.0); }", -1);
-        ringl_shader_source(
-            array_fragment,
-            "uniform float f[2]; uniform vec2 v2[2]; uniform vec3 v3[2]; "
-            "uniform vec4 v4[2]; uniform int i[2]; uniform ivec2 i2[2]; "
-            "uniform ivec3 i3[2]; uniform ivec4 i4[2]; uniform bool b[2]; "
-            "uniform bvec2 b2[2]; uniform bvec3 b3[2]; uniform bvec4 b4[2]; "
-            "uniform mat2 m2[2]; uniform mat3 m3[2]; uniform mat4 m4[2]; "
-            "void main() { gl_FragColor = vec4(1.0); }", -1);
-        ringl_compile_shader(array_vertex);
-        ringl_compile_shader(array_fragment);
-        assert(ringl_get_shader_compile_status(array_vertex) == RINGL_TRUE);
-        assert(ringl_get_shader_compile_status(array_fragment) == RINGL_TRUE);
-        ringl_attach_shader(array_program, array_vertex);
-        ringl_attach_shader(array_program, array_fragment);
-        ringl_link_program(array_program);
-        assert(ringl_get_program_link_status(array_program) == RINGL_TRUE);
-        assert(ringl_get_program_info(array_program, &info) == 0);
-        assert(info.active_uniform_count ==
-               sizeof(expected_types) / sizeof(expected_types[0]));
-        for (index = 0u; index < sizeof(expected_types) / sizeof(expected_types[0]);
-             ++index) {
-            assert(ringl_get_active_uniform(array_program, index, &active_info) ==
-                   0);
-            assert(active_info.type == expected_types[index] &&
-                   active_info.size == 2u && strstr(active_info.name, "[0]") != NULL);
-        }
-        ringl_use_program(array_program);
-        location = ringl_get_uniform_location(array_program, "f");
-        assert(location == ringl_get_uniform_location(array_program, "f[0]"));
-        ringl_uniform_1fv(location, 2u, floats);
+        assert(ringl_get_program_info(array_program.program, &info) == 0 &&
+               info.active_uniform_count == 1u);
+        assert(ringl_get_active_uniform(array_program.program, 0u,
+                                        &active_info) == 0 &&
+               active_info.type == RINGL_FLOAT_MAT2 && active_info.size == 2u &&
+               strcmp(active_info.name, "colors[0]") == 0);
+        location = ringl_get_uniform_location(array_program.program, "colors");
+        assert(location == ringl_get_uniform_location(array_program.program,
+                                                      "colors[0]"));
+        ringl_use_program(array_program.program);
+        ringl_uniform_matrix2fv_array(location, 2u, RINGL_FALSE, values);
         assert(ringl_get_error() == RINGL_NO_ERROR);
-        assert(ringl_get_uniform_1f(array_program, location + 1, &float_value) == 0 &&
-               float_value == 0.75f);
-        ringl_uniform_1fv(location + 1, 2u, floats);
+        assert(ringl_get_uniform_matrix2f(array_program.program, location + 1,
+                                          readback) == 0 &&
+               memcmp(readback, values + 4, sizeof(readback)) == 0);
+        ringl_uniform_matrix2fv_array(location + 1, 2u, RINGL_FALSE, values);
         assert(ringl_get_error() == RINGL_INVALID_OPERATION);
-        assert(ringl_get_uniform_1f(array_program, location + 1, &float_value) == 0 &&
-               float_value == 0.75f);
-        location = ringl_get_uniform_location(array_program, "v2");
-        ringl_uniform_2fv(location, 2u, vec2s);
-        assert(ringl_get_error() == RINGL_NO_ERROR);
-        assert(ringl_get_uniform_2f(array_program, location + 1, float_values) == 0 &&
-               float_values[0] == 3.0f && float_values[1] == 4.0f);
-        location = ringl_get_uniform_location(array_program, "v3");
-        ringl_uniform_3fv(location, 2u, vec3s);
-        assert(ringl_get_error() == RINGL_NO_ERROR);
-        assert(ringl_get_uniform_3f(array_program, location + 1, float_values) == 0 &&
-               float_values[2] == 6.0f);
-        location = ringl_get_uniform_location(array_program, "v4");
-        ringl_uniform_4fv(location, 2u, vec4s);
-        assert(ringl_get_error() == RINGL_NO_ERROR);
-        assert(ringl_get_uniform_4f(array_program, location + 1, float_values) == 0 &&
-               float_values[3] == 8.0f);
-        location = ringl_get_uniform_location(array_program, "i");
-        ringl_uniform_1iv(location, 2u, ints);
-        assert(ringl_get_error() == RINGL_NO_ERROR);
-        assert(ringl_get_uniform_1i(array_program, location + 1, &integer_values[0]) ==
-               0 && integer_values[0] == 7);
-        location = ringl_get_uniform_location(array_program, "i2");
-        ringl_uniform_2iv(location, 2u, ivec2s);
-        assert(ringl_get_error() == RINGL_NO_ERROR);
-        assert(ringl_get_uniform_2i(array_program, location + 1, integer_values) == 0 &&
-               integer_values[1] == 4);
-        location = ringl_get_uniform_location(array_program, "i3");
-        ringl_uniform_3iv(location, 2u, ivec3s);
-        assert(ringl_get_error() == RINGL_NO_ERROR);
-        assert(ringl_get_uniform_3i(array_program, location + 1, integer_values) == 0 &&
-               integer_values[2] == 6);
-        location = ringl_get_uniform_location(array_program, "i4");
-        ringl_uniform_4iv(location, 2u, ivec4s);
-        assert(ringl_get_error() == RINGL_NO_ERROR);
-        assert(ringl_get_uniform_4i(array_program, location + 1, integer_values) == 0 &&
-               integer_values[3] == 8);
-        location = ringl_get_uniform_location(array_program, "b");
-        ringl_uniform_1iv(location, 2u, bools);
-        assert(ringl_get_error() == RINGL_NO_ERROR);
-        assert(ringl_get_uniform_1i(array_program, location + 1, &integer_values[0]) ==
-               0 && integer_values[0] == 1);
-        location = ringl_get_uniform_location(array_program, "b2");
-        ringl_uniform_2iv(location, 2u, bvec2s);
-        assert(ringl_get_error() == RINGL_NO_ERROR);
-        assert(ringl_get_uniform_2i(array_program, location + 1, integer_values) == 0 &&
-               integer_values[0] == 1 && integer_values[1] == 0);
-        location = ringl_get_uniform_location(array_program, "b3");
-        ringl_uniform_3iv(location, 2u, bvec3s);
-        assert(ringl_get_error() == RINGL_NO_ERROR);
-        assert(ringl_get_uniform_3i(array_program, location + 1, integer_values) == 0 &&
-               integer_values[2] == 1);
-        location = ringl_get_uniform_location(array_program, "b4");
-        ringl_uniform_4iv(location, 2u, bvec4s);
-        assert(ringl_get_error() == RINGL_NO_ERROR);
-        assert(ringl_get_uniform_4i(array_program, location + 1, integer_values) == 0 &&
-               integer_values[2] == 1 && integer_values[3] == 1);
-        location = ringl_get_uniform_location(array_program, "m2");
-        ringl_uniform_matrix2fv_array(location, 2u, RINGL_FALSE, mat2s);
-        assert(ringl_get_error() == RINGL_NO_ERROR);
-        assert(ringl_get_uniform_matrix2f(array_program, location + 1, float_values) ==
-               0 && float_values[0] == 2.0f && float_values[3] == 2.0f);
-        location = ringl_get_uniform_location(array_program, "m3");
-        ringl_uniform_matrix3fv_array(location, 2u, RINGL_FALSE, mat3s);
-        assert(ringl_get_error() == RINGL_NO_ERROR);
-        assert(ringl_get_uniform_matrix3f(array_program, location + 1, mat3s) == 0 &&
-               mat3s[0] == 2.0f && mat3s[4] == 2.0f && mat3s[8] == 2.0f);
-        location = ringl_get_uniform_location(array_program, "m4");
-        ringl_uniform_matrix4fv_array(location, 2u, RINGL_FALSE, mat4s);
-        assert(ringl_get_error() == RINGL_NO_ERROR);
-        assert(ringl_get_uniform_matrix4f(array_program, location + 1, mat4s) == 0 &&
-               mat4s[0] == 2.0f && mat4s[5] == 2.0f && mat4s[10] == 2.0f &&
-               mat4s[15] == 2.0f);
-        ringl_delete_program(array_program);
-        ringl_delete_shader(array_vertex);
-        ringl_delete_shader(array_fragment);
+        assert(ringl_get_uniform_matrix2f(array_program.program, location + 1,
+                                          readback) == 0 &&
+               memcmp(readback, values + 4, sizeof(readback)) == 0);
+        ringl_destroy_array_test_program(&array_program);
     }
-
-#endif
 
     ringl_uniform_1i(-1, 7);
     assert(ringl_get_error() == RINGL_NO_ERROR);

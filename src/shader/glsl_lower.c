@@ -4066,17 +4066,14 @@ static int parse_all(Lower* lower)
                 uniform_type = RINGL_FLOAT_VEC4;
             } else if (lower->token.kind == T_IVEC4) {
                 uniform_type = RINGL_INT_VEC4;
-            } else if (lower->token.kind == T_MAT2 &&
-                       lower->shader_type == RINGL_VERTEX_SHADER) {
+            } else if (lower->token.kind == T_MAT2) {
                 uniform_type = RINGL_FLOAT_MAT2;
-            } else if (lower->token.kind == T_MAT3 &&
-                       lower->shader_type == RINGL_VERTEX_SHADER) {
+            } else if (lower->token.kind == T_MAT3) {
                 uniform_type = RINGL_FLOAT_MAT3;
-            } else if (lower->token.kind == T_MAT4 &&
-                       lower->shader_type == RINGL_VERTEX_SHADER) {
+            } else if (lower->token.kind == T_MAT4) {
                 uniform_type = RINGL_FLOAT_MAT4;
             } else {
-                fail(lower, "only vertex mat2-4 and scalar/vector float, int, or bool uniforms are supported");
+                fail(lower, "only scalar/vector/matrix float, int, or bool uniforms are supported");
                 return 0;
             }
             next(lower);

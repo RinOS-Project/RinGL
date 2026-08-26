@@ -608,14 +608,17 @@ fragment profile may combine the matching bounded texture calls and multiply
 their RGBA result by one linked `uniform vec4`; RinGL materializes the finite
 four-component value in the program-owned fragment RSH1 module and retains
 the sampler-resource metadata needed to bind every native image/sampler pair.
-This specialized varying/texture shape deliberately remains `mat4` only. The
-generic no-varying vertex profile additionally executes matching Float
+This specialized varying/texture shape deliberately remains vertex-`mat4`
+only. The generic no-varying vertex and fragment profile additionally executes matching Float
 `matrixCompMult(matN, matN)` for `mat2`, `mat3`, and `mat4`: scalar-diagonal,
 component-list/vector-column, and matching-copy constructors feed initialized
 local or program-owned uniform matrices, and every column-major component
 becomes an executable scalar RSH1 multiply before a matching `matN * vecN`.
-Matrix arrays, cross-dimension conversion, general matrix arithmetic, and all
-other matrix expressions remain outside both shapes. Direct texture coordinates
+Bounded arrays of up to four `matN` elements use decimal constant indices in
+either stage; their contiguous setters atomically rebuild the owning stage(s).
+Cross-dimension conversion, general matrix arithmetic, dynamic indices, and
+matrix/vector combinations with the specialized varying/texture shape remain
+outside both profiles. Direct texture coordinates
 through eight UV pairs fit the RSH1 interface; broader local coordinate
 expressions remain outside it and fail lowering without publishing a truncated
 module.
@@ -1224,10 +1227,12 @@ validate/create both replacement modules, then invalidates the old pipeline
 and publishes the new executable. Thus an update affects the actual RinGPU
 draw without textual source replacement or a CPU color fallback. The accepted
 generic no-varying forms include `vec4(tint2, 0.0, 1.0)` for a `vec2`,
-`vec4(tint3, 1.0)` for a `vec3`, a direct `vec4` read, and vertex
+`vec4(tint3, 1.0)` for a `vec3`, a direct `vec4` read, vertex
 `gl_Position = transform * position` for one matching `uniform mat2`/`mat3`/
-`mat4` and `attribute vec2`/`vec3`/`vec4`, as well as bounded no-varying vector
-locals and component-wise arithmetic. The generic form has no varyings and one
-matrix per type/location; arrays, other matrix expressions, and matrix/vector
-combinations with the specialized varying/texture profiles remain unavailable
-rather than being reported as successful GLES.
+`mat4` and `attribute vec2`/`vec3`/`vec4`, and fragment
+`gl_FragColor = matN * vecN` expressions. Each stage accepts up to four
+constant-indexed matrix-array elements per type; updates retain the same
+failure-atomic program-owned module replacement. The generic form has no
+varyings. Dynamic indexing, cross-dimension/general matrix arithmetic, and
+matrix/vector combinations with the specialized varying/texture profiles
+remain unavailable rather than being reported as successful GLES.

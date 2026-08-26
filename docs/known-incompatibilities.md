@@ -82,6 +82,14 @@ exact structural forms documented by that profile. A source program outside
 those forms must fail compilation/linking without publishing partial RSH1 or
 submitting a RinGPU command.
 
+The generic no-varying matrix form permits `mat2`/`mat3`/`mat4` uniforms in
+both vertex and fragment stages, including arrays of at most four elements
+selected by an in-range decimal constant. These are program-owned scalar RSH1
+constants and `matN * vecN` products; contiguous matrix uploads replace the
+affected linked stage module atomically. Dynamic indexing, cross-dimension or
+matrix/matrix arithmetic, and matrix use in the specialized varying/texture
+profile remain unavailable and must be rejected before RinGPU submission.
+
 ## RinGPU and browser integration limits
 
 The versioned RinGPU binding is a native execution contract, not an OpenGL

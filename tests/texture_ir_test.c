@@ -309,7 +309,7 @@ int main(void)
         "texture2D(secondTexture, uv - vec2(2.5e-1, 7.5e-1)); }";
     const char* varying_uniform_offset_source =
         "uniform sampler2D colorTexture; uniform vec2 offset; varying vec2 uv; "
-        "void main() { gl_FragColor = texture2D(colorTexture, uv + offset); }";
+        "void main() { gl_FragColor = texture2D(colorTexture, uv + offset.yx); }";
     const char* varying_repeated_partial_source =
         "uniform sampler2D unusedTexture; uniform sampler2D activeTexture; "
         "varying vec2 uv; void main() { gl_FragColor = "

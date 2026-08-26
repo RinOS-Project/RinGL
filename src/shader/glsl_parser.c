@@ -601,12 +601,7 @@ static int varying_vec2_offset(Parser* parser)
         }
         next_token(parser);
         if (coordinate->kind == SYMBOL_UNIFORM_VEC2) {
-            if (parser->token.kind == TOK_DOT) {
-                fail(parser,
-                     "texture2D coordinate uniform does not support swizzles");
-                return 0;
-            }
-            return 1;
+            return texture2d_coordinate_swizzle(parser);
         }
         if (!texture2d_coordinate_swizzle(parser))
             return 0;

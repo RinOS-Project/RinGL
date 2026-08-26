@@ -957,7 +957,7 @@ int main(void)
     ringl_shader_source(
         coordinate_uniform_fragment,
         "uniform sampler2D colorTexture; uniform vec2 offset; varying vec2 uv; "
-        "void main() { gl_FragColor = texture2D(colorTexture, uv + offset); }",
+        "void main() { gl_FragColor = texture2D(colorTexture, uv + offset.yx); }",
         -1);
     ringl_compile_shader(coordinate_uniform_vertex);
     ringl_compile_shader(coordinate_uniform_fragment);
@@ -978,12 +978,11 @@ int main(void)
     assert(coordinate_uniform_sampler_location == 0);
     assert(coordinate_uniform_offset_location == 1);
     ringl_uniform_1i(coordinate_uniform_sampler_location, 0);
-    backend.expected_coordinate_uniform[0] = 0.25f;
-    backend.expected_coordinate_uniform[1] = -0.5f;
+    backend.expected_coordinate_uniform[0] = -0.5f;
+    backend.expected_coordinate_uniform[1] = 0.25f;
     backend.validate_coordinate_uniform = 1u;
     ringl_uniform_2f(coordinate_uniform_offset_location,
-                     backend.expected_coordinate_uniform[0],
-                     backend.expected_coordinate_uniform[1]);
+                     0.25f, -0.5f);
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(backend.coordinate_uniform_fragment_modules == 1u);
     ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);

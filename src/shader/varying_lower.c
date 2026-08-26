@@ -624,15 +624,18 @@ static int parse_varying_texture_offset(const char** cursor,
         }
     } else {
         char name[64];
+        uint32_t components[4];
 
         if (uniform_name == NULL || uniform_values == NULL ||
             !read_identifier(cursor, name, sizeof(name)) ||
             strcmp(name, uniform_name) != 0 ||
-            !isfinite(uniform_values[0]) || !isfinite(uniform_values[1])) {
+            !parse_optional_read_swizzle(cursor, 2u, 2u, components) ||
+            !isfinite(uniform_values[components[0]]) ||
+            !isfinite(uniform_values[components[1]])) {
             return 0;
         }
-        *offset_u = uniform_values[0];
-        *offset_v = uniform_values[1];
+        *offset_u = uniform_values[components[0]];
+        *offset_v = uniform_values[components[1]];
         uses_uniform = 1;
     }
     return (*coordinate_kind != RINGL_VARYING_TEXTURE_COORD_DIV_SCALE ||
@@ -656,6 +659,7 @@ static int parse_varying_texture_call(const char** cursor,
     char secondary_coordinate[64];
     uint32_t coordinate_index;
     uint32_t coordinate_uniform_offset = 0u;
+    uint32_t coordinate_uniform_components[4];
 
     if (cursor == NULL || sampler_names == NULL ||
         coordinate_names == NULL || coordinate_input_locations == NULL ||
@@ -696,15 +700,21 @@ static int parse_varying_texture_call(const char** cursor,
         }
         if (coordinate_uniform_name != NULL && coordinate_uniform != NULL &&
             strcmp(secondary_coordinate, coordinate_uniform_name) == 0) {
-            if (!isfinite(coordinate_uniform[0]) ||
-                !isfinite(coordinate_uniform[1])) {
+            if (!parse_optional_read_swizzle(
+                    cursor, 2u, 2u, coordinate_uniform_components) ||
+                !isfinite(coordinate_uniform[
+                    coordinate_uniform_components[0]]) ||
+                !isfinite(coordinate_uniform[
+                    coordinate_uniform_components[1]])) {
                 return 0;
             }
             call->coordinate_kind = subtract
                 ? RINGL_VARYING_TEXTURE_COORD_SUB_OFFSET
                 : RINGL_VARYING_TEXTURE_COORD_ADD_OFFSET;
-            call->offset_u = coordinate_uniform[0];
-            call->offset_v = coordinate_uniform[1];
+            call->offset_u = coordinate_uniform[
+                coordinate_uniform_components[0]];
+            call->offset_v = coordinate_uniform[
+                coordinate_uniform_components[1]];
             coordinate_uniform_offset = 1u;
         } else if (!sampler_index_for_name(coordinate_names, coordinate_count,
                                            secondary_coordinate,
@@ -780,6 +790,7 @@ static int parse_varying_texture_local_coordinate_or_varying(
 {
     char source[64];
     char secondary[64];
+    uint32_t coordinate_uniform_components[4];
     uint32_t index;
 
     if (cursor == NULL || *cursor == NULL || source_coordinate == NULL ||
@@ -805,16 +816,20 @@ static int parse_varying_texture_local_coordinate_or_varying(
         }
         if (coordinate_uniform_name != NULL && coordinate_uniform != NULL &&
             strcmp(secondary, coordinate_uniform_name) == 0) {
-            if (!isfinite(coordinate_uniform[0]) ||
-                !isfinite(coordinate_uniform[1]) ||
+            if (!parse_optional_read_swizzle(
+                    cursor, 2u, 2u, coordinate_uniform_components) ||
+                !isfinite(coordinate_uniform[
+                    coordinate_uniform_components[0]]) ||
+                !isfinite(coordinate_uniform[
+                    coordinate_uniform_components[1]]) ||
                 !consume_text(cursor, ";")) {
                 return 0;
             }
             *coordinate_kind = subtract
                 ? RINGL_VARYING_TEXTURE_COORD_SUB_OFFSET
                 : RINGL_VARYING_TEXTURE_COORD_ADD_OFFSET;
-            *offset_u = coordinate_uniform[0];
-            *offset_v = coordinate_uniform[1];
+            *offset_u = coordinate_uniform[coordinate_uniform_components[0]];
+            *offset_v = coordinate_uniform[coordinate_uniform_components[1]];
             return 1;
         }
         if (!consume_text(cursor, ";"))

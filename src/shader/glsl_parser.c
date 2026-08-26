@@ -663,15 +663,42 @@ static int texture2d_call(Parser* parser)
         Symbol* coordinate = find_symbol(parser, &parser->token);
         if (coordinate == NULL || coordinate->width != 2u ||
             (coordinate->kind != SYMBOL_VARYING &&
-             coordinate->kind != SYMBOL_VALUE)) {
+             coordinate->kind != SYMBOL_VALUE &&
+             coordinate->kind != SYMBOL_UNIFORM_VEC2)) {
             fail(parser, "texture2D coordinate must be vec2");
             return 0;
         }
         next_token(parser);
         if (!texture2d_coordinate_swizzle(parser))
             return 0;
-        if (!varying_vec2_offset(parser))
+        if (coordinate->kind == SYMBOL_UNIFORM_VEC2) {
+            Symbol* right_coordinate;
+
+            if (parser->token.kind != TOK_PLUS &&
+                parser->token.kind != TOK_MINUS &&
+                parser->token.kind != TOK_STAR) {
+                fail(parser,
+                     "texture2D uniform coordinate requires +, -, or * vec2");
+                return 0;
+            }
+            next_token(parser);
+            if (parser->token.kind != TOK_IDENT) {
+                fail(parser, "texture2D uniform coordinate requires vec2");
+                return 0;
+            }
+            right_coordinate = find_symbol(parser, &parser->token);
+            if (right_coordinate == NULL || right_coordinate->width != 2u ||
+                (right_coordinate->kind != SYMBOL_VARYING &&
+                 right_coordinate->kind != SYMBOL_VALUE)) {
+                fail(parser, "texture2D uniform coordinate requires vec2");
+                return 0;
+            }
+            next_token(parser);
+            if (!texture2d_coordinate_swizzle(parser))
+                return 0;
+        } else if (!varying_vec2_offset(parser)) {
             return 0;
+        }
     } else {
         fail(parser, "texture2D coordinate must be vec2");
         return 0;

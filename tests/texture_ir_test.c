@@ -310,6 +310,18 @@ int main(void)
     const char* varying_uniform_offset_source =
         "uniform sampler2D colorTexture; uniform vec2 offset; varying vec2 uv; "
         "void main() { gl_FragColor = texture2D(colorTexture, uv + offset.yx); }";
+    const char* varying_uniform_left_subtract_source =
+        "uniform sampler2D colorTexture; uniform vec2 offset; varying vec2 uv; "
+        "void main() { gl_FragColor = texture2D(colorTexture, offset.yx - uv); }";
+    const char* varying_uniform_left_add_source =
+        "uniform sampler2D colorTexture; uniform vec2 offset; varying vec2 uv; "
+        "void main() { gl_FragColor = texture2D(colorTexture, offset.yx + uv); }";
+    const char* varying_uniform_left_multiply_source =
+        "uniform sampler2D colorTexture; uniform vec2 offset; varying vec2 uv; "
+        "void main() { gl_FragColor = texture2D(colorTexture, offset.yx * uv); }";
+    const char* varying_uniform_left_divide_source =
+        "uniform sampler2D colorTexture; uniform vec2 offset; varying vec2 uv; "
+        "void main() { gl_FragColor = texture2D(colorTexture, offset.yx / uv); }";
     const char* varying_repeated_partial_source =
         "uniform sampler2D unusedTexture; uniform sampler2D activeTexture; "
         "varying vec2 uv; void main() { gl_FragColor = "
@@ -1237,6 +1249,77 @@ int main(void)
         assert(add->opcode == RSH1_ADD_F32);
         assert(add->destination == 10u + component);
         assert(add->source0 == component && add->source1 == 8u + component);
+        assert(sample->source0 == 10u && sample->source1 == 11u);
+    }
+
+    ringl_shader_source(shader, varying_uniform_left_add_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 17u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    for (component = 0u; component < 2u; ++component) {
+        const Instruction* add =
+            (const Instruction*)(blob + sizeof(header)) + 6u + component;
+
+        assert(add->opcode == RSH1_ADD_F32);
+        assert(add->source0 == component);
+        assert(add->source1 == 8u + component);
+    }
+
+    ringl_shader_source(shader, varying_uniform_left_multiply_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 17u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    for (component = 0u; component < 2u; ++component) {
+        const Instruction* multiply =
+            (const Instruction*)(blob + sizeof(header)) + 6u + component;
+
+        assert(multiply->opcode == RSH1_MUL_F32);
+        assert(multiply->source0 == component);
+        assert(multiply->source1 == 8u + component);
+    }
+
+    /* A zero-default uniform cannot safely be admitted as a divisor. Keep
+     * this form outside the profile rather than publishing an executable
+     * module that can fail only after texture work has started. */
+    ringl_shader_source(shader, varying_uniform_left_divide_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_FALSE);
+
+    /* A coordinate uniform may also be the left operand. The constants still
+     * come from the program-owned uniform state, but subtraction must retain
+     * GLSL operand order rather than silently treating it as `uv - offset`. */
+    ringl_shader_source(shader, varying_uniform_left_subtract_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 17u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    memcpy(&header, blob, sizeof(header));
+    assert(header.instruction_count == 17u);
+    assert(header.register_count == 12u);
+    assert(header.resource_count == 2u);
+    for (component = 0u; component < 2u; ++component) {
+        const Instruction* constant =
+            (const Instruction*)(blob + sizeof(header)) + 4u + component;
+        const Instruction* subtract =
+            (const Instruction*)(blob + sizeof(header)) + 6u + component;
+        const Instruction* sample =
+            (const Instruction*)(blob + sizeof(header)) + 8u + component;
+
+        assert(constant->opcode == RSH1_CONST_F32);
+        assert(constant->destination == 8u + component);
+        assert(constant->immediate == 0u);
+        assert(subtract->opcode == RSH1_SUB_F32);
+        assert(subtract->destination == 10u + component);
+        assert(subtract->source0 == 8u + component);
+        assert(subtract->source1 == component);
         assert(sample->source0 == 10u && sample->source1 == 11u);
     }
 

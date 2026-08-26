@@ -63,6 +63,10 @@ typedef enum Tok {
     T_LE,
     T_GT,
     T_GE,
+    T_NOT,
+    T_AND,
+    T_XOR,
+    T_OR,
     T_BAD
 } Tok;
 
@@ -329,6 +333,36 @@ static void next(Lower* lower)
             lower->offset++;
             token.length = 2u;
             token.kind = T_NE;
+        } else {
+            token.kind = T_NOT;
+        }
+        break;
+    case '&':
+        if (lower->offset < lower->length &&
+            lower->source[lower->offset] == '&') {
+            lower->offset++;
+            token.length = 2u;
+            token.kind = T_AND;
+        } else {
+            token.kind = T_BAD;
+        }
+        break;
+    case '^':
+        if (lower->offset < lower->length &&
+            lower->source[lower->offset] == '^') {
+            lower->offset++;
+            token.length = 2u;
+            token.kind = T_XOR;
+        } else {
+            token.kind = T_BAD;
+        }
+        break;
+    case '|':
+        if (lower->offset < lower->length &&
+            lower->source[lower->offset] == '|') {
+            lower->offset++;
+            token.length = 2u;
+            token.kind = T_OR;
         } else {
             token.kind = T_BAD;
         }
@@ -758,20 +792,14 @@ static Value constructor_value(Lower* lower, uint8_t target_width,
  * vector builtins on that same path: comparison instructions produce the
  * normalized 0/1 values required by the WebGL uniform contract, so no
  * Aquamarine- or backend-specific Boolean operation is needed. */
-static Value boolean_not_value(Lower* lower)
+static Value boolean_invert_value(Lower* lower, const Value* value)
 {
-    Value value;
     Value result = invalid_value();
     uint16_t zero;
     uint32_t index;
 
-    next(lower);
-    if (!need(lower, T_LPAREN, "expected '(' after not"))
-        return result;
-    value = expression(lower);
-    if (value.width == 0u || !need(lower, T_RPAREN, "expected ')' after not"))
-        return result;
-    if (value.matrix || !value.is_i32 || !value.is_bool) {
+    if (value->width == 0u || value->matrix || !value->is_i32 ||
+        !value->is_bool) {
         fail(lower, "not requires a Boolean scalar or vector");
         return result;
     }
@@ -781,20 +809,33 @@ static Value boolean_not_value(Lower* lower)
               RINGL_RSH1_UNUSED, 0u)) {
         return result;
     }
-    for (index = 0u; index < value.width; ++index) {
+    for (index = 0u; index < value->width; ++index) {
         uint16_t destination = new_reg(lower);
 
         if (destination == RINGL_RSH1_UNUSED ||
             !emit(lower, RINGL_RSH1_OP_CMP_EQ_I32, destination,
-                  value.regs[index], zero, 0u)) {
+                  value->regs[index], zero, 0u)) {
             return invalid_value();
         }
         result.regs[index] = destination;
     }
-    result.width = value.width;
+    result.width = value->width;
     result.is_i32 = 1u;
     result.is_bool = 1u;
     return result;
+}
+
+static Value boolean_not_value(Lower* lower)
+{
+    Value value;
+
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after not"))
+        return invalid_value();
+    value = expression(lower);
+    if (value.width == 0u || !need(lower, T_RPAREN, "expected ')' after not"))
+        return invalid_value();
+    return boolean_invert_value(lower, &value);
 }
 
 static Value boolean_compare_value(Lower* lower, uint16_t opcode,
@@ -2824,6 +2865,197 @@ static uint16_t comparison_opcode(Tok operator, int is_i32)
     }
 }
 
+static int is_comparison_operator(Tok operator)
+{
+    return operator == T_EQ || operator == T_NE || operator == T_LT ||
+           operator == T_LE || operator == T_GT || operator == T_GE;
+}
+
+static int parenthesized_condition(Lower* lower)
+{
+    Lower probe = *lower;
+    uint32_t depth = 0u;
+    int condition_operator = 0;
+
+    while (probe.token.kind != T_EOF) {
+        if (probe.token.kind == T_LPAREN) {
+            depth++;
+        } else if (probe.token.kind == T_RPAREN) {
+            if (depth == 0u)
+                return 0;
+            depth--;
+            if (depth == 0u)
+                return condition_operator;
+        } else if (depth != 0u &&
+                   (is_comparison_operator(probe.token.kind) ||
+                    probe.token.kind == T_NOT || probe.token.kind == T_AND ||
+                    probe.token.kind == T_XOR || probe.token.kind == T_OR)) {
+            condition_operator = 1;
+        }
+        next(&probe);
+    }
+    return 0;
+}
+
+static Value boolean_comparison_value(Lower* lower, const Value* left,
+                                      const Value* right, Tok operator)
+{
+    Value result = invalid_value();
+    uint16_t destination;
+    uint16_t opcode;
+
+    if (left->matrix || right->matrix || left->width != 1u ||
+        right->width != 1u || left->is_i32 != right->is_i32 ||
+        left->is_bool != right->is_bool ||
+        (left->is_bool && operator != T_EQ && operator != T_NE)) {
+        fail(lower, "if condition requires matching scalar operands");
+        return result;
+    }
+    opcode = comparison_opcode(operator, left->is_i32);
+    destination = new_reg(lower);
+    if (opcode == 0u || destination == RINGL_RSH1_UNUSED ||
+        !emit(lower, opcode, destination, left->regs[0], right->regs[0], 0u)) {
+        return result;
+    }
+    result.regs[0] = destination;
+    result.width = 1u;
+    result.is_i32 = 1u;
+    result.is_bool = 1u;
+    return result;
+}
+
+/* The bounded profile permits no calls, assignments, or other observable
+ * side effects inside a condition. Evaluating both scalar Boolean operands in
+ * RSH1 is therefore equivalent to GLSL short-circuit evaluation while keeping
+ * the executable backend-independent. */
+static Value boolean_binary_value(Lower* lower, const Value* left,
+                                  const Value* right, Tok operator)
+{
+    Value result = invalid_value();
+    uint16_t destination;
+
+    if (left->matrix || right->matrix || left->width != 1u ||
+        right->width != 1u || !left->is_i32 || !right->is_i32 ||
+        !left->is_bool || !right->is_bool) {
+        fail(lower, "logical operators require scalar Boolean operands");
+        return result;
+    }
+    destination = new_reg(lower);
+    if (destination == RINGL_RSH1_UNUSED)
+        return result;
+    if (operator == T_AND) {
+        if (!emit(lower, RINGL_RSH1_OP_MUL_I32, destination, left->regs[0],
+                  right->regs[0], 0u)) {
+            return result;
+        }
+    } else {
+        uint16_t sum = new_reg(lower);
+        uint16_t expected = new_reg(lower);
+
+        if (sum == RINGL_RSH1_UNUSED || expected == RINGL_RSH1_UNUSED ||
+            !emit(lower, RINGL_RSH1_OP_ADD_I32, sum, left->regs[0],
+                  right->regs[0], 0u) ||
+            !emit(lower, RINGL_RSH1_OP_CONST_I32, expected,
+                  RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED,
+                  operator == T_XOR ? 1u : 0u) ||
+            !emit(lower, operator == T_XOR ? RINGL_RSH1_OP_CMP_EQ_I32
+                                            : RINGL_RSH1_OP_CMP_NE_I32,
+                  destination, sum, expected, 0u)) {
+            return result;
+        }
+    }
+    result.regs[0] = destination;
+    result.width = 1u;
+    result.is_i32 = 1u;
+    result.is_bool = 1u;
+    return result;
+}
+
+static Value conditional_or_value(Lower* lower);
+
+static Value conditional_primary_value(Lower* lower)
+{
+    Value left;
+
+    if (take(lower, T_NOT)) {
+        left = conditional_primary_value(lower);
+        if (left.width != 1u || left.matrix || !left.is_bool) {
+            fail(lower, "'!' requires a scalar Boolean operand");
+            return invalid_value();
+        }
+        return boolean_invert_value(lower, &left);
+    }
+    if (lower->token.kind == T_LPAREN && parenthesized_condition(lower)) {
+        next(lower);
+        left = conditional_or_value(lower);
+        if (left.width == 0u ||
+            !need(lower, T_RPAREN, "expected ')' after Boolean condition")) {
+            return invalid_value();
+        }
+        return left;
+    }
+    left = expression(lower);
+    if (left.width == 0u)
+        return invalid_value();
+    if (is_comparison_operator(lower->token.kind)) {
+        Tok operator = lower->token.kind;
+        Value right;
+
+        next(lower);
+        right = expression(lower);
+        if (right.width == 0u)
+            return invalid_value();
+        return boolean_comparison_value(lower, &left, &right, operator);
+    }
+    if (left.matrix || left.width != 1u || !left.is_bool) {
+        fail(lower, "if condition requires a bool or scalar comparison");
+        return invalid_value();
+    }
+    return left;
+}
+
+static Value conditional_and_value(Lower* lower)
+{
+    Value left = conditional_primary_value(lower);
+
+    while (left.width != 0u && take(lower, T_AND)) {
+        Value right = conditional_primary_value(lower);
+
+        if (right.width == 0u)
+            return invalid_value();
+        left = boolean_binary_value(lower, &left, &right, T_AND);
+    }
+    return left;
+}
+
+static Value conditional_xor_value(Lower* lower)
+{
+    Value left = conditional_and_value(lower);
+
+    while (left.width != 0u && take(lower, T_XOR)) {
+        Value right = conditional_and_value(lower);
+
+        if (right.width == 0u)
+            return invalid_value();
+        left = boolean_binary_value(lower, &left, &right, T_XOR);
+    }
+    return left;
+}
+
+static Value conditional_or_value(Lower* lower)
+{
+    Value left = conditional_xor_value(lower);
+
+    while (left.width != 0u && take(lower, T_OR)) {
+        Value right = conditional_xor_value(lower);
+
+        if (right.width == 0u)
+            return invalid_value();
+        left = boolean_binary_value(lower, &left, &right, T_OR);
+    }
+    return left;
+}
+
 /* A scalar RSH1 branch can only guarantee stage output on both paths when
  * each path stores the complete fixed RGBA/clip vector. A fragment may instead
  * discard on exactly one branch: DISCARD terminates execution before output
@@ -2883,11 +3115,7 @@ static int conditional_branch(Lower* lower, int* discard_out)
 
 static int conditional_output(Lower* lower)
 {
-    Value left;
-    Value right;
-    Tok operator;
-    uint16_t comparison;
-    uint16_t comparison_result;
+    Value condition;
     uint16_t zero;
     uint16_t false_result;
     uint32_t jump_to_else;
@@ -2898,52 +3126,20 @@ static int conditional_output(Lower* lower)
     next(lower);
     if (!need(lower, T_LPAREN, "expected '(' after if"))
         return 0;
-    left = expression(lower);
-    operator = lower->token.kind;
-    if (left.width == 0u)
+    condition = conditional_or_value(lower);
+    if (condition.width == 0u || condition.matrix || condition.width != 1u ||
+        !condition.is_bool) {
         return 0;
-    if (operator == T_RPAREN) {
-        if (left.matrix || left.width != 1u || !left.is_bool) {
-            fail(lower, "if condition requires a bool or scalar comparison");
-            return 0;
-        }
-        right = invalid_value();
-        comparison = RINGL_RSH1_OP_CMP_NE_I32;
-    } else {
-        if (operator != T_EQ && operator != T_NE && operator != T_LT &&
-            operator != T_LE && operator != T_GT && operator != T_GE) {
-            fail(lower, "if condition requires a bool or scalar comparison");
-            return 0;
-        }
-        next(lower);
-        right = expression(lower);
-        if (right.width == 0u)
-            return 0;
-        if (left.matrix || right.matrix || left.width != 1u || right.width != 1u ||
-            left.is_i32 != right.is_i32 || left.is_bool != right.is_bool ||
-            (left.is_bool && operator != T_EQ && operator != T_NE)) {
-            fail(lower, "if condition requires matching scalar operands");
-            return 0;
-        }
-        comparison = comparison_opcode(operator, left.is_i32);
     }
     if (!need(lower, T_RPAREN, "expected ')' after if condition"))
         return 0;
-    comparison_result = new_reg(lower);
     zero = new_reg(lower);
     false_result = new_reg(lower);
-    if (comparison == 0u || comparison_result == RINGL_RSH1_UNUSED ||
-        zero == RINGL_RSH1_UNUSED || false_result == RINGL_RSH1_UNUSED ||
-        (operator == T_RPAREN &&
-         !emit(lower, RINGL_RSH1_OP_CONST_I32, zero, RINGL_RSH1_UNUSED,
-               RINGL_RSH1_UNUSED, 0u)) ||
-        !emit(lower, comparison, comparison_result, left.regs[0],
-              operator == T_RPAREN ? zero : right.regs[0], 0u) ||
-        (operator != T_RPAREN &&
-         !emit(lower, RINGL_RSH1_OP_CONST_I32, zero, RINGL_RSH1_UNUSED,
-               RINGL_RSH1_UNUSED, 0u)) ||
+    if (zero == RINGL_RSH1_UNUSED || false_result == RINGL_RSH1_UNUSED ||
+        !emit(lower, RINGL_RSH1_OP_CONST_I32, zero, RINGL_RSH1_UNUSED,
+              RINGL_RSH1_UNUSED, 0u) ||
         !emit(lower, RINGL_RSH1_OP_CMP_EQ_I32, false_result,
-              comparison_result, zero, 0u)) {
+              condition.regs[0], zero, 0u)) {
         return 0;
     }
     if (!need(lower, T_LBRACE, "expected '{' after if condition"))

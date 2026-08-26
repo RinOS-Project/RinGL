@@ -116,9 +116,9 @@ conformance claim.
 ## Bounded fragment discard
 
 The GLSL ES frontend executes `discard;` as a terminal RSH1 instruction in the
-generic RinGPU backend. It also supports one WebGL-useful conditional form:
-an `if` with one scalar Float/i32 comparison and a mandatory `else` may discard
-on exactly one fragment branch when the other writes the complete
+generic RinGPU backend. It also supports one WebGL-useful conditional form: an
+`if` with a bounded scalar Boolean expression and a mandatory `else` may
+discard on exactly one fragment branch when the other writes the complete
 `gl_FragColor` vector. The branch remains native RSH1 `JUMP_IF`/`JUMP` control
 flow; the private Aquamarine surface only owns caller-provided storage and does
 not choose the condition or emulate alpha testing. Both-discard branches,
@@ -501,11 +501,14 @@ the replacement module is built. All numeric setters stage a replacement
 program-owned module before publishing it, so a failed backend creation retains
 both the old values and executable. Boolean values allow scalar or
 single-component `.x/.y/.z/.w` (and color-alias) control flow plus the bounded
-GLSL `not`, `equal`, `notEqual`, `any`, and `all` builtins. Boolean vector
-builtins lower to scalar RSH1 integer comparisons/additions and therefore run
-through the same generic RinGPU backend as every other program. Uniform arrays,
-multi-component Boolean swizzles/general operators, local-mutating integer
-control flow, and implicit numeric conversions remain unavailable.
+GLSL `not`, `equal`, `notEqual`, `any`, and `all` builtins. Scalar conditions
+also admit precedence-correct `!`, `&&`, `^^`, and `||`; the profile forbids
+expression side effects, so their RSH1 Boolean evaluation preserves observable
+GLSL behavior without a second backend. Boolean vector builtins lower to scalar
+RSH1 integer comparisons/additions and therefore run through the same generic
+RinGPU backend as every other program. Uniform arrays, multi-component Boolean
+swizzles, local-mutating integer control flow, and implicit numeric conversions
+remain unavailable.
 
 Program-owned uniform artifacts are stage-selective. A mutable vertex matrix
 does not force an unrelated fragment `sampler2D` shader back through the
@@ -634,7 +637,7 @@ Nested/local-mutating branches, partial outputs, and loops remain rejected.
 Standalone fragment `discard;` lowers to RSH1 `DISCARD`. The generic RinGPU
 backend terminates that fragment before output validation and depth, stencil, or
 color publication; it is not a surface-side clear or Aquamarine command.
-Vertex `discard`, conditional `discard` outside the documented one-comparison,
+Vertex `discard`, conditional `discard` outside the documented scalar-Boolean,
 one-discard-branch form, loops, and general control flow remain rejected by
 this bounded profile.
 

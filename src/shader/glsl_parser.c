@@ -63,6 +63,10 @@ typedef enum TokenKind {
     TOK_LE,
     TOK_GT,
     TOK_GE,
+    TOK_NOT,
+    TOK_AND,
+    TOK_XOR,
+    TOK_OR,
     TOK_INVALID,
 } TokenKind;
 
@@ -320,6 +324,36 @@ static void next_token(Parser* parser)
             parser->offset++;
             token.length = 2u;
             token.kind = TOK_NE;
+        } else {
+            token.kind = TOK_NOT;
+        }
+        break;
+    case '&':
+        if (parser->offset < parser->length &&
+            parser->source[parser->offset] == '&') {
+            parser->offset++;
+            token.length = 2u;
+            token.kind = TOK_AND;
+        } else {
+            token.kind = TOK_INVALID;
+        }
+        break;
+    case '^':
+        if (parser->offset < parser->length &&
+            parser->source[parser->offset] == '^') {
+            parser->offset++;
+            token.length = 2u;
+            token.kind = TOK_XOR;
+        } else {
+            token.kind = TOK_INVALID;
+        }
+        break;
+    case '|':
+        if (parser->offset < parser->length &&
+            parser->source[parser->offset] == '|') {
+            parser->offset++;
+            token.length = 2u;
+            token.kind = TOK_OR;
         } else {
             token.kind = TOK_INVALID;
         }
@@ -975,10 +1009,11 @@ static int assignment(Parser* parser)
 }
 
 /* The lowerer makes the type and full-output checks. Keep this admission
- * grammar deliberately aligned with its executable control-flow slice: one
- * scalar comparison, one complete stage-output assignment per branch, or a
- * fragment discard on exactly one branch, and a mandatory else. General
- * statements and nested branches remain unsupported. */
+ * grammar deliberately aligned with its executable control-flow slice: scalar
+ * comparisons and scalar Boolean `!`, `&&`, `^^`, or `||`, one complete stage
+ * output assignment per branch, or a fragment discard on exactly one branch,
+ * and a mandatory else. General statements and nested branches remain
+ * unsupported. */
 static int conditional_output_assignment(Parser* parser)
 {
     if (parser->token.kind != TOK_IDENT ||
@@ -1014,6 +1049,92 @@ static int conditional_branch(Parser* parser, int* discard_out)
     return conditional_output_assignment(parser);
 }
 
+static int is_comparison_operator(TokenKind operator)
+{
+    return operator == TOK_EQ || operator == TOK_NE || operator == TOK_LT ||
+           operator == TOK_LE || operator == TOK_GT || operator == TOK_GE;
+}
+
+static int parenthesized_condition(Parser* parser)
+{
+    Parser probe = *parser;
+    uint32_t depth = 0u;
+    int condition_operator = 0;
+
+    while (probe.token.kind != TOK_EOF) {
+        if (probe.token.kind == TOK_LPAREN) {
+            depth++;
+        } else if (probe.token.kind == TOK_RPAREN) {
+            if (depth == 0u)
+                return 0;
+            depth--;
+            if (depth == 0u)
+                return condition_operator;
+        } else if (depth != 0u &&
+                   (is_comparison_operator(probe.token.kind) ||
+                    probe.token.kind == TOK_NOT || probe.token.kind == TOK_AND ||
+                    probe.token.kind == TOK_XOR || probe.token.kind == TOK_OR)) {
+            condition_operator = 1;
+        }
+        next_token(&probe);
+    }
+    return 0;
+}
+
+static int conditional_or_expression(Parser* parser);
+
+static int conditional_primary_expression(Parser* parser)
+{
+    if (accept(parser, TOK_NOT))
+        return conditional_primary_expression(parser);
+    if (parser->token.kind == TOK_LPAREN && parenthesized_condition(parser)) {
+        next_token(parser);
+        if (!conditional_or_expression(parser))
+            return 0;
+        return expect(parser, TOK_RPAREN, "expected ')' after Boolean condition");
+    }
+    if (!expression(parser))
+        return 0;
+    if (is_comparison_operator(parser->token.kind)) {
+        next_token(parser);
+        return expression(parser);
+    }
+    return 1;
+}
+
+static int conditional_and_expression(Parser* parser)
+{
+    if (!conditional_primary_expression(parser))
+        return 0;
+    while (accept(parser, TOK_AND)) {
+        if (!conditional_primary_expression(parser))
+            return 0;
+    }
+    return 1;
+}
+
+static int conditional_xor_expression(Parser* parser)
+{
+    if (!conditional_and_expression(parser))
+        return 0;
+    while (accept(parser, TOK_XOR)) {
+        if (!conditional_and_expression(parser))
+            return 0;
+    }
+    return 1;
+}
+
+static int conditional_or_expression(Parser* parser)
+{
+    if (!conditional_xor_expression(parser))
+        return 0;
+    while (accept(parser, TOK_OR)) {
+        if (!conditional_xor_expression(parser))
+            return 0;
+    }
+    return 1;
+}
+
 static int conditional_statement(Parser* parser)
 {
     int if_discards;
@@ -1021,17 +1142,7 @@ static int conditional_statement(Parser* parser)
 
     next_token(parser);
     if (!expect(parser, TOK_LPAREN, "expected '(' after if") ||
-        !expression(parser)) {
-        return 0;
-    }
-    if (parser->token.kind == TOK_EQ || parser->token.kind == TOK_NE ||
-        parser->token.kind == TOK_LT || parser->token.kind == TOK_LE ||
-        parser->token.kind == TOK_GT || parser->token.kind == TOK_GE) {
-        next_token(parser);
-        if (!expression(parser))
-            return 0;
-    } else if (parser->token.kind != TOK_RPAREN) {
-        fail(parser, "if condition requires a scalar comparison or bool");
+        !conditional_or_expression(parser)) {
         return 0;
     }
     if (!expect(parser, TOK_RPAREN, "expected ')' after if condition") ||

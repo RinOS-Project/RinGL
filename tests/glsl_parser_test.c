@@ -197,11 +197,19 @@ int main(void)
      * use the GLSL Boolean vector builtins. Arrays remain outside the bounded
      * profile and must fail during source validation. */
     ringl_shader_source(fragment,
-        "uniform bvec2 enabled; void main() { if (all(equal(enabled, bvec2(true, false)))) { "
+        "uniform bvec2 enabled; void main() { if ((all(equal(enabled, bvec2(true, false))) "
+        "&& !any(notEqual(enabled, bvec2(true, false)))) ^^ false || false) { "
         "gl_FragColor = vec4(1.0); } else { gl_FragColor = vec4(0.0); } }", -1);
     ringl_compile_shader(fragment);
     assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
     assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) == 0u);
+
+    ringl_shader_source(fragment,
+        "uniform bool enabled; void main() { if (enabled & true) { "
+        "gl_FragColor = vec4(1.0); } else { gl_FragColor = vec4(0.0); } }", -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
+    assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) > 0u);
 
     ringl_shader_source(fragment,
         "uniform bvec2 invalid[2]; void main() { gl_FragColor = vec4(1.0); }", -1);

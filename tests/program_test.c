@@ -581,7 +581,8 @@ int main(void)
                         "void main() { bvec3 inverse = not(triple); "
                         "bvec4 difference = notEqual(quad, bvec4(false)); "
                         "bool has_true = any(inverse); "
-                        "if (all(equal(pair, bvec2(true, false)))) { "
+                        "if ((all(equal(pair, bvec2(true, false))) "
+                        "&& !any(notEqual(pair, bvec2(true, false)))) ^^ false || false) { "
                         "gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); } else { "
                         "gl_FragColor = vec4(0.0, 0.0, 1.0, 1.0); } }",
                         -1);

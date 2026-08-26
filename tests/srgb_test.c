@@ -221,8 +221,10 @@ int main(void)
     uint32_t framebuffer = 0u;
     uint32_t rgb_framebuffer = 0u;
     uint32_t renderbuffer = 0u;
+    uint32_t float_renderbuffer = 0u;
     uint32_t renderbuffer_framebuffer = 0u;
     uint32_t is_srgb = RINGL_FALSE;
+    uint32_t is_float = RINGL_FALSE;
     uint32_t component_type = 0u;
     uint8_t pixels[4] = { 128u, 64u, 32u, 77u };
     uint8_t patched_pixels[4] = { 255u, 0u, 0u, 128u };
@@ -268,6 +270,23 @@ int main(void)
     assert(ringl_framebuffer_color_attachment_component_type_at(
                RINGL_COLOR_ATTACHMENT1, &component_type) == 0);
     assert(component_type == RINGL_UNSIGNED_BYTE);
+    ringl_gen_renderbuffers(1, &float_renderbuffer);
+    ringl_bind_renderbuffer(RINGL_RENDERBUFFER, float_renderbuffer);
+    ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_RGBA32F, 1, 1);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT2,
+                                   RINGL_RENDERBUFFER, float_renderbuffer);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_framebuffer_color_attachment_component_type_at(
+               RINGL_COLOR_ATTACHMENT2, &component_type) == 0);
+    assert(component_type == RINGL_FLOAT);
+    assert(ringl_framebuffer_color_attachment_is_float_at(
+               RINGL_COLOR_ATTACHMENT2, &is_float) == 0);
+    assert(is_float == RINGL_TRUE);
+    ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT2,
+                                   RINGL_RENDERBUFFER, 0u);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_delete_renderbuffers(1, &float_renderbuffer);
     ringl_framebuffer_texture_2d(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT1,
                                  RINGL_TEXTURE_2D, 0u, 0);
     assert(ringl_get_error() == RINGL_NO_ERROR);

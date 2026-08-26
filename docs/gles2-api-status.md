@@ -8,6 +8,11 @@ It deliberately distinguishes a real, bounded RinGL implementation from an
 absent API. It does not claim GLES 2.0 conformance, nor does it authorize an
 embedding to expose a WebGL feature that RinGL cannot execute.
 
+[`known-incompatibilities.md`](known-incompatibilities.md) is the companion
+product-exposure policy. It collects the cross-cutting limits implied by this
+inventory and prohibits advertising a GLES/WebGL version from this bounded
+profile.
+
 Status meanings:
 
 - **B** — a raw RinGL equivalent executes a stated bounded profile and rejects

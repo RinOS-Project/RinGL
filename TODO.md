@@ -592,7 +592,12 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   must return `INVALID_VALUE` before adding any backend event, so invalid GL
   state cannot become an unobserved driver-side mutation.
 - [ ] Run an appropriate GLES conformance suite when the implementation is mature enough.
-- [ ] Document every known incompatibility before advertising a supported GL/GLES version.
+- [x] Document every known incompatibility before advertising a supported
+  GL/GLES version. `docs/known-incompatibilities.md` makes the audited
+  B/P/N inventory's product consequence explicit: no GLES/WebGL version is
+  advertised, each partial/absent entry remains unavailable, and WebGL 2,
+  conformance, hardware/QEMU, general GLSL, and unsupported resource/FBO
+  semantics cannot be promoted by a synthetic embedding result.
 
 ## RinGPU/RinShader dependencies
 

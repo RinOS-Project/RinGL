@@ -368,6 +368,11 @@ entry point as bounded, partial, or absent, together with enum/query/limit
 coverage. It is the authoritative boundary for embeddings and does not claim a
 GLES version merely because a similarly named RinGL function exists.
 
+[Known incompatibilities and exposure policy](docs/known-incompatibilities.md)
+consolidates the inventory into the product-facing rule: RinGL does not
+advertise a GLES or WebGL version, and every unavailable or partial feature
+stays unavailable until its executable boundary and regression coverage exist.
+
 ## Repository layout
 
 The exact layout may evolve, but the intended separation is roughly:

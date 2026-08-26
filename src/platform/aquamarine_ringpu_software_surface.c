@@ -205,10 +205,26 @@ static int surface_present(void* opaque,
     return RIN_GPU_OK;
 }
 
-static int context_ready(const RinGLAquamarineSurfaceContext* context)
+static int context_status(const RinGLAquamarineSurfaceContext* context)
 {
-    return context != NULL &&
-           context->initialized == RINGL_AQUAMARINE_SURFACE_VERSION;
+    if (context == NULL ||
+        context->initialized != RINGL_AQUAMARINE_SURFACE_VERSION) {
+        return RINGL_AQUAMARINE_SURFACE_STATE;
+    }
+    return context->core.device_lost != 0u
+        ? RINGL_AQUAMARINE_SURFACE_DEVICE_LOST
+        : RINGL_AQUAMARINE_SURFACE_OK;
+}
+
+static int surface_result_from_ringpu(int result)
+{
+    if (result == RIN_GPU_OK)
+        return RINGL_AQUAMARINE_SURFACE_OK;
+    if (result == RIN_GPU_ERROR_DEVICE_LOST)
+        return RINGL_AQUAMARINE_SURFACE_DEVICE_LOST;
+    if (result == RIN_GPU_ERROR_NO_MEMORY)
+        return RINGL_AQUAMARINE_SURFACE_NO_MEMORY;
+    return RINGL_AQUAMARINE_SURFACE_BACKEND;
 }
 
 static int submit(RinGLAquamarineSurfaceContext* context)
@@ -216,18 +232,18 @@ static int submit(RinGLAquamarineSurfaceContext* context)
     RinGpuSubmitInfoV1 submit_info;
     int result;
 
-    if (!context_ready(context))
-        return RINGL_AQUAMARINE_SURFACE_STATE;
+    result = context_status(context);
+    if (result != RINGL_AQUAMARINE_SURFACE_OK)
+        return result;
     result = ringpu_command_list_close(&context->core, context->command_list);
     if (result != RIN_GPU_OK)
-        return RINGL_AQUAMARINE_SURFACE_BACKEND;
+        return surface_result_from_ringpu(result);
     memset(&submit_info, 0, sizeof(submit_info));
     submit_info.abi_version = RIN_GPU_ABI_VERSION;
     submit_info.struct_size = sizeof(submit_info);
     submit_info.command_list = context->command_list;
     result = ringpu_queue_submit(&context->core, context->queue, &submit_info);
-    return result == RIN_GPU_OK ? RINGL_AQUAMARINE_SURFACE_OK
-                                : RINGL_AQUAMARINE_SURFACE_BACKEND;
+    return surface_result_from_ringpu(result);
 }
 
 static void transition_for(RinGpuImageTransitionV1* transition,
@@ -416,13 +432,14 @@ int ringl_aquamarine_surface_begin_content_update(
     RinGpuImageTransitionV1 transition;
     int result;
 
-    if (!context_ready(context))
-        return RINGL_AQUAMARINE_SURFACE_STATE;
+    result = context_status(context);
+    if (result != RINGL_AQUAMARINE_SURFACE_OK)
+        return result;
     if (context->color_state == RIN_GPU_IMAGE_STATE_COLOR_TARGET)
         return RINGL_AQUAMARINE_SURFACE_OK;
     result = ringpu_command_list_reset(&context->core, context->command_list);
     if (result != RIN_GPU_OK)
-        return RINGL_AQUAMARINE_SURFACE_BACKEND;
+        return surface_result_from_ringpu(result);
     transition_for(&transition, context->color_state,
                    RIN_GPU_IMAGE_STATE_COLOR_TARGET);
     result = ringpu_command_transition_image(&context->core,
@@ -430,7 +447,7 @@ int ringl_aquamarine_surface_begin_content_update(
                                              context->color_image,
                                              &transition);
     if (result != RIN_GPU_OK)
-        return RINGL_AQUAMARINE_SURFACE_BACKEND;
+        return surface_result_from_ringpu(result);
     result = submit(context);
     if (result != RINGL_AQUAMARINE_SURFACE_OK)
         return result;
@@ -441,8 +458,10 @@ int ringl_aquamarine_surface_begin_content_update(
 int ringl_aquamarine_surface_sync_external_color_state(
     RinGLAquamarineSurfaceContext* context, uint32_t state)
 {
-    if (!context_ready(context))
-        return RINGL_AQUAMARINE_SURFACE_STATE;
+    int result = context_status(context);
+
+    if (result != RINGL_AQUAMARINE_SURFACE_OK)
+        return result;
     if (state != RIN_GPU_IMAGE_STATE_COLOR_TARGET &&
         state != RIN_GPU_IMAGE_STATE_PRESENT) {
         return RINGL_AQUAMARINE_SURFACE_INVALID_ARGUMENT;
@@ -455,8 +474,10 @@ int ringl_aquamarine_surface_sync_external_framebuffer_states(
     RinGLAquamarineSurfaceContext* context, uint32_t color_state,
     uint32_t depth_state)
 {
-    if (!context_ready(context))
-        return RINGL_AQUAMARINE_SURFACE_STATE;
+    int result = context_status(context);
+
+    if (result != RINGL_AQUAMARINE_SURFACE_OK)
+        return result;
     if (color_state != RIN_GPU_IMAGE_STATE_COLOR_TARGET &&
         color_state != RIN_GPU_IMAGE_STATE_PRESENT) {
         return RINGL_AQUAMARINE_SURFACE_INVALID_ARGUMENT;
@@ -478,7 +499,11 @@ int ringl_aquamarine_surface_get_native(
     RinGLAquamarineSurfaceContext* context,
     RinGLAquamarineSurfaceNativeV1* native_out)
 {
-    if (!context_ready(context) || !native_out ||
+    int result = context_status(context);
+
+    if (result != RINGL_AQUAMARINE_SURFACE_OK)
+        return result;
+    if (!native_out ||
         native_out->struct_size < sizeof(*native_out) ||
         native_out->version != RINGL_AQUAMARINE_SURFACE_NATIVE_VERSION ||
         native_out->reserved0 != 0u) {

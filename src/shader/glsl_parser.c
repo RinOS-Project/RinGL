@@ -847,10 +847,18 @@ static int primary(Parser* parser)
             }
             value_width = 2u;
         }
+        if (token_is_ident(&ident, "gl_FragCoord")) {
+            if (parser->shader_type != RINGL_FRAGMENT_SHADER) {
+                fail(parser, "gl_FragCoord is only available in fragment shaders");
+                return 0;
+            }
+            value_width = 4u;
+        }
         if (!token_is_ident(&ident, "gl_Position") &&
             !token_is_ident(&ident, "gl_FragColor") &&
             !token_is_ident(&ident, "gl_PointSize") &&
             !token_is_ident(&ident, "gl_PointCoord") &&
+            !token_is_ident(&ident, "gl_FragCoord") &&
             !symbol_exists(parser, &ident)) {
             fail(parser, "use of undeclared identifier");
             return 0;

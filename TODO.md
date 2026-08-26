@@ -263,6 +263,14 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   coordinate from the unclipped point center. IR and caller-owned Aquamarine
   product tests verify the builtin bytecode and 3×3 point gradient. Non-point
   execution is rejected rather than receiving invented coordinates.
+- [x] Execute fragment `gl_FragCoord` as four RSH1 Float32 builtins over the
+  generic RinGPU triangle, line, and point raster paths. The backend supplies
+  lower-left window `x/y`, pre-polygon-offset window `z`, and interpolated
+  reciprocal clip `w`, together with finite lower-left `dFdx`/`dFdy` inputs;
+  it never aliases a user varying or a top-down storage coordinate. The
+  caller-owned WebGL bridge regression verifies all four components from an
+  actual clip-W-two triangle. Texture-coordinate special forms remain outside
+  the bounded profile.
 - [x] Execute bounded `GL_LINES` direct and indexed draws through a distinct
   native RinGPU line-list pipeline. An incomplete pair is a successful no-op.
 - [x] Execute bounded `GL_LINE_STRIP` direct and indexed draws through a

@@ -2335,6 +2335,50 @@ static Value point_coord_value(Lower* lower)
     return apply_swizzle(lower, value);
 }
 
+/* gl_FragCoord is supplied by the rasterizer in window coordinates. Keep the
+ * four components as builtins instead of a synthetic varying: in particular
+ * .w is the interpolated reciprocal clip W, not an affine vertex value. */
+static Value frag_coord_value(Lower* lower)
+{
+    Value value = invalid_value();
+    uint16_t x;
+    uint16_t y;
+    uint16_t z;
+    uint16_t w;
+
+    if (lower->shader_type != RINGL_FRAGMENT_SHADER) {
+        fail(lower, "gl_FragCoord is only available in fragment shaders");
+        return value;
+    }
+    next(lower);
+    x = new_reg(lower);
+    y = new_reg(lower);
+    z = new_reg(lower);
+    w = new_reg(lower);
+    if (x == RINGL_RSH1_UNUSED || y == RINGL_RSH1_UNUSED ||
+        z == RINGL_RSH1_UNUSED || w == RINGL_RSH1_UNUSED ||
+        !emit(lower, RINGL_RSH1_OP_LOAD_BUILTIN_F32, x,
+              RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED,
+              RINGL_RSH1_BUILTIN_FRAG_COORD_X) ||
+        !emit(lower, RINGL_RSH1_OP_LOAD_BUILTIN_F32, y,
+              RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED,
+              RINGL_RSH1_BUILTIN_FRAG_COORD_Y) ||
+        !emit(lower, RINGL_RSH1_OP_LOAD_BUILTIN_F32, z,
+              RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED,
+              RINGL_RSH1_BUILTIN_FRAG_COORD_Z) ||
+        !emit(lower, RINGL_RSH1_OP_LOAD_BUILTIN_F32, w,
+              RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED,
+              RINGL_RSH1_BUILTIN_FRAG_COORD_W)) {
+        return invalid_value();
+    }
+    value.regs[0] = x;
+    value.regs[1] = y;
+    value.regs[2] = z;
+    value.regs[3] = w;
+    value.width = 4u;
+    return apply_swizzle(lower, value);
+}
+
 static Value primary(Lower* lower)
 {
     Value value;
@@ -2470,6 +2514,8 @@ static Value primary(Lower* lower)
         return step_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "smoothstep"))
         return smoothstep_value(lower);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "gl_FragCoord"))
+        return frag_coord_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "gl_PointCoord"))
         return point_coord_value(lower);
     if (lower->token.kind == T_IDENT)

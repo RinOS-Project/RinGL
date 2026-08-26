@@ -88,6 +88,10 @@ enum RinGLRsh1Opcode {
 enum RinGLRsh1Builtin {
     /* Keep the numbers synchronized with RinShaderBuiltin. These values are
      * part of the RSH1 bytecode ABI emitted by RinGL, not GLSL token values. */
+    RINGL_RSH1_BUILTIN_FRAG_COORD_X = 11,
+    RINGL_RSH1_BUILTIN_FRAG_COORD_Y = 12,
+    RINGL_RSH1_BUILTIN_FRAG_COORD_Z = 13,
+    RINGL_RSH1_BUILTIN_FRAG_COORD_W = 14,
     RINGL_RSH1_BUILTIN_POINT_COORD_X = 16,
     RINGL_RSH1_BUILTIN_POINT_COORD_Y = 17,
 };

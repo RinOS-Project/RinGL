@@ -401,8 +401,9 @@ int main(void)
         "}\n";
     const char* fragment_matrix_array_source =
         "uniform mat2 colors[2];\n"
+        "const int selected = 1;\n"
         "void main() {\n"
-        "  vec2 color = colors[1] * vec2(0.25, 0.5);\n"
+        "  vec2 color = colors[selected] * vec2(0.25, 0.5);\n"
         "  gl_FragColor = vec4(color, 0.0, 1.0);\n"
         "}\n";
     const char* fragment_matrix3_array_source =

@@ -107,8 +107,9 @@ The current first-triangle slice supports:
   samples; the generic 128-instruction/96-register RSH1 budget is enforced
   before module publication. `sampler2D name[N]` accepts a positive decimal
   `N` only within the eight-element total cap, and each lookup needs an
-  in-range decimal constant index; every selected element has its own real
-  resource pair. The same constant-index rule applies to bounded numeric
+  in-range decimal literal or `const int` initialized with an integer literal;
+  every selected element has its own real resource pair. The same bounded
+  constant-index rule applies to bounded numeric
   uniform arrays (eight scalar/vector elements per type; four vertex matrices).
   Dynamic indexing, non-2D/LOD/gradient forms, and over-budget or otherwise
   unsupported expressions reject;

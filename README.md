@@ -317,7 +317,8 @@ Ladybird or Aquamarine.
 
 The generic path also executes bounded `sampler2D name[N]` arrays: the total
 number of elements is at most eight, and each `texture2D(name[index], uv)`
-uses an in-range decimal constant index that maps to its own real RSH1
+uses an in-range decimal literal or `const int` initialized with an integer
+literal. RinGL folds that bounded constant-index expression to its own real RSH1
 image/sampler pair. Reflection exposes one `name[0]` uniform of size `N`, the
 base name aliases element zero, and `ringl_uniform_1iv()` atomically updates a
 complete contiguous range after validating every element. The same executable
@@ -1231,7 +1232,7 @@ generic no-varying forms include `vec4(tint2, 0.0, 1.0)` for a `vec2`,
 `gl_Position = transform * position` for one matching `uniform mat2`/`mat3`/
 `mat4` and `attribute vec2`/`vec3`/`vec4`, and fragment
 `gl_FragColor = matN * vecN` expressions. Each stage accepts up to four
-constant-indexed matrix-array elements per type; updates retain the same
+literal- or literal-`const int`-indexed matrix-array elements per type; updates retain the same
 failure-atomic program-owned module replacement. The generic form has no
 varyings. Dynamic indexing, cross-dimension/general matrix arithmetic, and
 matrix/vector combinations with the specialized varying/texture profiles

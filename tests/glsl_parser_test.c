@@ -47,15 +47,28 @@ int main(void)
     assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
     assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) == 0u);
 
-    /* Numeric arrays stay in the generic RSH1 path: only a finite constant
-     * element index may select the program-owned element constants. */
+    /* Numeric arrays stay in the generic RSH1 path. Alongside decimal
+     * literals, a const int initialized with an integer literal selects the
+     * program-owned element constants at compile time. */
     {
         static const char float_array_source[] =
             "uniform float gains[2]; void main() { "
             "gl_FragColor = vec4(gains[1], gains[0], 0.0, 1.0); }";
+        static const char const_index_float_array_source[] =
+            "const int selected = 1; uniform float gains[2]; void main() { "
+            "gl_FragColor = vec4(gains[selected], gains[0], 0.0, 1.0); }";
+        static const char local_const_index_float_array_source[] =
+            "uniform float gains[2]; void main() { const int selected = 1; "
+            "gl_FragColor = vec4(gains[selected], gains[0], 0.0, 1.0); }";
         static const char dynamic_float_array_source[] =
             "uniform float gains[2]; uniform int index; void main() { "
             "gl_FragColor = vec4(gains[index]); }";
+        static const char negative_const_index_source[] =
+            "const int selected = -1; uniform float gains[2]; void main() { "
+            "gl_FragColor = vec4(gains[selected]); }";
+        static const char mutable_const_index_source[] =
+            "const int selected = 1; uniform float gains[2]; void main() { "
+            "selected = 0; gl_FragColor = vec4(gains[selected]); }";
         RinGLGlslUniformValue uniforms[2] = {
             { .name = "gains[0]", .type = RINGL_FLOAT, .values = { 0.25f } },
             { .name = "gains[1]", .type = RINGL_FLOAT, .values = { 0.75f } },
@@ -67,11 +80,31 @@ int main(void)
                    sizeof(float_array_source) - 1u, uniforms, 2u,
                    &lowered) == 0);
         assert(lowered.ok != 0u);
+        assert(ringl_glsl_lower_rsh1_with_uniforms(
+                   RINGL_FRAGMENT_SHADER, const_index_float_array_source,
+                   sizeof(const_index_float_array_source) - 1u, uniforms, 2u,
+                   &lowered) == 0);
+        assert(lowered.ok != 0u);
+        assert(ringl_glsl_lower_rsh1_with_uniforms(
+                   RINGL_FRAGMENT_SHADER, local_const_index_float_array_source,
+                   sizeof(local_const_index_float_array_source) - 1u, uniforms, 2u,
+                   &lowered) == 0);
+        assert(lowered.ok != 0u);
         assert(ringl_glsl_lower_rsh1(
                    RINGL_FRAGMENT_SHADER, dynamic_float_array_source,
                    sizeof(dynamic_float_array_source) - 1u,
                    &lowered) != 0);
         assert(strstr(lowered.diagnostic, "array") != NULL);
+        assert(ringl_glsl_lower_rsh1(
+                   RINGL_FRAGMENT_SHADER, negative_const_index_source,
+                   sizeof(negative_const_index_source) - 1u,
+                   &lowered) != 0);
+        assert(strstr(lowered.diagnostic, "constant") != NULL);
+        ringl_shader_source(fragment, mutable_const_index_source, -1);
+        ringl_compile_shader(fragment);
+        assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
+        assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) > 0u);
+        assert(strstr(log, "read-only") != NULL);
     }
 
     /* Generic texture lowering owns the sampler reflection and emits actual
@@ -86,6 +119,10 @@ int main(void)
         static const char invalid_generic_texture_source[] =
             "uniform sampler2D image; void main() { "
             "gl_FragColor = texture2D(missing, vec2(0.0)); }";
+        static const char const_index_sampler_source[] =
+            "uniform sampler2D palette[2]; const int selected = 1; "
+            "void main() { gl_FragColor = texture2D(palette[selected], "
+            "vec2(0.25, 0.75)); }";
         RinGLGlslLowerResult lowered;
         RinGLRsh1HeaderV1 header;
         const RinGLRsh1InstructionV1* instructions;
@@ -116,6 +153,12 @@ int main(void)
                    RINGL_FRAGMENT_SHADER, invalid_generic_texture_source,
                    sizeof(invalid_generic_texture_source) - 1u, &lowered) != 0);
         assert(strstr(lowered.diagnostic, "sampler2D") != NULL);
+        assert(ringl_glsl_lower_rsh1(
+                   RINGL_FRAGMENT_SHADER, const_index_sampler_source,
+                   sizeof(const_index_sampler_source) - 1u, &lowered) == 0);
+        assert(lowered.ok != 0u);
+        assert(lowered.sampler_binding_count == 1u);
+        assert(lowered.sampler_binding_indices[0] == 1u);
     }
 
     ringl_shader_source(vertex,

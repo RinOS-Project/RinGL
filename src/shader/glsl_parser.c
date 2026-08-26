@@ -35,6 +35,7 @@ typedef enum TokenKind {
     TOK_ATTRIBUTE,
     TOK_UNIFORM,
     TOK_VARYING,
+    TOK_CONST,
     TOK_PRECISION,
     TOK_LOWP,
     TOK_MEDIUMP,
@@ -106,6 +107,10 @@ typedef struct Symbol {
     /* A declaration remains one source symbol. Array elements are expanded
      * only for linked WebGL reflection and location state. */
     uint32_t sampler_array_length;
+    /* This bounded profile accepts a const int initialized by an integer
+     * literal as an array constant-index-expression. */
+    uint8_t constant_i32;
+    int32_t constant_i32_value;
 } Symbol;
 
 typedef struct Parser {
@@ -208,6 +213,8 @@ static TokenKind keyword_kind(const char* begin, size_t length)
         return TOK_UNIFORM;
     if (length == 7u && memcmp(begin, "varying", 7u) == 0)
         return TOK_VARYING;
+    if (length == 5u && memcmp(begin, "const", 5u) == 0)
+        return TOK_CONST;
     if (length == 9u && memcmp(begin, "precision", 9u) == 0)
         return TOK_PRECISION;
     if (length == 4u && memcmp(begin, "lowp", 4u) == 0)
@@ -451,6 +458,8 @@ static int add_symbol(Parser* parser, const Token* token,
     symbol->kind = kind;
     symbol->width = width;
     symbol->sampler_array_length = 1u;
+    symbol->constant_i32 = 0u;
+    symbol->constant_i32_value = 0;
     return 1;
 }
 
@@ -473,6 +482,68 @@ static int token_unsigned_integer(const Token* token, uint32_t* value_out)
         value = value * 10u + digit;
     }
     *value_out = value;
+    return 1;
+}
+
+static int constant_i32_literal(Parser* parser, int32_t* value_out)
+{
+    uint32_t magnitude;
+    int negative = 0;
+
+    if (parser == NULL || value_out == NULL)
+        return 0;
+    if (accept(parser, TOK_MINUS))
+        negative = 1;
+    else
+        (void)accept(parser, TOK_PLUS);
+    if (!token_unsigned_integer(&parser->token, &magnitude) ||
+        magnitude > (negative ? UINT32_C(2147483648) : INT32_MAX)) {
+        fail(parser, "const int initializer must be an in-range integer literal");
+        return 0;
+    }
+    if (negative && magnitude == UINT32_C(2147483648))
+        *value_out = INT32_MIN;
+    else
+        *value_out = negative ? -(int32_t)magnitude : (int32_t)magnitude;
+    next_token(parser);
+    return 1;
+}
+
+/* WebGL 1 requires support for constant-index-expressions in the fragment
+ * profile. Keep the accepted subset explicit: an unsigned decimal literal or
+ * a local/global const int whose initializer was such a literal. */
+static int uniform_array_constant_index(Parser* parser, uint32_t array_length,
+                                        uint32_t* index_out)
+{
+    Symbol* index_symbol;
+    uint32_t index;
+
+    if (parser == NULL || index_out == NULL || array_length == 0u ||
+        !expect(parser, TOK_LBRACKET,
+                "uniform array requires a constant integer index")) {
+        return 0;
+    }
+    if (token_unsigned_integer(&parser->token, &index)) {
+        next_token(parser);
+    } else if (parser->token.kind == TOK_IDENT &&
+               (index_symbol = find_symbol(parser, &parser->token)) != NULL &&
+               index_symbol->constant_i32 != 0u &&
+               index_symbol->constant_i32_value >= 0) {
+        index = (uint32_t)index_symbol->constant_i32_value;
+        next_token(parser);
+    } else {
+        fail(parser, "uniform array requires a non-negative constant integer index");
+        return 0;
+    }
+    if (index >= array_length) {
+        fail(parser, "uniform array index is outside the declared range");
+        return 0;
+    }
+    if (!expect(parser, TOK_RBRACKET,
+                "expected ']' after uniform array index")) {
+        return 0;
+    }
+    *index_out = index;
     return 1;
 }
 
@@ -748,17 +819,11 @@ static int texture2d_call(Parser* parser)
     }
     next_token(parser);
     if (sampler->sampler_array_length > 1u) {
-        if (!expect(parser, TOK_LBRACKET,
-                    "texture2D sampler array requires a constant index") ||
-            !token_unsigned_integer(&parser->token, &sampler_index) ||
-            sampler_index >= sampler->sampler_array_length) {
-            fail(parser, "texture2D sampler array index is outside the declared range");
+        if (!uniform_array_constant_index(parser,
+                                          sampler->sampler_array_length,
+                                          &sampler_index)) {
             return 0;
         }
-        next_token(parser);
-        if (!expect(parser, TOK_RBRACKET,
-                    "expected ']' after texture2D sampler array index"))
-            return 0;
     } else if (parser->token.kind == TOK_LBRACKET) {
         fail(parser, "texture2D scalar sampler cannot be indexed");
         return 0;
@@ -1012,16 +1077,9 @@ static int primary(Parser* parser)
         if (symbol != NULL && symbol->sampler_array_length > 1u) {
             uint32_t array_index;
 
-            if (!expect(parser, TOK_LBRACKET,
-                        "uniform array requires a constant index") ||
-                !token_unsigned_integer(&parser->token, &array_index) ||
-                array_index >= symbol->sampler_array_length) {
-                fail(parser, "uniform array index is outside the declared range");
-                return 0;
-            }
-            next_token(parser);
-            if (!expect(parser, TOK_RBRACKET,
-                        "expected ']' after uniform array index")) {
+            if (!uniform_array_constant_index(parser,
+                                              symbol->sampler_array_length,
+                                              &array_index)) {
                 return 0;
             }
         } else if (parser->token.kind == TOK_LBRACKET) {
@@ -1232,6 +1290,10 @@ static int assignment(Parser* parser)
             symbol->kind == SYMBOL_UNIFORM_MAT3 ||
             symbol->kind == SYMBOL_UNIFORM_MAT4) {
             fail(parser, "uniforms are read-only");
+            return 0;
+        }
+        if (symbol->constant_i32 != 0u) {
+            fail(parser, "const int is read-only");
             return 0;
         }
         if (symbol->kind == SYMBOL_VARYING &&
@@ -1493,6 +1555,40 @@ static int local_declaration(Parser* parser)
     return 1;
 }
 
+static int constant_int_declaration(Parser* parser)
+{
+    Token name;
+    Symbol* symbol;
+    int32_t value;
+
+    next_token(parser);
+    if (!expect(parser, TOK_INT, "only const int is supported"))
+        return 0;
+    if (parser->token.kind != TOK_IDENT) {
+        fail(parser, "expected identifier after const int");
+        return 0;
+    }
+    name = parser->token;
+    next_token(parser);
+    if (!expect(parser, TOK_ASSIGN,
+                "const int requires an integer literal initializer") ||
+        !constant_i32_literal(parser, &value) ||
+        !expect(parser, TOK_SEMI, "expected ';' after const int")) {
+        return 0;
+    }
+    if (!add_symbol(parser, &name, SYMBOL_VALUE, 1u))
+        return 0;
+    symbol = find_symbol(parser, &name);
+    if (symbol == NULL) {
+        fail(parser, "failed to record const int");
+        return 0;
+    }
+    symbol->constant_i32 = 1u;
+    symbol->constant_i32_value = value;
+    parser->result->declaration_count++;
+    return 1;
+}
+
 static int main_function(Parser* parser)
 {
     next_token(parser);
@@ -1512,7 +1608,10 @@ static int main_function(Parser* parser)
         return 0;
 
     while (parser->token.kind != TOK_RBRACE && parser->token.kind != TOK_EOF) {
-        if (parser->token.kind == TOK_FLOAT ||
+        if (parser->token.kind == TOK_CONST) {
+            if (!constant_int_declaration(parser))
+                return 0;
+        } else if (parser->token.kind == TOK_FLOAT ||
             parser->token.kind == TOK_INT ||
             parser->token.kind == TOK_BOOL ||
             parser->token.kind == TOK_VEC2 ||
@@ -2081,6 +2180,9 @@ int ringl_glsl_parse(uint32_t shader_type,
                 break;
         } else if (parser.token.kind == TOK_PRECISION) {
             if (!precision_declaration(&parser))
+                break;
+        } else if (parser.token.kind == TOK_CONST) {
+            if (!constant_int_declaration(&parser))
                 break;
         } else if (parser.token.kind == TOK_VOID) {
             if (!main_function(&parser))

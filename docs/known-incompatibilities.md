@@ -84,7 +84,8 @@ submitting a RinGPU command.
 
 The generic no-varying matrix form permits `mat2`/`mat3`/`mat4` uniforms in
 both vertex and fragment stages, including arrays of at most four elements
-selected by an in-range decimal constant. These are program-owned scalar RSH1
+selected by an in-range decimal literal or `const int` initialized with an
+integer literal. These are program-owned scalar RSH1
 constants and `matN * vecN` products; contiguous matrix uploads replace the
 affected linked stage module atomically. Dynamic indexing, cross-dimension or
 matrix/matrix arithmetic, and matrix use in the specialized varying/texture

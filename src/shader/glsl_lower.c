@@ -38,6 +38,7 @@ typedef enum Tok {
     T_ATTRIBUTE,
     T_UNIFORM,
     T_VARYING,
+    T_CONST,
     T_PRECISION,
     T_LOWP,
     T_MEDIUMP,
@@ -112,6 +113,8 @@ typedef struct Symbol {
     /* Source declarations retain their aggregate length. Samplers and the
      * bounded numeric array profile use the same constant-index mechanism. */
     uint16_t sampler_array_length;
+    uint8_t constant_i32;
+    int32_t constant_i32_value;
 } Symbol;
 
 typedef struct Lower {
@@ -247,6 +250,8 @@ static Tok keyword(const char* begin, size_t length)
         return T_UNIFORM;
     if (length == 7u && memcmp(begin, "varying", 7u) == 0)
         return T_VARYING;
+    if (length == 5u && memcmp(begin, "const", 5u) == 0)
+        return T_CONST;
     if (length == 9u && memcmp(begin, "precision", 9u) == 0)
         return T_PRECISION;
     if (length == 4u && memcmp(begin, "lowp", 4u) == 0)
@@ -552,6 +557,65 @@ static int token_unsigned_integer(const Token* token, uint32_t* value_out)
         value = value * 10u + digit;
     }
     *value_out = value;
+    return 1;
+}
+
+static int constant_i32_literal(Lower* lower, int32_t* value_out)
+{
+    uint32_t magnitude;
+    int negative = 0;
+
+    if (lower == NULL || value_out == NULL)
+        return 0;
+    if (take(lower, T_MINUS))
+        negative = 1;
+    else
+        (void)take(lower, T_PLUS);
+    if (!token_unsigned_integer(&lower->token, &magnitude) ||
+        magnitude > (negative ? UINT32_C(2147483648) : INT32_MAX)) {
+        fail(lower, "const int initializer must be an in-range integer literal");
+        return 0;
+    }
+    if (negative && magnitude == UINT32_C(2147483648))
+        *value_out = INT32_MIN;
+    else
+        *value_out = negative ? -(int32_t)magnitude : (int32_t)magnitude;
+    next(lower);
+    return 1;
+}
+
+static int uniform_array_constant_index(Lower* lower, uint32_t array_length,
+                                        uint32_t* index_out)
+{
+    Symbol* index_symbol;
+    uint32_t index;
+
+    if (lower == NULL || index_out == NULL || array_length == 0u ||
+        !need(lower, T_LBRACKET,
+              "uniform array requires a constant integer index")) {
+        return 0;
+    }
+    if (token_unsigned_integer(&lower->token, &index)) {
+        next(lower);
+    } else if (lower->token.kind == T_IDENT &&
+               (index_symbol = find_symbol(lower, &lower->token)) != NULL &&
+               index_symbol->constant_i32 != 0u &&
+               index_symbol->constant_i32_value >= 0) {
+        index = (uint32_t)index_symbol->constant_i32_value;
+        next(lower);
+    } else {
+        fail(lower, "uniform array requires a non-negative constant integer index");
+        return 0;
+    }
+    if (index >= array_length) {
+        fail(lower, "uniform array index is outside the declared range");
+        return 0;
+    }
+    if (!need(lower, T_RBRACKET,
+              "expected ']' after uniform array index")) {
+        return 0;
+    }
+    *index_out = index;
     return 1;
 }
 
@@ -935,16 +999,9 @@ static Value symbol_value(Lower* lower)
     }
     next(lower);
     if (symbol->sampler_array_length > 1u) {
-        if (!need(lower, T_LBRACKET,
-                  "uniform array requires a constant index") ||
-            !token_unsigned_integer(&lower->token, &array_index) ||
-            array_index >= symbol->sampler_array_length) {
-            fail(lower, "uniform array index is outside the declared range");
-            return invalid_value();
-        }
-        next(lower);
-        if (!need(lower, T_RBRACKET,
-                  "expected ']' after uniform array index")) {
+        if (!uniform_array_constant_index(lower,
+                                          symbol->sampler_array_length,
+                                          &array_index)) {
             return invalid_value();
         }
     } else if (lower->token.kind == T_LBRACKET) {
@@ -2697,17 +2754,11 @@ static Value texture2d_value(Lower* lower)
     }
     next(lower);
     if (sampler->sampler_array_length > 1u) {
-        if (!need(lower, T_LBRACKET,
-                  "texture2D sampler array requires a constant index") ||
-            !token_unsigned_integer(&lower->token, &sampler_array_index) ||
-            sampler_array_index >= sampler->sampler_array_length) {
-            fail(lower, "texture2D sampler array index is outside the declared range");
+        if (!uniform_array_constant_index(lower,
+                                          sampler->sampler_array_length,
+                                          &sampler_array_index)) {
             return result;
         }
-        next(lower);
-        if (!need(lower, T_RBRACKET,
-                  "expected ']' after texture2D sampler array index"))
-            return result;
     } else if (lower->token.kind == T_LBRACKET) {
         fail(lower, "texture2D scalar sampler cannot be indexed");
         return result;
@@ -3144,6 +3195,48 @@ static int local_decl(Lower* lower, uint8_t width, int is_i32, int is_bool,
     return need(lower, T_SEMI, "expected ';' after local");
 }
 
+static int constant_int_declaration(Lower* lower)
+{
+    Token name;
+    Symbol* symbol;
+    uint16_t reg;
+    int32_t value;
+    uint32_t bits;
+
+    next(lower);
+    if (!need(lower, T_INT, "only const int is supported"))
+        return 0;
+    if (lower->token.kind != T_IDENT) {
+        fail(lower, "expected identifier after const int");
+        return 0;
+    }
+    name = lower->token;
+    next(lower);
+    if (!need(lower, T_ASSIGN,
+              "const int requires an integer literal initializer") ||
+        !constant_i32_literal(lower, &value) ||
+        !need(lower, T_SEMI, "expected ';' after const int")) {
+        return 0;
+    }
+    if (find_symbol(lower, &name) != NULL ||
+        (symbol = add_symbol(lower, &name, 0, 1u, 0u)) == NULL) {
+        return 0;
+    }
+    reg = new_reg(lower);
+    memcpy(&bits, &value, sizeof(bits));
+    if (reg == RINGL_RSH1_UNUSED ||
+        !emit(lower, RINGL_RSH1_OP_CONST_I32, reg, RINGL_RSH1_UNUSED,
+              RINGL_RSH1_UNUSED, bits)) {
+        return 0;
+    }
+    symbol->is_i32 = 1u;
+    symbol->constant_i32 = 1u;
+    symbol->constant_i32_value = value;
+    symbol->regs[0] = reg;
+    symbol_mark_all_initialized(symbol);
+    return 1;
+}
+
 static int store_output(Lower* lower, const Value* value,
                         uint32_t first_output)
 {
@@ -3508,8 +3601,8 @@ static int assignment(Lower* lower)
         symbol_mark_all_initialized(symbol);
         return 1;
     }
-    if (symbol->attribute || symbol->uniform) {
-        fail(lower, "attribute or uniform is read-only");
+    if (symbol->attribute || symbol->uniform || symbol->constant_i32 != 0u) {
+        fail(lower, "attribute, uniform, or const int is read-only");
         return 0;
     }
     if (symbol->matrix != value.matrix ||
@@ -3969,6 +4062,11 @@ static int parse_all(Lower* lower)
                 return 0;
             continue;
         }
+        if (lower->token.kind == T_CONST) {
+            if (!constant_int_declaration(lower))
+                return 0;
+            continue;
+        }
         if (lower->token.kind == T_ATTRIBUTE) {
             Token name;
             uint8_t width;
@@ -4186,7 +4284,10 @@ static int parse_all(Lower* lower)
             }
             while (lower->token.kind != T_RBRACE &&
                    lower->token.kind != T_EOF) {
-                if (lower->token.kind == T_FLOAT ||
+                if (lower->token.kind == T_CONST) {
+                    if (!constant_int_declaration(lower))
+                        return 0;
+                } else if (lower->token.kind == T_FLOAT ||
                     lower->token.kind == T_VEC2 ||
                     lower->token.kind == T_VEC3 ||
                     lower->token.kind == T_VEC4 ||

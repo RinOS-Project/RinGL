@@ -399,6 +399,24 @@ int main(void)
         "void main() {\n"
         "  gl_FragColor = vec4(1.0, 0.25, 0.0, 1.0);\n"
         "}\n";
+    const char* fragment_matrix_array_source =
+        "uniform mat2 colors[2];\n"
+        "const int selected = 1;\n"
+        "void main() {\n"
+        "  vec2 color = colors[selected] * vec2(0.25, 0.5);\n"
+        "  gl_FragColor = vec4(color, 0.0, 1.0);\n"
+        "}\n";
+    const char* fragment_matrix3_array_source =
+        "uniform mat3 colors[2];\n"
+        "void main() {\n"
+        "  vec3 color = colors[1] * vec3(0.25, 0.5, 0.75);\n"
+        "  gl_FragColor = vec4(color, 1.0);\n"
+        "}\n";
+    const char* fragment_matrix4_array_source =
+        "uniform mat4 colors[2];\n"
+        "void main() {\n"
+        "  gl_FragColor = colors[1] * vec4(0.25, 0.5, 0.75, 1.0);\n"
+        "}\n";
     const char* point_coord_fragment_source =
         "void main() {\n"
         "  gl_FragColor = vec4(gl_PointCoord.yx, 0.0, 1.0);\n"
@@ -980,6 +998,33 @@ int main(void)
     assert(header.input_count == 4u);
     assert(header.output_count == 4u);
     assert(header.instruction_count >= 5u);
+
+    /* Fragment matrix-array access emits the ordinary scalar RSH1 dot
+     * product. It must not regress to an embedding-side colour path merely
+     * because the uniform lives in the fragment stage. */
+    header = lower_and_read_header(fragment, fragment_matrix_array_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 4u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_ADD_F32));
+
+    header = lower_and_read_header(fragment, fragment_matrix3_array_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 4u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_ADD_F32));
+
+    header = lower_and_read_header(fragment, fragment_matrix4_array_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 4u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_ADD_F32));
 
     /* Point-sprite coordinates are fragment builtins, not user varyings. The
      * generated RSH1 therefore carries exactly the builtin X/Y loads and the

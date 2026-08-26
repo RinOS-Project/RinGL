@@ -38,6 +38,7 @@ typedef enum Tok {
     T_ATTRIBUTE,
     T_UNIFORM,
     T_VARYING,
+    T_CONST,
     T_PRECISION,
     T_LOWP,
     T_MEDIUMP,
@@ -90,7 +91,11 @@ typedef struct Value {
 
 typedef struct Symbol {
     char name[64];
-    uint16_t regs[16];
+    /* One source symbol represents a whole bounded uniform array.  A mat4
+     * array reaches four 16-component elements, while vec4 arrays reach
+     * eight elements; keep their constants addressable until a compile-time
+     * array index selects one element. */
+    uint16_t regs[64];
     uint16_t input;
     uint16_t output;
     uint8_t width;
@@ -105,7 +110,11 @@ typedef struct Symbol {
     uint8_t is_bool;
     uint8_t sampler;
     uint16_t sampler_index;
+    /* Source declarations retain their aggregate length. Samplers and the
+     * bounded numeric array profile use the same constant-index mechanism. */
     uint16_t sampler_array_length;
+    uint8_t constant_i32;
+    int32_t constant_i32_value;
 } Symbol;
 
 typedef struct Lower {
@@ -241,6 +250,8 @@ static Tok keyword(const char* begin, size_t length)
         return T_UNIFORM;
     if (length == 7u && memcmp(begin, "varying", 7u) == 0)
         return T_VARYING;
+    if (length == 5u && memcmp(begin, "const", 5u) == 0)
+        return T_CONST;
     if (length == 9u && memcmp(begin, "precision", 9u) == 0)
         return T_PRECISION;
     if (length == 4u && memcmp(begin, "lowp", 4u) == 0)
@@ -509,6 +520,7 @@ static Symbol* add_symbol(Lower* lower, const Token* token,
     symbol->attribute = (uint8_t)attribute;
     symbol->width = width;
     symbol->matrix = matrix_dimension;
+    symbol->sampler_array_length = 1u;
     symbol->input = attribute ? lower->next_input : RINGL_RSH1_UNUSED;
     symbol->output = RINGL_RSH1_UNUSED;
     if (attribute)
@@ -545,6 +557,65 @@ static int token_unsigned_integer(const Token* token, uint32_t* value_out)
         value = value * 10u + digit;
     }
     *value_out = value;
+    return 1;
+}
+
+static int constant_i32_literal(Lower* lower, int32_t* value_out)
+{
+    uint32_t magnitude;
+    int negative = 0;
+
+    if (lower == NULL || value_out == NULL)
+        return 0;
+    if (take(lower, T_MINUS))
+        negative = 1;
+    else
+        (void)take(lower, T_PLUS);
+    if (!token_unsigned_integer(&lower->token, &magnitude) ||
+        magnitude > (negative ? UINT32_C(2147483648) : INT32_MAX)) {
+        fail(lower, "const int initializer must be an in-range integer literal");
+        return 0;
+    }
+    if (negative && magnitude == UINT32_C(2147483648))
+        *value_out = INT32_MIN;
+    else
+        *value_out = negative ? -(int32_t)magnitude : (int32_t)magnitude;
+    next(lower);
+    return 1;
+}
+
+static int uniform_array_constant_index(Lower* lower, uint32_t array_length,
+                                        uint32_t* index_out)
+{
+    Symbol* index_symbol;
+    uint32_t index;
+
+    if (lower == NULL || index_out == NULL || array_length == 0u ||
+        !need(lower, T_LBRACKET,
+              "uniform array requires a constant integer index")) {
+        return 0;
+    }
+    if (token_unsigned_integer(&lower->token, &index)) {
+        next(lower);
+    } else if (lower->token.kind == T_IDENT &&
+               (index_symbol = find_symbol(lower, &lower->token)) != NULL &&
+               index_symbol->constant_i32 != 0u &&
+               index_symbol->constant_i32_value >= 0) {
+        index = (uint32_t)index_symbol->constant_i32_value;
+        next(lower);
+    } else {
+        fail(lower, "uniform array requires a non-negative constant integer index");
+        return 0;
+    }
+    if (index >= array_length) {
+        fail(lower, "uniform array index is outside the declared range");
+        return 0;
+    }
+    if (!need(lower, T_RBRACKET,
+              "expected ']' after uniform array index")) {
+        return 0;
+    }
+    *index_out = index;
     return 1;
 }
 
@@ -619,8 +690,8 @@ static Symbol* add_varying_symbol(Lower* lower, const Token* token,
     return symbol;
 }
 
-static const RinGLGlslUniformValue* find_uniform_value(
-    const Lower* lower, const Token* name)
+static const RinGLGlslUniformValue* find_uniform_value_by_name(
+    const Lower* lower, const char* name)
 {
     uint32_t index;
 
@@ -628,57 +699,93 @@ static const RinGLGlslUniformValue* find_uniform_value(
         return NULL;
     for (index = 0u; index < lower->uniform_count; ++index) {
         const RinGLGlslUniformValue* uniform = &lower->uniforms[index];
-        size_t length;
 
         if (uniform->name == NULL)
             continue;
-        length = strlen(uniform->name);
-        if (length == name->length &&
-            memcmp(uniform->name, name->begin, length) == 0) {
+        if (strcmp(uniform->name, name) == 0) {
             return uniform;
         }
     }
     return NULL;
 }
 
+static const RinGLGlslUniformValue* find_uniform_value(
+    const Lower* lower, const Token* name)
+{
+    char text[64];
+
+    if (lower == NULL || name == NULL || name->length >= sizeof(text))
+        return NULL;
+    memcpy(text, name->begin, name->length);
+    text[name->length] = '\0';
+    return find_uniform_value_by_name(lower, text);
+}
+
 static int initialize_uniform(Lower* lower, Symbol* symbol,
                               const Token* name, uint32_t type)
 {
-    const RinGLGlslUniformValue* uniform;
     uint32_t zero_values[16] = { 0u };
-    const uint32_t* values = zero_values;
     int is_i32 = type == RINGL_INT || type == RINGL_BOOL ||
                  type == RINGL_BOOL_VEC2 || type == RINGL_BOOL_VEC3 ||
                  type == RINGL_BOOL_VEC4 || type == RINGL_INT_VEC2 ||
                  type == RINGL_INT_VEC3 || type == RINGL_INT_VEC4;
+    uint32_t component_count;
+    uint32_t array_index;
     uint32_t index;
 
     if (lower == NULL || symbol == NULL || name == NULL)
         return 0;
-    uniform = find_uniform_value(lower, name);
-    if (uniform != NULL && uniform->type != type) {
-        fail(lower, "uniform reflection type mismatch");
-        return 0;
-    }
-    if (uniform != NULL)
-        values = is_i32 ? (const uint32_t*)uniform->i32_values
-                         : (const uint32_t*)uniform->values;
     symbol->uniform = 1u;
     symbol->is_i32 = (uint8_t)is_i32;
     symbol->is_bool = type == RINGL_BOOL || type == RINGL_BOOL_VEC2 ||
                       type == RINGL_BOOL_VEC3 || type == RINGL_BOOL_VEC4;
-    for (index = 0u; index < (symbol->matrix
-                                  ? (uint32_t)symbol->matrix * symbol->matrix
-                                  : symbol->width); ++index) {
-        uint16_t reg = new_reg(lower);
-        uint32_t bits = values[index];
+    component_count = symbol->matrix
+        ? (uint32_t)symbol->matrix * symbol->matrix : symbol->width;
+    if (component_count == 0u ||
+        component_count * symbol->sampler_array_length >
+            sizeof(symbol->regs) / sizeof(symbol->regs[0])) {
+        fail(lower, "uniform array exceeds bounded register storage");
+        return 0;
+    }
+    for (array_index = 0u; array_index < symbol->sampler_array_length;
+         ++array_index) {
+        const RinGLGlslUniformValue* uniform;
+        const uint32_t* values = zero_values;
+        char element_name[64];
 
-        if (reg == RINGL_RSH1_UNUSED ||
-            !emit(lower, is_i32 ? RINGL_RSH1_OP_CONST_I32 : RINGL_RSH1_OP_CONST_F32, reg,
-                  RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED, bits)) {
+        if (symbol->sampler_array_length == 1u) {
+            uniform = find_uniform_value(lower, name);
+        } else {
+            int written = snprintf(element_name, sizeof(element_name),
+                                   "%.*s[%u]", (int)name->length, name->begin,
+                                   array_index);
+
+            if (written < 0 || (size_t)written >= sizeof(element_name)) {
+                fail(lower, "uniform array element name is too long");
+                return 0;
+            }
+            uniform = find_uniform_value_by_name(lower, element_name);
+        }
+        if (uniform != NULL && uniform->type != type) {
+            fail(lower, "uniform reflection type mismatch");
             return 0;
         }
-        symbol->regs[index] = reg;
+        if (uniform != NULL) {
+            values = is_i32 ? (const uint32_t*)uniform->i32_values
+                             : (const uint32_t*)uniform->values;
+        }
+        for (index = 0u; index < component_count; ++index) {
+            uint16_t reg = new_reg(lower);
+            uint32_t bits = values[index];
+
+            if (reg == RINGL_RSH1_UNUSED ||
+                !emit(lower, is_i32 ? RINGL_RSH1_OP_CONST_I32
+                                    : RINGL_RSH1_OP_CONST_F32,
+                      reg, RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED, bits)) {
+                return 0;
+            }
+            symbol->regs[array_index * component_count + index] = reg;
+        }
     }
     symbol_mark_all_initialized(symbol);
     return 1;
@@ -879,6 +986,8 @@ static Value symbol_value(Lower* lower)
     Value value = invalid_value();
     Token name = lower->token;
     Symbol* symbol = find_symbol(lower, &name);
+    uint32_t array_index = 0u;
+    uint32_t component_count;
     uint32_t index;
 
     if (symbol == NULL || !symbol->initialized || symbol->sampler) {
@@ -889,11 +998,23 @@ static Value symbol_value(Lower* lower)
         return value;
     }
     next(lower);
+    if (symbol->sampler_array_length > 1u) {
+        if (!uniform_array_constant_index(lower,
+                                          symbol->sampler_array_length,
+                                          &array_index)) {
+            return invalid_value();
+        }
+    } else if (lower->token.kind == T_LBRACKET) {
+        fail(lower, "scalar uniform cannot be indexed");
+        return invalid_value();
+    }
     value.width = symbol->width;
     value.matrix = symbol->matrix;
     value.is_i32 = symbol->is_i32;
     value.is_bool = symbol->is_bool;
     value.known_zero_components = symbol->known_zero_components;
+    component_count = symbol->matrix
+        ? (uint32_t)symbol->matrix * symbol->matrix : symbol->width;
     if (symbol->attribute && !symbol->varying) {
         for (index = 0u; index < symbol->width; ++index) {
             uint16_t reg = new_reg(lower);
@@ -906,10 +1027,8 @@ static Value symbol_value(Lower* lower)
             value.regs[index] = reg;
         }
     } else {
-        for (index = 0u; index < (symbol->matrix
-                                      ? (uint32_t)symbol->matrix * symbol->matrix
-                                      : symbol->width); ++index)
-            value.regs[index] = symbol->regs[index];
+        for (index = 0u; index < component_count; ++index)
+            value.regs[index] = symbol->regs[array_index * component_count + index];
     }
     return apply_swizzle(lower, value);
 }
@@ -2635,17 +2754,11 @@ static Value texture2d_value(Lower* lower)
     }
     next(lower);
     if (sampler->sampler_array_length > 1u) {
-        if (!need(lower, T_LBRACKET,
-                  "texture2D sampler array requires a constant index") ||
-            !token_unsigned_integer(&lower->token, &sampler_array_index) ||
-            sampler_array_index >= sampler->sampler_array_length) {
-            fail(lower, "texture2D sampler array index is outside the declared range");
+        if (!uniform_array_constant_index(lower,
+                                          sampler->sampler_array_length,
+                                          &sampler_array_index)) {
             return result;
         }
-        next(lower);
-        if (!need(lower, T_RBRACKET,
-                  "expected ']' after texture2D sampler array index"))
-            return result;
     } else if (lower->token.kind == T_LBRACKET) {
         fail(lower, "texture2D scalar sampler cannot be indexed");
         return result;
@@ -3082,6 +3195,48 @@ static int local_decl(Lower* lower, uint8_t width, int is_i32, int is_bool,
     return need(lower, T_SEMI, "expected ';' after local");
 }
 
+static int constant_int_declaration(Lower* lower)
+{
+    Token name;
+    Symbol* symbol;
+    uint16_t reg;
+    int32_t value;
+    uint32_t bits;
+
+    next(lower);
+    if (!need(lower, T_INT, "only const int is supported"))
+        return 0;
+    if (lower->token.kind != T_IDENT) {
+        fail(lower, "expected identifier after const int");
+        return 0;
+    }
+    name = lower->token;
+    next(lower);
+    if (!need(lower, T_ASSIGN,
+              "const int requires an integer literal initializer") ||
+        !constant_i32_literal(lower, &value) ||
+        !need(lower, T_SEMI, "expected ';' after const int")) {
+        return 0;
+    }
+    if (find_symbol(lower, &name) != NULL ||
+        (symbol = add_symbol(lower, &name, 0, 1u, 0u)) == NULL) {
+        return 0;
+    }
+    reg = new_reg(lower);
+    memcpy(&bits, &value, sizeof(bits));
+    if (reg == RINGL_RSH1_UNUSED ||
+        !emit(lower, RINGL_RSH1_OP_CONST_I32, reg, RINGL_RSH1_UNUSED,
+              RINGL_RSH1_UNUSED, bits)) {
+        return 0;
+    }
+    symbol->is_i32 = 1u;
+    symbol->constant_i32 = 1u;
+    symbol->constant_i32_value = value;
+    symbol->regs[0] = reg;
+    symbol_mark_all_initialized(symbol);
+    return 1;
+}
+
 static int store_output(Lower* lower, const Value* value,
                         uint32_t first_output)
 {
@@ -3446,8 +3601,8 @@ static int assignment(Lower* lower)
         symbol_mark_all_initialized(symbol);
         return 1;
     }
-    if (symbol->attribute || symbol->uniform) {
-        fail(lower, "attribute or uniform is read-only");
+    if (symbol->attribute || symbol->uniform || symbol->constant_i32 != 0u) {
+        fail(lower, "attribute, uniform, or const int is read-only");
         return 0;
     }
     if (symbol->matrix != value.matrix ||
@@ -3907,6 +4062,11 @@ static int parse_all(Lower* lower)
                 return 0;
             continue;
         }
+        if (lower->token.kind == T_CONST) {
+            if (!constant_int_declaration(lower))
+                return 0;
+            continue;
+        }
         if (lower->token.kind == T_ATTRIBUTE) {
             Token name;
             uint8_t width;
@@ -3978,6 +4138,7 @@ static int parse_all(Lower* lower)
                 continue;
             }
             uint32_t uniform_type;
+            uint32_t uniform_array_length = 1u;
 
             if (lower->token.kind == T_FLOAT) {
                 uniform_type = RINGL_FLOAT;
@@ -4003,17 +4164,14 @@ static int parse_all(Lower* lower)
                 uniform_type = RINGL_FLOAT_VEC4;
             } else if (lower->token.kind == T_IVEC4) {
                 uniform_type = RINGL_INT_VEC4;
-            } else if (lower->token.kind == T_MAT2 &&
-                       lower->shader_type == RINGL_VERTEX_SHADER) {
+            } else if (lower->token.kind == T_MAT2) {
                 uniform_type = RINGL_FLOAT_MAT2;
-            } else if (lower->token.kind == T_MAT3 &&
-                       lower->shader_type == RINGL_VERTEX_SHADER) {
+            } else if (lower->token.kind == T_MAT3) {
                 uniform_type = RINGL_FLOAT_MAT3;
-            } else if (lower->token.kind == T_MAT4 &&
-                       lower->shader_type == RINGL_VERTEX_SHADER) {
+            } else if (lower->token.kind == T_MAT4) {
                 uniform_type = RINGL_FLOAT_MAT4;
             } else {
-                fail(lower, "only vertex mat2-4 and scalar/vector float, int, or bool uniforms are supported");
+                fail(lower, "only scalar/vector/matrix float, int, or bool uniforms are supported");
                 return 0;
             }
             next(lower);
@@ -4022,6 +4180,37 @@ static int parse_all(Lower* lower)
                 return 0;
             }
             name = lower->token;
+            next(lower);
+            if (take(lower, T_LBRACKET)) {
+                uint32_t uniform_array_capacity =
+                    uniform_type == RINGL_FLOAT ? RINGL_MAX_FLOAT_UNIFORMS
+                    : uniform_type == RINGL_INT ? RINGL_MAX_INT_UNIFORMS
+                    : uniform_type == RINGL_BOOL ? RINGL_MAX_BOOL_UNIFORMS
+                    : uniform_type == RINGL_FLOAT_VEC2 ? RINGL_MAX_VEC2_UNIFORMS
+                    : uniform_type == RINGL_FLOAT_VEC3 ? RINGL_MAX_VEC3_UNIFORMS
+                    : uniform_type == RINGL_FLOAT_VEC4 ? RINGL_MAX_VEC4_UNIFORMS
+                    : uniform_type == RINGL_INT_VEC2 ? RINGL_MAX_IVEC2_UNIFORMS
+                    : uniform_type == RINGL_INT_VEC3 ? RINGL_MAX_IVEC3_UNIFORMS
+                    : uniform_type == RINGL_INT_VEC4 ? RINGL_MAX_IVEC4_UNIFORMS
+                    : uniform_type == RINGL_BOOL_VEC2 ? RINGL_MAX_BVEC2_UNIFORMS
+                    : uniform_type == RINGL_BOOL_VEC3 ? RINGL_MAX_BVEC3_UNIFORMS
+                    : uniform_type == RINGL_BOOL_VEC4 ? RINGL_MAX_BVEC4_UNIFORMS
+                    : uniform_type == RINGL_FLOAT_MAT2 ? RINGL_MAX_MAT2_UNIFORMS
+                    : uniform_type == RINGL_FLOAT_MAT3 ? RINGL_MAX_MAT3_UNIFORMS
+                    : RINGL_MAX_MAT4_UNIFORMS;
+
+                if (!token_unsigned_integer(&lower->token,
+                                            &uniform_array_length) ||
+                    uniform_array_length == 0u ||
+                    uniform_array_length > uniform_array_capacity ||
+                    !need(lower, T_NUMBER,
+                          "uniform array length must be a positive integer") ||
+                    !need(lower, T_RBRACKET,
+                          "expected ']' after float array length")) {
+                    fail(lower, "uniform array length is outside the supported range");
+                    return 0;
+                }
+            }
             if (find_symbol(lower, &name) != NULL ||
                 (symbol = add_symbol(lower, &name, 0,
                                      uniform_type == RINGL_FLOAT || uniform_type == RINGL_INT || uniform_type == RINGL_BOOL ? 1u
@@ -4032,11 +4221,15 @@ static int parse_all(Lower* lower)
                                      : 4u,
                                      uniform_type == RINGL_FLOAT_MAT2 ? 2u
                                      : uniform_type == RINGL_FLOAT_MAT3 ? 3u
-                                     : uniform_type == RINGL_FLOAT_MAT4 ? 4u : 0u)) == NULL ||
-                !initialize_uniform(lower, symbol, &name, uniform_type)) {
+                                     : uniform_type == RINGL_FLOAT_MAT4 ? 4u : 0u)) == NULL) {
                 return 0;
             }
-            next(lower);
+            symbol->sampler_array_length = (uint16_t)uniform_array_length;
+            /* Array length controls uniform initialization, so create its
+             * constants only after the aggregate has been recorded. */
+            if (!initialize_uniform(lower, symbol, &name, uniform_type)) {
+                return 0;
+            }
             if (!need(lower, T_SEMI, "expected ';' after uniform"))
                 return 0;
             continue;
@@ -4091,7 +4284,10 @@ static int parse_all(Lower* lower)
             }
             while (lower->token.kind != T_RBRACE &&
                    lower->token.kind != T_EOF) {
-                if (lower->token.kind == T_FLOAT ||
+                if (lower->token.kind == T_CONST) {
+                    if (!constant_int_declaration(lower))
+                        return 0;
+                } else if (lower->token.kind == T_FLOAT ||
                     lower->token.kind == T_VEC2 ||
                     lower->token.kind == T_VEC3 ||
                     lower->token.kind == T_VEC4 ||

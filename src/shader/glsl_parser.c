@@ -35,6 +35,7 @@ typedef enum TokenKind {
     TOK_ATTRIBUTE,
     TOK_UNIFORM,
     TOK_VARYING,
+    TOK_CONST,
     TOK_PRECISION,
     TOK_LOWP,
     TOK_MEDIUMP,
@@ -103,7 +104,13 @@ typedef struct Symbol {
     char name[64];
     uint32_t kind;
     uint32_t width;
+    /* A declaration remains one source symbol. Array elements are expanded
+     * only for linked WebGL reflection and location state. */
     uint32_t sampler_array_length;
+    /* This bounded profile accepts a const int initialized by an integer
+     * literal as an array constant-index-expression. */
+    uint8_t constant_i32;
+    int32_t constant_i32_value;
 } Symbol;
 
 typedef struct Parser {
@@ -206,6 +213,8 @@ static TokenKind keyword_kind(const char* begin, size_t length)
         return TOK_UNIFORM;
     if (length == 7u && memcmp(begin, "varying", 7u) == 0)
         return TOK_VARYING;
+    if (length == 5u && memcmp(begin, "const", 5u) == 0)
+        return TOK_CONST;
     if (length == 9u && memcmp(begin, "precision", 9u) == 0)
         return TOK_PRECISION;
     if (length == 4u && memcmp(begin, "lowp", 4u) == 0)
@@ -449,6 +458,8 @@ static int add_symbol(Parser* parser, const Token* token,
     symbol->kind = kind;
     symbol->width = width;
     symbol->sampler_array_length = 1u;
+    symbol->constant_i32 = 0u;
+    symbol->constant_i32_value = 0;
     return 1;
 }
 
@@ -474,6 +485,68 @@ static int token_unsigned_integer(const Token* token, uint32_t* value_out)
     return 1;
 }
 
+static int constant_i32_literal(Parser* parser, int32_t* value_out)
+{
+    uint32_t magnitude;
+    int negative = 0;
+
+    if (parser == NULL || value_out == NULL)
+        return 0;
+    if (accept(parser, TOK_MINUS))
+        negative = 1;
+    else
+        (void)accept(parser, TOK_PLUS);
+    if (!token_unsigned_integer(&parser->token, &magnitude) ||
+        magnitude > (negative ? UINT32_C(2147483648) : INT32_MAX)) {
+        fail(parser, "const int initializer must be an in-range integer literal");
+        return 0;
+    }
+    if (negative && magnitude == UINT32_C(2147483648))
+        *value_out = INT32_MIN;
+    else
+        *value_out = negative ? -(int32_t)magnitude : (int32_t)magnitude;
+    next_token(parser);
+    return 1;
+}
+
+/* WebGL 1 requires support for constant-index-expressions in the fragment
+ * profile. Keep the accepted subset explicit: an unsigned decimal literal or
+ * a local/global const int whose initializer was such a literal. */
+static int uniform_array_constant_index(Parser* parser, uint32_t array_length,
+                                        uint32_t* index_out)
+{
+    Symbol* index_symbol;
+    uint32_t index;
+
+    if (parser == NULL || index_out == NULL || array_length == 0u ||
+        !expect(parser, TOK_LBRACKET,
+                "uniform array requires a constant integer index")) {
+        return 0;
+    }
+    if (token_unsigned_integer(&parser->token, &index)) {
+        next_token(parser);
+    } else if (parser->token.kind == TOK_IDENT &&
+               (index_symbol = find_symbol(parser, &parser->token)) != NULL &&
+               index_symbol->constant_i32 != 0u &&
+               index_symbol->constant_i32_value >= 0) {
+        index = (uint32_t)index_symbol->constant_i32_value;
+        next_token(parser);
+    } else {
+        fail(parser, "uniform array requires a non-negative constant integer index");
+        return 0;
+    }
+    if (index >= array_length) {
+        fail(parser, "uniform array index is outside the declared range");
+        return 0;
+    }
+    if (!expect(parser, TOK_RBRACKET,
+                "expected ']' after uniform array index")) {
+        return 0;
+    }
+    *index_out = index;
+    return 1;
+}
+
 static int sampler_array_element_name(char* destination, size_t destination_size,
                                       const Token* base_name,
                                       uint32_t element_index)
@@ -486,6 +559,65 @@ static int sampler_array_element_name(char* destination, size_t destination_size
     written = snprintf(destination, destination_size, "%.*s[%u]",
                        (int)base_name->length, base_name->begin, element_index);
     return written >= 0 && (size_t)written < destination_size;
+}
+
+/* Keep every supported uniform-array declaration in the same bounded
+ * representation: the source symbol retains its aggregate length, while the
+ * parser publishes contiguous element names for WebGL reflection/location
+ * state. `names` is the first byte of fixed RINGL_GLSL_NAME_MAX-byte slots. */
+static int uniform_array_declaration(Parser* parser, const Token* name,
+                                     SymbolKind kind, uint32_t width,
+                                     char* names, uint32_t* count,
+                                     uint32_t capacity,
+                                     const char* type_name)
+{
+    uint32_t array_length = 1u;
+    uint32_t index;
+    Symbol* symbol;
+
+    if (parser == NULL || name == NULL || names == NULL || count == NULL ||
+        type_name == NULL || *count > capacity)
+        return 0;
+    next_token(parser);
+    if (accept(parser, TOK_LBRACKET)) {
+        if (!token_unsigned_integer(&parser->token, &array_length) ||
+            array_length == 0u || array_length > capacity ||
+            !expect(parser, TOK_NUMBER,
+                    "uniform array length must be a positive integer") ||
+            !expect(parser, TOK_RBRACKET,
+                    "expected ']' after uniform array length")) {
+            fail(parser, "uniform array length is outside the supported range");
+            return 0;
+        }
+    }
+    if (array_length > capacity - *count) {
+        fail(parser, "too many uniform array elements");
+        return 0;
+    }
+    if (!add_symbol(parser, name, kind, width))
+        return 0;
+    symbol = find_symbol(parser, name);
+    if (symbol == NULL)
+        return 0;
+    symbol->sampler_array_length = array_length;
+    for (index = 0u; index < array_length; ++index) {
+        char* reflected_name = names + (*count + index) * RINGL_GLSL_NAME_MAX;
+
+        if (array_length == 1u) {
+            memcpy(reflected_name, name->begin, name->length);
+            reflected_name[name->length] = '\0';
+        } else if (!sampler_array_element_name(
+                       reflected_name, RINGL_GLSL_NAME_MAX, name, index)) {
+            fail(parser, "uniform array name is too long");
+            return 0;
+        }
+    }
+    *count += array_length;
+    if (!expect(parser, TOK_SEMI, "expected ';' after uniform"))
+        return 0;
+    parser->result->declaration_count++;
+    (void)type_name;
+    return 1;
 }
 
 static int expression(Parser* parser);
@@ -687,17 +819,11 @@ static int texture2d_call(Parser* parser)
     }
     next_token(parser);
     if (sampler->sampler_array_length > 1u) {
-        if (!expect(parser, TOK_LBRACKET,
-                    "texture2D sampler array requires a constant index") ||
-            !token_unsigned_integer(&parser->token, &sampler_index) ||
-            sampler_index >= sampler->sampler_array_length) {
-            fail(parser, "texture2D sampler array index is outside the declared range");
+        if (!uniform_array_constant_index(parser,
+                                          sampler->sampler_array_length,
+                                          &sampler_index)) {
             return 0;
         }
-        next_token(parser);
-        if (!expect(parser, TOK_RBRACKET,
-                    "expected ']' after texture2D sampler array index"))
-            return 0;
     } else if (parser->token.kind == TOK_LBRACKET) {
         fail(parser, "texture2D scalar sampler cannot be indexed");
         return 0;
@@ -948,6 +1074,18 @@ static int primary(Parser* parser)
             return 0;
         }
         next_token(parser);
+        if (symbol != NULL && symbol->sampler_array_length > 1u) {
+            uint32_t array_index;
+
+            if (!uniform_array_constant_index(parser,
+                                              symbol->sampler_array_length,
+                                              &array_index)) {
+                return 0;
+            }
+        } else if (parser->token.kind == TOK_LBRACKET) {
+            fail(parser, "scalar value cannot be indexed");
+            return 0;
+        }
         while (accept(parser, TOK_DOT)) {
             Token swizzle = parser->token;
             uint8_t family = 0u;
@@ -1152,6 +1290,10 @@ static int assignment(Parser* parser)
             symbol->kind == SYMBOL_UNIFORM_MAT3 ||
             symbol->kind == SYMBOL_UNIFORM_MAT4) {
             fail(parser, "uniforms are read-only");
+            return 0;
+        }
+        if (symbol->constant_i32 != 0u) {
+            fail(parser, "const int is read-only");
             return 0;
         }
         if (symbol->kind == SYMBOL_VARYING &&
@@ -1413,6 +1555,40 @@ static int local_declaration(Parser* parser)
     return 1;
 }
 
+static int constant_int_declaration(Parser* parser)
+{
+    Token name;
+    Symbol* symbol;
+    int32_t value;
+
+    next_token(parser);
+    if (!expect(parser, TOK_INT, "only const int is supported"))
+        return 0;
+    if (parser->token.kind != TOK_IDENT) {
+        fail(parser, "expected identifier after const int");
+        return 0;
+    }
+    name = parser->token;
+    next_token(parser);
+    if (!expect(parser, TOK_ASSIGN,
+                "const int requires an integer literal initializer") ||
+        !constant_i32_literal(parser, &value) ||
+        !expect(parser, TOK_SEMI, "expected ';' after const int")) {
+        return 0;
+    }
+    if (!add_symbol(parser, &name, SYMBOL_VALUE, 1u))
+        return 0;
+    symbol = find_symbol(parser, &name);
+    if (symbol == NULL) {
+        fail(parser, "failed to record const int");
+        return 0;
+    }
+    symbol->constant_i32 = 1u;
+    symbol->constant_i32_value = value;
+    parser->result->declaration_count++;
+    return 1;
+}
+
 static int main_function(Parser* parser)
 {
     next_token(parser);
@@ -1432,7 +1608,10 @@ static int main_function(Parser* parser)
         return 0;
 
     while (parser->token.kind != TOK_RBRACE && parser->token.kind != TOK_EOF) {
-        if (parser->token.kind == TOK_FLOAT ||
+        if (parser->token.kind == TOK_CONST) {
+            if (!constant_int_declaration(parser))
+                return 0;
+        } else if (parser->token.kind == TOK_FLOAT ||
             parser->token.kind == TOK_INT ||
             parser->token.kind == TOK_BOOL ||
             parser->token.kind == TOK_VEC2 ||
@@ -1538,6 +1717,58 @@ static int uniform_declaration(Parser* parser)
         return 0;
     }
     name = parser->token;
+    if (type == TOK_SAMPLER2D)
+        return uniform_array_declaration(parser, &name, SYMBOL_SAMPLER2D, 0u,
+                                         (char*)parser->result->sampler_uniform_names,
+                                         &parser->result->sampler_uniform_count,
+                                         RINGL_GLSL_MAX_SAMPLER_UNIFORMS, "sampler2D");
+    if (type == TOK_FLOAT)
+        return uniform_array_declaration(parser, &name, SYMBOL_UNIFORM_FLOAT, 1u,
+                                         (char*)parser->result->float_uniform_names,
+                                         &parser->result->float_uniform_count,
+                                         RINGL_GLSL_MAX_FLOAT_UNIFORMS, "float");
+    if (type == TOK_INT)
+        return uniform_array_declaration(parser, &name, SYMBOL_UNIFORM_INT, 1u,
+                                         (char*)parser->result->int_uniform_names,
+                                         &parser->result->int_uniform_count,
+                                         RINGL_GLSL_MAX_INT_UNIFORMS, "int");
+    if (type == TOK_BOOL)
+        return uniform_array_declaration(parser, &name, SYMBOL_UNIFORM_BOOL, 1u,
+                                         (char*)parser->result->bool_uniform_names,
+                                         &parser->result->bool_uniform_count,
+                                         RINGL_GLSL_MAX_BOOL_UNIFORMS, "bool");
+    if (type == TOK_VEC2 || type == TOK_IVEC2 || type == TOK_BVEC2)
+        return uniform_array_declaration(parser, &name,
+                                         type == TOK_VEC2 ? SYMBOL_UNIFORM_VEC2 : type == TOK_IVEC2 ? SYMBOL_UNIFORM_IVEC2 : SYMBOL_UNIFORM_BVEC2,
+                                         2u,
+                                         type == TOK_VEC2 ? (char*)parser->result->vec2_uniform_names : type == TOK_IVEC2 ? (char*)parser->result->ivec2_uniform_names : (char*)parser->result->bvec2_uniform_names,
+                                         type == TOK_VEC2 ? &parser->result->vec2_uniform_count : type == TOK_IVEC2 ? &parser->result->ivec2_uniform_count : &parser->result->bvec2_uniform_count,
+                                         type == TOK_VEC2 ? RINGL_GLSL_MAX_VEC2_UNIFORMS : type == TOK_IVEC2 ? RINGL_GLSL_MAX_IVEC2_UNIFORMS : RINGL_GLSL_MAX_BVEC2_UNIFORMS,
+                                         "vec2");
+    if (type == TOK_VEC3 || type == TOK_IVEC3 || type == TOK_BVEC3)
+        return uniform_array_declaration(parser, &name,
+                                         type == TOK_VEC3 ? SYMBOL_UNIFORM_VEC3 : type == TOK_IVEC3 ? SYMBOL_UNIFORM_IVEC3 : SYMBOL_UNIFORM_BVEC3,
+                                         3u,
+                                         type == TOK_VEC3 ? (char*)parser->result->vec3_uniform_names : type == TOK_IVEC3 ? (char*)parser->result->ivec3_uniform_names : (char*)parser->result->bvec3_uniform_names,
+                                         type == TOK_VEC3 ? &parser->result->vec3_uniform_count : type == TOK_IVEC3 ? &parser->result->ivec3_uniform_count : &parser->result->bvec3_uniform_count,
+                                         type == TOK_VEC3 ? RINGL_GLSL_MAX_VEC3_UNIFORMS : type == TOK_IVEC3 ? RINGL_GLSL_MAX_IVEC3_UNIFORMS : RINGL_GLSL_MAX_BVEC3_UNIFORMS,
+                                         "vec3");
+    if (type == TOK_VEC4 || type == TOK_IVEC4 || type == TOK_BVEC4)
+        return uniform_array_declaration(parser, &name,
+                                         type == TOK_VEC4 ? SYMBOL_UNIFORM_VEC4 : type == TOK_IVEC4 ? SYMBOL_UNIFORM_IVEC4 : SYMBOL_UNIFORM_BVEC4,
+                                         4u,
+                                         type == TOK_VEC4 ? (char*)parser->result->vec4_uniform_names : type == TOK_IVEC4 ? (char*)parser->result->ivec4_uniform_names : (char*)parser->result->bvec4_uniform_names,
+                                         type == TOK_VEC4 ? &parser->result->vec4_uniform_count : type == TOK_IVEC4 ? &parser->result->ivec4_uniform_count : &parser->result->bvec4_uniform_count,
+                                         type == TOK_VEC4 ? RINGL_GLSL_MAX_VEC4_UNIFORMS : type == TOK_IVEC4 ? RINGL_GLSL_MAX_IVEC4_UNIFORMS : RINGL_GLSL_MAX_BVEC4_UNIFORMS,
+                                         "vec4");
+    if (type == TOK_MAT2 || type == TOK_MAT3 || type == TOK_MAT4)
+        return uniform_array_declaration(parser, &name,
+                                         type == TOK_MAT2 ? SYMBOL_UNIFORM_MAT2 : type == TOK_MAT3 ? SYMBOL_UNIFORM_MAT3 : SYMBOL_UNIFORM_MAT4,
+                                         type == TOK_MAT2 ? 4u : type == TOK_MAT3 ? 9u : 16u,
+                                         type == TOK_MAT2 ? (char*)parser->result->mat2_uniform_names : type == TOK_MAT3 ? (char*)parser->result->mat3_uniform_names : (char*)parser->result->mat4_uniform_names,
+                                         type == TOK_MAT2 ? &parser->result->mat2_uniform_count : type == TOK_MAT3 ? &parser->result->mat3_uniform_count : &parser->result->mat4_uniform_count,
+                                         type == TOK_MAT2 ? RINGL_GLSL_MAX_MAT2_UNIFORMS : type == TOK_MAT3 ? RINGL_GLSL_MAX_MAT3_UNIFORMS : RINGL_GLSL_MAX_MAT4_UNIFORMS,
+                                         "matrix");
     if (type == TOK_SAMPLER2D) {
         uint32_t sampler_array_length = 1u;
 
@@ -1581,6 +1812,55 @@ static int uniform_declaration(Parser* parser)
         parser->result->declaration_count++;
         return 1;
     }
+    /* Scalar float arrays share the executable numeric-uniform path. Source
+     * indexing is validated against this declaration, while reflection keeps
+     * one contiguous WebGL location for each element. */
+    if (type == TOK_FLOAT) {
+        uint32_t float_array_length = 1u;
+        Symbol* symbol;
+
+        next_token(parser);
+        if (accept(parser, TOK_LBRACKET)) {
+            if (!token_unsigned_integer(&parser->token, &float_array_length) ||
+                float_array_length == 0u ||
+                float_array_length > RINGL_GLSL_MAX_FLOAT_UNIFORMS ||
+                !expect(parser, TOK_NUMBER,
+                        "float array length must be a positive integer") ||
+                !expect(parser, TOK_RBRACKET,
+                        "expected ']' after float array length")) {
+                fail(parser, "float array length is outside the supported range");
+                return 0;
+            }
+        }
+        if (float_array_length > RINGL_GLSL_MAX_FLOAT_UNIFORMS -
+                                     parser->result->float_uniform_count) {
+            fail(parser, "too many float uniforms");
+            return 0;
+        }
+        if (!add_symbol(parser, &name, SYMBOL_UNIFORM_FLOAT, 1u))
+            return 0;
+        symbol = find_symbol(parser, &name);
+        if (symbol == NULL)
+            return 0;
+        symbol->sampler_array_length = float_array_length;
+        for (index = 0u; index < float_array_length; ++index) {
+            char* reflected_name = parser->result->float_uniform_names[
+                parser->result->float_uniform_count++];
+
+            if (float_array_length == 1u) {
+                memcpy(reflected_name, name.begin, name.length);
+                reflected_name[name.length] = '\0';
+            } else if (!sampler_array_element_name(
+                           reflected_name, RINGL_GLSL_NAME_MAX, &name, index)) {
+                fail(parser, "float array name is too long");
+                return 0;
+            }
+        }
+        if (!expect(parser, TOK_SEMI, "expected ';' after float uniform"))
+            return 0;
+        parser->result->declaration_count++;
+        return 1;
+    }
     if (!add_symbol(parser, &name,
                     type == TOK_SAMPLER2D ? SYMBOL_SAMPLER2D
                     : type == TOK_FLOAT ? SYMBOL_UNIFORM_FLOAT
@@ -1605,16 +1885,16 @@ static int uniform_declaration(Parser* parser)
                     : type == TOK_VEC4 || type == TOK_IVEC4 || type == TOK_BVEC4 ? 4u
                     : type == TOK_MAT2 ? 4u : type == TOK_MAT3 ? 9u : 16u))
         return 0;
-    if (type == TOK_FLOAT) {
-        if (parser->result->float_uniform_count >=
-            RINGL_GLSL_MAX_FLOAT_UNIFORMS) {
-            fail(parser, "too many float uniforms");
+    if (type == TOK_SAMPLER2D) {
+        if (parser->result->sampler_uniform_count >=
+            RINGL_GLSL_MAX_SAMPLER_UNIFORMS) {
+            fail(parser, "too many sampler uniforms");
             return 0;
         }
-        index = parser->result->float_uniform_count++;
-        memcpy(parser->result->float_uniform_names[index], name.begin,
+        index = parser->result->sampler_uniform_count++;
+        memcpy(parser->result->sampler_uniform_names[index], name.begin,
                name.length);
-        parser->result->float_uniform_names[index][name.length] = '\0';
+        parser->result->sampler_uniform_names[index][name.length] = '\0';
     } else if (type == TOK_INT) {
         if (parser->result->int_uniform_count >= RINGL_GLSL_MAX_INT_UNIFORMS) {
             fail(parser, "too many int uniforms");
@@ -1900,6 +2180,9 @@ int ringl_glsl_parse(uint32_t shader_type,
                 break;
         } else if (parser.token.kind == TOK_PRECISION) {
             if (!precision_declaration(&parser))
+                break;
+        } else if (parser.token.kind == TOK_CONST) {
+            if (!constant_int_declaration(&parser))
                 break;
         } else if (parser.token.kind == TOK_VOID) {
             if (!main_function(&parser))

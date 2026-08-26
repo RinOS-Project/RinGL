@@ -160,11 +160,7 @@ the texture upload APIs. RinGL decodes sRGB RGB through IEC 61966-2-1 into
 linear RGBA32F RinGPU storage. `SRGB_ALPHA_EXT` retains linear alpha, whereas
 alpha-less `SRGB_EXT` keeps the physical alpha one and never exposes it. Its
 framebuffer metadata therefore reports the logical sRGB encoding and
-unsigned-byte component type. `ringl_framebuffer_color_attachment_is_srgb_at()`
-and `ringl_framebuffer_color_attachment_component_type_at()` inspect the exact
-bound `COLOR_ATTACHMENTi`; nonzero slots are gated by
-`ringl_enable_webgl_draw_buffers()` and both queries leave caller output
-unchanged on failure. Byte readback re-encodes only RGB. Mipmap generation for a
+unsigned-byte component type, and byte readback re-encodes only RGB. Mipmap generation for a
 logical sRGB texture rejects instead of creating a chain with unspecified
 transfer semantics. A browser must gate these tokens through its acquired
 `EXT_sRGB` object; RinGL itself remains on the RinGPU adapter/private
@@ -319,18 +315,30 @@ varyings, swizzles, and numeric-uniform module rebuilds part of one
 RinGL→RinGPU execution path; it does not evaluate a coordinate or texture in
 Ladybird or Aquamarine.
 
-The generic path also executes bounded `uniform sampler2D name[N]` arrays:
-`N` and the total sampler-element count are limited to eight, and every lookup
-must use an in-range decimal constant such as `texture2D(name[1], uv)`. Array
-elements retain their own declaration indices and therefore resolve to actual
-RinGPU image/sampler pairs, while `getUniformLocation("name")` aliases
-`name[0]`. `ringl_uniform_1iv()` first verifies that a complete update remains
-within one reflected array, then changes the selected texture units together.
-`getActiveUniform` reports one `name[0]` record with the array length. Dynamic
-indexing, non-sampler uniform arrays, non-2D sampler types, explicit
-LOD/gradient forms, unsupported control flow/types, and over-limit modules
-still fail before a module or target update is published. The older bounded
-profiles remain only for their stable layouts on forms they already admit.
+The generic path also executes bounded `sampler2D name[N]` arrays: the total
+number of elements is at most eight, and each `texture2D(name[index], uv)`
+uses an in-range decimal literal or `const int` initialized with an integer
+literal. RinGL folds that bounded constant-index expression to its own real RSH1
+image/sampler pair. Reflection exposes one `name[0]` uniform of size `N`, the
+base name aliases element zero, and `ringl_uniform_1iv()` atomically updates a
+complete contiguous range after validating every element. The same executable
+reflection/lowering route accepts bounded numeric `uniform name[N]` arrays:
+scalar float/int/Boolean and every `vec`/`ivec`/`bvec` class has at most eight
+elements, while vertex `mat2`/`mat3`/`mat4` has at most four. A decimal,
+in-range source index reads the selected program-owned RSH1 constants, the
+base name aliases `name[0]`, and the matching scalar/vector/matrix span
+setter validates the complete contiguous range before atomically replacing
+both affected stage modules. Boolean writes normalize each component to zero
+or one. Dynamic indices remain outside the profile; vertex/fragment same-name
+uniform declarations must still be type-compatible and sampler arrays must
+have matching lengths or linking fails.
+
+The generic path has the same finite RSH1 admission limits as every other
+RinGL shader (128 instructions and 96 registers). Unsupported GLSL ES sampler
+forms—dynamic indexing, non-2D sampler types, explicit LOD/gradient forms,
+unsupported control flow/types, and over-limit modules—fail before a module or
+target update is published. The older bounded profiles remain only for their
+stable layouts on forms they already admit.
 
 ## Current bounded texture-coordinate extension
 
@@ -542,18 +550,20 @@ depending on the current program binding. Each validates its complete input
 before writing caller-owned storage, so invalid programs or locations cannot
 expose a partially updated result.
 
-`ringl_uniform_1f()`, `ringl_uniform_2f()`, `ringl_uniform_3f()`,
-`ringl_uniform_4f()`, and `ringl_uniform_matrix{2,3,4}fv()` update a linked program
-only after every supplied component is finite. The matrix setter requires
-`transpose == 0` and preserves WebGL's column-major order. A NaN, infinity, or
-transposed matrix records `INVALID_VALUE` and leaves the published uniform and
-its derived executable unchanged. This lets embeddings preserve atomic
-WebGL-visible uniform state while the bounded RSH1 lowering path has no
-non-finite literal representation.
+`ringl_uniform_{1,2,3,4}fv()` and
+`ringl_uniform_matrix{2,3,4}fv_array()` update a linked contiguous array
+range only after every supplied component is finite and the entire range fits
+one reflected declaration. The legacy scalar setters remain count-one
+wrappers. Matrix updates require `transpose == 0` and preserve WebGL's
+column-major order. A NaN, infinity, transposed matrix, or cross-declaration
+range records an error and leaves the published uniform and its derived
+executable unchanged. This lets embeddings preserve atomic WebGL-visible
+uniform state while the bounded RSH1 lowering path has no non-finite literal
+representation.
 
-`ringl_uniform_1i()` accepts the linked sampler, scalar-`int`, or scalar-`bool`
-location; `ringl_uniform_{2,3,4}i()` update the matching `ivec` or `bvec`
-location. Integer updates retain signed i32 values in RSH1 (`CONST_I32` plus
+`ringl_uniform_1iv()` accepts a complete contiguous linked sampler,
+scalar-`int`, or scalar-`bool` range; `ringl_uniform_{2,3,4}iv()` update the
+matching `ivec` or `bvec` range. Integer updates retain signed i32 values in RSH1 (`CONST_I32` plus
 integer arithmetic) until an explicit GLSL `float(...)` conversion emits
 `I32_TO_F32`; they never reinterpret the integer bit pattern as a float.
 Boolean writes instead normalize each component to exact zero or one before
@@ -566,10 +576,9 @@ also admit precedence-correct `!`, `&&`, `^^`, and `||`; the profile forbids
 expression side effects, so their RSH1 Boolean evaluation preserves observable
 GLSL behavior without a second backend. Boolean vector builtins lower to scalar
 RSH1 integer comparisons/additions and therefore run through the same generic
-RinGPU backend as every other program. `sampler2D` arrays use the separately
-bounded texture path described above; numeric/Boolean uniform arrays,
-multi-component Boolean swizzles, local-mutating integer control flow, and
-implicit numeric conversions remain unavailable.
+RinGPU backend as every other program. Multi-component Boolean swizzles,
+local-mutating integer control flow, implicit numeric conversions, dynamic
+uniform-array indexing, and over-limit modules remain unavailable.
 
 Program-owned uniform artifacts are stage-selective. A mutable vertex matrix
 does not force an unrelated fragment `sampler2D` shader back through the
@@ -600,14 +609,17 @@ fragment profile may combine the matching bounded texture calls and multiply
 their RGBA result by one linked `uniform vec4`; RinGL materializes the finite
 four-component value in the program-owned fragment RSH1 module and retains
 the sampler-resource metadata needed to bind every native image/sampler pair.
-This specialized varying/texture shape deliberately remains `mat4` only. The
-generic no-varying vertex profile additionally executes matching Float
+This specialized varying/texture shape deliberately remains vertex-`mat4`
+only. The generic no-varying vertex and fragment profile additionally executes matching Float
 `matrixCompMult(matN, matN)` for `mat2`, `mat3`, and `mat4`: scalar-diagonal,
 component-list/vector-column, and matching-copy constructors feed initialized
 local or program-owned uniform matrices, and every column-major component
 becomes an executable scalar RSH1 multiply before a matching `matN * vecN`.
-Matrix arrays, cross-dimension conversion, general matrix arithmetic, and all
-other matrix expressions remain outside both shapes. Direct texture coordinates
+Bounded arrays of up to four `matN` elements use decimal constant indices in
+either stage; their contiguous setters atomically rebuild the owning stage(s).
+Cross-dimension conversion, general matrix arithmetic, dynamic indices, and
+matrix/vector combinations with the specialized varying/texture shape remain
+outside both profiles. Direct texture coordinates
 through eight UV pairs fit the RSH1 interface; broader local coordinate
 expressions remain outside it and fail lowering without publishing a truncated
 module.
@@ -686,9 +698,9 @@ rejected, with scalar `float(...)`/`int(...)` the explicit typed conversion.
 This covers common uniform color modulation and matrix-transformed positions
 (`mat2 * vec2`, `mat3 * vec3`, or `mat4 * vec4`) plus a vector offset and the
 matching Float `matrixCompMult(matN, matN)` subset described above, while
-retaining explicit RSH1 resource and register limits; swizzles, matrix arrays,
-cross-dimension conversion, general matrix arithmetic, vector comparisons, and
-general control flow are still outside the profile. A bounded scalar
+retaining explicit RSH1 resource and register limits; dynamic matrix-array
+indexing, cross-dimension conversion, general matrix arithmetic, vector
+comparisons, and general control flow are still outside the profile. A bounded scalar
 `if (scalar-comparison) { stage-output = vec4(...); } else { stage-output =
 vec4(...); }` is executable: RinGL emits the original Float/i32 comparison,
 tests its i32 result against zero, and uses only forward RSH1 branches. The
@@ -1216,10 +1228,12 @@ validate/create both replacement modules, then invalidates the old pipeline
 and publishes the new executable. Thus an update affects the actual RinGPU
 draw without textual source replacement or a CPU color fallback. The accepted
 generic no-varying forms include `vec4(tint2, 0.0, 1.0)` for a `vec2`,
-`vec4(tint3, 1.0)` for a `vec3`, a direct `vec4` read, and vertex
+`vec4(tint3, 1.0)` for a `vec3`, a direct `vec4` read, vertex
 `gl_Position = transform * position` for one matching `uniform mat2`/`mat3`/
-`mat4` and `attribute vec2`/`vec3`/`vec4`, as well as bounded no-varying vector
-locals and component-wise arithmetic. The generic form has no varyings and one
-matrix per type/location; arrays, other matrix expressions, and matrix/vector
-combinations with the specialized varying/texture profiles remain unavailable
-rather than being reported as successful GLES.
+`mat4` and `attribute vec2`/`vec3`/`vec4`, and fragment
+`gl_FragColor = matN * vecN` expressions. Each stage accepts up to four
+literal- or literal-`const int`-indexed matrix-array elements per type; updates retain the same
+failure-atomic program-owned module replacement. The generic form has no
+varyings. Dynamic indexing, cross-dimension/general matrix arithmetic, and
+matrix/vector combinations with the specialized varying/texture profiles
+remain unavailable rather than being reported as successful GLES.

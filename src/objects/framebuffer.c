@@ -879,8 +879,8 @@ int ringl_get_framebuffer_color_attachment(
                                             attachment);
 }
 
-int ringl_framebuffer_color_attachment_component_type_at(
-    uint32_t attachment, uint32_t* type_out)
+int ringl_framebuffer_color_attachment_component_type_at(uint32_t attachment,
+                                                         uint32_t* type_out)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLFramebufferObject* framebuffer;
@@ -899,24 +899,20 @@ int ringl_framebuffer_color_attachment_component_type_at(
         return -1;
     }
     attachment_index = color_attachment_index(attachment);
+    if (attachment_index != 0u &&
+        context->webgl_draw_buffers_enabled == RINGL_FALSE) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
     /* The default drawing buffer is supplied by the embedding as a normalized
      * color target. It cannot become a Float target through this API. */
     if (context->framebuffer_binding == 0u) {
-        if (attachment_index != 0u) {
-            ringl_context_record_error(context, RINGL_INVALID_ENUM);
-            return -1;
-        }
         *type_out = component_type;
         return 0;
     }
     framebuffer = bound_framebuffer(context);
     if (framebuffer == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return -1;
-    }
-    if (attachment_index != 0u &&
-        context->webgl_draw_buffers_enabled == RINGL_FALSE) {
-        ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return -1;
     }
     if (framebuffer->color_attachment_kind[attachment_index] ==
@@ -989,13 +985,16 @@ int ringl_framebuffer_color_attachment_component_type(uint32_t* type_out)
         RINGL_COLOR_ATTACHMENT0, type_out);
 }
 
-int ringl_framebuffer_color_attachment_is_float(uint32_t* is_float_out)
+int ringl_framebuffer_color_attachment_is_float_at(uint32_t attachment,
+                                                    uint32_t* is_float_out)
 {
     uint32_t component_type;
 
     if (is_float_out == NULL)
-        return ringl_framebuffer_color_attachment_component_type(NULL);
-    if (ringl_framebuffer_color_attachment_component_type(&component_type) !=
+        return ringl_framebuffer_color_attachment_component_type_at(attachment,
+                                                                      NULL);
+    if (ringl_framebuffer_color_attachment_component_type_at(attachment,
+                                                              &component_type) !=
         0) {
         return -1;
     }
@@ -1003,8 +1002,14 @@ int ringl_framebuffer_color_attachment_is_float(uint32_t* is_float_out)
     return 0;
 }
 
-int ringl_framebuffer_color_attachment_is_srgb_at(
-    uint32_t attachment, uint32_t* is_srgb_out)
+int ringl_framebuffer_color_attachment_is_float(uint32_t* is_float_out)
+{
+    return ringl_framebuffer_color_attachment_is_float_at(
+        RINGL_COLOR_ATTACHMENT0, is_float_out);
+}
+
+int ringl_framebuffer_color_attachment_is_srgb_at(uint32_t attachment,
+                                                   uint32_t* is_srgb_out)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLFramebufferObject* framebuffer;
@@ -1023,22 +1028,18 @@ int ringl_framebuffer_color_attachment_is_srgb_at(
         return -1;
     }
     attachment_index = color_attachment_index(attachment);
+    if (attachment_index != 0u &&
+        context->webgl_draw_buffers_enabled == RINGL_FALSE) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
     if (context->framebuffer_binding == 0u) {
-        if (attachment_index != 0u) {
-            ringl_context_record_error(context, RINGL_INVALID_ENUM);
-            return -1;
-        }
         *is_srgb_out = is_srgb;
         return 0;
     }
     framebuffer = bound_framebuffer(context);
     if (framebuffer == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return -1;
-    }
-    if (attachment_index != 0u &&
-        context->webgl_draw_buffers_enabled == RINGL_FALSE) {
-        ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return -1;
     }
     if (framebuffer->color_attachment_kind[attachment_index] ==

@@ -1632,28 +1632,31 @@ int ringl_get_framebuffer_attachment(
  * and stencil state. */
 int ringl_get_framebuffer_color_attachment(
     RinGLFramebufferAttachmentInfoV1* attachment);
-/* Reports whether the bound framebuffer's COLOR_ATTACHMENT0 has native
- * floating-point components. The default framebuffer and an unattached color
- * slot report zero. It is an inspection API only: callers must still use
- * ringl_check_framebuffer_status() before issuing a render or readback. */
+/* Reports whether a bound framebuffer color attachment has native
+ * floating-point components. attachment must name COLOR_ATTACHMENT0 through
+ * COLOR_ATTACHMENT3; nonzero attachments require WEBGL_draw_buffers. The
+ * default framebuffer and an unattached color slot report zero. It is an
+ * inspection API only: callers must still use ringl_check_framebuffer_status()
+ * before issuing a render or readback. */
+int ringl_framebuffer_color_attachment_is_float_at(uint32_t attachment,
+                                                   uint32_t* is_float_out);
 int ringl_framebuffer_color_attachment_is_float(uint32_t* is_float_out);
-/* Reports whether a bound custom framebuffer color attachment has the logical
- * EXT_sRGB encoding. `attachment` must be COLOR_ATTACHMENT0 through the
- * highest enabled draw-buffers slot. The physical target remains linear inside
- * RinGL, so this is intentionally a separate query from the component-type
- * inspection API. */
-int ringl_framebuffer_color_attachment_is_srgb_at(
-    uint32_t attachment, uint32_t* is_srgb_out);
-/* Compatibility shorthand for COLOR_ATTACHMENT0. */
+/* Reports whether a color attachment has the logical EXT_sRGB encoding. The
+ * physical target remains linear inside RinGL, so this is intentionally a
+ * separate query from the component-type inspection API. The _at forms accept
+ * COLOR_ATTACHMENT0 through COLOR_ATTACHMENT3; nonzero attachments require
+ * WEBGL_draw_buffers. */
+int ringl_framebuffer_color_attachment_is_srgb_at(uint32_t attachment,
+                                                  uint32_t* is_srgb_out);
 int ringl_framebuffer_color_attachment_is_srgb(uint32_t* is_srgb_out);
-/* Reports the declared component type of a bound custom framebuffer color
- * attachment: RINGL_UNSIGNED_BYTE for normalized/default storage,
- * RINGL_FLOAT for Float32, or RINGL_HALF_FLOAT_OES for a half-float upload
- * normalized into RinGL's private Float32 shadow. The query is inspection
- * only and leaves the output untouched on failure. */
-int ringl_framebuffer_color_attachment_component_type_at(
-    uint32_t attachment, uint32_t* type_out);
-/* Compatibility shorthand for COLOR_ATTACHMENT0. */
+/* Reports a color attachment's declared component type:
+ * RINGL_UNSIGNED_BYTE for normalized/default storage, RINGL_FLOAT for
+ * Float32, or RINGL_HALF_FLOAT_OES for a half-float upload normalized into
+ * RinGL's private Float32 shadow. The _at forms accept COLOR_ATTACHMENT0
+ * through COLOR_ATTACHMENT3; nonzero attachments require WEBGL_draw_buffers.
+ * The query is inspection only and leaves the output untouched on failure. */
+int ringl_framebuffer_color_attachment_component_type_at(uint32_t attachment,
+                                                         uint32_t* type_out);
 int ringl_framebuffer_color_attachment_component_type(uint32_t* type_out);
 uint32_t ringl_check_framebuffer_status(uint32_t target);
 
@@ -1763,10 +1766,8 @@ uint32_t ringl_get_current_program(void);
 int32_t ringl_get_attrib_location(uint32_t program, const char* name);
 int32_t ringl_get_uniform_location(uint32_t program, const char* name);
 void ringl_uniform_1i(int32_t location, int32_t value);
-/* Applies a contiguous range of an active sampler array. `location` may name
- * any element, but `count` must remain inside that declared array. A count of
- * zero and location -1 are no-ops. Scalar int/bool uniforms accept count one
- * through this entry point for WebGL uniform1iv compatibility. */
+/* Applies a contiguous sampler-array range after validating every element.
+ * Scalar int/bool/sampler uniforms accept count one for WebGL uniform1iv. */
 void ringl_uniform_1iv(int32_t location, uint32_t count,
                        const int32_t* values);
 /* Applies to an active sampler, scalar int, or scalar bool uniform. Boolean
@@ -1777,9 +1778,18 @@ void ringl_uniform_1iv(int32_t location, uint32_t count,
 int ringl_get_uniform_1i(uint32_t program, int32_t location,
                           int32_t* value_out);
 void ringl_uniform_2i(int32_t location, int32_t x, int32_t y);
+/* Applies `count` ivec2/bvec2 values to one contiguous linked array range. */
+void ringl_uniform_2iv(int32_t location, uint32_t count,
+                       const int32_t* values);
 void ringl_uniform_3i(int32_t location, int32_t x, int32_t y, int32_t z);
+/* Applies `count` ivec3/bvec3 values to one contiguous linked array range. */
+void ringl_uniform_3iv(int32_t location, uint32_t count,
+                       const int32_t* values);
 void ringl_uniform_4i(int32_t location, int32_t x, int32_t y, int32_t z,
                       int32_t w);
+/* Applies `count` ivec4/bvec4 values to one contiguous linked array range. */
+void ringl_uniform_4iv(int32_t location, uint32_t count,
+                       const int32_t* values);
 int ringl_get_uniform_2i(uint32_t program, int32_t location,
                           int32_t values_out[2]);
 int ringl_get_uniform_3i(uint32_t program, int32_t location,
@@ -1790,6 +1800,12 @@ int ringl_get_uniform_4i(uint32_t program, int32_t location,
  * setter applies only to the currently used program and replaces its
  * program-owned RinGPU shader modules atomically after finite-value checks. */
 void ringl_uniform_1f(int32_t location, float value);
+/* Applies a contiguous scalar-float array range. `location` may name any
+ * element, but all `count` values must remain in the same reflected array;
+ * preflight and module replacement are atomic. Scalar float uniforms accept
+ * count one. */
+void ringl_uniform_1fv(int32_t location, uint32_t count,
+                       const float* values);
 /* Reads an active scalar float uniform. Invalid program/location/type inputs
  * leave value_out unchanged and record an error. */
 int ringl_get_uniform_1f(uint32_t program, int32_t location,
@@ -1798,6 +1814,9 @@ int ringl_get_uniform_1f(uint32_t program, int32_t location,
  * setter applies only to the currently used linked program and atomically
  * replaces its program-owned RinGPU shader modules after finite-value checks. */
 void ringl_uniform_2f(int32_t location, float x, float y);
+/* Applies `count` vec2 values to one contiguous linked array range. */
+void ringl_uniform_2fv(int32_t location, uint32_t count,
+                       const float* values);
 /* Reads an active vec2 uniform into exactly two caller-owned floats. */
 int ringl_get_uniform_2f(uint32_t program, int32_t location,
                           float values_out[2]);
@@ -1805,6 +1824,9 @@ int ringl_get_uniform_2f(uint32_t program, int32_t location,
  * setter applies only to the currently used linked program and atomically
  * replaces its program-owned RinGPU shader modules after finite-value checks. */
 void ringl_uniform_3f(int32_t location, float x, float y, float z);
+/* Applies `count` vec3 values to one contiguous linked array range. */
+void ringl_uniform_3fv(int32_t location, uint32_t count,
+                       const float* values);
 /* Reads an active vec3 uniform into exactly three caller-owned floats. */
 int ringl_get_uniform_3f(uint32_t program, int32_t location,
                           float values_out[3]);
@@ -1813,6 +1835,9 @@ int ringl_get_uniform_3f(uint32_t program, int32_t location,
  * program-owned RinGPU shader module before replacing the prior executable,
  * so modules are never shared between programs with different values. */
 void ringl_uniform_4f(int32_t location, float x, float y, float z, float w);
+/* Applies `count` vec4 values to one contiguous linked array range. */
+void ringl_uniform_4fv(int32_t location, uint32_t count,
+                       const float* values);
 /* Reads an active vec4 uniform into exactly four caller-owned floats.
  * Invalid program/location/type inputs leave values_out unchanged and record
  * an error. */
@@ -1824,10 +1849,19 @@ int ringl_get_uniform_4f(uint32_t program, int32_t location,
  * transpose must be zero. */
 void ringl_uniform_matrix2fv(int32_t location, uint32_t transpose,
                              const float values[4]);
+/* Applies `count` column-major mat2 values to a contiguous linked array. */
+void ringl_uniform_matrix2fv_array(int32_t location, uint32_t count,
+                                   uint32_t transpose, const float* values);
 void ringl_uniform_matrix3fv(int32_t location, uint32_t transpose,
                              const float values[9]);
+/* Applies `count` column-major mat3 values to a contiguous linked array. */
+void ringl_uniform_matrix3fv_array(int32_t location, uint32_t count,
+                                   uint32_t transpose, const float* values);
 void ringl_uniform_matrix4fv(int32_t location, uint32_t transpose,
                              const float values[16]);
+/* Applies `count` column-major mat4 values to a contiguous linked array. */
+void ringl_uniform_matrix4fv_array(int32_t location, uint32_t count,
+                                   uint32_t transpose, const float* values);
 /* Reads an active square matrix uniform in WebGL column-major order. */
 int ringl_get_uniform_matrix2f(uint32_t program, int32_t location,
                                 float values_out[4]);

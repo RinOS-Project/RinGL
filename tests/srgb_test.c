@@ -108,6 +108,13 @@ static int fake_transition_image(void* session, uint64_t command_list,
     return 0;
 }
 
+static int fake_begin_render_pass_mrt(void* session, uint64_t command_list,
+                                      const RinGLRinGpuRenderPassMrtV1* pass)
+{
+    (void)session;
+    return command_list != 0u && pass != NULL ? 0 : -1;
+}
+
 static int fake_close_command_list(void* session, uint64_t command_list)
 {
     (void)session;
@@ -184,6 +191,7 @@ int main(void)
         .create_command_list = fake_create_command_list,
         .reset_command_list = fake_reset_command_list,
         .transition_image = fake_transition_image,
+        .begin_render_pass_mrt_v1 = fake_begin_render_pass_mrt,
         .close_command_list = fake_close_command_list,
     };
     RinGLRinGpuBindingV1 binding = {
@@ -213,8 +221,10 @@ int main(void)
     uint32_t framebuffer = 0u;
     uint32_t rgb_framebuffer = 0u;
     uint32_t renderbuffer = 0u;
+    uint32_t float_renderbuffer = 0u;
     uint32_t renderbuffer_framebuffer = 0u;
     uint32_t is_srgb = RINGL_FALSE;
+    uint32_t is_float = RINGL_FALSE;
     uint32_t component_type = 0u;
     uint8_t pixels[4] = { 128u, 64u, 32u, 77u };
     uint8_t patched_pixels[4] = { 255u, 0u, 0u, 128u };
@@ -245,6 +255,41 @@ int main(void)
     assert(is_srgb == RINGL_TRUE);
     assert(ringl_framebuffer_color_attachment_component_type(&component_type) == 0);
     assert(component_type == RINGL_UNSIGNED_BYTE);
+    component_type = UINT32_C(0xdeadbeef);
+    assert(ringl_framebuffer_color_attachment_component_type_at(
+               RINGL_COLOR_ATTACHMENT1, &component_type) == -1);
+    assert(ringl_get_error() == RINGL_INVALID_ENUM);
+    assert(component_type == UINT32_C(0xdeadbeef));
+    assert(ringl_enable_webgl_draw_buffers() == 0);
+    ringl_framebuffer_texture_2d(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT1,
+                                 RINGL_TEXTURE_2D, texture, 0);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_framebuffer_color_attachment_is_srgb_at(
+               RINGL_COLOR_ATTACHMENT1, &is_srgb) == 0);
+    assert(is_srgb == RINGL_TRUE);
+    assert(ringl_framebuffer_color_attachment_component_type_at(
+               RINGL_COLOR_ATTACHMENT1, &component_type) == 0);
+    assert(component_type == RINGL_UNSIGNED_BYTE);
+    ringl_gen_renderbuffers(1, &float_renderbuffer);
+    ringl_bind_renderbuffer(RINGL_RENDERBUFFER, float_renderbuffer);
+    ringl_renderbuffer_storage(RINGL_RENDERBUFFER, RINGL_RGBA32F, 1, 1);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT2,
+                                   RINGL_RENDERBUFFER, float_renderbuffer);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_framebuffer_color_attachment_component_type_at(
+               RINGL_COLOR_ATTACHMENT2, &component_type) == 0);
+    assert(component_type == RINGL_FLOAT);
+    assert(ringl_framebuffer_color_attachment_is_float_at(
+               RINGL_COLOR_ATTACHMENT2, &is_float) == 0);
+    assert(is_float == RINGL_TRUE);
+    ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT2,
+                                   RINGL_RENDERBUFFER, 0u);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_delete_renderbuffers(1, &float_renderbuffer);
+    ringl_framebuffer_texture_2d(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT1,
+                                 RINGL_TEXTURE_2D, 0u, 0);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
 
     {
         RinGLColorTarget target;

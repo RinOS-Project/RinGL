@@ -12,6 +12,9 @@
 static int ringl_sampler_array_element_index(const char* name,
                                              size_t* base_length_out,
                                              uint32_t* element_index_out);
+static const char* ringl_uniform_entry_name(const void* entries,
+                                            size_t entry_size,
+                                            uint32_t index);
 
 static uint32_t ringl_shader_sampler_array_length(
     const RinGLShaderObject* shader, uint32_t first_sampler,
@@ -1695,6 +1698,33 @@ static int ringl_program_rebuild_uniform_for_name(
         context, program, vertex, fragment, rebuild_vertex, rebuild_fragment);
 }
 
+/* A WebGL array setter may cover several linked element names. Determine both
+ * stage replacements before changing program storage, then publish all of
+ * the necessary replacement modules as one artifact transaction. */
+static int ringl_program_rebuild_uniform_array_artifacts(
+    RinGLContext* context, RinGLProgramObject* program,
+    const RinGLShaderObject* vertex, const RinGLShaderObject* fragment,
+    uint32_t type, const void* entries, size_t entry_size,
+    uint32_t first_entry, uint32_t count)
+{
+    uint32_t index;
+    int rebuild_vertex = 0;
+    int rebuild_fragment = 0;
+
+    if (context == NULL || program == NULL || vertex == NULL || fragment == NULL ||
+        entries == NULL || count == 0u)
+        return 0;
+    for (index = 0u; index < count; ++index) {
+        const char* name = ringl_uniform_entry_name(entries, entry_size,
+                                                    first_entry + index);
+
+        rebuild_vertex |= ringl_shader_has_uniform_name(vertex, type, name);
+        rebuild_fragment |= ringl_shader_has_uniform_name(fragment, type, name);
+    }
+    return ringl_program_rebuild_uniform_artifacts(
+        context, program, vertex, fragment, rebuild_vertex, rebuild_fragment);
+}
+
 void ringl_link_program(uint32_t program)
 {
     RinGLContext* context = ringl_get_current_context();
@@ -1916,33 +1946,45 @@ void ringl_validate_program(uint32_t program)
     object->validate_status = object->link_status ? RINGL_TRUE : RINGL_FALSE;
 }
 
-static uint32_t ringl_sampler_active_uniform_length(
-    const RinGLProgramObject* object, uint32_t first_sampler)
+/* Every linked uniform class stores its name at byte zero.  Arrays are
+ * represented as normalized, contiguous `name[0]` ... `name[N-1]` entries,
+ * so reflection must coalesce every class, not only sampler/float. */
+static const char* ringl_uniform_entry_name(const void* entries,
+                                            size_t entry_size,
+                                            uint32_t index)
+{
+    return (const char*)entries + (size_t)index * entry_size;
+}
+
+static uint32_t ringl_active_uniform_group_length(const void* entries,
+                                                  size_t entry_size,
+                                                  uint32_t entry_count,
+                                                  uint32_t first_entry)
 {
     const char* base_name;
     size_t base_length;
     uint32_t element_index;
     uint32_t length = 1u;
 
-    if (object == NULL || first_sampler >= object->sampler_uniform_count ||
+    if (entries == NULL || first_entry >= entry_count ||
         !ringl_sampler_array_element_index(
-            object->sampler_uniforms[first_sampler].name, &base_length,
-            &element_index) ||
+            ringl_uniform_entry_name(entries, entry_size, first_entry),
+            &base_length, &element_index) ||
         element_index != 0u) {
         return 1u;
     }
-    base_name = object->sampler_uniforms[first_sampler].name;
-    while (first_sampler + length < object->sampler_uniform_count) {
+    base_name = ringl_uniform_entry_name(entries, entry_size, first_entry);
+    while (first_entry + length < entry_count) {
+        const char* candidate = ringl_uniform_entry_name(
+            entries, entry_size, first_entry + length);
         size_t candidate_base_length;
         uint32_t candidate_element_index;
 
-        if (!ringl_sampler_array_element_index(
-                object->sampler_uniforms[first_sampler + length].name,
-                &candidate_base_length, &candidate_element_index) ||
+        if (!ringl_sampler_array_element_index(candidate, &candidate_base_length,
+                                                &candidate_element_index) ||
             candidate_base_length != base_length ||
-            memcmp(base_name,
-                   object->sampler_uniforms[first_sampler + length].name,
-                   base_length) != 0 || candidate_element_index != length) {
+            memcmp(base_name, candidate, base_length) != 0 ||
+            candidate_element_index != length) {
             break;
         }
         ++length;
@@ -1950,45 +1992,167 @@ static uint32_t ringl_sampler_active_uniform_length(
     return length;
 }
 
-static uint32_t ringl_program_active_sampler_uniform_count(
+static uint32_t ringl_active_uniform_group_count(const void* entries,
+                                                 size_t entry_size,
+                                                 uint32_t entry_count)
+{
+    uint32_t entry = 0u;
+    uint32_t active_count = 0u;
+
+    while (entry < entry_count) {
+        entry += ringl_active_uniform_group_length(entries, entry_size,
+                                                    entry_count, entry);
+        ++active_count;
+    }
+    return active_count;
+}
+
+static int ringl_active_uniform_group_at(const void* entries,
+                                         size_t entry_size,
+                                         uint32_t entry_count,
+                                         uint32_t active_index,
+                                         uint32_t* entry_out,
+                                         uint32_t* array_length_out)
+{
+    uint32_t entry = 0u;
+    uint32_t current_active_index = 0u;
+
+    if (entries == NULL || entry_out == NULL || array_length_out == NULL)
+        return -1;
+    while (entry < entry_count) {
+        uint32_t length = ringl_active_uniform_group_length(
+            entries, entry_size, entry_count, entry);
+
+        if (current_active_index == active_index) {
+            *entry_out = entry;
+            *array_length_out = length;
+            return 0;
+        }
+        entry += length;
+        ++current_active_index;
+    }
+    return -1;
+}
+
+static uint32_t ringl_program_active_uniform_count(
     const RinGLProgramObject* object)
 {
-    uint32_t sampler_index = 0u;
     uint32_t active_count = 0u;
 
     if (object == NULL)
         return 0u;
-    while (sampler_index < object->sampler_uniform_count) {
-        sampler_index +=
-            ringl_sampler_active_uniform_length(object, sampler_index);
-        ++active_count;
-    }
+#define RINGL_COUNT_ACTIVE_UNIFORM_GROUP(member, count_member) \
+    active_count += ringl_active_uniform_group_count(object->member, \
+                                                      sizeof(object->member[0]), \
+                                                      object->count_member)
+    RINGL_COUNT_ACTIVE_UNIFORM_GROUP(sampler_uniforms, sampler_uniform_count);
+    RINGL_COUNT_ACTIVE_UNIFORM_GROUP(float_uniforms, float_uniform_count);
+    RINGL_COUNT_ACTIVE_UNIFORM_GROUP(vec2_uniforms, vec2_uniform_count);
+    RINGL_COUNT_ACTIVE_UNIFORM_GROUP(vec3_uniforms, vec3_uniform_count);
+    RINGL_COUNT_ACTIVE_UNIFORM_GROUP(vec4_uniforms, vec4_uniform_count);
+    RINGL_COUNT_ACTIVE_UNIFORM_GROUP(mat4_uniforms, mat4_uniform_count);
+    RINGL_COUNT_ACTIVE_UNIFORM_GROUP(mat2_uniforms, mat2_uniform_count);
+    RINGL_COUNT_ACTIVE_UNIFORM_GROUP(mat3_uniforms, mat3_uniform_count);
+    RINGL_COUNT_ACTIVE_UNIFORM_GROUP(int_uniforms, int_uniform_count);
+    RINGL_COUNT_ACTIVE_UNIFORM_GROUP(ivec2_uniforms, ivec2_uniform_count);
+    RINGL_COUNT_ACTIVE_UNIFORM_GROUP(ivec3_uniforms, ivec3_uniform_count);
+    RINGL_COUNT_ACTIVE_UNIFORM_GROUP(ivec4_uniforms, ivec4_uniform_count);
+    RINGL_COUNT_ACTIVE_UNIFORM_GROUP(bool_uniforms, bool_uniform_count);
+    RINGL_COUNT_ACTIVE_UNIFORM_GROUP(bvec2_uniforms, bvec2_uniform_count);
+    RINGL_COUNT_ACTIVE_UNIFORM_GROUP(bvec3_uniforms, bvec3_uniform_count);
+    RINGL_COUNT_ACTIVE_UNIFORM_GROUP(bvec4_uniforms, bvec4_uniform_count);
+#undef RINGL_COUNT_ACTIVE_UNIFORM_GROUP
     return active_count;
+}
+
+static int ringl_program_active_uniform_at(const RinGLProgramObject* object,
+                                           uint32_t active_index,
+                                           uint32_t* type_out,
+                                           const char** name_out,
+                                           uint32_t* array_length_out)
+{
+    if (object == NULL || type_out == NULL || name_out == NULL ||
+        array_length_out == NULL)
+        return -1;
+#define RINGL_ACTIVE_UNIFORM_GROUP(type, member, count_member) \
+    do { \
+        uint32_t group_count = ringl_active_uniform_group_count( \
+            object->member, sizeof(object->member[0]), object->count_member); \
+        if (active_index < group_count) { \
+            uint32_t entry; \
+            if (ringl_active_uniform_group_at(object->member, \
+                                              sizeof(object->member[0]), \
+                                              object->count_member, active_index, \
+                                              &entry, array_length_out) != 0) \
+                return -1; \
+            *type_out = type; \
+            *name_out = ringl_uniform_entry_name(object->member, \
+                                                 sizeof(object->member[0]), entry); \
+            return 0; \
+        } \
+        active_index -= group_count; \
+    } while (0)
+    RINGL_ACTIVE_UNIFORM_GROUP(RINGL_SAMPLER_2D, sampler_uniforms, sampler_uniform_count);
+    RINGL_ACTIVE_UNIFORM_GROUP(RINGL_FLOAT, float_uniforms, float_uniform_count);
+    RINGL_ACTIVE_UNIFORM_GROUP(RINGL_FLOAT_VEC2, vec2_uniforms, vec2_uniform_count);
+    RINGL_ACTIVE_UNIFORM_GROUP(RINGL_FLOAT_VEC3, vec3_uniforms, vec3_uniform_count);
+    RINGL_ACTIVE_UNIFORM_GROUP(RINGL_FLOAT_VEC4, vec4_uniforms, vec4_uniform_count);
+    RINGL_ACTIVE_UNIFORM_GROUP(RINGL_FLOAT_MAT4, mat4_uniforms, mat4_uniform_count);
+    RINGL_ACTIVE_UNIFORM_GROUP(RINGL_FLOAT_MAT2, mat2_uniforms, mat2_uniform_count);
+    RINGL_ACTIVE_UNIFORM_GROUP(RINGL_FLOAT_MAT3, mat3_uniforms, mat3_uniform_count);
+    RINGL_ACTIVE_UNIFORM_GROUP(RINGL_INT, int_uniforms, int_uniform_count);
+    RINGL_ACTIVE_UNIFORM_GROUP(RINGL_INT_VEC2, ivec2_uniforms, ivec2_uniform_count);
+    RINGL_ACTIVE_UNIFORM_GROUP(RINGL_INT_VEC3, ivec3_uniforms, ivec3_uniform_count);
+    RINGL_ACTIVE_UNIFORM_GROUP(RINGL_INT_VEC4, ivec4_uniforms, ivec4_uniform_count);
+    RINGL_ACTIVE_UNIFORM_GROUP(RINGL_BOOL, bool_uniforms, bool_uniform_count);
+    RINGL_ACTIVE_UNIFORM_GROUP(RINGL_BOOL_VEC2, bvec2_uniforms, bvec2_uniform_count);
+    RINGL_ACTIVE_UNIFORM_GROUP(RINGL_BOOL_VEC3, bvec3_uniforms, bvec3_uniform_count);
+    RINGL_ACTIVE_UNIFORM_GROUP(RINGL_BOOL_VEC4, bvec4_uniforms, bvec4_uniform_count);
+#undef RINGL_ACTIVE_UNIFORM_GROUP
+    return -1;
+}
+
+/* These two small adapters retain the scalar fallback in
+ * ringl_get_active_uniform() for a malformed internal group. Normal linked
+ * programs always return through the generic all-type path above. */
+static uint32_t ringl_program_active_sampler_uniform_count(
+    const RinGLProgramObject* object)
+{
+    return object == NULL ? 0u : ringl_active_uniform_group_count(
+                                     object->sampler_uniforms,
+                                     sizeof(object->sampler_uniforms[0]),
+                                     object->sampler_uniform_count);
 }
 
 static int ringl_program_active_sampler_uniform_at(
     const RinGLProgramObject* object, uint32_t active_index,
     uint32_t* sampler_index_out, uint32_t* array_length_out)
 {
-    uint32_t sampler_index = 0u;
-    uint32_t current_active_index = 0u;
+    return object == NULL ? -1 : ringl_active_uniform_group_at(
+                                     object->sampler_uniforms,
+                                     sizeof(object->sampler_uniforms[0]),
+                                     object->sampler_uniform_count, active_index,
+                                     sampler_index_out, array_length_out);
+}
 
-    if (object == NULL || sampler_index_out == NULL ||
-        array_length_out == NULL)
-        return -1;
-    while (sampler_index < object->sampler_uniform_count) {
-        uint32_t array_length =
-            ringl_sampler_active_uniform_length(object, sampler_index);
+static uint32_t ringl_program_active_float_uniform_count(
+    const RinGLProgramObject* object)
+{
+    return object == NULL ? 0u : ringl_active_uniform_group_count(
+                                     object->float_uniforms,
+                                     sizeof(object->float_uniforms[0]),
+                                     object->float_uniform_count);
+}
 
-        if (current_active_index == active_index) {
-            *sampler_index_out = sampler_index;
-            *array_length_out = array_length;
-            return 0;
-        }
-        sampler_index += array_length;
-        ++current_active_index;
-    }
-    return -1;
+static int ringl_program_active_float_uniform_at(
+    const RinGLProgramObject* object, uint32_t active_index,
+    uint32_t* uniform_index_out, uint32_t* array_length_out)
+{
+    return object == NULL ? -1 : ringl_active_uniform_group_at(
+                                     object->float_uniforms,
+                                     sizeof(object->float_uniforms[0]),
+                                     object->float_uniform_count, active_index,
+                                     uniform_index_out, array_length_out);
 }
 
 int ringl_get_program_info(uint32_t program, RinGLProgramInfoV1* info)
@@ -2017,22 +2181,7 @@ int ringl_get_program_info(uint32_t program, RinGLProgramInfoV1* info)
         (object->fragment_shader != 0u ? 1u : 0u);
     if (object->link_status) {
         result.active_attribute_count = object->attribute_count;
-        result.active_uniform_count = ringl_program_active_sampler_uniform_count(object) +
-                                       object->float_uniform_count +
-                                       object->int_uniform_count +
-                                       object->bool_uniform_count +
-                                       object->bvec2_uniform_count +
-                                       object->bvec3_uniform_count +
-                                       object->bvec4_uniform_count +
-                                       object->vec2_uniform_count +
-                                       object->vec3_uniform_count +
-                                       object->vec4_uniform_count +
-                                       object->ivec2_uniform_count +
-                                       object->ivec3_uniform_count +
-                                       object->ivec4_uniform_count +
-                                       object->mat2_uniform_count +
-                                       object->mat3_uniform_count +
-                                       object->mat4_uniform_count;
+        result.active_uniform_count = ringl_program_active_uniform_count(object);
     }
     *info = result;
     return 0;
@@ -2144,7 +2293,11 @@ int ringl_get_active_uniform(uint32_t program, uint32_t index,
     RinGLContext* context = ringl_get_current_context();
     RinGLProgramObject* object;
     RinGLActiveInfoV1 result;
+    const char* active_name;
+    uint32_t active_type;
+    uint32_t array_length;
     uint32_t active_sampler_count;
+    uint32_t active_float_count;
 
     if (context == NULL || !ringl_active_info_header_valid(info))
         return -1;
@@ -2157,8 +2310,24 @@ int ringl_get_active_uniform(uint32_t program, uint32_t index,
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return -1;
     }
+    if (ringl_program_active_uniform_at(object, index, &active_type,
+                                        &active_name, &array_length) == 0) {
+        ringl_active_info_set(&result, active_type, active_name);
+        result.size = array_length;
+        *info = result;
+        return 0;
+    }
+    if (index >= ringl_program_active_uniform_count(object)) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+
+    /* A malformed internal group cannot be reflected through the generic
+     * iteration. Retain the pre-existing scalar checks to reject it without
+     * exposing a partially initialized active-info record. */
     active_sampler_count = ringl_program_active_sampler_uniform_count(object);
-    if (index >= active_sampler_count + object->float_uniform_count +
+    active_float_count = ringl_program_active_float_uniform_count(object);
+    if (index >= active_sampler_count + active_float_count +
                      object->vec2_uniform_count + object->vec3_uniform_count +
                      object->vec4_uniform_count + object->mat4_uniform_count +
                      object->mat2_uniform_count + object->mat3_uniform_count +
@@ -2184,13 +2353,28 @@ int ringl_get_active_uniform(uint32_t program, uint32_t index,
         *info = result;
         return 0;
     }
-    index = index - active_sampler_count + object->sampler_uniform_count;
-    if (index < object->sampler_uniform_count +
-                           object->float_uniform_count) {
+    index -= active_sampler_count;
+    if (index < active_float_count) {
+        uint32_t float_uniform_index;
+        uint32_t array_length;
+
+        if (ringl_program_active_float_uniform_at(
+                object, index, &float_uniform_index, &array_length) != 0) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return -1;
+        }
         ringl_active_info_set(&result, RINGL_FLOAT,
-                              object->float_uniforms[
-                                  index - object->sampler_uniform_count].name);
-    } else if (index < object->sampler_uniform_count +
+                              object->float_uniforms[float_uniform_index].name);
+        result.size = array_length;
+        *info = result;
+        return 0;
+    }
+    /* The remaining historic type blocks retain their raw contiguous element
+     * locations. Restore that coordinate system after coalescing float
+     * arrays for active-uniform reflection. */
+    index = index - active_float_count + object->sampler_uniform_count +
+            object->float_uniform_count;
+    if (index < object->sampler_uniform_count +
                            object->float_uniform_count +
                            object->vec2_uniform_count) {
         ringl_active_info_set(&result, RINGL_FLOAT_VEC2,
@@ -2555,8 +2739,10 @@ static int ringl_sampler_array_element_index(const char* name,
     return 0;
 }
 
-static int ringl_sampler_array_range_is_valid(const RinGLProgramObject* object,
-                                              uint32_t first_location,
+static int ringl_uniform_array_range_is_valid(const void* entries,
+                                              size_t entry_size,
+                                              uint32_t entry_count,
+                                              uint32_t first_entry,
                                               uint32_t count)
 {
     char expected_name[RINGL_UNIFORM_NAME_MAX];
@@ -2565,9 +2751,8 @@ static int ringl_sampler_array_range_is_valid(const RinGLProgramObject* object,
     uint32_t first_element_index;
     uint32_t offset;
 
-    if (object == NULL || count == 0u ||
-        first_location >= object->sampler_uniform_count ||
-        count > object->sampler_uniform_count - first_location) {
+    if (entries == NULL || count == 0u || first_entry >= entry_count ||
+        count > entry_count - first_entry) {
         return 0;
     }
 
@@ -2577,20 +2762,22 @@ static int ringl_sampler_array_range_is_valid(const RinGLProgramObject* object,
         return 1;
 
     if (!ringl_sampler_array_element_index(
-            object->sampler_uniforms[first_location].name, &base_length,
+            ringl_uniform_entry_name(entries, entry_size, first_entry),
+            &base_length,
             &first_element_index) ||
         base_length >= sizeof(expected_name) ||
         first_element_index > UINT32_MAX - (count - 1u)) {
         return 0;
     }
-    base_name = object->sampler_uniforms[first_location].name;
+    base_name = ringl_uniform_entry_name(entries, entry_size, first_entry);
     for (offset = 0u; offset < count; ++offset) {
         int written = snprintf(expected_name, sizeof(expected_name), "%.*s[%u]",
                                (int)base_length, base_name,
                                first_element_index + offset);
 
         if (written < 0 || (size_t)written >= sizeof(expected_name) ||
-            strcmp(object->sampler_uniforms[first_location + offset].name,
+            strcmp(ringl_uniform_entry_name(entries, entry_size,
+                                            first_entry + offset),
                    expected_name) != 0) {
             return 0;
         }
@@ -2613,6 +2800,22 @@ int32_t ringl_get_uniform_location(uint32_t program, const char* name)
     if (!object->link_status) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return -1;
+    }
+    /* Arrays are normalized to element names in every supported uniform
+     * class. Resolve `name` through `name[0]` first, then retain the ordinary
+     * scalar lookup when no such element exists. */
+    if (strchr(name, '[') == NULL) {
+        char first_element_name[RINGL_UNIFORM_NAME_MAX];
+        int written = snprintf(first_element_name, sizeof(first_element_name),
+                               "%s[0]", name);
+        int32_t first_element_location;
+
+        if (written >= 0 && (size_t)written < sizeof(first_element_name)) {
+            first_element_location = ringl_get_uniform_location(
+                program, first_element_name);
+            if (first_element_location >= 0)
+                return first_element_location;
+        }
     }
     for (i = 0u; i < object->sampler_uniform_count; ++i) {
         if (strcmp(object->sampler_uniforms[i].name, name) == 0)
@@ -2846,82 +3049,79 @@ static uint32_t ringl_bvec4_uniform_first_location(const RinGLProgramObject* obj
     return ringl_bvec3_uniform_first_location(object) + object->bvec3_uniform_count;
 }
 
-void ringl_uniform_1i(int32_t location, int32_t value)
+typedef int32_t* (*RinGLScalarUniformValueAt)(RinGLProgramObject* object,
+                                               uint32_t uniform_index);
+
+static int32_t* ringl_int_uniform_value_at(RinGLProgramObject* object,
+                                           uint32_t uniform_index)
 {
-    RinGLContext* context = ringl_get_current_context();
-    RinGLProgramObject* object;
+    return &object->int_uniforms[uniform_index].value;
+}
+
+static int32_t* ringl_bool_uniform_value_at(RinGLProgramObject* object,
+                                            uint32_t uniform_index)
+{
+    return &object->bool_uniforms[uniform_index].value;
+}
+
+static int ringl_set_scalar_uniform_array(
+    RinGLContext* context, RinGLProgramObject* object, int32_t location,
+    uint32_t count, const int32_t* values, uint32_t first_location,
+    uint32_t uniform_count, uint32_t type, const void* entries,
+    size_t entry_size, RinGLScalarUniformValueAt value_at,
+    int normalize_boolean)
+{
     RinGLShaderObject* vertex;
     RinGLShaderObject* fragment;
-    int32_t* stored_uniform;
-    const char* uniform_name;
-    int32_t previous_value;
-    int32_t stored_value;
-    uint32_t uniform_type;
-    uint32_t first_location;
-    if (context == NULL || location == -1)
-        return;
-    if (context->current_program == 0u) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
-    }
-    object = ringl_program_object(context, context->current_program);
-    if (object == NULL || !object->link_status) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
-    }
-    if (location < 0) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
-    }
-    if ((uint32_t)location < object->sampler_uniform_count) {
-        if (object->sampler_uniforms[location].texture_unit == value)
-            return;
-        object->sampler_uniforms[location].texture_unit = value;
-        ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
-        return;
-    }
-    first_location = ringl_int_uniform_first_location(object);
-    if ((uint32_t)location >= first_location &&
-        (uint32_t)location < first_location + object->int_uniform_count) {
-        RinGLProgramIntUniform* uniform =
-            &object->int_uniforms[(uint32_t)location - first_location];
+    int32_t previous_values[RINGL_MAX_INT_UNIFORMS];
+    uint32_t uniform_index;
+    uint32_t index;
+    int changed = 0;
 
-        if (uniform->value == value)
-            return;
-        stored_value = value;
-        stored_uniform = &uniform->value;
-        uniform_name = uniform->name;
-        uniform_type = RINGL_INT;
-    } else {
-        first_location = ringl_bool_uniform_first_location(object);
-        if ((uint32_t)location < first_location ||
-            (uint32_t)location >= first_location + object->bool_uniform_count) {
-            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-            return;
+    if (context == NULL || object == NULL || values == NULL || value_at == NULL ||
+        location < 0 || (uint32_t)location < first_location ||
+        (uint32_t)location - first_location >= uniform_count ||
+        !ringl_uniform_array_range_is_valid(entries, entry_size, uniform_count,
+                                            (uint32_t)location - first_location,
+                                            count)) {
+        return 0;
+    }
+    uniform_index = (uint32_t)location - first_location;
+    for (index = 0u; index < count; ++index) {
+        int32_t next_value = normalize_boolean && values[index] != 0 ? 1 :
+                                                            values[index];
+
+        if (*value_at(object, uniform_index + index) != next_value) {
+            changed = 1;
+            break;
         }
-        RinGLProgramBoolUniform* uniform =
-            &object->bool_uniforms[(uint32_t)location - first_location];
-
-        stored_value = value == 0 ? 0 : 1;
-        if (uniform->value == stored_value)
-            return;
-        stored_uniform = &uniform->value;
-        uniform_name = uniform->name;
-        uniform_type = RINGL_BOOL;
     }
+    if (!changed)
+        return 1;
     vertex = ringl_program_shader(context, object->linked_vertex_shader);
     fragment = ringl_program_shader(context, object->linked_fragment_shader);
-    if (vertex == NULL || fragment == NULL) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
+    if (vertex == NULL || fragment == NULL)
+        return 0;
+    for (index = 0u; index < count; ++index) {
+        int32_t next_value = normalize_boolean && values[index] != 0 ? 1 :
+                                                            values[index];
+
+        previous_values[index] = *value_at(object, uniform_index + index);
+        *value_at(object, uniform_index + index) = next_value;
     }
-    previous_value = *stored_uniform;
-    *stored_uniform = stored_value;
-    if (!ringl_program_rebuild_uniform_for_name(
-            context, object, vertex, fragment, uniform_type, uniform_name)) {
-        *stored_uniform = previous_value;
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+    if (!ringl_program_rebuild_uniform_array_artifacts(
+            context, object, vertex, fragment, type, entries, entry_size,
+            uniform_index, count)) {
+        for (index = 0u; index < count; ++index)
+            *value_at(object, uniform_index + index) = previous_values[index];
+        return 0;
     }
+    return 1;
+}
+
+void ringl_uniform_1i(int32_t location, int32_t value)
+{
+    ringl_uniform_1iv(location, 1u, &value);
 }
 
 void ringl_uniform_1iv(int32_t location, uint32_t count,
@@ -2948,15 +3148,34 @@ void ringl_uniform_1iv(int32_t location, uint32_t count,
         return;
     }
     if ((uint32_t)location >= object->sampler_uniform_count) {
-        if (count != 1u) {
-            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        uint32_t first_location = ringl_int_uniform_first_location(object);
+
+        if ((uint32_t)location >= first_location &&
+            (uint32_t)location < first_location + object->int_uniform_count) {
+            if (!ringl_set_scalar_uniform_array(
+                    context, object, location, count, values, first_location,
+                    object->int_uniform_count, RINGL_INT, object->int_uniforms,
+                    sizeof(object->int_uniforms[0]), ringl_int_uniform_value_at,
+                    0)) {
+                ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            }
             return;
         }
-        ringl_uniform_1i(location, values[0]);
+        first_location = ringl_bool_uniform_first_location(object);
+        if ((uint32_t)location < first_location ||
+            (uint32_t)location >= first_location + object->bool_uniform_count ||
+            !ringl_set_scalar_uniform_array(
+                context, object, location, count, values, first_location,
+                object->bool_uniform_count, RINGL_BOOL, object->bool_uniforms,
+                sizeof(object->bool_uniforms[0]), ringl_bool_uniform_value_at,
+                1)) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        }
         return;
     }
-    if (!ringl_sampler_array_range_is_valid(object, (uint32_t)location,
-                                            count)) {
+    if (!ringl_uniform_array_range_is_valid(
+            object->sampler_uniforms, sizeof(object->sampler_uniforms[0]),
+            object->sampler_uniform_count, (uint32_t)location, count)) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
@@ -3006,6 +3225,79 @@ int ringl_get_uniform_1i(uint32_t program, int32_t location,
         *value_out = object->bool_uniforms[(uint32_t)location - first_location].value;
     }
     return 0;
+}
+
+void ringl_uniform_1fv(int32_t location, uint32_t count,
+                        const float* values)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLProgramObject* object;
+    RinGLShaderObject* vertex;
+    RinGLShaderObject* fragment;
+    float previous_values[RINGL_MAX_FLOAT_UNIFORMS];
+    uint32_t first_uniform;
+    uint32_t index;
+    int changed = 0;
+
+    if (context == NULL || location == -1 || count == 0u)
+        return;
+    if (values == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    for (index = 0u; index < count; ++index) {
+        if (!isfinite(values[index])) {
+            ringl_context_record_error(context, RINGL_INVALID_VALUE);
+            return;
+        }
+    }
+    if (context->current_program == 0u) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    object = ringl_program_object(context, context->current_program);
+    if (object == NULL || !object->link_status || location < 0 ||
+        (uint32_t)location < object->sampler_uniform_count) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    first_uniform = (uint32_t)location - object->sampler_uniform_count;
+    if (!ringl_uniform_array_range_is_valid(
+            object->float_uniforms, sizeof(object->float_uniforms[0]),
+            object->float_uniform_count, first_uniform, count)) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    for (index = 0u; index < count; ++index) {
+        if (object->float_uniforms[first_uniform + index].value != values[index]) {
+            changed = 1;
+            break;
+        }
+    }
+    if (!changed)
+        return;
+    vertex = ringl_program_shader(context, object->linked_vertex_shader);
+    fragment = ringl_program_shader(context, object->linked_fragment_shader);
+    if (vertex == NULL || fragment == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    for (index = 0u; index < count; ++index) {
+        previous_values[index] =
+            object->float_uniforms[first_uniform + index].value;
+        object->float_uniforms[first_uniform + index].value = values[index];
+    }
+    /* Re-lower both numeric stages before publishing either replacement
+     * module. A late failure restores every touched element. */
+    if (!ringl_program_rebuild_uniform_array_artifacts(
+            context, object, vertex, fragment, RINGL_FLOAT,
+            object->float_uniforms, sizeof(object->float_uniforms[0]),
+            first_uniform, count)) {
+        for (index = 0u; index < count; ++index)
+            object->float_uniforms[first_uniform + index].value =
+                previous_values[index];
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+    }
 }
 
 void ringl_uniform_1f(int32_t location, float value)
@@ -3094,6 +3386,12 @@ static float* ringl_vec3_uniform_values_at(RinGLProgramObject* object,
     return object->vec3_uniforms[uniform_index].values;
 }
 
+static float* ringl_vec4_uniform_values_at(RinGLProgramObject* object,
+                                            uint32_t uniform_index)
+{
+    return object->vec4_uniforms[uniform_index].values;
+}
+
 static const char* ringl_vec2_uniform_name_at(RinGLProgramObject* object,
                                                uint32_t uniform_index)
 {
@@ -3106,29 +3404,35 @@ static const char* ringl_vec3_uniform_name_at(RinGLProgramObject* object,
     return object->vec3_uniforms[uniform_index].name;
 }
 
-static void ringl_set_vector_uniform(int32_t location, const float* values,
-                                     uint32_t width, uint32_t first_location,
-                                     uint32_t uniform_count,
-                                     RinGLVectorUniformValuesAt values_at,
-                                     RinGLVectorUniformNameAt name_at)
+static const char* ringl_vec4_uniform_name_at(RinGLProgramObject* object,
+                                               uint32_t uniform_index)
+{
+    return object->vec4_uniforms[uniform_index].name;
+}
+
+static void ringl_set_float_vector_uniform_array(
+    int32_t location, uint32_t count, const float* values, uint32_t width,
+    uint32_t first_location, uint32_t uniform_count, const void* entries,
+    size_t entry_size, uint32_t type, RinGLVectorUniformValuesAt values_at,
+    RinGLVectorUniformNameAt name_at)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLProgramObject* object;
     RinGLShaderObject* vertex;
     RinGLShaderObject* fragment;
-    float previous_values[3];
-    float* storage;
+    float previous_values[RINGL_MAX_VEC2_UNIFORMS * 4u];
     uint32_t uniform_index;
     uint32_t index;
+    int changed = 0;
 
-    if (context == NULL || location == -1)
+    if (context == NULL || location == -1 || count == 0u)
         return;
     if (values == NULL || values_at == NULL || name_at == NULL ||
-        width < 2u || width > 3u) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        width < 2u || width > 4u || count > UINT32_MAX / width) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
-    for (index = 0u; index < width; ++index) {
+    for (index = 0u; index < count * width; ++index) {
         if (!isfinite(values[index])) {
             ringl_context_record_error(context, RINGL_INVALID_VALUE);
             return;
@@ -3139,15 +3443,26 @@ static void ringl_set_vector_uniform(int32_t location, const float* values,
         return;
     }
     object = ringl_program_object(context, context->current_program);
-    if (object == NULL || !object->link_status || location < 0 ||
+    if (object == NULL || !object->link_status || entries == NULL ||
+        count > uniform_count || location < 0 ||
         (uint32_t)location < first_location ||
-        (uint32_t)location >= first_location + uniform_count) {
+        (uint32_t)location - first_location >= uniform_count ||
+        !ringl_uniform_array_range_is_valid(entries, entry_size, uniform_count,
+                                            (uint32_t)location - first_location,
+                                            count)) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
     uniform_index = (uint32_t)location - first_location;
-    storage = values_at(object, uniform_index);
-    if (memcmp(storage, values, width * sizeof(*values)) == 0)
+    for (index = 0u; index < count; ++index) {
+        if (memcmp(values_at(object, uniform_index + index),
+                   values + index * width,
+                   width * sizeof(*values)) != 0) {
+            changed = 1;
+            break;
+        }
+    }
+    if (!changed)
         return;
     vertex = ringl_program_shader(context, object->linked_vertex_shader);
     fragment = ringl_program_shader(context, object->linked_fragment_shader);
@@ -3155,58 +3470,74 @@ static void ringl_set_vector_uniform(int32_t location, const float* values,
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
-    memcpy(previous_values, storage, width * sizeof(*storage));
-    memcpy(storage, values, width * sizeof(*storage));
-    if (!ringl_program_rebuild_uniform_for_name(
-            context, object, vertex, fragment,
-            width == 2u ? RINGL_FLOAT_VEC2 : RINGL_FLOAT_VEC3,
-            name_at(object, uniform_index))) {
-        memcpy(storage, previous_values, width * sizeof(*storage));
+    for (index = 0u; index < count; ++index) {
+        memcpy(previous_values + index * width,
+               values_at(object, uniform_index + index),
+               width * sizeof(*previous_values));
+        memcpy(values_at(object, uniform_index + index), values + index * width,
+               width * sizeof(*values));
+    }
+    if (!ringl_program_rebuild_uniform_array_artifacts(
+            context, object, vertex, fragment, type, entries, entry_size,
+            uniform_index, count)) {
+        for (index = 0u; index < count; ++index) {
+            memcpy(values_at(object, uniform_index + index),
+                   previous_values + index * width,
+                   width * sizeof(*previous_values));
+        }
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
     }
+}
+
+void ringl_uniform_2fv(int32_t location, uint32_t count, const float* values)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLProgramObject* object;
+
+    if (context == NULL || location == -1 || count == 0u)
+        return;
+    object = ringl_program_object(context, context->current_program);
+    ringl_set_float_vector_uniform_array(
+        location, count, values, 2u,
+        object == NULL ? 0u : object->sampler_uniform_count +
+                                 object->float_uniform_count,
+        object == NULL ? 0u : object->vec2_uniform_count,
+        object == NULL ? NULL : object->vec2_uniforms,
+        object == NULL ? 0u : sizeof(object->vec2_uniforms[0]), RINGL_FLOAT_VEC2,
+        ringl_vec2_uniform_values_at, ringl_vec2_uniform_name_at);
 }
 
 void ringl_uniform_2f(int32_t location, float x, float y)
 {
+    const float values[2] = { x, y };
+
+    ringl_uniform_2fv(location, 1u, values);
+}
+
+void ringl_uniform_3fv(int32_t location, uint32_t count, const float* values)
+{
     RinGLContext* context = ringl_get_current_context();
     RinGLProgramObject* object;
-    float values[2] = { x, y };
 
-    if (context == NULL || location == -1)
+    if (context == NULL || location == -1 || count == 0u)
         return;
     object = ringl_program_object(context, context->current_program);
-    if (object == NULL) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
-    }
-    ringl_set_vector_uniform(location, values, 2u,
-                             object->sampler_uniform_count +
-                             object->float_uniform_count,
-                             object->vec2_uniform_count,
-                             ringl_vec2_uniform_values_at,
-                             ringl_vec2_uniform_name_at);
+    ringl_set_float_vector_uniform_array(
+        location, count, values, 3u,
+        object == NULL ? 0u : object->sampler_uniform_count +
+                                 object->float_uniform_count +
+                                 object->vec2_uniform_count,
+        object == NULL ? 0u : object->vec3_uniform_count,
+        object == NULL ? NULL : object->vec3_uniforms,
+        object == NULL ? 0u : sizeof(object->vec3_uniforms[0]), RINGL_FLOAT_VEC3,
+        ringl_vec3_uniform_values_at, ringl_vec3_uniform_name_at);
 }
 
 void ringl_uniform_3f(int32_t location, float x, float y, float z)
 {
-    RinGLContext* context = ringl_get_current_context();
-    RinGLProgramObject* object;
-    float values[3] = { x, y, z };
+    const float values[3] = { x, y, z };
 
-    if (context == NULL || location == -1)
-        return;
-    object = ringl_program_object(context, context->current_program);
-    if (object == NULL) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
-    }
-    ringl_set_vector_uniform(location, values, 3u,
-                             object->sampler_uniform_count +
-                             object->float_uniform_count +
-                             object->vec2_uniform_count,
-                             object->vec3_uniform_count,
-                             ringl_vec3_uniform_values_at,
-                             ringl_vec3_uniform_name_at);
+    ringl_uniform_3fv(location, 1u, values);
 }
 
 int ringl_get_uniform_2f(uint32_t program, int32_t location,
@@ -3337,9 +3668,10 @@ static const char* ringl_bvec4_uniform_name_at(RinGLProgramObject* object,
     return object->bvec4_uniforms[uniform_index].name;
 }
 
-static void ringl_set_integer_vector_uniform(
-    int32_t location, const int32_t* values, uint32_t width,
-    uint32_t first_location, uint32_t uniform_count, uint32_t type,
+static void ringl_set_integer_vector_uniform_array(
+    int32_t location, uint32_t count, const int32_t* values, uint32_t width,
+    uint32_t first_location, uint32_t uniform_count, const void* entries,
+    size_t entry_size, uint32_t type,
     RinGLIntegerVectorUniformValuesAt values_at,
     RinGLIntegerVectorUniformNameAt name_at, int normalize_boolean)
 {
@@ -3347,39 +3679,45 @@ static void ringl_set_integer_vector_uniform(
     RinGLProgramObject* object;
     RinGLShaderObject* vertex;
     RinGLShaderObject* fragment;
-    int32_t previous_values[4];
-    int32_t normalized_values[4];
-    int32_t* storage;
-    const int32_t* effective_values = values;
+    int32_t previous_values[RINGL_MAX_IVEC2_UNIFORMS * 4u];
     uint32_t uniform_index;
     uint32_t index;
+    int changed = 0;
 
-    if (context == NULL || location == -1)
+    if (context == NULL || location == -1 || count == 0u)
         return;
     if (values == NULL || values_at == NULL || name_at == NULL ||
-        width < 2u || width > 4u) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        width < 2u || width > 4u || count > UINT32_MAX / width) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
-    }
-    if (normalize_boolean) {
-        for (index = 0u; index < width; ++index)
-            normalized_values[index] = values[index] == 0 ? 0 : 1;
-        effective_values = normalized_values;
     }
     if (context->current_program == 0u) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
     object = ringl_program_object(context, context->current_program);
-    if (object == NULL || !object->link_status || location < 0 ||
+    if (object == NULL || !object->link_status || entries == NULL ||
+        count > uniform_count || location < 0 ||
         (uint32_t)location < first_location ||
-        (uint32_t)location >= first_location + uniform_count) {
+        (uint32_t)location - first_location >= uniform_count ||
+        !ringl_uniform_array_range_is_valid(entries, entry_size, uniform_count,
+                                            (uint32_t)location - first_location,
+                                            count)) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
     uniform_index = (uint32_t)location - first_location;
-    storage = values_at(object, uniform_index);
-    if (memcmp(storage, effective_values, width * sizeof(*effective_values)) == 0)
+    for (index = 0u; index < count * width; ++index) {
+        int32_t next_value = normalize_boolean && values[index] != 0 ? 1 :
+                                                              values[index];
+
+        if (values_at(object, uniform_index + index / width)[index % width] !=
+            next_value) {
+            changed = 1;
+            break;
+        }
+    }
+    if (!changed)
         return;
     vertex = ringl_program_shader(context, object->linked_vertex_shader);
     fragment = ringl_program_shader(context, object->linked_fragment_shader);
@@ -3387,12 +3725,22 @@ static void ringl_set_integer_vector_uniform(
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
-    memcpy(previous_values, storage, width * sizeof(*storage));
-    memcpy(storage, effective_values, width * sizeof(*storage));
-    if (!ringl_program_rebuild_uniform_for_name(
-            context, object, vertex, fragment, type,
-            name_at(object, uniform_index))) {
-        memcpy(storage, previous_values, width * sizeof(*storage));
+    for (index = 0u; index < count * width; ++index) {
+        int32_t next_value = normalize_boolean && values[index] != 0 ? 1 :
+                                                              values[index];
+        int32_t* storage = values_at(object, uniform_index + index / width);
+
+        previous_values[index] = storage[index % width];
+        storage[index % width] = next_value;
+    }
+    if (!ringl_program_rebuild_uniform_array_artifacts(
+            context, object, vertex, fragment, type, entries, entry_size,
+            uniform_index, count)) {
+        for (index = 0u; index < count * width; ++index) {
+            int32_t* storage = values_at(object, uniform_index + index / width);
+
+            storage[index % width] = previous_values[index];
+        }
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
     }
 }
@@ -3421,101 +3769,116 @@ static int ringl_get_integer_vector_uniform(
     return 0;
 }
 
-void ringl_uniform_2i(int32_t location, int32_t x, int32_t y)
+void ringl_uniform_2iv(int32_t location, uint32_t count,
+                       const int32_t* values)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLProgramObject* object;
-    const int32_t values[2] = { x, y };
 
-    if (context == NULL || location == -1)
+    if (context == NULL || location == -1 || count == 0u)
         return;
     object = ringl_program_object(context, context->current_program);
-    if (object == NULL) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
-    }
-    if (location >= (int32_t)ringl_ivec2_uniform_first_location(object) &&
+    if (object != NULL &&
+        location >= (int32_t)ringl_ivec2_uniform_first_location(object) &&
         (uint32_t)location < ringl_ivec2_uniform_first_location(object) +
                                   object->ivec2_uniform_count) {
-        ringl_set_integer_vector_uniform(location, values, 2u,
-                                         ringl_ivec2_uniform_first_location(object),
-                                         object->ivec2_uniform_count,
-                                         RINGL_INT_VEC2,
-                                         ringl_ivec2_uniform_values_at,
-                                         ringl_ivec2_uniform_name_at, 0);
+        ringl_set_integer_vector_uniform_array(
+            location, count, values, 2u,
+            ringl_ivec2_uniform_first_location(object),
+            object->ivec2_uniform_count, object->ivec2_uniforms,
+            sizeof(object->ivec2_uniforms[0]), RINGL_INT_VEC2,
+            ringl_ivec2_uniform_values_at, ringl_ivec2_uniform_name_at, 0);
         return;
     }
-    ringl_set_integer_vector_uniform(location, values, 2u,
-                                     ringl_bvec2_uniform_first_location(object),
-                                     object->bvec2_uniform_count,
-                                     RINGL_BOOL_VEC2,
-                                     ringl_bvec2_uniform_values_at,
-                                     ringl_bvec2_uniform_name_at, 1);
+    ringl_set_integer_vector_uniform_array(
+        location, count, values, 2u,
+        object == NULL ? 0u : ringl_bvec2_uniform_first_location(object),
+        object == NULL ? 0u : object->bvec2_uniform_count,
+        object == NULL ? NULL : object->bvec2_uniforms,
+        object == NULL ? 0u : sizeof(object->bvec2_uniforms[0]), RINGL_BOOL_VEC2,
+        ringl_bvec2_uniform_values_at, ringl_bvec2_uniform_name_at, 1);
+}
+
+void ringl_uniform_2i(int32_t location, int32_t x, int32_t y)
+{
+    const int32_t values[2] = { x, y };
+
+    ringl_uniform_2iv(location, 1u, values);
+}
+
+void ringl_uniform_3iv(int32_t location, uint32_t count,
+                       const int32_t* values)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLProgramObject* object;
+
+    if (context == NULL || location == -1 || count == 0u)
+        return;
+    object = ringl_program_object(context, context->current_program);
+    if (object != NULL &&
+        location >= (int32_t)ringl_ivec3_uniform_first_location(object) &&
+        (uint32_t)location < ringl_ivec3_uniform_first_location(object) +
+                                  object->ivec3_uniform_count) {
+        ringl_set_integer_vector_uniform_array(
+            location, count, values, 3u,
+            ringl_ivec3_uniform_first_location(object),
+            object->ivec3_uniform_count, object->ivec3_uniforms,
+            sizeof(object->ivec3_uniforms[0]), RINGL_INT_VEC3,
+            ringl_ivec3_uniform_values_at, ringl_ivec3_uniform_name_at, 0);
+        return;
+    }
+    ringl_set_integer_vector_uniform_array(
+        location, count, values, 3u,
+        object == NULL ? 0u : ringl_bvec3_uniform_first_location(object),
+        object == NULL ? 0u : object->bvec3_uniform_count,
+        object == NULL ? NULL : object->bvec3_uniforms,
+        object == NULL ? 0u : sizeof(object->bvec3_uniforms[0]), RINGL_BOOL_VEC3,
+        ringl_bvec3_uniform_values_at, ringl_bvec3_uniform_name_at, 1);
 }
 
 void ringl_uniform_3i(int32_t location, int32_t x, int32_t y, int32_t z)
 {
-    RinGLContext* context = ringl_get_current_context();
-    RinGLProgramObject* object;
     const int32_t values[3] = { x, y, z };
 
-    if (context == NULL || location == -1)
+    ringl_uniform_3iv(location, 1u, values);
+}
+
+void ringl_uniform_4iv(int32_t location, uint32_t count,
+                       const int32_t* values)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLProgramObject* object;
+
+    if (context == NULL || location == -1 || count == 0u)
         return;
     object = ringl_program_object(context, context->current_program);
-    if (object == NULL) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+    if (object != NULL &&
+        location >= (int32_t)ringl_ivec4_uniform_first_location(object) &&
+        (uint32_t)location < ringl_ivec4_uniform_first_location(object) +
+                                  object->ivec4_uniform_count) {
+        ringl_set_integer_vector_uniform_array(
+            location, count, values, 4u,
+            ringl_ivec4_uniform_first_location(object),
+            object->ivec4_uniform_count, object->ivec4_uniforms,
+            sizeof(object->ivec4_uniforms[0]), RINGL_INT_VEC4,
+            ringl_ivec4_uniform_values_at, ringl_ivec4_uniform_name_at, 0);
         return;
     }
-    if (location >= (int32_t)ringl_ivec3_uniform_first_location(object) &&
-        (uint32_t)location < ringl_ivec3_uniform_first_location(object) +
-                                  object->ivec3_uniform_count) {
-        ringl_set_integer_vector_uniform(location, values, 3u,
-                                         ringl_ivec3_uniform_first_location(object),
-                                         object->ivec3_uniform_count,
-                                         RINGL_INT_VEC3,
-                                         ringl_ivec3_uniform_values_at,
-                                         ringl_ivec3_uniform_name_at, 0);
-        return;
-    }
-    ringl_set_integer_vector_uniform(location, values, 3u,
-                                     ringl_bvec3_uniform_first_location(object),
-                                     object->bvec3_uniform_count,
-                                     RINGL_BOOL_VEC3,
-                                     ringl_bvec3_uniform_values_at,
-                                     ringl_bvec3_uniform_name_at, 1);
+    ringl_set_integer_vector_uniform_array(
+        location, count, values, 4u,
+        object == NULL ? 0u : ringl_bvec4_uniform_first_location(object),
+        object == NULL ? 0u : object->bvec4_uniform_count,
+        object == NULL ? NULL : object->bvec4_uniforms,
+        object == NULL ? 0u : sizeof(object->bvec4_uniforms[0]), RINGL_BOOL_VEC4,
+        ringl_bvec4_uniform_values_at, ringl_bvec4_uniform_name_at, 1);
 }
 
 void ringl_uniform_4i(int32_t location, int32_t x, int32_t y, int32_t z,
                       int32_t w)
 {
-    RinGLContext* context = ringl_get_current_context();
-    RinGLProgramObject* object;
     const int32_t values[4] = { x, y, z, w };
 
-    if (context == NULL || location == -1)
-        return;
-    object = ringl_program_object(context, context->current_program);
-    if (object == NULL) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
-    }
-    if (location >= (int32_t)ringl_ivec4_uniform_first_location(object) &&
-        (uint32_t)location < ringl_ivec4_uniform_first_location(object) +
-                                  object->ivec4_uniform_count) {
-        ringl_set_integer_vector_uniform(location, values, 4u,
-                                         ringl_ivec4_uniform_first_location(object),
-                                         object->ivec4_uniform_count,
-                                         RINGL_INT_VEC4,
-                                         ringl_ivec4_uniform_values_at,
-                                         ringl_ivec4_uniform_name_at, 0);
-        return;
-    }
-    ringl_set_integer_vector_uniform(location, values, 4u,
-                                     ringl_bvec4_uniform_first_location(object),
-                                     object->bvec4_uniform_count,
-                                     RINGL_BOOL_VEC4,
-                                     ringl_bvec4_uniform_values_at,
-                                     ringl_bvec4_uniform_name_at, 1);
+    ringl_uniform_4iv(location, 1u, values);
 }
 
 int ringl_get_uniform_2i(uint32_t program, int32_t location,
@@ -3593,64 +3956,31 @@ int ringl_get_uniform_4i(uint32_t program, int32_t location,
         ringl_bvec4_uniform_values_at);
 }
 
-void ringl_uniform_4f(int32_t location, float x, float y, float z, float w)
+void ringl_uniform_4fv(int32_t location, uint32_t count, const float* values)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLProgramObject* object;
-    RinGLShaderObject* vertex;
-    RinGLShaderObject* fragment;
-    RinGLProgramVec4Uniform* uniform;
-    float next_values[4] = { x, y, z, w };
-    float previous_values[4];
-    uint32_t uniform_index;
 
-    if (context == NULL || location == -1)
+    if (context == NULL || location == -1 || count == 0u)
         return;
-    /* Keep the linked executable representable by the RSH1 lowering path.
-     * Accepting NaN or infinity here would persist an invalid literal and
-     * could make a later uniform-artifact rebuild fail after state changed. */
-    if (!isfinite(x) || !isfinite(y) || !isfinite(z) || !isfinite(w)) {
-        ringl_context_record_error(context, RINGL_INVALID_VALUE);
-        return;
-    }
-    if (context->current_program == 0u) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
-    }
     object = ringl_program_object(context, context->current_program);
-    if (object == NULL || !object->link_status || location < 0 ||
-        (uint32_t)location < object->sampler_uniform_count +
-                                  object->float_uniform_count +
-                                  object->vec2_uniform_count +
-                                  object->vec3_uniform_count ||
-        (uint32_t)location >= object->sampler_uniform_count +
-                                  object->float_uniform_count +
-                                  object->vec2_uniform_count +
-                                  object->vec3_uniform_count +
-                                  object->vec4_uniform_count) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
-    }
-    uniform_index = (uint32_t)location - object->sampler_uniform_count -
-                    object->float_uniform_count - object->vec2_uniform_count -
-                    object->vec3_uniform_count;
-    uniform = &object->vec4_uniforms[uniform_index];
-    if (memcmp(uniform->values, next_values, sizeof(next_values)) == 0)
-        return;
-    vertex = ringl_program_shader(context, object->linked_vertex_shader);
-    fragment = ringl_program_shader(context, object->linked_fragment_shader);
-    if (vertex == NULL || fragment == NULL) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
-    }
-    memcpy(previous_values, uniform->values, sizeof(previous_values));
-    memcpy(uniform->values, next_values, sizeof(next_values));
-    if (!ringl_program_rebuild_uniform_for_name(
-            context, object, vertex, fragment, RINGL_FLOAT_VEC4,
-            uniform->name)) {
-        memcpy(uniform->values, previous_values, sizeof(previous_values));
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-    }
+    ringl_set_float_vector_uniform_array(
+        location, count, values, 4u,
+        object == NULL ? 0u : object->sampler_uniform_count +
+                                 object->float_uniform_count +
+                                 object->vec2_uniform_count +
+                                 object->vec3_uniform_count,
+        object == NULL ? 0u : object->vec4_uniform_count,
+        object == NULL ? NULL : object->vec4_uniforms,
+        object == NULL ? 0u : sizeof(object->vec4_uniforms[0]), RINGL_FLOAT_VEC4,
+        ringl_vec4_uniform_values_at, ringl_vec4_uniform_name_at);
+}
+
+void ringl_uniform_4f(int32_t location, float x, float y, float z, float w)
+{
+    const float values[4] = { x, y, z, w };
+
+    ringl_uniform_4fv(location, 1u, values);
 }
 
 int ringl_get_uniform_4f(uint32_t program, int32_t location,
@@ -3706,26 +4036,51 @@ static uint32_t ringl_matrix3_uniform_first_location(
            object->mat2_uniform_count;
 }
 
-void ringl_uniform_matrix2fv(int32_t location, uint32_t transpose,
-                             const float values[4])
+typedef float* (*RinGLMatrixUniformValuesAt)(RinGLProgramObject* object,
+                                             uint32_t uniform_index);
+
+static float* ringl_mat2_uniform_values_at(RinGLProgramObject* object,
+                                           uint32_t uniform_index)
+{
+    return object->mat2_uniforms[uniform_index].values;
+}
+
+static float* ringl_mat3_uniform_values_at(RinGLProgramObject* object,
+                                           uint32_t uniform_index)
+{
+    return object->mat3_uniforms[uniform_index].values;
+}
+
+static float* ringl_mat4_uniform_values_at(RinGLProgramObject* object,
+                                           uint32_t uniform_index)
+{
+    return object->mat4_uniforms[uniform_index].values;
+}
+
+static void ringl_set_matrix_uniform_array(
+    int32_t location, uint32_t count, uint32_t transpose, const float* values,
+    uint32_t component_count, uint32_t first_location, uint32_t uniform_count,
+    uint32_t type, const void* entries, size_t entry_size,
+    RinGLMatrixUniformValuesAt values_at)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLProgramObject* object;
     RinGLShaderObject* vertex;
     RinGLShaderObject* fragment;
-    RinGLProgramMat2Uniform* uniform;
-    float previous_values[4];
-    uint32_t first_location;
+    float previous_values[RINGL_MAX_MAT4_UNIFORMS * 16u];
     uint32_t uniform_index;
     uint32_t index;
+    int changed = 0;
 
-    if (context == NULL || location == -1)
+    if (context == NULL || location == -1 || count == 0u)
         return;
-    if (transpose != 0u || values == NULL) {
+    if (transpose != 0u || values == NULL || values_at == NULL ||
+        component_count == 0u ||
+        count > UINT32_MAX / component_count) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
-    for (index = 0u; index < 4u; ++index) {
+    for (index = 0u; index < count * component_count; ++index) {
         if (!isfinite(values[index])) {
             ringl_context_record_error(context, RINGL_INVALID_VALUE);
             return;
@@ -3736,17 +4091,26 @@ void ringl_uniform_matrix2fv(int32_t location, uint32_t transpose,
         return;
     }
     object = ringl_program_object(context, context->current_program);
-    first_location = object == NULL ? 0u :
-        ringl_matrix2_uniform_first_location(object);
-    if (object == NULL || !object->link_status || location < 0 ||
+    if (object == NULL || !object->link_status || entries == NULL ||
+        count > uniform_count || location < 0 ||
         (uint32_t)location < first_location ||
-        (uint32_t)location >= first_location + object->mat2_uniform_count) {
+        (uint32_t)location - first_location >= uniform_count ||
+        !ringl_uniform_array_range_is_valid(entries, entry_size, uniform_count,
+                                            (uint32_t)location - first_location,
+                                            count)) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
     uniform_index = (uint32_t)location - first_location;
-    uniform = &object->mat2_uniforms[uniform_index];
-    if (memcmp(uniform->values, values, sizeof(uniform->values)) == 0)
+    for (index = 0u; index < count; ++index) {
+        if (memcmp(values_at(object, uniform_index + index),
+                   values + index * component_count,
+                   component_count * sizeof(*values)) != 0) {
+            changed = 1;
+            break;
+        }
+    }
+    if (!changed)
         return;
     vertex = ringl_program_shader(context, object->linked_vertex_shader);
     fragment = ringl_program_shader(context, object->linked_fragment_shader);
@@ -3754,14 +4118,48 @@ void ringl_uniform_matrix2fv(int32_t location, uint32_t transpose,
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
-    memcpy(previous_values, uniform->values, sizeof(previous_values));
-    memcpy(uniform->values, values, sizeof(uniform->values));
-    if (!ringl_program_rebuild_uniform_for_name(
-            context, object, vertex, fragment, RINGL_FLOAT_MAT2,
-            uniform->name)) {
-        memcpy(uniform->values, previous_values, sizeof(previous_values));
+    for (index = 0u; index < count; ++index) {
+        memcpy(previous_values + index * component_count,
+               values_at(object, uniform_index + index),
+               component_count * sizeof(*previous_values));
+        memcpy(values_at(object, uniform_index + index),
+               values + index * component_count,
+               component_count * sizeof(*values));
+    }
+    if (!ringl_program_rebuild_uniform_array_artifacts(
+            context, object, vertex, fragment, type, entries, entry_size,
+            uniform_index, count)) {
+        for (index = 0u; index < count; ++index) {
+            memcpy(values_at(object, uniform_index + index),
+                   previous_values + index * component_count,
+                   component_count * sizeof(*previous_values));
+        }
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
     }
+}
+
+void ringl_uniform_matrix2fv_array(int32_t location, uint32_t count,
+                                   uint32_t transpose, const float* values)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLProgramObject* object;
+
+    if (context == NULL || location == -1 || count == 0u)
+        return;
+    object = ringl_program_object(context, context->current_program);
+    ringl_set_matrix_uniform_array(
+        location, count, transpose, values, 4u,
+        object == NULL ? 0u : ringl_matrix2_uniform_first_location(object),
+        object == NULL ? 0u : object->mat2_uniform_count, RINGL_FLOAT_MAT2,
+        object == NULL ? NULL : object->mat2_uniforms,
+        object == NULL ? 0u : sizeof(object->mat2_uniforms[0]),
+        ringl_mat2_uniform_values_at);
+}
+
+void ringl_uniform_matrix2fv(int32_t location, uint32_t transpose,
+                             const float values[4])
+{
+    ringl_uniform_matrix2fv_array(location, 1u, transpose, values);
 }
 
 int ringl_get_uniform_matrix2f(uint32_t program, int32_t location,
@@ -3789,62 +4187,28 @@ int ringl_get_uniform_matrix2f(uint32_t program, int32_t location,
     return 0;
 }
 
-void ringl_uniform_matrix3fv(int32_t location, uint32_t transpose,
-                             const float values[9])
+void ringl_uniform_matrix3fv_array(int32_t location, uint32_t count,
+                                   uint32_t transpose, const float* values)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLProgramObject* object;
-    RinGLShaderObject* vertex;
-    RinGLShaderObject* fragment;
-    RinGLProgramMat3Uniform* uniform;
-    float previous_values[9];
-    uint32_t first_location;
-    uint32_t uniform_index;
-    uint32_t index;
 
-    if (context == NULL || location == -1)
+    if (context == NULL || location == -1 || count == 0u)
         return;
-    if (transpose != 0u || values == NULL) {
-        ringl_context_record_error(context, RINGL_INVALID_VALUE);
-        return;
-    }
-    for (index = 0u; index < 9u; ++index) {
-        if (!isfinite(values[index])) {
-            ringl_context_record_error(context, RINGL_INVALID_VALUE);
-            return;
-        }
-    }
-    if (context->current_program == 0u) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
-    }
     object = ringl_program_object(context, context->current_program);
-    first_location = object == NULL ? 0u :
-        ringl_matrix3_uniform_first_location(object);
-    if (object == NULL || !object->link_status || location < 0 ||
-        (uint32_t)location < first_location ||
-        (uint32_t)location >= first_location + object->mat3_uniform_count) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
-    }
-    uniform_index = (uint32_t)location - first_location;
-    uniform = &object->mat3_uniforms[uniform_index];
-    if (memcmp(uniform->values, values, sizeof(uniform->values)) == 0)
-        return;
-    vertex = ringl_program_shader(context, object->linked_vertex_shader);
-    fragment = ringl_program_shader(context, object->linked_fragment_shader);
-    if (vertex == NULL || fragment == NULL) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
-    }
-    memcpy(previous_values, uniform->values, sizeof(previous_values));
-    memcpy(uniform->values, values, sizeof(uniform->values));
-    if (!ringl_program_rebuild_uniform_for_name(
-            context, object, vertex, fragment, RINGL_FLOAT_MAT3,
-            uniform->name)) {
-        memcpy(uniform->values, previous_values, sizeof(previous_values));
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-    }
+    ringl_set_matrix_uniform_array(
+        location, count, transpose, values, 9u,
+        object == NULL ? 0u : ringl_matrix3_uniform_first_location(object),
+        object == NULL ? 0u : object->mat3_uniform_count, RINGL_FLOAT_MAT3,
+        object == NULL ? NULL : object->mat3_uniforms,
+        object == NULL ? 0u : sizeof(object->mat3_uniforms[0]),
+        ringl_mat3_uniform_values_at);
+}
+
+void ringl_uniform_matrix3fv(int32_t location, uint32_t transpose,
+                             const float values[9])
+{
+    ringl_uniform_matrix3fv_array(location, 1u, transpose, values);
 }
 
 int ringl_get_uniform_matrix3f(uint32_t program, int32_t location,
@@ -3872,65 +4236,28 @@ int ringl_get_uniform_matrix3f(uint32_t program, int32_t location,
     return 0;
 }
 
-void ringl_uniform_matrix4fv(int32_t location, uint32_t transpose,
-                             const float values[16])
+void ringl_uniform_matrix4fv_array(int32_t location, uint32_t count,
+                                   uint32_t transpose, const float* values)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLProgramObject* object;
-    RinGLShaderObject* vertex;
-    RinGLShaderObject* fragment;
-    RinGLProgramMat4Uniform* uniform;
-    float previous_values[16];
-    uint32_t first_location;
-    uint32_t uniform_index;
-    uint32_t index;
 
-    if (context == NULL || location == -1)
+    if (context == NULL || location == -1 || count == 0u)
         return;
-    if (transpose != 0u || values == NULL) {
-        ringl_context_record_error(context, RINGL_INVALID_VALUE);
-        return;
-    }
-    for (index = 0u; index < 16u; ++index) {
-        if (!isfinite(values[index])) {
-            ringl_context_record_error(context, RINGL_INVALID_VALUE);
-            return;
-        }
-    }
-    if (context->current_program == 0u) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
-    }
     object = ringl_program_object(context, context->current_program);
-    first_location = object == NULL ? 0u : object->sampler_uniform_count +
-                                           object->float_uniform_count +
-                                           object->vec2_uniform_count +
-                                           object->vec3_uniform_count +
-                                           object->vec4_uniform_count;
-    if (object == NULL || !object->link_status || location < 0 ||
-        (uint32_t)location < first_location ||
-        (uint32_t)location >= first_location + object->mat4_uniform_count) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
-    }
-    uniform_index = (uint32_t)location - first_location;
-    uniform = &object->mat4_uniforms[uniform_index];
-    if (memcmp(uniform->values, values, sizeof(uniform->values)) == 0)
-        return;
-    vertex = ringl_program_shader(context, object->linked_vertex_shader);
-    fragment = ringl_program_shader(context, object->linked_fragment_shader);
-    if (vertex == NULL || fragment == NULL) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return;
-    }
-    memcpy(previous_values, uniform->values, sizeof(previous_values));
-    memcpy(uniform->values, values, sizeof(uniform->values));
-    if (!ringl_program_rebuild_uniform_for_name(
-            context, object, vertex, fragment, RINGL_FLOAT_MAT4,
-            uniform->name)) {
-        memcpy(uniform->values, previous_values, sizeof(previous_values));
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-    }
+    ringl_set_matrix_uniform_array(
+        location, count, transpose, values, 16u,
+        object == NULL ? 0u : ringl_matrix4_uniform_first_location(object),
+        object == NULL ? 0u : object->mat4_uniform_count, RINGL_FLOAT_MAT4,
+        object == NULL ? NULL : object->mat4_uniforms,
+        object == NULL ? 0u : sizeof(object->mat4_uniforms[0]),
+        ringl_mat4_uniform_values_at);
+}
+
+void ringl_uniform_matrix4fv(int32_t location, uint32_t transpose,
+                             const float values[16])
+{
+    ringl_uniform_matrix4fv_array(location, 1u, transpose, values);
 }
 
 int ringl_get_uniform_matrix4f(uint32_t program, int32_t location,

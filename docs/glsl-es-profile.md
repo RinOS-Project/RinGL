@@ -23,14 +23,17 @@ The current first-triangle slice supports:
   0.5`), which maps directly to scalar RSH1 output stores;
 - component-wise `+`, `-`, `*`, and `/` with same-width vectors or one scalar
   broadcast across a vector;
-- generic no-varying vertex `mat2`/`mat3`/`mat4` values: scalar-diagonal,
+- generic no-varying vertex and fragment `mat2`/`mat3`/`mat4` values:
+  scalar-diagonal,
   scalar/vector-component, and matching-dimension copy constructors; initialized
-  local matrices and vertex matrix uniforms; `matrixCompMult(matN, matN)` with
-  matching Float dimensions; and the resulting `matN * vecN`. RinGL retains
+  local matrices and matrix uniforms; `matrixCompMult(matN, matN)` with
+  matching Float dimensions; and the resulting `matN * vecN`. Up to four
+  matrix-array elements of each type may be selected with an in-range decimal
+  constant in either stage. RinGL retains
   column-major elements and lowers every component product to scalar RSH1
   `MUL_F32`, so RinGPU executes the operation rather than an embedding. Matrix
-  arrays, cross-dimension conversion, arbitrary matrix arithmetic, and the
-  specialized varying/texture profile remain unsupported;
+  dynamic indexing, cross-dimension conversion, arbitrary matrix arithmetic,
+  and the specialized varying/texture profile remain unsupported;
 - scalar Float or i32 `if` conditions with exactly one comparison and a
   mandatory `else`. Each branch normally writes one complete
   `gl_Position`/`gl_FragColor` `vec4`; in a fragment shader, exactly one branch
@@ -102,12 +105,14 @@ The current first-triangle slice supports:
   swizzles, arithmetic, and numeric uniforms). Each active sampler is reflected
   as an adjacent RSH1 image/sampler pair and each lookup emits four scalar
   samples; the generic 128-instruction/96-register RSH1 budget is enforced
-  before module publication. `sampler2D name[N]` is admitted only for a
-  positive decimal `N` within the eight-element total cap and an in-range
-  decimal constant `name[index]` at every lookup; each selected element has a
-  real reflected image/sampler pair. Dynamic indexing, non-sampler uniform
-  arrays, non-2D/LOD/gradient forms, and over-budget or otherwise unsupported
-  expressions reject;
+  before module publication. `sampler2D name[N]` accepts a positive decimal
+  `N` only within the eight-element total cap, and each lookup needs an
+  in-range decimal literal or `const int` initialized with an integer literal;
+  every selected element has its own real resource pair. The same bounded
+  constant-index rule applies to bounded numeric
+  uniform arrays (eight scalar/vector elements per type; four vertex matrices).
+  Dynamic indexing, non-2D/LOD/gradient forms, and over-budget or otherwise
+  unsupported expressions reject;
 - a constant-coordinate-only texture profile: one declared `sampler2D` may be
   sampled one through eight times, while a multi-declaration program uses each
   of one through eight declared samplers exactly once; results are added
@@ -207,12 +212,14 @@ bindings for only those declarations. The direct-coordinate maximum is 69
 instructions and 64 registers; with an offset on every call it is 101
 instructions and 68 registers. Coordinates derived from locals or different
 varyings, other expressions, and larger chains are not yet accepted.
-Nonconstant coordinates in this profile, dynamic sampler indices, non-sampler
-uniform arrays, general swizzle writes outside the
+Nonconstant coordinates in this profile, general swizzle writes outside the
 documented generic vertex-varying lvalue form, implicit float/integer
 conversion, vector constructors with mixed scalar types,
-matrices beyond the documented bounded `matrixCompMult`/matrix-vector vertex
-forms, additional varying types, loops, user functions,
+matrices beyond the documented bounded `matrixCompMult`/matrix-vector
+vertex/fragment forms, dynamic uniform-array indexing (bounded scalar/vector
+integer/Boolean arrays use at most eight elements per type and matrices at
+most four),
+additional varying types, loops, user functions,
 general/nested control flow, precision edge cases, and
 broader GLSL ES built-ins remain incremental work.
 

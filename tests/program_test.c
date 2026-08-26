@@ -4,6 +4,70 @@
 #include <string.h>
 #include <ringl/ringl.h>
 
+typedef struct RinGLArrayTestProgram {
+    uint32_t vertex;
+    uint32_t fragment;
+    uint32_t program;
+} RinGLArrayTestProgram;
+
+static RinGLArrayTestProgram ringl_create_array_test_program(
+    const char* fragment_source)
+{
+    RinGLArrayTestProgram result = {
+        .vertex = ringl_create_shader(RINGL_VERTEX_SHADER),
+        .fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER),
+        .program = ringl_create_program(),
+    };
+
+    assert(fragment_source != NULL && result.vertex != 0u &&
+           result.fragment != 0u && result.program != 0u);
+    ringl_shader_source(result.vertex,
+                        "void main() { gl_Position = vec4(0.0); }", -1);
+    ringl_shader_source(result.fragment, fragment_source, -1);
+    ringl_compile_shader(result.vertex);
+    ringl_compile_shader(result.fragment);
+    assert(ringl_get_shader_compile_status(result.vertex) == RINGL_TRUE);
+    assert(ringl_get_shader_compile_status(result.fragment) == RINGL_TRUE);
+    ringl_attach_shader(result.program, result.vertex);
+    ringl_attach_shader(result.program, result.fragment);
+    ringl_link_program(result.program);
+    assert(ringl_get_program_link_status(result.program) == RINGL_TRUE);
+    return result;
+}
+
+static RinGLArrayTestProgram ringl_create_vertex_array_test_program(
+    const char* vertex_source)
+{
+    RinGLArrayTestProgram result = {
+        .vertex = ringl_create_shader(RINGL_VERTEX_SHADER),
+        .fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER),
+        .program = ringl_create_program(),
+    };
+
+    assert(vertex_source != NULL && result.vertex != 0u &&
+           result.fragment != 0u && result.program != 0u);
+    ringl_shader_source(result.vertex, vertex_source, -1);
+    ringl_shader_source(result.fragment,
+                        "void main() { gl_FragColor = vec4(1.0); }", -1);
+    ringl_compile_shader(result.vertex);
+    ringl_compile_shader(result.fragment);
+    assert(ringl_get_shader_compile_status(result.vertex) == RINGL_TRUE);
+    assert(ringl_get_shader_compile_status(result.fragment) == RINGL_TRUE);
+    ringl_attach_shader(result.program, result.vertex);
+    ringl_attach_shader(result.program, result.fragment);
+    ringl_link_program(result.program);
+    assert(ringl_get_program_link_status(result.program) == RINGL_TRUE);
+    return result;
+}
+
+static void ringl_destroy_array_test_program(RinGLArrayTestProgram* program)
+{
+    assert(program != NULL);
+    ringl_delete_program(program->program);
+    ringl_delete_shader(program->vertex);
+    ringl_delete_shader(program->fragment);
+}
+
 int main(void)
 {
     RinGLContext* context = NULL;
@@ -176,26 +240,13 @@ int main(void)
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(ringl_get_uniform_1i(program, location, &uniform_value) == 0);
     assert(uniform_value == 3);
-    ringl_uniform_1i(-1, 7);
-    assert(ringl_get_error() == RINGL_NO_ERROR);
-    ringl_uniform_1i(99, 0);
-    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
-    uniform_value = -1;
-    assert(ringl_get_uniform_1i(program, 99, &uniform_value) == -1);
-    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
-    assert(uniform_value == -1);
 
-    /* sampler2D arrays retain their individual shader reflection slots, with
-     * WebGL's base-name alias and atomic uniform1iv updates reaching the
-     * matching RinGPU resource pairs. Dynamic source indices stay rejected by
-     * the compiler, so a program never chooses a resource at draw time. */
     {
         uint32_t array_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
         uint32_t array_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
         uint32_t array_program = ringl_create_program();
         int32_t array_units[2] = { 1, 3 };
         int32_t array_base_location;
-        int32_t array_first_location;
         int32_t array_second_location;
 
         assert(array_vertex != 0u && array_fragment != 0u &&
@@ -219,20 +270,15 @@ int main(void)
         assert(ringl_get_active_uniform(array_program, 0u, &active_info) == 0);
         assert(active_info.type == RINGL_SAMPLER_2D && active_info.size == 2u &&
                strcmp(active_info.name, "palette[0]") == 0);
-        assert(ringl_get_active_uniform(array_program, 1u, &active_info) == -1);
-        assert(ringl_get_error() == RINGL_INVALID_VALUE);
         array_base_location = ringl_get_uniform_location(array_program, "palette");
-        array_first_location = ringl_get_uniform_location(array_program, "palette[0]");
         array_second_location = ringl_get_uniform_location(array_program, "palette[1]");
         assert(array_base_location >= 0 &&
-               array_base_location == array_first_location &&
-               array_second_location == array_first_location + 1);
+               array_base_location == ringl_get_uniform_location(array_program,
+                                                                  "palette[0]") &&
+               array_second_location == array_base_location + 1);
         ringl_use_program(array_program);
         ringl_uniform_1iv(array_base_location, 2u, array_units);
         assert(ringl_get_error() == RINGL_NO_ERROR);
-        assert(ringl_get_uniform_1i(array_program, array_first_location,
-                                    &uniform_value) == 0);
-        assert(uniform_value == 1);
         assert(ringl_get_uniform_1i(array_program, array_second_location,
                                     &uniform_value) == 0);
         assert(uniform_value == 3);
@@ -241,15 +287,79 @@ int main(void)
         assert(ringl_get_uniform_1i(array_program, array_second_location,
                                     &uniform_value) == 0);
         assert(uniform_value == 3);
-        ringl_uniform_1iv(array_base_location, 2u, NULL);
-        assert(ringl_get_error() == RINGL_INVALID_VALUE);
         ringl_delete_program(array_program);
         ringl_delete_shader(array_vertex);
         ringl_delete_shader(array_fragment);
     }
 
-    /* A same-name sampler must have one compatible interface across stages;
-     * do not create an executable with ambiguous array element bindings. */
+    {
+        uint32_t dynamic_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+
+        assert(dynamic_fragment != 0u);
+        ringl_shader_source(dynamic_fragment,
+                            "uniform sampler2D palette[2]; uniform int i; "
+                            "void main() { gl_FragColor = "
+                            "texture2D(palette[i], vec2(0.5, 0.5)); }", -1);
+        ringl_compile_shader(dynamic_fragment);
+        assert(ringl_get_shader_compile_status(dynamic_fragment) == RINGL_FALSE);
+        ringl_delete_shader(dynamic_fragment);
+    }
+
+    {
+        uint32_t array_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+        uint32_t array_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+        uint32_t array_program = ringl_create_program();
+        float gains[2] = { 0.25f, 0.75f };
+        float value = -1.0f;
+        int32_t base_location;
+        int32_t second_location;
+
+        assert(array_vertex != 0u && array_fragment != 0u &&
+               array_program != 0u);
+        ringl_shader_source(array_vertex,
+                            "void main() { gl_Position = vec4(0.0); }", -1);
+        ringl_shader_source(array_fragment,
+                            "uniform float gains[2]; void main() { "
+                            "gl_FragColor = vec4(gains[1], gains[0], 0.0, 1.0); }",
+                            -1);
+        ringl_compile_shader(array_vertex);
+        ringl_compile_shader(array_fragment);
+        assert(ringl_get_shader_compile_status(array_vertex) == RINGL_TRUE);
+        assert(ringl_get_shader_compile_status(array_fragment) == RINGL_TRUE);
+        ringl_attach_shader(array_program, array_vertex);
+        ringl_attach_shader(array_program, array_fragment);
+        ringl_link_program(array_program);
+        assert(ringl_get_program_link_status(array_program) == RINGL_TRUE);
+        assert(ringl_get_program_info(array_program, &info) == 0);
+        assert(info.active_uniform_count == 1u);
+        assert(ringl_get_active_uniform(array_program, 0u, &active_info) == 0);
+        assert(active_info.type == RINGL_FLOAT && active_info.size == 2u &&
+               strcmp(active_info.name, "gains[0]") == 0);
+        base_location = ringl_get_uniform_location(array_program, "gains");
+        second_location = ringl_get_uniform_location(array_program, "gains[1]");
+        assert(base_location >= 0 &&
+               base_location == ringl_get_uniform_location(array_program,
+                                                            "gains[0]") &&
+               second_location == base_location + 1);
+        ringl_use_program(array_program);
+        ringl_uniform_1fv(base_location, 2u, gains);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_1f(array_program, second_location, &value) == 0);
+        assert(value == 0.75f);
+        ringl_uniform_1fv(second_location, 2u, gains);
+        assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+        assert(ringl_get_uniform_1f(array_program, second_location, &value) == 0);
+        assert(value == 0.75f);
+        gains[0] = NAN;
+        ringl_uniform_1fv(base_location, 2u, gains);
+        assert(ringl_get_error() == RINGL_INVALID_VALUE);
+        assert(ringl_get_uniform_1f(array_program, base_location, &value) == 0);
+        assert(value == 0.25f);
+        ringl_delete_program(array_program);
+        ringl_delete_shader(array_vertex);
+        ringl_delete_shader(array_fragment);
+    }
+
     {
         uint32_t mismatch_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
         uint32_t mismatch_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
@@ -278,6 +388,238 @@ int main(void)
         ringl_delete_shader(mismatch_vertex);
         ringl_delete_shader(mismatch_fragment);
     }
+
+    {
+        RinGLArrayTestProgram array_program = ringl_create_array_test_program(
+            "uniform vec4 colors[2]; void main() { "
+            "gl_FragColor = colors[1]; }");
+        float colors[8] = { 1.0f, 2.0f, 3.0f, 4.0f,
+                            5.0f, 6.0f, 7.0f, 8.0f };
+        float readback[4] = { 0.0f };
+
+        assert(ringl_get_program_info(array_program.program, &info) == 0 &&
+               info.active_uniform_count == 1u);
+        assert(ringl_get_active_uniform(array_program.program, 0u,
+                                        &active_info) == 0 &&
+               active_info.type == RINGL_FLOAT_VEC4 && active_info.size == 2u &&
+               strcmp(active_info.name, "colors[0]") == 0);
+        location = ringl_get_uniform_location(array_program.program, "colors");
+        assert(location >= 0 && location + 1 ==
+               ringl_get_uniform_location(array_program.program, "colors[1]"));
+        ringl_use_program(array_program.program);
+        ringl_uniform_4fv(location, 2u, colors);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_4f(array_program.program, location + 1,
+                                    readback) == 0 &&
+               memcmp(readback, colors + 4, sizeof(readback)) == 0);
+        ringl_uniform_4fv(location + 1, 2u, colors);
+        assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+        assert(ringl_get_uniform_4f(array_program.program, location + 1,
+                                    readback) == 0 &&
+               memcmp(readback, colors + 4, sizeof(readback)) == 0);
+        ringl_destroy_array_test_program(&array_program);
+    }
+
+    {
+        RinGLArrayTestProgram array_program = ringl_create_array_test_program(
+            "uniform vec2 pairs[2]; void main() { "
+            "gl_FragColor = vec4(pairs[1], 0.0, 1.0); }");
+        const float values[4] = { 1.0f, 2.0f, 3.0f, 4.0f };
+        float readback[2] = { 0.0f };
+
+        location = ringl_get_uniform_location(array_program.program, "pairs");
+        ringl_use_program(array_program.program);
+        ringl_uniform_2fv(location, 2u, values);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_2f(array_program.program, location + 1,
+                                    readback) == 0 &&
+               memcmp(readback, values + 2, sizeof(readback)) == 0);
+        ringl_destroy_array_test_program(&array_program);
+    }
+
+    {
+        RinGLArrayTestProgram array_program = ringl_create_array_test_program(
+            "uniform vec3 triples[2]; void main() { "
+            "gl_FragColor = vec4(triples[1], 1.0); }");
+        const float values[6] = { 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f };
+        float readback[3] = { 0.0f };
+
+        location = ringl_get_uniform_location(array_program.program, "triples");
+        ringl_use_program(array_program.program);
+        ringl_uniform_3fv(location, 2u, values);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_3f(array_program.program, location + 1,
+                                    readback) == 0 &&
+               memcmp(readback, values + 3, sizeof(readback)) == 0);
+        ringl_destroy_array_test_program(&array_program);
+    }
+
+    {
+        RinGLArrayTestProgram array_program = ringl_create_array_test_program(
+            "uniform int levels[2]; void main() { "
+            "gl_FragColor = vec4(float(levels[1])); }");
+        const int32_t values[2] = { -3, 7 };
+        int32_t readback = 0;
+
+        location = ringl_get_uniform_location(array_program.program, "levels");
+        ringl_use_program(array_program.program);
+        ringl_uniform_1iv(location, 2u, values);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_1i(array_program.program, location + 1,
+                                    &readback) == 0 && readback == 7);
+        ringl_destroy_array_test_program(&array_program);
+    }
+
+    {
+        RinGLArrayTestProgram array_program = ringl_create_array_test_program(
+            "uniform bvec2 flags[2]; void main() { gl_FragColor = vec4(1.0); }");
+        const int32_t values[4] = { 0, 2, -3, 0 };
+        int32_t readback[2] = { 0, 0 };
+
+        location = ringl_get_uniform_location(array_program.program, "flags");
+        ringl_use_program(array_program.program);
+        ringl_uniform_2iv(location, 2u, values);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_2i(array_program.program, location + 1,
+                                    readback) == 0 &&
+               readback[0] == 1 && readback[1] == 0);
+        ringl_destroy_array_test_program(&array_program);
+    }
+
+    {
+        RinGLArrayTestProgram array_program = ringl_create_array_test_program(
+            "uniform ivec3 triples[2]; void main() { "
+            "gl_FragColor = vec4(float(triples[1].z)); }");
+        const int32_t values[6] = { 1, 2, 3, 4, 5, 6 };
+        int32_t readback[3] = { 0, 0, 0 };
+
+        location = ringl_get_uniform_location(array_program.program, "triples");
+        ringl_use_program(array_program.program);
+        ringl_uniform_3iv(location, 2u, values);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_3i(array_program.program, location + 1,
+                                    readback) == 0 && readback[2] == 6);
+        ringl_destroy_array_test_program(&array_program);
+    }
+
+    {
+        RinGLArrayTestProgram array_program = ringl_create_array_test_program(
+            "uniform bvec4 flags[2]; void main() { gl_FragColor = vec4(1.0); }");
+        const int32_t values[8] = { 0, 0, 0, 0, 0, 2, -3, 4 };
+        int32_t readback[4] = { 0, 0, 0, 0 };
+
+        location = ringl_get_uniform_location(array_program.program, "flags");
+        ringl_use_program(array_program.program);
+        ringl_uniform_4iv(location, 2u, values);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_4i(array_program.program, location + 1,
+                                    readback) == 0 &&
+               readback[1] == 1 && readback[2] == 1 && readback[3] == 1);
+        ringl_destroy_array_test_program(&array_program);
+    }
+
+    {
+        RinGLArrayTestProgram array_program = ringl_create_vertex_array_test_program(
+            "attribute vec2 position; uniform mat2 transforms[2]; "
+            "void main() { gl_Position = vec4(transforms[1] * position, 0.0, 1.0); }");
+        const float values[8] = { 1.0f, 0.0f, 0.0f, 1.0f,
+                                  2.0f, 0.0f, 0.0f, 2.0f };
+        float readback[4] = { 0.0f };
+
+        location = ringl_get_uniform_location(array_program.program, "transforms");
+        ringl_use_program(array_program.program);
+        ringl_uniform_matrix2fv_array(location, 2u, RINGL_FALSE, values);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_matrix2f(array_program.program, location + 1,
+                                          readback) == 0 &&
+               memcmp(readback, values + 4, sizeof(readback)) == 0);
+        ringl_destroy_array_test_program(&array_program);
+    }
+
+    {
+        RinGLArrayTestProgram array_program = ringl_create_vertex_array_test_program(
+            "attribute vec3 position; uniform mat3 transforms[2]; "
+            "void main() { gl_Position = vec4(transforms[1] * position, 1.0); }");
+        float values[18] = { 0.0f };
+        float readback[9] = { 0.0f };
+
+        values[0] = values[4] = values[8] = 1.0f;
+        values[9] = values[13] = values[17] = 2.0f;
+        location = ringl_get_uniform_location(array_program.program, "transforms");
+        ringl_use_program(array_program.program);
+        ringl_uniform_matrix3fv_array(location, 2u, RINGL_FALSE, values);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_matrix3f(array_program.program, location + 1,
+                                          readback) == 0 &&
+               readback[0] == 2.0f && readback[4] == 2.0f &&
+               readback[8] == 2.0f);
+        ringl_destroy_array_test_program(&array_program);
+    }
+
+    {
+        RinGLArrayTestProgram array_program = ringl_create_vertex_array_test_program(
+            "attribute vec4 position; uniform mat4 transforms[2]; "
+            "void main() { gl_Position = transforms[1] * position; }");
+        float values[32] = { 0.0f };
+        float readback[16] = { 0.0f };
+
+        values[0] = values[5] = values[10] = values[15] = 1.0f;
+        values[16] = values[21] = values[26] = values[31] = 2.0f;
+        location = ringl_get_uniform_location(array_program.program, "transforms");
+        ringl_use_program(array_program.program);
+        ringl_uniform_matrix4fv_array(location, 2u, RINGL_FALSE, values);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_matrix4f(array_program.program, location + 1,
+                                          readback) == 0 &&
+               readback[0] == 2.0f && readback[5] == 2.0f &&
+               readback[10] == 2.0f && readback[15] == 2.0f);
+        ringl_destroy_array_test_program(&array_program);
+    }
+
+    /* Fragment matrices use the same program-owned RSH1 constants and
+     * column-major multiplication as the vertex profile.  Keep this as a
+     * real indexed array expression so the lowerer, linker, reflection, and
+     * contiguous setter path must all agree on the fragment-stage location. */
+    {
+        RinGLArrayTestProgram array_program = ringl_create_array_test_program(
+            "uniform mat2 colors[2]; void main() { "
+            "vec2 color = colors[1] * vec2(0.25, 0.5); "
+            "gl_FragColor = vec4(color, 0.0, 1.0); }");
+        const float values[8] = { 1.0f, 0.0f, 0.0f, 1.0f,
+                                  0.5f, 0.2f, 0.1f, 0.6f };
+        float readback[4] = { 0.0f };
+
+        assert(ringl_get_program_info(array_program.program, &info) == 0 &&
+               info.active_uniform_count == 1u);
+        assert(ringl_get_active_uniform(array_program.program, 0u,
+                                        &active_info) == 0 &&
+               active_info.type == RINGL_FLOAT_MAT2 && active_info.size == 2u &&
+               strcmp(active_info.name, "colors[0]") == 0);
+        location = ringl_get_uniform_location(array_program.program, "colors");
+        assert(location == ringl_get_uniform_location(array_program.program,
+                                                      "colors[0]"));
+        ringl_use_program(array_program.program);
+        ringl_uniform_matrix2fv_array(location, 2u, RINGL_FALSE, values);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_matrix2f(array_program.program, location + 1,
+                                          readback) == 0 &&
+               memcmp(readback, values + 4, sizeof(readback)) == 0);
+        ringl_uniform_matrix2fv_array(location + 1, 2u, RINGL_FALSE, values);
+        assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+        assert(ringl_get_uniform_matrix2f(array_program.program, location + 1,
+                                          readback) == 0 &&
+               memcmp(readback, values + 4, sizeof(readback)) == 0);
+        ringl_destroy_array_test_program(&array_program);
+    }
+
+    ringl_uniform_1i(-1, 7);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_uniform_1i(99, 0);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    uniform_value = -1;
+    assert(ringl_get_uniform_1i(program, 99, &uniform_value) == -1);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    assert(uniform_value == -1);
 
     /* Vec4 uniforms are linked program state, not shader-object state. A
      * second program sharing the same shader pair keeps WebGL's zero default

@@ -133,8 +133,11 @@ forming a host-side vector or calling an embedding renderer. Once such a
 selector is used, all four clip/color components must be covered before the
 RinGL→RinGPU module is published; an incomplete output fails link and cannot
 receive a synthetic default component. Repeated, mixed-family, and out-of-range
-selectors still fail compilation. `gl_PointSize`, `gl_FragDepthEXT`, and
-indexed `gl_FragData` remain scalar/vector whole-output forms in this profile.
+selectors still fail compilation. `gl_PointSize` and `gl_FragDepthEXT` remain
+scalar whole-output forms. With `GL_EXT_draw_buffers` enabled, indexed literal
+`gl_FragData[0..3]` also accepts the same selectors and stores to the selected
+attachment's scalar slots; the existing MRT finalization emits zero stores for
+each component the source did not write before publishing its 16-output ABI.
 
 The bounded perspective-color profiles apply the same read-only selector rule
 to their `varying vec3`/`vec4` fragment values. A full-width selector is

@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: MIT */
 #include <ringl/ringl.h>
 
+#include "shader/glsl_lower.h"
+
 #include <assert.h>
 #include <string.h>
 
@@ -284,6 +286,32 @@ int main(void)
     assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
     assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) > 0u);
     assert(strstr(log, "invalid writable") != NULL);
+
+    /* GL_EXT_draw_buffers selectors address the selected attachment's real
+     * scalar RSH1 slots. Missing attachment components are handled only by the
+     * explicit MRT zero-store pass; repeated lvalues remain a source error. */
+    {
+        static const char fragment_data_selector_source[] =
+            "#extension GL_EXT_draw_buffers : require\n"
+            "void main() { gl_FragData[2].bgr = vec3(1.0, 0.0, 0.0); "
+            "gl_FragData[2].a = 1.0; }";
+        static const char duplicate_fragment_data_selector_source[] =
+            "#extension GL_EXT_draw_buffers : require\n"
+            "void main() { gl_FragData[0].rr = vec2(1.0); }";
+        RinGLGlslLowerResult lowered;
+
+        assert(ringl_glsl_lower_rsh1(
+                   RINGL_FRAGMENT_SHADER, fragment_data_selector_source,
+                   sizeof(fragment_data_selector_source) - 1u, &lowered) == 0);
+        assert(lowered.ok != 0u);
+        assert(lowered.output_count == RINGL_MAX_COLOR_ATTACHMENTS * 4u);
+        assert(ringl_glsl_lower_rsh1(
+                   RINGL_FRAGMENT_SHADER,
+                   duplicate_fragment_data_selector_source,
+                   sizeof(duplicate_fragment_data_selector_source) - 1u,
+                   &lowered) != 0);
+        assert(strstr(lowered.diagnostic, "invalid writable") != NULL);
+    }
 
     ringl_shader_source(fragment,
         "void main() { vec2 uv = vec2(0.0); gl_FragColor = vec4(uv.z); }",

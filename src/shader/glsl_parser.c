@@ -1128,6 +1128,10 @@ static int assignment(Parser* parser)
             return 0;
         }
         parser->result->uses_webgl_draw_buffers = 1u;
+        if (parser->token.kind == TOK_DOT &&
+            !writable_lvalue_swizzle(parser, 4u)) {
+            return 0;
+        }
     }
     if (!expect(parser, TOK_ASSIGN, "expected '='"))
         return 0;

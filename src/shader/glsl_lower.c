@@ -2955,6 +2955,38 @@ static int store_stage_output_components(Lower* lower, const Value* value,
     return 1;
 }
 
+/* GL_EXT_draw_buffers publishes four vec4 attachments. A fragment-data
+ * selector addresses scalar RSH1 slots within one attachment; the existing
+ * draw-buffer default pass fills any component that source did not write with
+ * its explicit zero store before the MRT module is published. */
+static int store_fragment_data_components(Lower* lower, const Value* value,
+                                          const uint8_t components[4],
+                                          uint8_t component_count,
+                                          uint32_t first_output)
+{
+    uint32_t index;
+
+    if (lower == NULL || value == NULL || components == NULL ||
+        component_count == 0u || component_count > 4u ||
+        value->width != component_count ||
+        first_output > RINGL_MAX_COLOR_ATTACHMENTS * 4u - 4u) {
+        return 0;
+    }
+    for (index = 0u; index < component_count; ++index) {
+        uint32_t output = first_output + components[index];
+
+        if (components[index] >= 4u ||
+            !emit(lower, RINGL_RSH1_OP_STORE_OUTPUT_F32,
+                  RINGL_RSH1_UNUSED, value->regs[index],
+                  RINGL_RSH1_UNUSED, output)) {
+            return 0;
+        }
+        if (lower->output_count < output + 1u)
+            lower->output_count = (uint16_t)(output + 1u);
+    }
+    return 1;
+}
+
 static int store_varying_components(Lower* lower, Symbol* symbol,
                                     const Value* value,
                                     const uint8_t components[4],
@@ -3077,6 +3109,13 @@ static int assignment(Lower* lower)
             return 0;
         }
         lower->uses_draw_buffers = 1u;
+        if (lower->token.kind == T_DOT) {
+            has_lvalue_swizzle = 1;
+            if (!lvalue_swizzle(lower, 4u, lvalue_components,
+                                &lvalue_component_count)) {
+                return 0;
+            }
+        }
     }
     if (!need(lower, T_ASSIGN, "expected '='"))
         return 0;
@@ -3086,6 +3125,17 @@ static int assignment(Lower* lower)
     if (!need(lower, T_SEMI, "expected ';' after assignment"))
         return 0;
     if (output) {
+        if (frag_data && has_lvalue_swizzle) {
+            if (value.matrix || value.is_i32 ||
+                value.width != lvalue_component_count) {
+                fail(lower, "gl_FragData component assignment width mismatch");
+                return 0;
+            }
+            return store_fragment_data_components(lower, &value,
+                                                  lvalue_components,
+                                                  lvalue_component_count,
+                                                  first_output);
+        }
         if (stage_output && has_lvalue_swizzle) {
             if (value.matrix || value.is_i32 ||
                 value.width != lvalue_component_count) {

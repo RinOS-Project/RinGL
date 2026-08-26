@@ -1116,6 +1116,13 @@ cover all four clip/color components before module publication; a partial
 alpha. The focused Ladybird bridge regression reads back the reordered RGBA
 result from its caller-owned target, without a direct Aquamarine command path.
 
+With `GL_EXT_draw_buffers` enabled, the same lvalue form applies to literal
+`gl_FragData[0..3]` attachments. Its selected components are exact scalar MRT
+stores; the bounded 16-output finalizer explicitly writes zero only for omitted
+components before RinGPU module publication. The bridge regression renders four
+attachment colors with reordered `.rgb`/`.grb`/`.bgr`/`.rgba` selectors and
+reads each real target back through RinGL.
+
 `vertexAttribPointer` accepts the WebGL 1 scalar source types `FLOAT`,
 `BYTE`, `UNSIGNED_BYTE`, `SHORT`, and `UNSIGNED_SHORT`, including normalized
 integer conversion. RinGL expands every component into a typed scalar RinGPU

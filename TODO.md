@@ -249,6 +249,14 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     fails link instead of receiving a fabricated component. General varying
     expressions, generic texture use, and broader linkage semantics remain
     unsupported.
+  - [x] Extend enabled `GL_EXT_draw_buffers` literal `gl_FragData[0..3]` writes
+    with non-overlapping writable `xyzw`/`rgba`/`stpq` selectors. Each selector
+    emits the selected attachment's real scalar RSH1 stores in source order;
+    existing MRT finalization supplies explicit zero stores for components the
+    source omitted. Parser/lowerer regressions reject repeated selectors, and
+    the public bridge renders red, green, blue, and yellow through reordered
+    component selectors into four actual attachments. This does not extend
+    dynamic indices, WebGL 2, or broader GLSL expressions.
 
 ## Phase 4 — First hardware-rendered triangle
 

@@ -319,9 +319,9 @@ int main(void)
     const char* varying_uniform_left_multiply_source =
         "uniform sampler2D colorTexture; uniform vec2 offset; varying vec2 uv; "
         "void main() { gl_FragColor = texture2D(colorTexture, offset.yx * uv); }";
-    const char* varying_uniform_left_divide_source =
+    const char* varying_uniform_right_divide_source =
         "uniform sampler2D colorTexture; uniform vec2 offset; varying vec2 uv; "
-        "void main() { gl_FragColor = texture2D(colorTexture, offset.yx / uv); }";
+        "void main() { gl_FragColor = texture2D(colorTexture, uv / offset.yx); }";
     const char* varying_repeated_partial_source =
         "uniform sampler2D unusedTexture; uniform sampler2D activeTexture; "
         "varying vec2 uv; void main() { gl_FragColor = "
@@ -1284,12 +1284,30 @@ int main(void)
         assert(multiply->source1 == 8u + component);
     }
 
-    /* A zero-default uniform cannot safely be admitted as a divisor. Keep
-     * this form outside the profile rather than publishing an executable
-     * module that can fail only after texture work has started. */
-    ringl_shader_source(shader, varying_uniform_left_divide_source, -1);
+    /* A uniform divisor retains WebGL's zero default so linking succeeds;
+     * a later zero update is rejected by the executor before target publish.
+     * The RSH1 module must nevertheless keep varying/uniform operand order. */
+    ringl_shader_source(shader, varying_uniform_right_divide_source, -1);
     ringl_compile_shader(shader);
-    assert(ringl_get_shader_compile_status(shader) == RINGL_FALSE);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    size = ringl_get_shader_rsh1_size(shader);
+    assert(size == sizeof(header) + 17u * sizeof(Instruction));
+    assert(ringl_copy_shader_rsh1(shader, blob, sizeof(blob)) == size);
+    for (component = 0u; component < 2u; ++component) {
+        const Instruction* constant =
+            (const Instruction*)(blob + sizeof(header)) + 4u + component;
+        const Instruction* divide =
+            (const Instruction*)(blob + sizeof(header)) + 6u + component;
+
+        assert(constant->opcode == RSH1_CONST_F32);
+        assert(constant->destination == 8u + component);
+        assert(constant->immediate == 0u);
+        assert(divide->opcode == RSH1_DIV_F32);
+        assert(divide->destination == 10u + component);
+        assert(divide->source0 == component);
+        assert(divide->source1 == 8u + component);
+    }
 
     /* A coordinate uniform may also be the left operand. The constants still
      * come from the program-owned uniform state, but subtraction must retain

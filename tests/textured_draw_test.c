@@ -51,7 +51,8 @@ typedef struct FakeBackend {
     uint32_t validate_vertex_color_tint;
     float expected_coordinate_uniform[2];
     uint32_t validate_coordinate_uniform;
-    uint32_t validate_coordinate_uniform_reverse_subtract;
+    uint16_t expected_coordinate_uniform_opcode;
+    uint32_t reverse_coordinate_uniform_operands;
     uint32_t coordinate_uniform_fragment_modules;
     uint32_t pipeline_creates;
     uint32_t bind_group_creates;
@@ -156,14 +157,13 @@ static int fake_create_shader_module(void* session, const void* rsh1,
                    instructions[4u + index].destination == 8u + index &&
                    instructions[4u + index].immediate == expected_bits);
             assert(instructions[6u + index].opcode ==
-                       (backend->validate_coordinate_uniform_reverse_subtract != 0u
-                            ? 21u : 20u) &&
+                       backend->expected_coordinate_uniform_opcode &&
                    instructions[6u + index].destination == 10u + index &&
                    instructions[6u + index].source0 ==
-                       (backend->validate_coordinate_uniform_reverse_subtract != 0u
+                       (backend->reverse_coordinate_uniform_operands != 0u
                             ? 8u + index : index) &&
                    instructions[6u + index].source1 ==
-                       (backend->validate_coordinate_uniform_reverse_subtract != 0u
+                       (backend->reverse_coordinate_uniform_operands != 0u
                             ? index : 8u + index));
         }
         for (index = 0u; index < 4u; ++index) {
@@ -964,7 +964,7 @@ int main(void)
     ringl_shader_source(
         coordinate_uniform_fragment,
         "uniform sampler2D colorTexture; uniform vec2 offset; varying vec2 uv; "
-        "void main() { gl_FragColor = texture2D(colorTexture, offset.yx - uv); }",
+        "void main() { gl_FragColor = texture2D(colorTexture, uv / offset.yx); }",
         -1);
     ringl_compile_shader(coordinate_uniform_vertex);
     ringl_compile_shader(coordinate_uniform_fragment);
@@ -985,12 +985,13 @@ int main(void)
     assert(coordinate_uniform_sampler_location == 0);
     assert(coordinate_uniform_offset_location == 1);
     ringl_uniform_1i(coordinate_uniform_sampler_location, 0);
-    backend.expected_coordinate_uniform[0] = -0.5f;
-    backend.expected_coordinate_uniform[1] = 0.25f;
+    backend.expected_coordinate_uniform[0] = 2.0f;
+    backend.expected_coordinate_uniform[1] = 0.5f;
     backend.validate_coordinate_uniform = 1u;
-    backend.validate_coordinate_uniform_reverse_subtract = 1u;
+    backend.expected_coordinate_uniform_opcode = 23u;
+    backend.reverse_coordinate_uniform_operands = 0u;
     ringl_uniform_2f(coordinate_uniform_offset_location,
-                     0.25f, -0.5f);
+                     0.5f, 2.0f);
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(backend.coordinate_uniform_fragment_modules == 1u);
     ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);

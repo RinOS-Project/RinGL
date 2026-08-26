@@ -640,10 +640,14 @@ static int parse_varying_texture_offset(const char** cursor,
         *offset_v = uniform_values[components[1]];
         uses_uniform = 1;
     }
-    return (*coordinate_kind != RINGL_VARYING_TEXTURE_COORD_DIV_SCALE ||
-            (*offset_u != 0.0f && *offset_v != 0.0f)) &&
-           (uses_uniform == 0 ||
-            *coordinate_kind != RINGL_VARYING_TEXTURE_COORD_DIV_SCALE);
+    /* A literal divisor is statically known, so reject zero before publishing
+     * the module. A fragment uniform is materialized when linked and then on
+     * every uniform update; its all-zero WebGL default must still permit the
+     * program to link. The generic RinGPU executor preflights the live RSH1
+     * division before any target write, so a later zero component remains a
+     * finite fail-closed draw rather than a host-side coordinate shortcut. */
+    return *coordinate_kind != RINGL_VARYING_TEXTURE_COORD_DIV_SCALE ||
+           uses_uniform != 0 || (*offset_u != 0.0f && *offset_v != 0.0f);
 }
 
 static int parse_varying_texture_call(const char** cursor,

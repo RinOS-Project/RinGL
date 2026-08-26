@@ -586,7 +586,7 @@ static int matrix_constructor(Parser* parser)
 static int varying_vec2_offset(Parser* parser)
 {
     if (parser->token.kind != TOK_PLUS && parser->token.kind != TOK_MINUS &&
-        parser->token.kind != TOK_STAR)
+        parser->token.kind != TOK_STAR && parser->token.kind != TOK_SLASH)
         return 1;
     next_token(parser);
     if (parser->token.kind == TOK_IDENT) {

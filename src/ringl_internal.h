@@ -24,6 +24,7 @@
 #define RINGL_MAX_SAMPLER_UNIFORMS 8u
 #define RINGL_MAX_FLOAT_UNIFORMS 8u
 #define RINGL_MAX_INT_UNIFORMS 8u
+#define RINGL_MAX_BOOL_UNIFORMS 8u
 #define RINGL_MAX_VEC2_UNIFORMS 8u
 #define RINGL_MAX_VEC3_UNIFORMS 8u
 #define RINGL_MAX_VEC4_UNIFORMS 8u
@@ -140,6 +141,7 @@ typedef struct RinGLShaderObject {
     uint32_t sampler_uniform_count;
     uint32_t float_uniform_count;
     uint32_t int_uniform_count;
+    uint32_t bool_uniform_count;
     uint32_t vec2_uniform_count;
     uint32_t vec3_uniform_count;
     uint32_t vec4_uniform_count;
@@ -158,6 +160,7 @@ typedef struct RinGLShaderObject {
     char sampler_uniform_names[RINGL_MAX_SAMPLER_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char float_uniform_names[RINGL_MAX_FLOAT_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char int_uniform_names[RINGL_MAX_INT_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
+    char bool_uniform_names[RINGL_MAX_BOOL_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char vec2_uniform_names[RINGL_MAX_VEC2_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char vec3_uniform_names[RINGL_MAX_VEC3_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char vec4_uniform_names[RINGL_MAX_VEC4_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
@@ -187,6 +190,13 @@ typedef struct RinGLProgramIntUniform {
     char name[RINGL_UNIFORM_NAME_MAX];
     int32_t value;
 } RinGLProgramIntUniform;
+
+/* Boolean uniforms retain their own reflected type while sharing RSH1's
+ * integer register domain. Their stored value is always normalized to 0/1. */
+typedef struct RinGLProgramBoolUniform {
+    char name[RINGL_UNIFORM_NAME_MAX];
+    int32_t value;
+} RinGLProgramBoolUniform;
 
 typedef struct RinGLProgramVec2Uniform {
     char name[RINGL_UNIFORM_NAME_MAX];
@@ -267,6 +277,7 @@ typedef struct RinGLProgramObject {
     uint32_t sampler_uniform_count;
     uint32_t float_uniform_count;
     uint32_t int_uniform_count;
+    uint32_t bool_uniform_count;
     uint32_t vec2_uniform_count;
     uint32_t vec3_uniform_count;
     uint32_t vec4_uniform_count;
@@ -286,6 +297,7 @@ typedef struct RinGLProgramObject {
     RinGLProgramSamplerUniform sampler_uniforms[RINGL_MAX_SAMPLER_UNIFORMS];
     RinGLProgramFloatUniform float_uniforms[RINGL_MAX_FLOAT_UNIFORMS];
     RinGLProgramIntUniform int_uniforms[RINGL_MAX_INT_UNIFORMS];
+    RinGLProgramBoolUniform bool_uniforms[RINGL_MAX_BOOL_UNIFORMS];
     RinGLProgramVec2Uniform vec2_uniforms[RINGL_MAX_VEC2_UNIFORMS];
     RinGLProgramVec3Uniform vec3_uniforms[RINGL_MAX_VEC3_UNIFORMS];
     RinGLProgramVec4Uniform vec4_uniforms[RINGL_MAX_VEC4_UNIFORMS];

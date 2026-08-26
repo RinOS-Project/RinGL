@@ -47,6 +47,7 @@ extern "C" {
 #define RINGL_INT_VEC2       0x8b53u
 #define RINGL_INT_VEC3       0x8b54u
 #define RINGL_INT_VEC4       0x8b55u
+#define RINGL_BOOL           0x8b56u
 #define RINGL_FLOAT_MAT2     0x8b5au
 #define RINGL_FLOAT_MAT3     0x8b5bu
 #define RINGL_FLOAT_MAT4     0x8b5cu

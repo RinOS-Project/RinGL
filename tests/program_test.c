@@ -40,6 +40,10 @@ int main(void)
     uint32_t integer_fragment;
     uint32_t integer_program;
     uint32_t integer_peer_program;
+    uint32_t bool_vertex;
+    uint32_t bool_fragment;
+    uint32_t bool_program;
+    uint32_t bool_peer_program;
     uint32_t mat4_vertex;
     uint32_t mat4_fragment;
     uint32_t mat4_program;
@@ -497,6 +501,63 @@ int main(void)
     }
     ringl_delete_program(integer_peer_program);
     ringl_delete_program(integer_program);
+
+    /* A scalar bool preserves its WebGL-facing type while the RSH1 branch
+     * condition remains a normalized i32. The two programs prove that the
+     * program-owned executable does not leak a uniform update across links. */
+    bool_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+    bool_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+    bool_program = ringl_create_program();
+    bool_peer_program = ringl_create_program();
+    assert(bool_vertex != 0u && bool_fragment != 0u && bool_program != 0u &&
+           bool_peer_program != 0u);
+    ringl_shader_source(bool_vertex,
+                        "void main() { gl_Position = vec4(-1.0, -1.0, 0.0, 1.0); }",
+                        -1);
+    ringl_shader_source(bool_fragment,
+                        "precision mediump float; precision highp int; "
+                        "uniform bool enabled; void main() { if (enabled) { "
+                        "gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); } else { "
+                        "gl_FragColor = vec4(0.0, 0.0, 1.0, 1.0); } }",
+                        -1);
+    ringl_compile_shader(bool_vertex);
+    ringl_compile_shader(bool_fragment);
+    assert(ringl_get_shader_compile_status(bool_vertex) == RINGL_TRUE);
+    assert(ringl_get_shader_compile_status(bool_fragment) == RINGL_TRUE);
+    ringl_attach_shader(bool_program, bool_vertex);
+    ringl_attach_shader(bool_program, bool_fragment);
+    ringl_attach_shader(bool_peer_program, bool_vertex);
+    ringl_attach_shader(bool_peer_program, bool_fragment);
+    ringl_link_program(bool_program);
+    ringl_link_program(bool_peer_program);
+    assert(ringl_get_program_link_status(bool_program) == RINGL_TRUE);
+    assert(ringl_get_program_link_status(bool_peer_program) == RINGL_TRUE);
+    assert(ringl_get_program_info(bool_program, &info) == 0);
+    assert(info.active_uniform_count == 1u);
+    assert(ringl_get_active_uniform(bool_program, 0u, &active_info) == 0);
+    assert(active_info.type == RINGL_BOOL && strcmp(active_info.name, "enabled") == 0);
+    {
+        int32_t bool_location = ringl_get_uniform_location(bool_program, "enabled");
+        int32_t enabled = -1;
+
+        assert(bool_location == 0);
+        assert(ringl_get_uniform_1i(bool_program, bool_location, &enabled) == 0);
+        assert(enabled == 0);
+        ringl_use_program(bool_program);
+        ringl_uniform_1i(bool_location, -7);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_1i(bool_program, bool_location, &enabled) == 0);
+        assert(enabled == 1);
+        ringl_uniform_1i(bool_location, 0);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_1i(bool_program, bool_location, &enabled) == 0);
+        assert(enabled == 0);
+        enabled = -1;
+        assert(ringl_get_uniform_1i(bool_peer_program, bool_location, &enabled) == 0);
+        assert(enabled == 0);
+    }
+    ringl_delete_program(bool_peer_program);
+    ringl_delete_program(bool_program);
 
     /* A vertex mat4 is lowered to a real column-major RSH1 matrix/vector
      * multiply. It is program-owned just like the scalar/vector profile. */

@@ -86,6 +86,7 @@ int ringl_get_program_reflection(uint32_t program,
         return -1;
 
     if (object->float_uniform_count == 0u && object->int_uniform_count == 0u &&
+        object->bool_uniform_count == 0u &&
         object->vec2_uniform_count == 0u && object->ivec2_uniform_count == 0u &&
         object->vec3_uniform_count == 0u && object->ivec3_uniform_count == 0u &&
         object->vec4_uniform_count == 0u && object->ivec4_uniform_count == 0u &&
@@ -96,6 +97,7 @@ int ringl_get_program_reflection(uint32_t program,
         return -1;
     }
     if (object->float_uniform_count == 0u && object->int_uniform_count == 0u &&
+        object->bool_uniform_count == 0u &&
         object->vec2_uniform_count == 0u && object->ivec2_uniform_count == 0u &&
         object->vec3_uniform_count == 0u && object->ivec3_uniform_count == 0u &&
         object->vec4_uniform_count == 0u && object->ivec4_uniform_count == 0u &&
@@ -134,6 +136,7 @@ int ringl_get_program_reflection(uint32_t program,
     result.active_uniform_count = object->sampler_uniform_count +
                                   object->float_uniform_count +
                                   object->int_uniform_count +
+                                  object->bool_uniform_count +
                                   object->vec2_uniform_count +
                                   object->vec3_uniform_count +
                                   object->vec4_uniform_count +

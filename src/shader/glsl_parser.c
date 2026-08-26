@@ -22,6 +22,9 @@ typedef enum TokenKind {
     TOK_MAT3,
     TOK_MAT4,
     TOK_INT,
+    TOK_BOOL,
+    TOK_TRUE,
+    TOK_FALSE,
     TOK_IVEC2,
     TOK_IVEC3,
     TOK_IVEC4,
@@ -76,6 +79,7 @@ typedef enum SymbolKind {
     SYMBOL_UNIFORM_IVEC2 = 12,
     SYMBOL_UNIFORM_IVEC3 = 13,
     SYMBOL_UNIFORM_IVEC4 = 14,
+    SYMBOL_UNIFORM_BOOL = 15,
 } SymbolKind;
 
 typedef struct Token {
@@ -165,6 +169,12 @@ static TokenKind keyword_kind(const char* begin, size_t length)
         return TOK_MAT4;
     if (length == 3u && memcmp(begin, "int", 3u) == 0)
         return TOK_INT;
+    if (length == 4u && memcmp(begin, "bool", 4u) == 0)
+        return TOK_BOOL;
+    if (length == 4u && memcmp(begin, "true", 4u) == 0)
+        return TOK_TRUE;
+    if (length == 5u && memcmp(begin, "false", 5u) == 0)
+        return TOK_FALSE;
     if (length == 5u && memcmp(begin, "ivec2", 5u) == 0)
         return TOK_IVEC2;
     if (length == 5u && memcmp(begin, "ivec3", 5u) == 0)
@@ -662,7 +672,8 @@ static int binary_math_builtin_call(Parser* parser, const char* name)
 
 static int primary(Parser* parser)
 {
-    if (accept(parser, TOK_NUMBER))
+    if (accept(parser, TOK_NUMBER) || accept(parser, TOK_TRUE) ||
+        accept(parser, TOK_FALSE))
         return 1;
     if (parser->token.kind == TOK_FLOAT || parser->token.kind == TOK_INT) {
         next_token(parser);
@@ -892,6 +903,7 @@ static int assignment(Parser* parser)
         if (symbol->kind == SYMBOL_SAMPLER2D ||
             symbol->kind == SYMBOL_UNIFORM_FLOAT ||
             symbol->kind == SYMBOL_UNIFORM_INT ||
+            symbol->kind == SYMBOL_UNIFORM_BOOL ||
             symbol->kind == SYMBOL_UNIFORM_VEC2 ||
             symbol->kind == SYMBOL_UNIFORM_IVEC2 ||
             symbol->kind == SYMBOL_UNIFORM_VEC3 ||
@@ -990,15 +1002,17 @@ static int conditional_statement(Parser* parser)
         !expression(parser)) {
         return 0;
     }
-    if (parser->token.kind != TOK_EQ && parser->token.kind != TOK_NE &&
-        parser->token.kind != TOK_LT && parser->token.kind != TOK_LE &&
-        parser->token.kind != TOK_GT && parser->token.kind != TOK_GE) {
-        fail(parser, "if condition requires one scalar comparison");
+    if (parser->token.kind == TOK_EQ || parser->token.kind == TOK_NE ||
+        parser->token.kind == TOK_LT || parser->token.kind == TOK_LE ||
+        parser->token.kind == TOK_GT || parser->token.kind == TOK_GE) {
+        next_token(parser);
+        if (!expression(parser))
+            return 0;
+    } else if (parser->token.kind != TOK_RPAREN) {
+        fail(parser, "if condition requires a scalar comparison or bool");
         return 0;
     }
-    next_token(parser);
-    if (!expression(parser) ||
-        !expect(parser, TOK_RPAREN, "expected ')' after if condition") ||
+    if (!expect(parser, TOK_RPAREN, "expected ')' after if condition") ||
         !expect(parser, TOK_LBRACE, "expected '{' after if condition") ||
         !conditional_branch(parser, &if_discards) ||
         !expect(parser, TOK_RBRACE, "expected '}' after if branch") ||
@@ -1032,7 +1046,7 @@ static int local_declaration(Parser* parser)
 
     if (parser->token.kind == TOK_FLOAT)
         width = 1u;
-    else if (parser->token.kind == TOK_INT)
+    else if (parser->token.kind == TOK_INT || parser->token.kind == TOK_BOOL)
         width = 1u;
     else if (parser->token.kind == TOK_VEC2)
         width = 2u;
@@ -1095,6 +1109,7 @@ static int main_function(Parser* parser)
     while (parser->token.kind != TOK_RBRACE && parser->token.kind != TOK_EOF) {
         if (parser->token.kind == TOK_FLOAT ||
             parser->token.kind == TOK_INT ||
+            parser->token.kind == TOK_BOOL ||
             parser->token.kind == TOK_VEC2 ||
             parser->token.kind == TOK_IVEC2 ||
              parser->token.kind == TOK_VEC3 ||
@@ -1174,12 +1189,13 @@ static int uniform_declaration(Parser* parser)
     next_token(parser);
     if (parser->token.kind != TOK_SAMPLER2D &&
         parser->token.kind != TOK_FLOAT && parser->token.kind != TOK_INT &&
+        parser->token.kind != TOK_BOOL &&
         parser->token.kind != TOK_VEC2 && parser->token.kind != TOK_IVEC2 &&
         parser->token.kind != TOK_VEC3 && parser->token.kind != TOK_IVEC3 &&
         parser->token.kind != TOK_VEC4 && parser->token.kind != TOK_IVEC4 &&
         parser->token.kind != TOK_MAT2 && parser->token.kind != TOK_MAT3 &&
         parser->token.kind != TOK_MAT4) {
-        fail(parser, "only uniform sampler2D, float/int, vec/ivec2-4, and mat2-4 are supported");
+        fail(parser, "only uniform sampler2D, float/int/bool, vec/ivec2-4, and mat2-4 are supported");
         return 0;
     }
     {
@@ -1195,6 +1211,7 @@ static int uniform_declaration(Parser* parser)
                     type == TOK_SAMPLER2D ? SYMBOL_SAMPLER2D
                     : type == TOK_FLOAT ? SYMBOL_UNIFORM_FLOAT
                     : type == TOK_INT ? SYMBOL_UNIFORM_INT
+                    : type == TOK_BOOL ? SYMBOL_UNIFORM_BOOL
                     : type == TOK_VEC2 ? SYMBOL_UNIFORM_VEC2
                     : type == TOK_IVEC2 ? SYMBOL_UNIFORM_IVEC2
                     : type == TOK_VEC3 ? SYMBOL_UNIFORM_VEC3
@@ -1205,7 +1222,7 @@ static int uniform_declaration(Parser* parser)
                     : type == TOK_MAT3 ? SYMBOL_UNIFORM_MAT3
                                         : SYMBOL_UNIFORM_MAT4,
                     type == TOK_SAMPLER2D ? 0u
-                    : type == TOK_FLOAT || type == TOK_INT ? 1u
+                    : type == TOK_FLOAT || type == TOK_INT || type == TOK_BOOL ? 1u
                     : type == TOK_VEC2 || type == TOK_IVEC2 ? 2u
                     : type == TOK_VEC3 || type == TOK_IVEC3 ? 3u
                     : type == TOK_VEC4 || type == TOK_IVEC4 ? 4u
@@ -1239,6 +1256,14 @@ static int uniform_declaration(Parser* parser)
         index = parser->result->int_uniform_count++;
         memcpy(parser->result->int_uniform_names[index], name.begin, name.length);
         parser->result->int_uniform_names[index][name.length] = '\0';
+    } else if (type == TOK_BOOL) {
+        if (parser->result->bool_uniform_count >= RINGL_GLSL_MAX_BOOL_UNIFORMS) {
+            fail(parser, "too many bool uniforms");
+            return 0;
+        }
+        index = parser->result->bool_uniform_count++;
+        memcpy(parser->result->bool_uniform_names[index], name.begin, name.length);
+        parser->result->bool_uniform_names[index][name.length] = '\0';
     } else if (type == TOK_VEC2) {
         if (parser->result->vec2_uniform_count >=
             RINGL_GLSL_MAX_VEC2_UNIFORMS) {

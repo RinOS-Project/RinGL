@@ -23,6 +23,9 @@ typedef enum Tok {
     T_MAT3,
     T_MAT4,
     T_INT,
+    T_BOOL,
+    T_TRUE,
+    T_FALSE,
     T_IVEC2,
     T_IVEC3,
     T_IVEC4,
@@ -71,6 +74,7 @@ typedef struct Value {
     uint8_t width;
     uint8_t matrix;
     uint8_t is_i32;
+    uint8_t is_bool;
 } Value;
 
 typedef struct Symbol {
@@ -83,6 +87,7 @@ typedef struct Symbol {
     uint8_t initialized;
     uint8_t matrix;
     uint8_t is_i32;
+    uint8_t is_bool;
 } Symbol;
 
 typedef struct Lower {
@@ -186,6 +191,12 @@ static Tok keyword(const char* begin, size_t length)
         return T_MAT4;
     if (length == 3u && memcmp(begin, "int", 3u) == 0)
         return T_INT;
+    if (length == 4u && memcmp(begin, "bool", 4u) == 0)
+        return T_BOOL;
+    if (length == 4u && memcmp(begin, "true", 4u) == 0)
+        return T_TRUE;
+    if (length == 5u && memcmp(begin, "false", 5u) == 0)
+        return T_FALSE;
     if (length == 5u && memcmp(begin, "ivec2", 5u) == 0)
         return T_IVEC2;
     if (length == 5u && memcmp(begin, "ivec3", 5u) == 0)
@@ -441,7 +452,7 @@ static int initialize_uniform(Lower* lower, Symbol* symbol,
     const RinGLGlslUniformValue* uniform;
     uint32_t zero_values[16] = { 0u };
     const uint32_t* values = zero_values;
-    int is_i32 = type == RINGL_INT || type == RINGL_INT_VEC2 ||
+    int is_i32 = type == RINGL_INT || type == RINGL_BOOL || type == RINGL_INT_VEC2 ||
                  type == RINGL_INT_VEC3 || type == RINGL_INT_VEC4;
     uint32_t index;
 
@@ -457,6 +468,7 @@ static int initialize_uniform(Lower* lower, Symbol* symbol,
                          : (const uint32_t*)uniform->values;
     symbol->uniform = 1u;
     symbol->is_i32 = (uint8_t)is_i32;
+    symbol->is_bool = type == RINGL_BOOL;
     for (index = 0u; index < (symbol->matrix
                                   ? (uint32_t)symbol->matrix * symbol->matrix
                                   : symbol->width); ++index) {
@@ -562,6 +574,24 @@ static Value number_value(Lower* lower)
     return value;
 }
 
+static Value bool_constant_value(Lower* lower, int boolean)
+{
+    Value value = invalid_value();
+    uint16_t reg = new_reg(lower);
+
+    next(lower);
+    if (reg == RINGL_RSH1_UNUSED ||
+        !emit(lower, RINGL_RSH1_OP_CONST_I32, reg, RINGL_RSH1_UNUSED,
+              RINGL_RSH1_UNUSED, boolean ? 1u : 0u)) {
+        return value;
+    }
+    value.regs[0] = reg;
+    value.width = 1u;
+    value.is_i32 = 1u;
+    value.is_bool = 1u;
+    return value;
+}
+
 static Value apply_swizzle(Lower* lower, Value value)
 {
     while (take(lower, T_DOT)) {
@@ -576,7 +606,7 @@ static Value apply_swizzle(Lower* lower, Value value)
          * mixed alphabet would assign a meaning that GLSL deliberately does
          * not give it. Keep this as register selection rather than emitting
          * fake vector instructions; RSH1 remains a scalar IR. */
-        if (value.matrix || value.width == 1u || swizzle.kind != T_IDENT ||
+        if (value.matrix || value.is_bool || value.width == 1u || swizzle.kind != T_IDENT ||
             swizzle.length == 0u || swizzle.length > 4u) {
             fail(lower, "invalid vector component selection");
             return invalid_value();
@@ -634,6 +664,7 @@ static Value symbol_value(Lower* lower)
     value.width = symbol->width;
     value.matrix = symbol->matrix;
     value.is_i32 = symbol->is_i32;
+    value.is_bool = symbol->is_bool;
     if (symbol->attribute) {
         for (index = 0u; index < symbol->width; ++index) {
             uint16_t reg = new_reg(lower);
@@ -862,6 +893,7 @@ static Value conversion_value(Lower* lower, int target_is_i32)
     }
     value.regs[0] = result;
     value.is_i32 = (uint8_t)target_is_i32;
+    value.is_bool = 0u;
     return value;
 }
 
@@ -2117,6 +2149,10 @@ static Value primary(Lower* lower)
     Value value;
     if (lower->token.kind == T_NUMBER)
         return number_value(lower);
+    if (lower->token.kind == T_TRUE)
+        return bool_constant_value(lower, 1);
+    if (lower->token.kind == T_FALSE)
+        return bool_constant_value(lower, 0);
     if (lower->token.kind == T_FLOAT)
         return conversion_value(lower, 0);
     if (lower->token.kind == T_INT)
@@ -2241,14 +2277,22 @@ static Value unary(Lower* lower)
 {
     Value value;
     uint32_t index;
-    if (take(lower, T_PLUS))
-        return unary(lower);
+    if (take(lower, T_PLUS)) {
+        value = unary(lower);
+        if (value.width == 0u)
+            return value;
+        if (value.matrix || value.is_bool) {
+            fail(lower, "unary arithmetic does not accept bool or matrix values");
+            return invalid_value();
+        }
+        return value;
+    }
     if (!take(lower, T_MINUS))
         return primary(lower);
 
     value = unary(lower);
-    if (value.width == 0u || value.matrix) {
-        fail(lower, "unary arithmetic does not accept a matrix");
+    if (value.width == 0u || value.matrix || value.is_bool) {
+        fail(lower, "unary arithmetic does not accept bool or matrix values");
         return invalid_value();
     }
     for (index = 0u; index < value.width; ++index) {
@@ -2339,6 +2383,10 @@ static Value componentwise_binary(Lower* lower, const Value* left,
         fail(lower, "arithmetic operands must have matching scalar types");
         return result;
     }
+    if (left->is_bool || right->is_bool) {
+        fail(lower, "boolean arithmetic is not supported");
+        return result;
+    }
     if (left->is_i32) {
         switch (opcode) {
         case RINGL_RSH1_OP_ADD_F32: opcode = RINGL_RSH1_OP_ADD_I32; break;
@@ -2417,7 +2465,7 @@ static Value expression(Lower* lower)
     return left;
 }
 
-static int local_decl(Lower* lower, uint8_t width, int is_i32,
+static int local_decl(Lower* lower, uint8_t width, int is_i32, int is_bool,
                       uint8_t matrix_dimension)
 {
     Token name;
@@ -2436,11 +2484,12 @@ static int local_decl(Lower* lower, uint8_t width, int is_i32,
     if (symbol == NULL)
         return 0;
     symbol->is_i32 = (uint8_t)is_i32;
+    symbol->is_bool = (uint8_t)is_bool;
     next(lower);
     if (take(lower, T_ASSIGN)) {
         Value value = expression(lower);
         if (value.matrix != matrix_dimension || value.width != width ||
-            value.is_i32 != (uint8_t)is_i32) {
+            value.is_i32 != (uint8_t)is_i32 || value.is_bool != (uint8_t)is_bool) {
             fail(lower, "local initializer component count mismatch");
             return 0;
         }
@@ -2574,7 +2623,7 @@ static int assignment(Lower* lower)
         return 0;
     }
     if (symbol->matrix != value.matrix || symbol->width != value.width ||
-        symbol->is_i32 != value.is_i32) {
+        symbol->is_i32 != value.is_i32 || symbol->is_bool != value.is_bool) {
         fail(lower, "assignment width mismatch");
         return 0;
     }
@@ -2681,31 +2730,48 @@ static int conditional_output(Lower* lower)
         return 0;
     left = expression(lower);
     operator = lower->token.kind;
-    if (left.width == 0u ||
-        (operator != T_EQ && operator != T_NE && operator != T_LT &&
-         operator != T_LE && operator != T_GT && operator != T_GE)) {
-        fail(lower, "if condition requires one scalar comparison");
+    if (left.width == 0u)
         return 0;
+    if (operator == T_RPAREN) {
+        if (left.matrix || left.width != 1u || !left.is_bool) {
+            fail(lower, "if condition requires a bool or scalar comparison");
+            return 0;
+        }
+        right = invalid_value();
+        comparison = RINGL_RSH1_OP_CMP_NE_I32;
+    } else {
+        if (operator != T_EQ && operator != T_NE && operator != T_LT &&
+            operator != T_LE && operator != T_GT && operator != T_GE) {
+            fail(lower, "if condition requires a bool or scalar comparison");
+            return 0;
+        }
+        next(lower);
+        right = expression(lower);
+        if (right.width == 0u)
+            return 0;
+        if (left.matrix || right.matrix || left.width != 1u || right.width != 1u ||
+            left.is_i32 != right.is_i32 || left.is_bool != right.is_bool ||
+            (left.is_bool && operator != T_EQ && operator != T_NE)) {
+            fail(lower, "if condition requires matching scalar operands");
+            return 0;
+        }
+        comparison = comparison_opcode(operator, left.is_i32);
     }
-    next(lower);
-    right = expression(lower);
-    if (right.width == 0u || !need(lower, T_RPAREN, "expected ')' after if condition"))
+    if (!need(lower, T_RPAREN, "expected ')' after if condition"))
         return 0;
-    if (left.matrix || right.matrix || left.width != 1u || right.width != 1u ||
-        left.is_i32 != right.is_i32) {
-        fail(lower, "if condition requires matching scalar operands");
-        return 0;
-    }
-    comparison = comparison_opcode(operator, left.is_i32);
     comparison_result = new_reg(lower);
     zero = new_reg(lower);
     false_result = new_reg(lower);
     if (comparison == 0u || comparison_result == RINGL_RSH1_UNUSED ||
         zero == RINGL_RSH1_UNUSED || false_result == RINGL_RSH1_UNUSED ||
+        (operator == T_RPAREN &&
+         !emit(lower, RINGL_RSH1_OP_CONST_I32, zero, RINGL_RSH1_UNUSED,
+               RINGL_RSH1_UNUSED, 0u)) ||
         !emit(lower, comparison, comparison_result, left.regs[0],
-              right.regs[0], 0u) ||
-        !emit(lower, RINGL_RSH1_OP_CONST_I32, zero, RINGL_RSH1_UNUSED,
-              RINGL_RSH1_UNUSED, 0u) ||
+              operator == T_RPAREN ? zero : right.regs[0], 0u) ||
+        (operator != T_RPAREN &&
+         !emit(lower, RINGL_RSH1_OP_CONST_I32, zero, RINGL_RSH1_UNUSED,
+               RINGL_RSH1_UNUSED, 0u)) ||
         !emit(lower, RINGL_RSH1_OP_CMP_EQ_I32, false_result,
               comparison_result, zero, 0u)) {
         return 0;
@@ -2877,6 +2943,8 @@ static int parse_all(Lower* lower)
                 uniform_type = RINGL_FLOAT;
             } else if (lower->token.kind == T_INT) {
                 uniform_type = RINGL_INT;
+            } else if (lower->token.kind == T_BOOL) {
+                uniform_type = RINGL_BOOL;
             } else if (lower->token.kind == T_VEC2) {
                 uniform_type = RINGL_FLOAT_VEC2;
             } else if (lower->token.kind == T_IVEC2) {
@@ -2899,7 +2967,7 @@ static int parse_all(Lower* lower)
                        lower->shader_type == RINGL_VERTEX_SHADER) {
                 uniform_type = RINGL_FLOAT_MAT4;
             } else {
-                fail(lower, "only vertex mat2-4 and scalar/vector float or int uniforms are supported");
+                fail(lower, "only vertex mat2-4 and scalar/vector float, int, or bool uniforms are supported");
                 return 0;
             }
             next(lower);
@@ -2910,7 +2978,7 @@ static int parse_all(Lower* lower)
             name = lower->token;
             if (find_symbol(lower, &name) != NULL ||
                 (symbol = add_symbol(lower, &name, 0,
-                                     uniform_type == RINGL_FLOAT || uniform_type == RINGL_INT ? 1u
+                                     uniform_type == RINGL_FLOAT || uniform_type == RINGL_INT || uniform_type == RINGL_BOOL ? 1u
                                      : uniform_type == RINGL_FLOAT_VEC2 || uniform_type == RINGL_INT_VEC2 ? 2u
                                      : uniform_type == RINGL_FLOAT_VEC3 || uniform_type == RINGL_INT_VEC3 ? 3u
                                      : uniform_type == RINGL_FLOAT_MAT2 ? 2u
@@ -2983,6 +3051,7 @@ static int parse_all(Lower* lower)
                     lower->token.kind == T_VEC3 ||
                     lower->token.kind == T_VEC4 ||
                     lower->token.kind == T_INT ||
+                    lower->token.kind == T_BOOL ||
                     lower->token.kind == T_IVEC2 ||
                     lower->token.kind == T_IVEC3 ||
                     lower->token.kind == T_IVEC4 ||
@@ -2990,19 +3059,22 @@ static int parse_all(Lower* lower)
                     lower->token.kind == T_MAT3 ||
                     lower->token.kind == T_MAT4) {
                     uint8_t width = lower->token.kind == T_FLOAT ||
-                                     lower->token.kind == T_INT ? 1u
+                                     lower->token.kind == T_INT || lower->token.kind == T_BOOL ? 1u
                         : lower->token.kind == T_VEC2 || lower->token.kind == T_IVEC2 ||
                           lower->token.kind == T_MAT2 ? 2u
                         : lower->token.kind == T_VEC3 || lower->token.kind == T_IVEC3 ||
                           lower->token.kind == T_MAT3 ? 3u : 4u;
                     int is_i32 = lower->token.kind == T_INT ||
+                                 lower->token.kind == T_BOOL ||
                                  lower->token.kind == T_IVEC2 ||
                                  lower->token.kind == T_IVEC3 ||
                                  lower->token.kind == T_IVEC4;
                     uint8_t matrix_dimension = lower->token.kind == T_MAT2 ? 2u
                         : lower->token.kind == T_MAT3 ? 3u
                         : lower->token.kind == T_MAT4 ? 4u : 0u;
-                    if (!local_decl(lower, width, is_i32, matrix_dimension))
+                    if (!local_decl(lower, width, is_i32,
+                                    lower->token.kind == T_BOOL,
+                                    matrix_dimension))
                         return 0;
                 } else if (lower->token.kind == T_IF) {
                     if (!conditional_output(lower))

@@ -490,6 +490,7 @@ static void verify_full_submission_ordering(void)
     uint8_t pixels[8] = {0u};
     uint32_t event_index;
     uint32_t trace_count_before_flush;
+    uint32_t trace_count_before_rejected_call;
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_context_set_sync_ops(context, &sync_ops) == 0);
@@ -521,6 +522,13 @@ static void verify_full_submission_ordering(void)
     assert(pixels[0] == 10u && pixels[1] == 20u && pixels[2] == 30u &&
            pixels[3] == 255u && pixels[4] == 40u && pixels[5] == 50u &&
            pixels[6] == 60u && pixels[7] == 128u);
+
+    /* A public GL validation failure is part of the trace contract: reject it
+     * before creating a command list, fence, or readback side effect. */
+    trace_count_before_rejected_call = backend.trace_event_count;
+    ringl_copy_tex_sub_image_2d(RINGL_TEXTURE_2D, 0, 0, 0, 7, 2, 2, 1);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    assert(backend.trace_event_count == trace_count_before_rejected_call);
     assert(backend.trace_event_count ==
            sizeof(expected_trace) / sizeof(expected_trace[0]));
     for (event_index = 0u; event_index < backend.trace_event_count;

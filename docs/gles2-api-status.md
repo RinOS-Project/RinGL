@@ -102,6 +102,14 @@ Implemented fixed limits are `MAX_VERTEX_ATTRIBS = 16`,
 MAX_COMBINED_TEXTURE_IMAGE_UNITS = 8`. They are real bounded limits, not a
 claim of the GLES-required minimums or of conformance.
 
+Matching generic `varying vec2`/`vec3`/`vec4` direct assignments use up to 28
+scalar perspective interpolants. RinGPU reserves the other four scalar vertex
+outputs for clip position; interfaces that would require 29 or more varying
+components fail linking, and every declared fragment component is materialized
+as typed RSH1 input even when it is unused by the fragment expression. General
+varying expressions and generic texture-coordinate use remain outside this
+bounded status.
+
 ## Query inventory
 
 `ringl_get_integerv_bounded()` is the only generic integer query entry. It

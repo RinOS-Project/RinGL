@@ -227,6 +227,17 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   - [x] Extend the RinGPU surface transport without changing its public compact clip-vertex V1 ABI: the private native route carries six finite scalar varyings through six-plane clipping, perspective interpolation, fragment preflight, and submission for the bounded three-`vec2` texture profile. Its matching 10-scalar vertex/6-scalar fragment RSH1 interface executes direct/indexed points, lines, line strips/loops, and triangle lists, strips, and fans; arbitrary scalar widths and general varying expressions remain unsupported on this V2 route.
   - [x] Extend that private native route from six to eight scalar varyings for the bounded direct four-`vec2` texture profile. A validated 12-output vertex/8-input fragment RSH1 pair carries four perspective coordinate pairs through the existing point, line, and triangle paths; mismatched shapes remain rejected before rasterization.
   - [ ] General multiple-varying combinations and expressions remain unsupported.
+    The generic direct-assignment path now links matching `varying vec2`,
+    `vec3`, and `vec4` declarations up to RinGPU's real 28-scalar
+    perspective-interpolant budget (the other four of 32 scalar outputs are
+    clip `xyzw`). Vertex assignments store those scalar outputs directly and
+    the fragment lowerer materializes every declared input, including unused
+    declarations, so the native linker validates a complete typed interface.
+    A vertex declaration without an assignment is rejected during link rather
+    than publishing an untyped native output. The product bridge executes seven `vec4` varyings and reads the seventh
+    color back; an eighth is rejected during link rather than truncating its
+    32nd component. General varying expressions, generic texture use, and
+    broader linkage semantics remain unsupported.
 
 ## Phase 4 — First hardware-rendered triangle
 

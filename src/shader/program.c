@@ -1056,8 +1056,11 @@ static int ringl_program_collect_varyings(RinGLProgramObject* program,
             }
             vertex_location += vertex_result.varying_widths[vi];
         }
-        if (!found || vertex_location + fragment_result.varying_widths[fi] > 32u ||
-            fragment_location + fragment_result.varying_widths[fi] > 32u)
+        if (!found ||
+            vertex_location + fragment_result.varying_widths[fi] >
+                RINGL_MAX_VARYING_COMPONENTS + 4u ||
+            fragment_location + fragment_result.varying_widths[fi] >
+                RINGL_MAX_VARYING_COMPONENTS)
             return 0;
         ringl_copy_c_string(program->varyings[fi].name,
                             sizeof(program->varyings[fi].name),
@@ -1310,6 +1313,7 @@ static int ringl_program_lower_uniform_shader(
     RinGLGlslLowerResult lowered;
     uint8_t* copy;
     uint64_t module = 0u;
+    int lower_result;
 
     if (context == NULL || shader == NULL || rsh1_out == NULL ||
         rsh1_size_out == NULL || module_out == NULL || shader->source == NULL)
@@ -1317,19 +1321,29 @@ static int ringl_program_lower_uniform_shader(
     *rsh1_out = NULL;
     *rsh1_size_out = 0u;
     *module_out = 0u;
-    if (((shader->uses_standard_derivatives == 0u &&
-          shader->uses_webgl_frag_depth == 0u &&
-          shader->uses_webgl_draw_buffers == 0u &&
-          strstr(shader->source, "varying") != NULL)
-             ? ringl_glsl_lower_varying_rsh1_with_uniforms(
-                   shader->shader_type, shader->source,
-                   (size_t)shader->source_length, uniforms, uniform_count,
-                   &lowered)
-              : ringl_glsl_lower_rsh1_with_uniforms(
-                    shader->shader_type, shader->source,
-                    (size_t)shader->source_length, uniforms, uniform_count,
-                    &lowered)) != 0 ||
-        !lowered.ok || lowered.byte_size == 0u) {
+    if (shader->uses_standard_derivatives == 0u &&
+        shader->uses_webgl_frag_depth == 0u &&
+        shader->uses_webgl_draw_buffers == 0u &&
+        strstr(shader->source, "varying") != NULL) {
+        lower_result = ringl_glsl_lower_varying_rsh1_with_uniforms(
+            shader->shader_type, shader->source, (size_t)shader->source_length,
+            uniforms, uniform_count, &lowered);
+        /* The compact profile lowerer retains its byte-stable fast paths, but
+         * a valid mixed scalar interface must fall through to the generic
+         * RSH1 lowerer rather than being rejected by those historic shapes. */
+        if (lower_result != 0 || !lowered.ok || lowered.byte_size == 0u) {
+            lower_result = ringl_glsl_lower_rsh1_with_uniforms(
+                shader->shader_type, shader->source,
+                (size_t)shader->source_length, uniforms, uniform_count,
+                &lowered);
+        }
+    } else {
+        lower_result = ringl_glsl_lower_rsh1_with_uniforms(
+            shader->shader_type, shader->source,
+            (size_t)shader->source_length, uniforms, uniform_count,
+            &lowered);
+    }
+    if (lower_result != 0 || !lowered.ok || lowered.byte_size == 0u) {
         return 0;
     }
     copy = malloc(lowered.byte_size);

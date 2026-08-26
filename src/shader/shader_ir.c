@@ -45,6 +45,13 @@ int ringl_lower_shader_rsh1(uint32_t shader)
         rc = ringl_glsl_lower_varying_rsh1(
             object->shader_type, object->source,
             (size_t)object->source_length, &lowered);
+        /* Preserve byte-stable compact profiles, but do not let their shape
+         * matcher reject a valid generic vec2/vec3/vec4 interface. */
+        if (rc != 0 || !lowered.ok || lowered.byte_size == 0u) {
+            rc = ringl_glsl_lower_rsh1(
+                object->shader_type, object->source,
+                (size_t)object->source_length, &lowered);
+        }
     } else if (object->sampler_uniform_count != 0u &&
                strstr(object->source, "texture2D") != NULL) {
         if (object->shader_type != RINGL_FRAGMENT_SHADER) {

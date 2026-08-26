@@ -100,9 +100,24 @@ The current first-triangle slice supports:
   left-to-right for `gl_FragColor`;
 - a matched, perspective-interpolated `varying vec2` between the initial
   vertex and fragment profiles;
+- generic direct assignment from matching vertex `varying vec2`/`vec3`/`vec4`
+  declarations to matching fragment declarations, with up to 28 scalar
+  perspective components in one linked interface;
 - diagnostics for unsupported syntax instead of silently accepting it.
 
 RinShader RSH1 remains scalar. Vector values are flattened by RinGL into consecutive scalar F32 I/O slots. For example, one `attribute vec2 position` occupies input slots 0 and 1, while `gl_Position = vec4(position, 0.0, 1.0)` stores four scalar outputs. This keeps vector source semantics above the stable RSH1 instruction ABI.
+
+The generic varying route reserves vertex output slots 0--3 for clip `xyzw`
+and maps matching `vec2`/`vec3`/`vec4` declarations densely from output slot 4
+to fragment input slot 0. It accepts at most 28 scalar interpolants, exactly
+matching RinGPU's native varying budget; a larger interface fails linking
+before a pipeline can be created. The fragment lowerer emits a typed scalar
+input load for every declared component, even if source expressions do not use
+that declaration, so RSH1 reflection and RinGPU's complete-interface
+validation cannot disagree. This route is direct assignment only, not a claim
+of general varying expressions or generic texture-coordinate support. A vertex
+varying declaration must be assigned; an unwritten declaration fails linking
+instead of reaching native pipeline creation with an untyped output slot.
 
 The bounded perspective-color profiles apply the same read-only selector rule
 to their `varying vec3`/`vec4` fragment values. A full-width selector is

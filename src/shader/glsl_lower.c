@@ -2,6 +2,8 @@
 #include "glsl_lower.h"
 #include "rsh1_abi.h"
 
+#include "../ringl_internal.h"
+
 #include <ctype.h>
 #include <limits.h>
 #include <stdio.h>
@@ -88,9 +90,11 @@ typedef struct Symbol {
     char name[64];
     uint16_t regs[16];
     uint16_t input;
+    uint16_t output;
     uint8_t width;
     uint8_t attribute;
     uint8_t uniform;
+    uint8_t varying;
     uint8_t initialized;
     uint8_t matrix;
     uint8_t is_i32;
@@ -107,6 +111,7 @@ typedef struct Lower {
     uint32_t symbol_count;
     uint16_t next_reg;
     uint16_t next_input;
+    uint16_t next_varying_output;
     uint16_t output_count;
     RinGLRsh1InstructionV1 ins[RINGL_RSH1_MAX_INSTRUCTIONS];
     uint32_t ins_count;
@@ -457,6 +462,7 @@ static Symbol* add_symbol(Lower* lower, const Token* token,
     symbol->width = width;
     symbol->matrix = matrix_dimension;
     symbol->input = attribute ? lower->next_input : RINGL_RSH1_UNUSED;
+    symbol->output = RINGL_RSH1_UNUSED;
     if (attribute)
         lower->next_input = (uint16_t)(lower->next_input + width);
     for (index = 0u; index < (symbol->matrix
@@ -464,6 +470,54 @@ static Symbol* add_symbol(Lower* lower, const Token* token,
                                   : 4u); ++index)
         symbol->regs[index] = RINGL_RSH1_UNUSED;
     symbol->initialized = (uint8_t)attribute;
+    return symbol;
+}
+
+/* A vertex varying is a writable RSH1 output after clip position; a fragment
+ * varying is a read-only RSH1 input. Keep this distinction in the generic
+ * lowerer instead of routing mixed vec2/vec3/vec4 interfaces through the old
+ * profile-specific emitters. */
+static Symbol* add_varying_symbol(Lower* lower, const Token* token,
+                                  uint8_t width)
+{
+    Symbol* symbol;
+
+    if (lower == NULL || token == NULL ||
+        (width != 2u && width != 3u && width != 4u))
+        return NULL;
+    symbol = add_symbol(lower, token,
+                        lower->shader_type == RINGL_FRAGMENT_SHADER,
+                        width, 0u);
+    if (symbol == NULL)
+        return NULL;
+    symbol->varying = 1u;
+    if (lower->shader_type == RINGL_VERTEX_SHADER) {
+        if (lower->next_varying_output < 4u ||
+            lower->next_varying_output > 4u + RINGL_MAX_VARYING_COMPONENTS ||
+            width > 4u + RINGL_MAX_VARYING_COMPONENTS -
+                        lower->next_varying_output) {
+            fail(lower, "varying component limit exceeded");
+            return NULL;
+        }
+        symbol->output = lower->next_varying_output;
+        lower->next_varying_output =
+            (uint16_t)(lower->next_varying_output + width);
+    } else {
+        /* RSH1 records a dense fragment interface. Materialize every declared
+         * component, including a declaration the source never reads, so the
+         * native linker can validate its type instead of seeing a header-only
+         * input slot. */
+        for (uint32_t index = 0u; index < width; ++index) {
+            uint16_t reg = new_reg(lower);
+            if (reg == RINGL_RSH1_UNUSED ||
+                !emit(lower, RINGL_RSH1_OP_LOAD_INPUT_F32, reg,
+                      RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED,
+                      (uint32_t)symbol->input + index)) {
+                return NULL;
+            }
+            symbol->regs[index] = reg;
+        }
+    }
     return symbol;
 }
 
@@ -711,7 +765,7 @@ static Value symbol_value(Lower* lower)
     value.matrix = symbol->matrix;
     value.is_i32 = symbol->is_i32;
     value.is_bool = symbol->is_bool;
-    if (symbol->attribute) {
+    if (symbol->attribute && !symbol->varying) {
         for (index = 0u; index < symbol->width; ++index) {
             uint16_t reg = new_reg(lower);
             if (reg == RINGL_RSH1_UNUSED ||
@@ -2875,6 +2929,24 @@ static int assignment(Lower* lower)
             lower->uses_frag_depth = 1u;
         return store_output(lower, &value, first_output);
     }
+    if (symbol->varying) {
+        if (lower->shader_type != RINGL_VERTEX_SHADER ||
+            symbol->output == RINGL_RSH1_UNUSED) {
+            fail(lower, "fragment varying is read-only");
+            return 0;
+        }
+        if (symbol->matrix != value.matrix || symbol->width != value.width ||
+            symbol->is_i32 != value.is_i32 || symbol->is_bool != value.is_bool) {
+            fail(lower, "varying assignment width mismatch");
+            return 0;
+        }
+        if (!store_output(lower, &value, symbol->output))
+            return 0;
+        memcpy(symbol->regs, value.regs,
+               (size_t)value.width * sizeof(value.regs[0]));
+        symbol->initialized = 1u;
+        return 1;
+    }
     if (symbol->attribute || symbol->uniform) {
         fail(lower, "attribute or uniform is read-only");
         return 0;
@@ -3418,10 +3490,6 @@ static int parse_all(Lower* lower)
             Symbol* symbol;
             uint8_t width;
 
-            if (lower->shader_type != RINGL_FRAGMENT_SHADER) {
-                fail(lower, "generic varying lowering only supports fragment shaders");
-                return 0;
-            }
             next(lower);
             if (lower->token.kind == T_VEC2)
                 width = 2u;
@@ -3440,7 +3508,7 @@ static int parse_all(Lower* lower)
             }
             name = lower->token;
             if (find_symbol(lower, &name) != NULL ||
-                (symbol = add_symbol(lower, &name, 1, width, 0u)) == NULL) {
+                (symbol = add_varying_symbol(lower, &name, width)) == NULL) {
                 return 0;
             }
             (void)symbol;
@@ -3526,6 +3594,15 @@ static int parse_all(Lower* lower)
     if (!main_seen) {
         fail(lower, "missing main");
         return 0;
+    }
+    if (lower->shader_type == RINGL_VERTEX_SHADER) {
+        for (uint32_t index = 0u; index < lower->symbol_count; ++index) {
+            const Symbol* symbol = &lower->symbols[index];
+            if (symbol->varying && !symbol->initialized) {
+                fail(lower, "vertex varying must be assigned before publication");
+                return 0;
+            }
+        }
     }
     return 1;
 }
@@ -3714,6 +3791,7 @@ int ringl_glsl_lower_rsh1_with_uniforms(
     lower.source = source;
     lower.length = source_length;
     lower.shader_type = shader_type;
+    lower.next_varying_output = 4u;
     lower.uniforms = uniforms;
     lower.uniform_count = uniform_count;
     lower.result = result;

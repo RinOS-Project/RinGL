@@ -80,14 +80,11 @@ static int fixed_raster_interface(const uint8_t* vertex_rsh1,
         color_output_count--;
     if ((color_output_count & 3u) != 0u)
         return 0;
-    /* The native route reserves vertex outputs 0..3 for clip position. A
-     * normal texture/varying program therefore has exactly four more vertex
-     * outputs than fragment scalar inputs. Keep the historic 4/6/8-scalar
-     * profiles while admitting the same verified ABI through the public
-     * 16-scalar varying ceiling. */
-    if (fragment_header.input_count >= 4u &&
+    /* The native route reserves vertex outputs 0..3 for clip position. Every
+     * remaining scalar is an independently described perspective interpolant,
+     * so vec3/vec4 mixes and odd scalar totals are as valid as vec2 pairs. */
+    if (fragment_header.input_count != 0u &&
         fragment_header.input_count <= RINGL_PIPELINE_MAX_SCALAR_VARYINGS &&
-        (fragment_header.input_count & 1u) == 0u &&
         vertex_header.output_count == fragment_header.input_count + 4u) {
         *scalar_varying_count = fragment_header.input_count;
         *point_size_output_enabled = 0u;
@@ -96,9 +93,8 @@ static int fixed_raster_interface(const uint8_t* vertex_rsh1,
     /* gl_PointSize reserves the scalar immediately after clip position. The
      * actual perspective varyings still begin after that slot, so the vertex
      * interface grows by one while fragment inputs remain unchanged. */
-    if (fragment_header.input_count >= 4u &&
+    if (fragment_header.input_count != 0u &&
         fragment_header.input_count <= RINGL_PIPELINE_MAX_SCALAR_VARYINGS &&
-        (fragment_header.input_count & 1u) == 0u &&
         vertex_header.output_count == fragment_header.input_count + 5u) {
         *scalar_varying_count = fragment_header.input_count;
         *point_size_output_enabled = 1u;

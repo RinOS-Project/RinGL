@@ -982,10 +982,63 @@ static int expression(Parser* parser)
     return 1;
 }
 
+/* A GLSL read selector may repeat components, but a writable selector must
+ * designate each target component exactly once. Keep this parser admission in
+ * lockstep with the RSH1 lowerer so a shader that compiles never becomes an
+ * ambiguous set of native output stores during link. */
+static int writable_lvalue_swizzle(Parser* parser, const Symbol* symbol)
+{
+    Token swizzle;
+    uint8_t family = 0u;
+    uint16_t selected = 0u;
+    size_t index;
+
+    if (parser == NULL || symbol == NULL || !accept(parser, TOK_DOT))
+        return 0;
+    swizzle = parser->token;
+    if (swizzle.kind != TOK_IDENT || swizzle.length == 0u ||
+        swizzle.length > 4u || symbol->width < 2u || symbol->width > 4u) {
+        fail(parser, "invalid writable vector component selection");
+        return 0;
+    }
+    for (index = 0u; index < swizzle.length; ++index) {
+        uint8_t component_family;
+        uint8_t component;
+
+        switch (swizzle.begin[index]) {
+        case 'x': component_family = 1u; component = 0u; break;
+        case 'y': component_family = 1u; component = 1u; break;
+        case 'z': component_family = 1u; component = 2u; break;
+        case 'w': component_family = 1u; component = 3u; break;
+        case 'r': component_family = 2u; component = 0u; break;
+        case 'g': component_family = 2u; component = 1u; break;
+        case 'b': component_family = 2u; component = 2u; break;
+        case 'a': component_family = 2u; component = 3u; break;
+        case 's': component_family = 3u; component = 0u; break;
+        case 't': component_family = 3u; component = 1u; break;
+        case 'p': component_family = 3u; component = 2u; break;
+        case 'q': component_family = 3u; component = 3u; break;
+        default:
+            fail(parser, "invalid writable vector component selection");
+            return 0;
+        }
+        if ((family != 0u && family != component_family) ||
+            component >= symbol->width ||
+            (selected & (uint16_t)(UINT32_C(1) << component)) != 0u) {
+            fail(parser, "invalid writable vector component selection");
+            return 0;
+        }
+        family = component_family;
+        selected |= (uint16_t)(UINT32_C(1) << component);
+    }
+    next_token(parser);
+    return 1;
+}
+
 static int assignment(Parser* parser)
 {
     Token target = parser->token;
-    Symbol* symbol;
+    Symbol* symbol = NULL;
     int frag_data = 0;
     int frag_depth = 0;
     if (target.kind != TOK_IDENT) {
@@ -1050,6 +1103,10 @@ static int assignment(Parser* parser)
         }
     }
     next_token(parser);
+    if (symbol != NULL && parser->token.kind == TOK_DOT &&
+        !writable_lvalue_swizzle(parser, symbol)) {
+        return 0;
+    }
     if (frag_data) {
         if (!expect(parser, TOK_LBRACKET,
                     "expected '[' after gl_FragData") ||

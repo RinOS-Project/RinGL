@@ -96,6 +96,7 @@ typedef struct Symbol {
     uint8_t uniform;
     uint8_t varying;
     uint8_t initialized;
+    uint16_t initialized_components;
     uint8_t matrix;
     uint8_t is_i32;
     uint8_t is_bool;
@@ -436,6 +437,40 @@ static Symbol* find_symbol(Lower* lower, const Token* token)
     return NULL;
 }
 
+static uint16_t symbol_all_component_mask(const Symbol* symbol)
+{
+    uint32_t components;
+
+    if (symbol == NULL)
+        return 0u;
+    components = symbol->matrix != 0u
+        ? (uint32_t)symbol->matrix * symbol->matrix
+        : symbol->width;
+    if (components == 0u || components > 16u)
+        return 0u;
+    return (uint16_t)((UINT32_C(1) << components) - UINT32_C(1));
+}
+
+static void symbol_mark_initialized(Symbol* symbol, uint16_t components)
+{
+    uint16_t all_components;
+
+    if (symbol == NULL)
+        return;
+    all_components = symbol_all_component_mask(symbol);
+    symbol->initialized_components |= components & all_components;
+    symbol->initialized =
+        all_components != 0u && symbol->initialized_components == all_components;
+}
+
+static void symbol_mark_all_initialized(Symbol* symbol)
+{
+    if (symbol == NULL)
+        return;
+    symbol->initialized_components = symbol_all_component_mask(symbol);
+    symbol->initialized = symbol->initialized_components != 0u;
+}
+
 static Symbol* add_symbol(Lower* lower, const Token* token,
                           int attribute, uint8_t width,
                           uint8_t matrix_dimension)
@@ -469,7 +504,8 @@ static Symbol* add_symbol(Lower* lower, const Token* token,
                                   ? (uint32_t)symbol->matrix * symbol->matrix
                                   : 4u); ++index)
         symbol->regs[index] = RINGL_RSH1_UNUSED;
-    symbol->initialized = (uint8_t)attribute;
+    if (attribute)
+        symbol_mark_all_initialized(symbol);
     return symbol;
 }
 
@@ -582,7 +618,7 @@ static int initialize_uniform(Lower* lower, Symbol* symbol,
         }
         symbol->regs[index] = reg;
     }
-    symbol->initialized = 1u;
+    symbol_mark_all_initialized(symbol);
     return 1;
 }
 
@@ -2807,7 +2843,7 @@ static int local_decl(Lower* lower, uint8_t width, int is_i32, int is_bool,
         memcpy(symbol->regs, value.regs,
                (size_t)(matrix_dimension ? (uint32_t)matrix_dimension * matrix_dimension
                                          : width) * sizeof(value.regs[0]));
-        symbol->initialized = 1u;
+        symbol_mark_all_initialized(symbol);
     }
     return need(lower, T_SEMI, "expected ';' after local");
 }
@@ -2828,11 +2864,102 @@ static int store_output(Lower* lower, const Value* value,
     return 1;
 }
 
+/* Read swizzles may repeat a component, whereas GLSL lvalue swizzles must
+ * name each component at most once. Parse the latter independently so a
+ * shader cannot create ambiguous competing RSH1 stores. */
+static int lvalue_swizzle(Lower* lower, const Symbol* symbol,
+                          uint8_t components[4], uint8_t* count_out)
+{
+    Token swizzle;
+    uint8_t family = 0u;
+    uint16_t selected = 0u;
+    uint32_t index;
+
+    if (lower == NULL || symbol == NULL || components == NULL ||
+        count_out == NULL || symbol->matrix != 0u || !take(lower, T_DOT)) {
+        return 0;
+    }
+    swizzle = lower->token;
+    if (swizzle.kind != T_IDENT || swizzle.length == 0u ||
+        swizzle.length > 4u) {
+        fail(lower, "invalid writable vector component selection");
+        return 0;
+    }
+    for (index = 0u; index < swizzle.length; ++index) {
+        uint8_t component_family;
+        uint8_t component;
+
+        switch (swizzle.begin[index]) {
+        case 'x': component_family = 1u; component = 0u; break;
+        case 'y': component_family = 1u; component = 1u; break;
+        case 'z': component_family = 1u; component = 2u; break;
+        case 'w': component_family = 1u; component = 3u; break;
+        case 'r': component_family = 2u; component = 0u; break;
+        case 'g': component_family = 2u; component = 1u; break;
+        case 'b': component_family = 2u; component = 2u; break;
+        case 'a': component_family = 2u; component = 3u; break;
+        case 's': component_family = 3u; component = 0u; break;
+        case 't': component_family = 3u; component = 1u; break;
+        case 'p': component_family = 3u; component = 2u; break;
+        case 'q': component_family = 3u; component = 3u; break;
+        default:
+            fail(lower, "invalid writable vector component selection");
+            return 0;
+        }
+        if ((family != 0u && family != component_family) ||
+            component >= symbol->width ||
+            (selected & (uint16_t)(UINT32_C(1) << component)) != 0u) {
+            fail(lower, "invalid writable vector component selection");
+            return 0;
+        }
+        family = component_family;
+        selected |= (uint16_t)(UINT32_C(1) << component);
+        components[index] = component;
+    }
+    *count_out = (uint8_t)swizzle.length;
+    next(lower);
+    return 1;
+}
+
+static int store_varying_components(Lower* lower, Symbol* symbol,
+                                    const Value* value,
+                                    const uint8_t components[4],
+                                    uint8_t component_count)
+{
+    uint16_t initialized = 0u;
+    uint32_t index;
+
+    if (lower == NULL || symbol == NULL || value == NULL ||
+        components == NULL || component_count == 0u ||
+        component_count > 4u || symbol->output == RINGL_RSH1_UNUSED) {
+        return 0;
+    }
+    for (index = 0u; index < component_count; ++index) {
+        uint32_t output = (uint32_t)symbol->output + components[index];
+
+        if (components[index] >= symbol->width ||
+            !emit(lower, RINGL_RSH1_OP_STORE_OUTPUT_F32,
+                  RINGL_RSH1_UNUSED, value->regs[index],
+                  RINGL_RSH1_UNUSED, output)) {
+            return 0;
+        }
+        if (lower->output_count < output + 1u)
+            lower->output_count = (uint16_t)(output + 1u);
+        symbol->regs[components[index]] = value->regs[index];
+        initialized |= (uint16_t)(UINT32_C(1) << components[index]);
+    }
+    symbol_mark_initialized(symbol, initialized);
+    return 1;
+}
+
 static int assignment(Lower* lower)
 {
     Token target = lower->token;
     Symbol* symbol = NULL;
     Value value;
+    uint8_t lvalue_components[4] = { 0u, 0u, 0u, 0u };
+    uint8_t lvalue_component_count = 0u;
+    int has_lvalue_swizzle = 0;
     int output = 0;
     uint32_t first_output = 0u;
     int frag_data = 0;
@@ -2883,6 +3010,13 @@ static int assignment(Lower* lower)
         return 0;
     }
     next(lower);
+    if (symbol != NULL && lower->token.kind == T_DOT) {
+        has_lvalue_swizzle = 1;
+        if (!lvalue_swizzle(lower, symbol, lvalue_components,
+                            &lvalue_component_count)) {
+            return 0;
+        }
+    }
     if (frag_data) {
         if (!need(lower, T_LBRACKET, "expected '[' after gl_FragData") ||
             lower->token.kind != T_NUMBER || lower->token.length != 1u ||
@@ -2935,31 +3069,52 @@ static int assignment(Lower* lower)
             fail(lower, "fragment varying is read-only");
             return 0;
         }
-        if (symbol->matrix != value.matrix || symbol->width != value.width ||
+        if (symbol->matrix != value.matrix ||
+            (has_lvalue_swizzle
+                 ? lvalue_component_count
+                 : symbol->width) != value.width ||
             symbol->is_i32 != value.is_i32 || symbol->is_bool != value.is_bool) {
             fail(lower, "varying assignment width mismatch");
             return 0;
+        }
+        if (has_lvalue_swizzle) {
+            return store_varying_components(lower, symbol, &value,
+                                            lvalue_components,
+                                            lvalue_component_count);
         }
         if (!store_output(lower, &value, symbol->output))
             return 0;
         memcpy(symbol->regs, value.regs,
                (size_t)value.width * sizeof(value.regs[0]));
-        symbol->initialized = 1u;
+        symbol_mark_all_initialized(symbol);
         return 1;
     }
     if (symbol->attribute || symbol->uniform) {
         fail(lower, "attribute or uniform is read-only");
         return 0;
     }
-    if (symbol->matrix != value.matrix || symbol->width != value.width ||
+    if (symbol->matrix != value.matrix ||
+        (has_lvalue_swizzle ? lvalue_component_count : symbol->width) !=
+            value.width ||
         symbol->is_i32 != value.is_i32 || symbol->is_bool != value.is_bool) {
         fail(lower, "assignment width mismatch");
         return 0;
     }
+    if (has_lvalue_swizzle) {
+        uint16_t initialized = 0u;
+        uint32_t index;
+
+        for (index = 0u; index < lvalue_component_count; ++index) {
+            symbol->regs[lvalue_components[index]] = value.regs[index];
+            initialized |= (uint16_t)(UINT32_C(1) << lvalue_components[index]);
+        }
+        symbol_mark_initialized(symbol, initialized);
+        return 1;
+    }
     memcpy(symbol->regs, value.regs,
            (size_t)(value.matrix ? (uint32_t)value.matrix * value.matrix
                                  : value.width) * sizeof(value.regs[0]));
-    symbol->initialized = 1u;
+    symbol_mark_all_initialized(symbol);
     return 1;
 }
 

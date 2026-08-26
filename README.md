@@ -97,6 +97,14 @@ GLSL ES source -> RinGL GLSL frontend + linker
 
 This keeps RinShader IR as the common validated shader boundary while allowing each source language to preserve its own semantics.
 
+The generic WebGL-facing varying route remains inside that same boundary:
+matching `vec2`/`vec3`/`vec4` declarations are flattened into scalar RSH1
+interpolants, and a vertex shader may initialize them as a whole vector or
+through non-overlapping `xyzw`/`rgba`/`stpq` lvalue selectors. RinGL writes
+those selected components directly to the native output slots and refuses to
+link if any declared component is unwritten; it does not ask Aquamarine or a
+browser embedding to repair a partial interface.
+
 ## WebGL standard derivatives
 
 `OES_standard_derivatives` is a context-local WebGL capability, not a separate

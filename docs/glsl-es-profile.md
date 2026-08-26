@@ -17,7 +17,10 @@ The current first-triangle slice supports:
   through `int(...)` or `float(...)`;
 - read-only one-through-four-component vector/ivector swizzles using exactly
   one of the `xyzw`, `rgba`, or `stpq` alphabets, including repeated and
-  chained selectors such as `.stpq.bgra`;
+  chained selectors such as `.stpq.bgra`; matching generic vertex `varying`
+  `vec2`/`vec3`/`vec4` declarations may also use one writable, non-repeating
+  selector per assignment (for example `color.rgb = source.bgr; color.a =
+  0.5`), which maps directly to scalar RSH1 output stores;
 - component-wise `+`, `-`, `*`, and `/` with same-width vectors or one scalar
   broadcast across a vector;
 - generic no-varying vertex `mat2`/`mat3`/`mat4` values: scalar-diagonal,
@@ -100,7 +103,7 @@ The current first-triangle slice supports:
   left-to-right for `gl_FragColor`;
 - a matched, perspective-interpolated `varying vec2` between the initial
   vertex and fragment profiles;
-- generic direct assignment from matching vertex `varying vec2`/`vec3`/`vec4`
+- generic assignment from matching vertex `varying vec2`/`vec3`/`vec4`
   declarations to matching fragment declarations, with up to 28 scalar
   perspective components in one linked interface;
 - diagnostics for unsupported syntax instead of silently accepting it.
@@ -114,17 +117,22 @@ matching RinGPU's native varying budget; a larger interface fails linking
 before a pipeline can be created. The fragment lowerer emits a typed scalar
 input load for every declared component, even if source expressions do not use
 that declaration, so RSH1 reflection and RinGPU's complete-interface
-validation cannot disagree. This route is direct assignment only, not a claim
-of general varying expressions or generic texture-coordinate support. A vertex
-varying declaration must be assigned; an unwritten declaration fails linking
-instead of reaching native pipeline creation with an untyped output slot.
+validation cannot disagree. A vertex varying may be written as a whole vector
+or by non-overlapping writable selector assignments. RinGL records the exact
+component initialization map and only links when every declared component has
+an RSH1 store; an unwritten component fails linking instead of reaching native
+pipeline creation with an untyped output slot. Repeated writable components,
+mixed selector alphabets, and out-of-range components fail compilation. This
+does not claim general varying expressions or generic texture-coordinate
+support.
 
 The bounded perspective-color profiles apply the same read-only selector rule
 to their `varying vec3`/`vec4` fragment values. A full-width selector is
 composed directly into the scalar input registers, so `vertexColor.stpq.bgra`
 and `vec4(vertexColor.bgr, 1.0)` do not require a backend-specific vector
-instruction. Partial-width selectors and swizzle writes remain outside those
-structural profiles.
+instruction. The generic vertex-varying route above additionally supports
+non-overlapping component writes; partial-width structural material selectors
+and fragment/builtin-output swizzle writes remain outside these profiles.
 
 The bounded `texture2D(colorTexture, uv) * vertexColor * tint` material uses
 the same four-component permutation for a full-width `varying vec4` selector
@@ -175,7 +183,8 @@ bindings for only those declarations. The direct-coordinate maximum is 69
 instructions and 64 registers; with an offset on every call it is 101
 instructions and 68 registers. Coordinates derived from locals or different
 varyings, other expressions, and larger chains are not yet accepted.
-Nonconstant coordinates in this profile, swizzle writes, implicit float/integer
+Nonconstant coordinates in this profile, general swizzle writes outside the
+documented generic vertex-varying lvalue form, implicit float/integer
 conversion, vector constructors with mixed scalar types,
 matrices beyond the documented bounded `matrixCompMult`/matrix-vector vertex
 forms, uniform arrays, additional varying types, loops, user functions,

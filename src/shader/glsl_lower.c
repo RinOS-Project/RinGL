@@ -123,6 +123,8 @@ typedef struct Lower {
     uint32_t uses_frag_depth;
     uint32_t draw_buffers_enabled;
     uint32_t uses_draw_buffers;
+    uint32_t stage_output_components;
+    uint32_t uses_stage_output_selector;
     RinGLGlslLowerResult* result;
 } Lower;
 
@@ -2867,7 +2869,7 @@ static int store_output(Lower* lower, const Value* value,
 /* Read swizzles may repeat a component, whereas GLSL lvalue swizzles must
  * name each component at most once. Parse the latter independently so a
  * shader cannot create ambiguous competing RSH1 stores. */
-static int lvalue_swizzle(Lower* lower, const Symbol* symbol,
+static int lvalue_swizzle(Lower* lower, uint8_t vector_width,
                           uint8_t components[4], uint8_t* count_out)
 {
     Token swizzle;
@@ -2875,8 +2877,8 @@ static int lvalue_swizzle(Lower* lower, const Symbol* symbol,
     uint16_t selected = 0u;
     uint32_t index;
 
-    if (lower == NULL || symbol == NULL || components == NULL ||
-        count_out == NULL || symbol->matrix != 0u || !take(lower, T_DOT)) {
+    if (lower == NULL || components == NULL || count_out == NULL ||
+        vector_width < 2u || vector_width > 4u || !take(lower, T_DOT)) {
         return 0;
     }
     swizzle = lower->token;
@@ -2907,7 +2909,7 @@ static int lvalue_swizzle(Lower* lower, const Symbol* symbol,
             return 0;
         }
         if ((family != 0u && family != component_family) ||
-            component >= symbol->width ||
+            component >= vector_width ||
             (selected & (uint16_t)(UINT32_C(1) << component)) != 0u) {
             fail(lower, "invalid writable vector component selection");
             return 0;
@@ -2918,6 +2920,38 @@ static int lvalue_swizzle(Lower* lower, const Symbol* symbol,
     }
     *count_out = (uint8_t)swizzle.length;
     next(lower);
+    return 1;
+}
+
+/* Unlike a user varying, the two fixed shader-stage outputs do not have a
+ * Symbol backing them. Emit their selected components directly, preserving
+ * the source selector order in RSH1 rather than synthesizing a host-side
+ * vector. The caller records the component mask and rejects incomplete stage
+ * output before the module can be published. */
+static int store_stage_output_components(Lower* lower, const Value* value,
+                                         const uint8_t components[4],
+                                         uint8_t component_count)
+{
+    uint32_t index;
+
+    if (lower == NULL || value == NULL || components == NULL ||
+        component_count == 0u || component_count > 4u ||
+        value->width != component_count) {
+        return 0;
+    }
+    for (index = 0u; index < component_count; ++index) {
+        uint8_t component = components[index];
+
+        if (component >= 4u ||
+            !emit(lower, RINGL_RSH1_OP_STORE_OUTPUT_F32,
+                  RINGL_RSH1_UNUSED, value->regs[index],
+                  RINGL_RSH1_UNUSED, component)) {
+            return 0;
+        }
+        lower->stage_output_components |= UINT32_C(1) << component;
+        if (lower->output_count < (uint16_t)component + 1u)
+            lower->output_count = (uint16_t)component + 1u;
+    }
     return 1;
 }
 
@@ -2965,13 +2999,18 @@ static int assignment(Lower* lower)
     int frag_data = 0;
     int frag_depth = 0;
     int point_size = 0;
+    int stage_output = 0;
+    uint8_t writable_vector_width = 0u;
 
     if (target.kind != T_IDENT) {
         fail(lower, "expected assignment");
         return 0;
     }
-    if (text_is(&target, "gl_Position"))
+    if (text_is(&target, "gl_Position")) {
         output = lower->shader_type == RINGL_VERTEX_SHADER;
+        stage_output = output;
+        writable_vector_width = 4u;
+    }
     else if (text_is(&target, "gl_PointSize")) {
         if (lower->shader_type != RINGL_VERTEX_SHADER) {
             fail(lower, "gl_PointSize is only writable in vertex shaders");
@@ -2981,8 +3020,11 @@ static int assignment(Lower* lower)
         point_size = 1;
         first_output = 4u;
     }
-    else if (text_is(&target, "gl_FragColor"))
+    else if (text_is(&target, "gl_FragColor")) {
         output = lower->shader_type == RINGL_FRAGMENT_SHADER;
+        stage_output = output;
+        writable_vector_width = 4u;
+    }
     else if (text_is(&target, "gl_FragDepthEXT")) {
         if (lower->shader_type != RINGL_FRAGMENT_SHADER ||
             lower->frag_depth_enabled == 0u) {
@@ -3010,9 +3052,11 @@ static int assignment(Lower* lower)
         return 0;
     }
     next(lower);
-    if (symbol != NULL && lower->token.kind == T_DOT) {
+    if (symbol != NULL)
+        writable_vector_width = symbol->width;
+    if (writable_vector_width != 0u && lower->token.kind == T_DOT) {
         has_lvalue_swizzle = 1;
-        if (!lvalue_swizzle(lower, symbol, lvalue_components,
+        if (!lvalue_swizzle(lower, writable_vector_width, lvalue_components,
                             &lvalue_component_count)) {
             return 0;
         }
@@ -3042,6 +3086,17 @@ static int assignment(Lower* lower)
     if (!need(lower, T_SEMI, "expected ';' after assignment"))
         return 0;
     if (output) {
+        if (stage_output && has_lvalue_swizzle) {
+            if (value.matrix || value.is_i32 ||
+                value.width != lvalue_component_count) {
+                fail(lower, "stage output component assignment width mismatch");
+                return 0;
+            }
+            lower->uses_stage_output_selector = 1u;
+            return store_stage_output_components(lower, &value,
+                                                 lvalue_components,
+                                                 lvalue_component_count);
+        }
         if (point_size && (value.matrix || value.is_i32 || value.width != 1u)) {
             fail(lower, "gl_PointSize output must be float");
             return 0;
@@ -3061,6 +3116,10 @@ static int assignment(Lower* lower)
         }
         if (frag_depth)
             lower->uses_frag_depth = 1u;
+        if (stage_output) {
+            lower->stage_output_components |=
+                value.width == 4u ? UINT32_C(0x0f) : UINT32_C(0x01);
+        }
         return store_output(lower, &value, first_output);
     }
     if (symbol->varying) {
@@ -3339,6 +3398,7 @@ static int conditional_output_assignment(Lower* lower)
 {
     uint32_t first_instruction = lower->ins_count;
     uint32_t component;
+    uint32_t component_mask = 0u;
 
     if (lower->token.kind != T_IDENT ||
         (lower->shader_type == RINGL_VERTEX_SHADER
@@ -3358,10 +3418,16 @@ static int conditional_output_assignment(Lower* lower)
             &lower->ins[lower->ins_count - 4u + component];
 
         if (instruction->opcode != RINGL_RSH1_OP_STORE_OUTPUT_F32 ||
-            instruction->immediate != component) {
+            instruction->immediate >= 4u ||
+            (component_mask & (UINT32_C(1) << instruction->immediate)) != 0u) {
             fail(lower, "if branch must write all four output components");
             return 0;
         }
+        component_mask |= UINT32_C(1) << instruction->immediate;
+    }
+    if (component_mask != UINT32_C(0x0f)) {
+        fail(lower, "if branch must write all four output components");
+        return 0;
     }
     return 1;
 }
@@ -3900,6 +3966,24 @@ static int append_discard_output_defaults(Lower* lower)
     return 1;
 }
 
+/* A selector write is not a default-value request. RSH1 exposes scalar output
+ * slots directly, so publishing only some gl_Position/gl_FragColor components
+ * would make later rasterization depend on uninitialized native state. Keep
+ * legacy whole-output scalar lowering unchanged for the standalone IR API,
+ * but once a fixed stage-output lvalue selector is used, require GLSL's four
+ * components to have an actual store before creating the module. */
+static int validate_stage_output_selectors(Lower* lower)
+{
+    if (lower == NULL)
+        return 0;
+    if (lower->uses_stage_output_selector == 0u)
+        return 1;
+    if (lower->stage_output_components == UINT32_C(0x0f))
+        return 1;
+    fail(lower, "stage output selectors must initialize all four components");
+    return 0;
+}
+
 /* Emit type-bearing loads for the fixed interpolant ABI.  They are unused by
  * constant fragment shaders, but RinGPU validates every declared input when
  * it builds a native graphics pipeline. */
@@ -3954,6 +4038,8 @@ int ringl_glsl_lower_rsh1_with_uniforms(
     lower.uniform_count = uniform_count;
     lower.result = result;
     if (!parse_all(&lower))
+        return 1;
+    if (!validate_stage_output_selectors(&lower))
         return 1;
     if (!append_draw_buffer_defaults(&lower))
         return 1;

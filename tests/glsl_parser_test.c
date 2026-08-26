@@ -255,6 +255,36 @@ int main(void)
     assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) > 0u);
     assert(strstr(log, "mixed") != NULL);
 
+    /* Fixed shader outputs use the same writable-selector rules as locals,
+     * but lower each chosen component to its real RSH1 output slot. Both stage
+     * outputs must be completed before linking/rasterization can observe one. */
+    ringl_shader_source(vertex,
+        "attribute vec2 position; void main() { gl_Position.xy = position.yx; "
+        "gl_Position.zw = vec2(0.0, 1.0); }", -1);
+    ringl_compile_shader(vertex);
+    assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
+    assert(ringl_get_shader_info_log(vertex, log, sizeof(log)) == 0u);
+
+    ringl_shader_source(fragment,
+        "void main() { vec3 color = vec3(0.125, 0.5, 0.75); "
+        "gl_FragColor.bgr = color; gl_FragColor.a = 1.0; }", -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+    assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) == 0u);
+
+    ringl_shader_source(fragment,
+        "void main() { gl_FragColor.rgb = vec3(1.0); }", -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+
+    ringl_shader_source(fragment,
+        "void main() { gl_FragColor.rr = vec2(1.0); "
+        "gl_FragColor.gba = vec3(1.0); }", -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
+    assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) > 0u);
+    assert(strstr(log, "invalid writable") != NULL);
+
     ringl_shader_source(fragment,
         "void main() { vec2 uv = vec2(0.0); gl_FragColor = vec4(uv.z); }",
         -1);

@@ -986,18 +986,18 @@ static int expression(Parser* parser)
  * designate each target component exactly once. Keep this parser admission in
  * lockstep with the RSH1 lowerer so a shader that compiles never becomes an
  * ambiguous set of native output stores during link. */
-static int writable_lvalue_swizzle(Parser* parser, const Symbol* symbol)
+static int writable_lvalue_swizzle(Parser* parser, uint8_t vector_width)
 {
     Token swizzle;
     uint8_t family = 0u;
     uint16_t selected = 0u;
     size_t index;
 
-    if (parser == NULL || symbol == NULL || !accept(parser, TOK_DOT))
+    if (parser == NULL || !accept(parser, TOK_DOT))
         return 0;
     swizzle = parser->token;
     if (swizzle.kind != TOK_IDENT || swizzle.length == 0u ||
-        swizzle.length > 4u || symbol->width < 2u || symbol->width > 4u) {
+        swizzle.length > 4u || vector_width < 2u || vector_width > 4u) {
         fail(parser, "invalid writable vector component selection");
         return 0;
     }
@@ -1023,7 +1023,7 @@ static int writable_lvalue_swizzle(Parser* parser, const Symbol* symbol)
             return 0;
         }
         if ((family != 0u && family != component_family) ||
-            component >= symbol->width ||
+            component >= vector_width ||
             (selected & (uint16_t)(UINT32_C(1) << component)) != 0u) {
             fail(parser, "invalid writable vector component selection");
             return 0;
@@ -1039,6 +1039,7 @@ static int assignment(Parser* parser)
 {
     Token target = parser->token;
     Symbol* symbol = NULL;
+    uint8_t writable_vector_width = 0u;
     int frag_data = 0;
     int frag_depth = 0;
     if (target.kind != TOK_IDENT) {
@@ -1050,6 +1051,7 @@ static int assignment(Parser* parser)
             fail(parser, "gl_Position is only writable in vertex shaders");
             return 0;
         }
+        writable_vector_width = 4u;
     } else if (token_is_ident(&target, "gl_PointSize")) {
         if (parser->shader_type != RINGL_VERTEX_SHADER) {
             fail(parser, "gl_PointSize is only writable in vertex shaders");
@@ -1060,6 +1062,7 @@ static int assignment(Parser* parser)
             fail(parser, "gl_FragColor is only writable in fragment shaders");
             return 0;
         }
+        writable_vector_width = 4u;
     } else if (token_is_ident(&target, "gl_FragDepthEXT")) {
         if (parser->shader_type != RINGL_FRAGMENT_SHADER ||
             parser->result->frag_depth_enabled == 0u) {
@@ -1103,8 +1106,10 @@ static int assignment(Parser* parser)
         }
     }
     next_token(parser);
-    if (symbol != NULL && parser->token.kind == TOK_DOT &&
-        !writable_lvalue_swizzle(parser, symbol)) {
+    if (symbol != NULL)
+        writable_vector_width = symbol->width;
+    if (writable_vector_width != 0u && parser->token.kind == TOK_DOT &&
+        !writable_lvalue_swizzle(parser, writable_vector_width)) {
         return 0;
     }
     if (frag_data) {

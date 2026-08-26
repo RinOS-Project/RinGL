@@ -98,8 +98,8 @@ GLSL ES source -> RinGL GLSL frontend + linker
 This keeps RinShader IR as the common validated shader boundary while allowing each source language to preserve its own semantics.
 
 The generic WebGL-facing varying route remains inside that same boundary:
-matching `float`/`vec2`/`vec3`/`vec4` declarations are flattened into scalar RSH1
-interpolants (one slot per `float` declaration), and a vertex shader may initialize vector declarations as a whole vector or
+matching `vec2`/`vec3`/`vec4` declarations are flattened into scalar RSH1
+interpolants, and a vertex shader may initialize them as a whole vector or
 through non-overlapping `xyzw`/`rgba`/`stpq` lvalue selectors. RinGL writes
 those selected components directly to the native output slots and refuses to
 link if any declared component is unwritten; it does not ask Aquamarine or a
@@ -1106,6 +1106,15 @@ varyings; RSH1 lowering and a RinGL-to-RinGPU surface test verify the resulting
 RGBA pixels. This does not make arbitrary varying declarations or expressions
 available: multiple independent varyings and general expressions remain outside
 the bounded profile.
+
+The same scalar RSH1 path now supports non-overlapping writable component
+selectors on fixed stage outputs: vertex `gl_Position.xy`/`.zw` and fragment
+`gl_FragColor.bgr`/`.a` emit their exact output slots, in source order, through
+RinGL and the generic RinGPU backend. A selector-written fixed output must
+cover all four clip/color components before module publication; a partial
+`gl_FragColor.rgb` program fails linking instead of inheriting or fabricating
+alpha. The focused Ladybird bridge regression reads back the reordered RGBA
+result from its caller-owned target, without a direct Aquamarine command path.
 
 `vertexAttribPointer` accepts the WebGL 1 scalar source types `FLOAT`,
 `BYTE`, `UNSIGNED_BYTE`, `SHORT`, and `UNSIGNED_SHORT`, including normalized

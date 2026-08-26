@@ -237,11 +237,18 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     native linker validates a complete typed interface. Missing components fail
     linking, while repeated, mixed-family, or out-of-range writable selectors
     fail compilation. The product bridge executes seven `vec4` varyings and
-    reads the seventh color back; it also executes 28 independently declared scalar
-    varyings, multiple `vec3` component-wise expressions, and a `bgr` component write,
+    reads the seventh color back; it also executes a `bgr` component write,
     `bgra` fragment read, and explicit alpha write. An eighth varying is
-    rejected during link rather than truncating its 32nd component. Generic texture use,
-    fragment/builtin-output swizzle writes, and broader linkage semantics remain unsupported.
+    rejected during link rather than truncating its 32nd component. General
+    The fixed `gl_Position` and `gl_FragColor` outputs likewise accept
+    non-overlapping writable `xyzw`/`rgba`/`stpq` selectors and emit the exact
+    RSH1 output slots in source order; once either is selector-written, all four
+    clip/color components are required during RinGL→RinGPU module publication.
+    The public bridge readback covers swapped position `xy`, explicit `zw`,
+    reordered fragment `bgr`, and alpha stores; an incomplete `rgb` output
+    fails link instead of receiving a fabricated component. General varying
+    expressions, generic texture use, and broader linkage semantics remain
+    unsupported.
 
 ## Phase 4 — First hardware-rendered triangle
 

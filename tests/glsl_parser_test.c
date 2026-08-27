@@ -106,6 +106,85 @@ int main(void)
         assert(lod_samples == 4u && saw_lod_register != 0);
     }
 
+    /* GLSL ES 1 projective sampling divides xy by the final homogeneous
+     * coordinate in RSH1 before the normal real image/sampler lookup. The
+     * divisor remains a live uniform register, so this is not a parser-time
+     * coordinate shortcut. */
+    {
+        static const char projected_source[] =
+            "uniform sampler2D colorTexture; uniform float q; varying vec2 uv;\n"
+            "void main() { gl_FragColor = "
+            "texture2DProj(colorTexture, vec3(uv, q)); }\n";
+        static const char zero_projected_source[] =
+            "uniform sampler2D colorTexture; void main() { gl_FragColor = "
+            "texture2DProj(colorTexture, vec3(0.25, 0.75, 0.0)); }";
+        static const char vec4_projected_source[] =
+            "uniform sampler2D colorTexture; void main() { gl_FragColor = "
+            "texture2DProj(colorTexture, vec4(0.25, 0.75, 9.0, 2.0)); }";
+        static const char invalid_projected_source[] =
+            "uniform sampler2D colorTexture; void main() { gl_FragColor = "
+            "texture2DProj(colorTexture, vec2(0.25, 0.75)); }";
+        RinGLGlslUniformValue q_uniform = {
+            .name = "q", .type = RINGL_FLOAT, .values = { 0.5f },
+        };
+        RinGLGlslLowerResult lowered;
+        RinGLRsh1HeaderV1 header;
+        const RinGLRsh1InstructionV1* instructions;
+        uint32_t divisions = 0u;
+        uint32_t samples = 0u;
+        int saw_q_register = 0;
+
+        ringl_shader_source(fragment, projected_source, -1);
+        ringl_compile_shader(fragment);
+        assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+        assert(ringl_glsl_lower_rsh1_with_uniforms(
+                   RINGL_FRAGMENT_SHADER, projected_source,
+                   sizeof(projected_source) - 1u, &q_uniform, 1u,
+                   &lowered) == 0);
+        assert(lowered.ok != 0u && lowered.sampler_binding_count == 1u);
+        memcpy(&header, lowered.bytes, sizeof(header));
+        instructions = (const RinGLRsh1InstructionV1*)(
+            lowered.bytes + header.header_size);
+        for (uint32_t index = 0u; index < header.instruction_count; ++index) {
+            if (instructions[index].opcode == RINGL_RSH1_OP_DIV_F32) {
+                assert(instructions[index].source1 < header.register_count);
+                ++divisions;
+            } else if (instructions[index].opcode ==
+                       RINGL_RSH1_OP_SAMPLE_IMAGE_2D_F32) {
+                assert(instructions[index].resource == 0u);
+                assert(instructions[index].immediate == 1u);
+                ++samples;
+            }
+            if (instructions[index].opcode == RINGL_RSH1_OP_CONST_F32 &&
+                instructions[index].immediate == UINT32_C(0x3f000000)) {
+                saw_q_register = 1;
+            }
+        }
+        assert(divisions == 2u && samples == 4u && saw_q_register != 0);
+        assert(ringl_glsl_lower_rsh1(RINGL_FRAGMENT_SHADER,
+                                     vec4_projected_source,
+                                     sizeof(vec4_projected_source) - 1u,
+                                     &lowered) == 0);
+        assert(lowered.ok != 0u && lowered.sampler_binding_count == 1u);
+
+        ringl_shader_source(fragment, zero_projected_source, -1);
+        ringl_compile_shader(fragment);
+        assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+        assert(ringl_glsl_lower_rsh1(RINGL_FRAGMENT_SHADER,
+                                     zero_projected_source,
+                                     sizeof(zero_projected_source) - 1u,
+                                     &lowered) != 0);
+        assert(strstr(lowered.diagnostic, "zero literal") != NULL);
+        ringl_shader_source(fragment, invalid_projected_source, -1);
+        ringl_compile_shader(fragment);
+        assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+        assert(ringl_glsl_lower_rsh1(RINGL_FRAGMENT_SHADER,
+                                     invalid_projected_source,
+                                     sizeof(invalid_projected_source) - 1u,
+                                     &lowered) != 0);
+        assert(strstr(lowered.diagnostic, "vec3 or vec4") != NULL);
+    }
+
     /* Numeric arrays stay in the generic RSH1 path. Alongside decimal
      * literals, a const int initialized with an integer literal selects the
      * program-owned element constants at compile time. */

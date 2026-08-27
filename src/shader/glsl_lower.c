@@ -2748,7 +2748,7 @@ static uint16_t active_sampler_resource(Lower* lower, const Symbol* sampler,
  * are ordinary generic values, so locals, generic varyings, swizzles,
  * arithmetic, and numeric uniforms all share the same expression path; no
  * source-shape profile or host-side texture evaluation participates. */
-static Value texture2d_value(Lower* lower, int explicit_lod)
+static Value texture2d_value(Lower* lower, int explicit_lod, int projected)
 {
     Value result = invalid_value();
     Value coordinates;
@@ -2760,7 +2760,8 @@ static Value texture2d_value(Lower* lower, int explicit_lod)
     uint32_t sampler_array_index = 0u;
 
     if (lower->shader_type != RINGL_FRAGMENT_SHADER) {
-        fail(lower, "texture2D is only supported in fragment shaders");
+        fail(lower, projected ? "texture2DProj is only supported in fragment shaders"
+                              : "texture2D is only supported in fragment shaders");
         return result;
     }
     if (explicit_lod && lower->shader_texture_lod_enabled == 0u) {
@@ -2794,10 +2795,13 @@ static Value texture2d_value(Lower* lower, int explicit_lod)
     if (!need(lower, T_COMMA, "expected ',' after texture2D sampler"))
         return result;
     coordinates = expression(lower);
-    if (coordinates.width != 2u || coordinates.matrix || coordinates.is_i32 ||
-        coordinates.is_bool) {
+    if (coordinates.matrix || coordinates.is_i32 || coordinates.is_bool ||
+        (projected ? (coordinates.width != 3u && coordinates.width != 4u)
+                   : coordinates.width != 2u)) {
         if (lower->result->diagnostic[0] == '\0')
-            fail(lower, "texture2D coordinates must be floating-point vec2");
+            fail(lower, projected
+                            ? "texture2DProj coordinates must be floating-point vec3 or vec4"
+                            : "texture2D coordinates must be floating-point vec2");
         return result;
     }
     lod = invalid_value();
@@ -2813,8 +2817,28 @@ static Value texture2d_value(Lower* lower, int explicit_lod)
                      "texture2DLodEXT level must be a floating-point scalar");
             return result;
         }
-    } else if (!need(lower, T_RPAREN, "expected ')' after texture2D coordinates")) {
+    } else if (!need(lower, T_RPAREN, projected
+                                          ? "expected ')' after texture2DProj coordinates"
+                                          : "expected ')' after texture2D coordinates")) {
         return result;
+    }
+    if (projected) {
+        Value xy = invalid_value();
+        Value divisor = invalid_value();
+
+        xy.width = 2u;
+        xy.regs[0] = coordinates.regs[0];
+        xy.regs[1] = coordinates.regs[1];
+        xy.known_zero_components =
+            (uint16_t)(coordinates.known_zero_components & UINT32_C(0x3));
+        divisor.width = 1u;
+        divisor.regs[0] = coordinates.regs[coordinates.width - 1u];
+        divisor.known_zero_components = (uint16_t)(
+            coordinates.known_zero_components >> (coordinates.width - 1u));
+        coordinates = componentwise_binary(lower, &xy, &divisor,
+                                            RINGL_RSH1_OP_DIV_F32, 1);
+        if (coordinates.width != 2u)
+            return result;
     }
     resource = active_sampler_resource(lower, sampler, sampler_array_index);
     if (resource == RINGL_RSH1_UNUSED)
@@ -2975,10 +2999,12 @@ static Value primary(Lower* lower)
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "smoothstep"))
         return smoothstep_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "texture2D"))
-        return texture2d_value(lower, 0);
+        return texture2d_value(lower, 0, 0);
     if (lower->token.kind == T_IDENT &&
         text_is(&lower->token, "texture2DLodEXT"))
-        return texture2d_value(lower, 1);
+        return texture2d_value(lower, 1, 0);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "texture2DProj"))
+        return texture2d_value(lower, 0, 1);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "gl_FragCoord"))
         return frag_coord_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "gl_PointCoord"))

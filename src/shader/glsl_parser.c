@@ -794,14 +794,15 @@ static int varying_vec2_offset(Parser* parser)
     return 1;
 }
 
-static int texture2d_call(Parser* parser, int explicit_lod)
+static int texture2d_call(Parser* parser, int explicit_lod, int projected)
 {
     Token sampler_name;
     Symbol* sampler;
     uint32_t sampler_index = 0u;
 
     if (parser->shader_type != RINGL_FRAGMENT_SHADER) {
-        fail(parser, "texture2D is only supported in fragment shaders");
+        fail(parser, projected ? "texture2DProj is only supported in fragment shaders"
+                               : "texture2D is only supported in fragment shaders");
         return 0;
     }
     if (explicit_lod && parser->result->shader_texture_lod_enabled == 0u) {
@@ -836,6 +837,18 @@ static int texture2d_call(Parser* parser, int explicit_lod)
     }
     if (!expect(parser, TOK_COMMA, "expected ',' after texture2D sampler"))
         return 0;
+
+    /* The generic lowerer owns the projected-coordinate type check and emits
+     * the two real RSH1 divisions before sampling. Unlike the historical
+     * shape-specific texture2D parser, accept its normal expression grammar
+     * here so locals, varyings, swizzles, arithmetic, and uniforms reach that
+     * one executable path. */
+    if (projected) {
+        if (!expression(parser))
+            return 0;
+        return expect(parser, TOK_RPAREN,
+                      "expected ')' after texture2DProj arguments");
+    }
 
     if (parser->token.kind == TOK_VEC2) {
         if (!constructor(parser, TOK_VEC2))
@@ -1003,9 +1016,11 @@ static int primary(Parser* parser)
         Symbol* symbol = find_symbol(parser, &ident);
         uint32_t value_width = symbol ? symbol->width : 0u;
         if (token_is_ident(&ident, "texture2D"))
-            return texture2d_call(parser, 0);
+            return texture2d_call(parser, 0, 0);
         if (token_is_ident(&ident, "texture2DLodEXT"))
-            return texture2d_call(parser, 1);
+            return texture2d_call(parser, 1, 0);
+        if (token_is_ident(&ident, "texture2DProj"))
+            return texture2d_call(parser, 0, 1);
         if (token_is_ident(&ident, "equal") ||
             token_is_ident(&ident, "notEqual"))
             return common_math_builtin_call(parser, 2u);

@@ -333,6 +333,14 @@ varyings, swizzles, and numeric-uniform module rebuilds part of one
 RinGL→RinGPU execution path; it does not evaluate a coordinate or texture in
 Ladybird or Aquamarine.
 
+The same generic path executes GLSL ES 1 `texture2DProj(sampler2D, vec3)` and
+`texture2DProj(sampler2D, vec4)`. RinGL forms the sample coordinate with two
+real RSH1 `DIV_F32` operations (`xy / z` or `xy / w`) before emitting the
+normal four-component image/sampler lookup. The divisor may be an accepted
+live Float expression, including a uniform rebuilt atomically with its module;
+a literal zero is rejected while lowering and a dynamic zero uses the existing
+RinGPU preflight failure path rather than inventing a sample value.
+
 The generic path also executes bounded `sampler2D name[N]` arrays: the total
 number of elements is at most eight, and each `texture2D(name[index], uv)`
 uses an in-range decimal literal or `const int` initialized with an integer

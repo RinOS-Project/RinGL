@@ -794,7 +794,7 @@ static int varying_vec2_offset(Parser* parser)
     return 1;
 }
 
-static int texture2d_call(Parser* parser)
+static int texture2d_call(Parser* parser, int explicit_lod)
 {
     Token sampler_name;
     Symbol* sampler;
@@ -804,6 +804,12 @@ static int texture2d_call(Parser* parser)
         fail(parser, "texture2D is only supported in fragment shaders");
         return 0;
     }
+    if (explicit_lod && parser->result->shader_texture_lod_enabled == 0u) {
+        fail(parser, "texture2DLodEXT requires GL_EXT_shader_texture_lod");
+        return 0;
+    }
+    if (explicit_lod)
+        parser->result->uses_shader_texture_lod = 1u;
     next_token(parser);
     if (!expect(parser, TOK_LPAREN, "expected '(' after texture2D"))
         return 0;
@@ -914,7 +920,16 @@ static int texture2d_call(Parser* parser)
         fail(parser, "texture2D coordinate must be vec2");
         return 0;
     }
-    return expect(parser, TOK_RPAREN, "expected ')' after texture2D arguments");
+    if (explicit_lod) {
+        if (!expect(parser, TOK_COMMA,
+                    "expected ',' before texture2DLodEXT level") ||
+            !finite_number(parser)) {
+            return 0;
+        }
+    }
+    return expect(parser, TOK_RPAREN,
+                  explicit_lod ? "expected ')' after texture2DLodEXT arguments"
+                               : "expected ')' after texture2D arguments");
 }
 
 /* The lowering stage owns the exact scalar/vector type checks. Keep parser
@@ -988,7 +1003,9 @@ static int primary(Parser* parser)
         Symbol* symbol = find_symbol(parser, &ident);
         uint32_t value_width = symbol ? symbol->width : 0u;
         if (token_is_ident(&ident, "texture2D"))
-            return texture2d_call(parser);
+            return texture2d_call(parser, 0);
+        if (token_is_ident(&ident, "texture2DLodEXT"))
+            return texture2d_call(parser, 1);
         if (token_is_ident(&ident, "equal") ||
             token_is_ident(&ident, "notEqual"))
             return common_math_builtin_call(parser, 2u);
@@ -2115,6 +2132,7 @@ static int extension_directive(Parser* parser)
     }
     next_token(parser);
     if (!token_is_ident(&parser->token, "GL_OES_standard_derivatives") &&
+        !token_is_ident(&parser->token, "GL_EXT_shader_texture_lod") &&
         !token_is_ident(&parser->token, "GL_EXT_frag_depth") &&
         !token_is_ident(&parser->token, "GL_EXT_draw_buffers")) {
         fail(parser, "unsupported GLSL extension");
@@ -2123,6 +2141,8 @@ static int extension_directive(Parser* parser)
     {
         int standard_derivatives = token_is_ident(
             &parser->token, "GL_OES_standard_derivatives");
+        int shader_texture_lod = token_is_ident(
+            &parser->token, "GL_EXT_shader_texture_lod");
         int frag_depth = token_is_ident(&parser->token, "GL_EXT_frag_depth");
     next_token(parser);
     if (!expect(parser, TOK_COLON, "expected ':' in #extension directive"))
@@ -2138,6 +2158,8 @@ static int extension_directive(Parser* parser)
     }
         if (standard_derivatives)
             parser->result->standard_derivatives_enabled = 1u;
+        else if (shader_texture_lod)
+            parser->result->shader_texture_lod_enabled = 1u;
         else if (frag_depth)
             parser->result->frag_depth_enabled = 1u;
         else

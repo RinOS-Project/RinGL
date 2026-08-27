@@ -1530,6 +1530,10 @@ int ringl_enable_webgl_blend_minmax(void);
  * browser extension object has been acquired. This gates GLSL dFdx/dFdy/
  * fwidth compilation and FRAGMENT_SHADER_DERIVATIVE_HINT queries. */
 int ringl_enable_webgl_standard_derivatives(void);
+/* Enables EXT_shader_texture_lod after the browser has exposed its empty
+ * extension object. The bounded shader profile accepts texture2DLodEXT with
+ * a finite literal LOD and executes its mip selection in RinGPU. */
+int ringl_enable_webgl_shader_texture_lod(void);
 /* Enables EXT_frag_depth only after the browser has exposed its empty WebGL
  * extension object. Fragment shaders that write gl_FragDepthEXT then carry a
  * dedicated scalar RSH1 output through the RinGPU depth-test path. */

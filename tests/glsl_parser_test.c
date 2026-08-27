@@ -47,6 +47,49 @@ int main(void)
     assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
     assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) == 0u);
 
+    /* EXT_shader_texture_lod is an empty WebGL object, but its GLSL builtin
+     * remains unavailable until the current RinGL context has been enabled.
+     * The emitted RSH1 op carries the exact literal level and real resource
+     * pair instead of treating explicit mip selection as a host shortcut. */
+    {
+        static const char lod_source[] =
+            "#extension GL_EXT_shader_texture_lod : enable\n"
+            "uniform sampler2D colorTexture; varying vec2 uv;\n"
+            "void main() { gl_FragColor = "
+            "texture2DLodEXT(colorTexture, uv, 1.0); }\n";
+        RinGLGlslLowerResult lowered;
+        RinGLRsh1HeaderV1 header;
+        const RinGLRsh1InstructionV1* instructions;
+        uint32_t lod_samples = 0u;
+
+        ringl_shader_source(fragment, lod_source, -1);
+        ringl_compile_shader(fragment);
+        assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
+        assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) > 0u);
+        assert(strstr(log, "GL_EXT_shader_texture_lod") != NULL);
+        assert(ringl_enable_webgl_shader_texture_lod() == 0);
+        ringl_compile_shader(fragment);
+        assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+        assert(ringl_glsl_lower_rsh1(RINGL_FRAGMENT_SHADER, lod_source,
+                                     sizeof(lod_source) - 1u,
+                                     &lowered) == 0);
+        assert(lowered.ok != 0u && lowered.sampler_binding_count == 1u);
+        memcpy(&header, lowered.bytes, sizeof(header));
+        instructions = (const RinGLRsh1InstructionV1*)(
+            lowered.bytes + header.header_size);
+        for (uint32_t index = 0u; index < header.instruction_count; ++index) {
+            if (instructions[index].opcode !=
+                RINGL_RSH1_OP_SAMPLE_IMAGE_2D_LOD_F32) {
+                continue;
+            }
+            assert(instructions[index].resource ==
+                   RINGL_RSH1_SAMPLE_2D_LOD_PACK_BINDINGS(0u, 1u));
+            assert(instructions[index].immediate == UINT32_C(0x3f800000));
+            ++lod_samples;
+        }
+        assert(lod_samples == 4u);
+    }
+
     /* Numeric arrays stay in the generic RSH1 path. Alongside decimal
      * literals, a const int initialized with an integer literal selects the
      * program-owned element constants at compile time. */

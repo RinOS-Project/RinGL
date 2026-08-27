@@ -116,6 +116,7 @@ static void ringl_shader_reset_compile_state(RinGLContext* context,
     object->mat4_uniform_count = 0u;
     object->rsh1_sampler_binding_count = 0u;
     object->uses_standard_derivatives = 0u;
+    object->uses_shader_texture_lod = 0u;
     object->uses_webgl_frag_depth = 0u;
     object->uses_webgl_draw_buffers = 0u;
     memset(object->sampler_uniform_names, 0,
@@ -309,6 +310,12 @@ void ringl_compile_shader(uint32_t shader)
                             "GL_OES_standard_derivatives is not enabled");
         return;
     }
+    if (result.uses_shader_texture_lod != 0u &&
+        context->webgl_shader_texture_lod_enabled == RINGL_FALSE) {
+        ringl_copy_c_string(object->info_log, sizeof(object->info_log),
+                            "GL_EXT_shader_texture_lod is not enabled");
+        return;
+    }
     if (result.uses_webgl_frag_depth != 0u &&
         context->webgl_frag_depth_enabled == RINGL_FALSE) {
         ringl_copy_c_string(object->info_log, sizeof(object->info_log),
@@ -375,6 +382,7 @@ void ringl_compile_shader(uint32_t shader)
     memcpy(object->mat4_uniform_names, result.mat4_uniform_names,
            sizeof(object->mat4_uniform_names));
     object->uses_standard_derivatives = result.uses_standard_derivatives;
+    object->uses_shader_texture_lod = result.uses_shader_texture_lod;
     object->uses_webgl_frag_depth = result.uses_webgl_frag_depth;
     object->uses_webgl_draw_buffers = result.uses_webgl_draw_buffers;
 }

@@ -37,6 +37,11 @@ typedef struct RinGLGlslParseResult {
      * context can reject a shader compiled before getExtension(). */
     uint32_t standard_derivatives_enabled;
     uint32_t uses_standard_derivatives;
+    /* EXT_shader_texture_lod is an opt-in extension: declaration and use
+     * stay separate so a shader cannot acquire explicit mip access merely by
+     * being recompiled after a different context enabled the extension. */
+    uint32_t shader_texture_lod_enabled;
+    uint32_t uses_shader_texture_lod;
     /* GL_EXT_frag_depth is an opt-in fragment output. Keep declaration and
      * use separate so a pre-extension shader cannot acquire the capability
      * merely by being recompiled later. */

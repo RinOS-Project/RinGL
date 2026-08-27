@@ -39,6 +39,7 @@ int ringl_lower_shader_rsh1(uint32_t shader)
     }
 
     if (object->uses_standard_derivatives == 0u &&
+        object->uses_shader_texture_lod == 0u &&
         object->uses_webgl_frag_depth == 0u &&
         object->uses_webgl_draw_buffers == 0u &&
         strstr(object->source, "varying") != NULL) {

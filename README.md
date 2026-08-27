@@ -121,6 +121,23 @@ conditional profile remain rejected. `FRAGMENT_SHADER_DERIVATIVE_HINT` is observ
 the same context gate.  This is a bounded WebGL slice, not an OpenGL ES
 conformance claim.
 
+## WebGL `EXT_shader_texture_lod`
+
+`EXT_shader_texture_lod` is enabled per context only after Ladybird has
+returned its extension object. A fragment shader must declare
+`#extension GL_EXT_shader_texture_lod : enable` or `require` before it can use
+`texture2DLodEXT`. RinGL's bounded profile accepts a declared `sampler2D`, an
+ordinary accepted `vec2` coordinate expression, and one finite numeric LOD
+literal. It lowers each RGBA component to `SAMPLE_IMAGE_2D_LOD_F32`; the RSH1
+instruction carries the exact binary32 LOD and image/sampler bindings, and the
+generic RinGPU software backend selects the real mip chain with sampler
+min/max-LOD clamping. The lookup neither asks Aquamarine to select a mip nor
+falls back to implicit derivatives.
+
+Dynamic/uniform LOD expressions, `texture2DGradEXT`, cube/3D/array/shadow
+texture forms, and general GLSL ES texture conformance remain unsupported and
+are rejected before an executable module is published.
+
 ## Bounded fragment discard
 
 The GLSL ES frontend executes `discard;` as a terminal RSH1 instruction in the

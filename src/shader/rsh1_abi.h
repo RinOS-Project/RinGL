@@ -18,6 +18,12 @@
 #define RINGL_RSH1_SAMPLE_COMPONENT_GREEN 1u
 #define RINGL_RSH1_SAMPLE_COMPONENT_BLUE  2u
 #define RINGL_RSH1_SAMPLE_COMPONENT_ALPHA 3u
+#define RINGL_RSH1_SAMPLE_2D_LOD_BINDING_BITS 6u
+#define RINGL_RSH1_SAMPLE_2D_LOD_BINDING_MASK UINT16_C(0x003f)
+#define RINGL_RSH1_SAMPLE_2D_LOD_PACK_BINDINGS(image_binding, sampler_binding) \
+    ((uint16_t)((((uint16_t)(image_binding)) & RINGL_RSH1_SAMPLE_2D_LOD_BINDING_MASK) | \
+                ((((uint16_t)(sampler_binding)) & RINGL_RSH1_SAMPLE_2D_LOD_BINDING_MASK) \
+                 << RINGL_RSH1_SAMPLE_2D_LOD_BINDING_BITS)))
 
 enum RinGLRsh1Stage {
     RINGL_RSH1_STAGE_VERTEX = 1,
@@ -83,6 +89,9 @@ enum RinGLRsh1Opcode {
     RINGL_RSH1_OP_EXP2_F32 = 67,
     RINGL_RSH1_OP_LOG2_F32 = 68,
     RINGL_RSH1_OP_POW_F32 = 69,
+    /* Explicit LOD samples pack the image/sampler bindings in resource and
+     * retain the finite binary32 LOD bit pattern in immediate. */
+    RINGL_RSH1_OP_SAMPLE_IMAGE_2D_LOD_F32 = 70,
 };
 
 enum RinGLRsh1Builtin {

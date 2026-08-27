@@ -134,6 +134,7 @@ typedef struct Lower {
     const RinGLGlslUniformValue* uniforms;
     uint32_t uniform_count;
     uint32_t standard_derivatives_enabled;
+    uint32_t shader_texture_lod_enabled;
     uint32_t frag_depth_enabled;
     uint32_t uses_frag_depth;
     uint32_t draw_buffers_enabled;
@@ -835,6 +836,28 @@ static int emit_texture_sample(Lower* lower, uint16_t destination,
     instruction->flags = component;
     instruction->resource = resource;
     instruction->immediate = (uint32_t)resource + 1u;
+    return 1;
+}
+
+static int emit_texture_lod_sample(Lower* lower, uint16_t destination,
+                                   uint16_t coordinate_u,
+                                   uint16_t coordinate_v,
+                                   uint16_t component, uint16_t resource,
+                                   uint32_t lod_bits)
+{
+    RinGLRsh1InstructionV1* instruction;
+
+    if (lower == NULL || component >= 4u ||
+        resource >= RINGL_RSH1_SAMPLE_2D_LOD_BINDING_MASK ||
+        resource + 1u > RINGL_RSH1_SAMPLE_2D_LOD_BINDING_MASK ||
+        !emit(lower, RINGL_RSH1_OP_SAMPLE_IMAGE_2D_LOD_F32, destination,
+              coordinate_u, coordinate_v, lod_bits)) {
+        return 0;
+    }
+    instruction = &lower->ins[lower->ins_count - 1u];
+    instruction->flags = component;
+    instruction->resource = RINGL_RSH1_SAMPLE_2D_LOD_PACK_BINDINGS(
+        resource, (uint16_t)(resource + 1u));
     return 1;
 }
 
@@ -2725,7 +2748,37 @@ static uint16_t active_sampler_resource(Lower* lower, const Symbol* sampler,
  * are ordinary generic values, so locals, generic varyings, swizzles,
  * arithmetic, and numeric uniforms all share the same expression path; no
  * source-shape profile or host-side texture evaluation participates. */
-static Value texture2d_value(Lower* lower)
+static int explicit_lod_bits(Lower* lower, uint32_t* bits_out)
+{
+    char text[64];
+    char* end = NULL;
+    size_t prefix = 0u;
+    float value;
+
+    if (lower == NULL || bits_out == NULL)
+        return 0;
+    if (lower->token.kind == T_PLUS || lower->token.kind == T_MINUS) {
+        text[prefix++] = lower->token.kind == T_MINUS ? '-' : '+';
+        next(lower);
+    }
+    if (lower->token.kind != T_NUMBER ||
+        lower->token.length + prefix >= sizeof(text)) {
+        fail(lower, "texture2DLodEXT level must be a finite literal");
+        return 0;
+    }
+    memcpy(text + prefix, lower->token.begin, lower->token.length);
+    text[prefix + lower->token.length] = '\0';
+    value = strtof(text, &end);
+    if (end == text || *end != '\0' || !finite_f32(value)) {
+        fail(lower, "texture2DLodEXT level must be a finite literal");
+        return 0;
+    }
+    memcpy(bits_out, &value, sizeof(*bits_out));
+    next(lower);
+    return 1;
+}
+
+static Value texture2d_value(Lower* lower, int explicit_lod)
 {
     Value result = invalid_value();
     Value coordinates;
@@ -2734,9 +2787,14 @@ static Value texture2d_value(Lower* lower)
     uint16_t resource;
     uint32_t component;
     uint32_t sampler_array_index = 0u;
+    uint32_t lod_bits = 0u;
 
     if (lower->shader_type != RINGL_FRAGMENT_SHADER) {
         fail(lower, "texture2D is only supported in fragment shaders");
+        return result;
+    }
+    if (explicit_lod && lower->shader_texture_lod_enabled == 0u) {
+        fail(lower, "texture2DLodEXT requires GL_EXT_shader_texture_lod");
         return result;
     }
     next(lower);
@@ -2768,7 +2826,14 @@ static Value texture2d_value(Lower* lower)
     coordinates = expression(lower);
     if (coordinates.width != 2u || coordinates.matrix || coordinates.is_i32 ||
         coordinates.is_bool ||
-        !need(lower, T_RPAREN, "expected ')' after texture2D coordinates")) {
+        (explicit_lod
+             ? (!need(lower, T_COMMA,
+                      "expected ',' before texture2DLodEXT level") ||
+                !explicit_lod_bits(lower, &lod_bits) ||
+                !need(lower, T_RPAREN,
+                      "expected ')' after texture2DLodEXT arguments"))
+             : !need(lower, T_RPAREN,
+                     "expected ')' after texture2D coordinates"))) {
         if (lower->result->diagnostic[0] == '\0')
             fail(lower, "texture2D coordinates must be floating-point vec2");
         return result;
@@ -2780,9 +2845,14 @@ static Value texture2d_value(Lower* lower)
         uint16_t register_index = new_reg(lower);
 
         if (register_index == RINGL_RSH1_UNUSED ||
-            !emit_texture_sample(lower, register_index, coordinates.regs[0],
-                                 coordinates.regs[1], (uint16_t)component,
-                                 resource)) {
+            (explicit_lod
+                 ? !emit_texture_lod_sample(
+                       lower, register_index, coordinates.regs[0],
+                       coordinates.regs[1], (uint16_t)component, resource,
+                       lod_bits)
+                 : !emit_texture_sample(
+                       lower, register_index, coordinates.regs[0],
+                       coordinates.regs[1], (uint16_t)component, resource))) {
             return invalid_value();
         }
         result.regs[component] = register_index;
@@ -2927,7 +2997,10 @@ static Value primary(Lower* lower)
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "smoothstep"))
         return smoothstep_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "texture2D"))
-        return texture2d_value(lower);
+        return texture2d_value(lower, 0);
+    if (lower->token.kind == T_IDENT &&
+        text_is(&lower->token, "texture2DLodEXT"))
+        return texture2d_value(lower, 1);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "gl_FragCoord"))
         return frag_coord_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "gl_PointCoord"))
@@ -4015,6 +4088,7 @@ static int extension_decl(Lower* lower)
     }
     next(lower);
     if (!text_is(&lower->token, "GL_OES_standard_derivatives") &&
+        !text_is(&lower->token, "GL_EXT_shader_texture_lod") &&
         !text_is(&lower->token, "GL_EXT_frag_depth") &&
         !text_is(&lower->token, "GL_EXT_draw_buffers")) {
         fail(lower, "unsupported GLSL extension");
@@ -4023,6 +4097,8 @@ static int extension_decl(Lower* lower)
     {
         int standard_derivatives = text_is(
             &lower->token, "GL_OES_standard_derivatives");
+        int shader_texture_lod = text_is(
+            &lower->token, "GL_EXT_shader_texture_lod");
         int frag_depth = text_is(&lower->token, "GL_EXT_frag_depth");
     next(lower);
     if (!need(lower, T_COLON, "expected ':' in #extension directive"))
@@ -4038,6 +4114,8 @@ static int extension_decl(Lower* lower)
     }
         if (standard_derivatives)
             lower->standard_derivatives_enabled = 1u;
+        else if (shader_texture_lod)
+            lower->shader_texture_lod_enabled = 1u;
         else if (frag_depth)
             lower->frag_depth_enabled = 1u;
         else

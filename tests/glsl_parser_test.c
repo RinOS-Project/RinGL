@@ -63,6 +63,16 @@ int main(void)
             "uniform sampler2D colorTexture; void main() { gl_FragColor = "
             "texture2DProjLodEXT(colorTexture, vec3(0.25, 0.75, 0.5), "
             "1.0); }\n";
+        static const char gradient_source[] =
+            "#extension GL_EXT_shader_texture_lod : enable\n"
+            "uniform sampler2D colorTexture; void main() { gl_FragColor = "
+            "texture2DGradEXT(colorTexture, vec2(0.5), vec2(0.5, 0.0), "
+            "vec2(0.0, 0.5)); }\n";
+        static const char projected_gradient_source[] =
+            "#extension GL_EXT_shader_texture_lod : enable\n"
+            "uniform sampler2D colorTexture; void main() { gl_FragColor = "
+            "texture2DProjGradEXT(colorTexture, vec3(0.25, 0.75, 0.5), "
+            "vec2(0.5, 0.0), vec2(0.0, 0.5)); }\n";
         RinGLGlslUniformValue lod_uniform = {
             .name = "lod", .type = RINGL_FLOAT, .values = { 1.0f },
         };
@@ -133,6 +143,32 @@ int main(void)
             }
         }
         assert(lod_samples == 4u && projected_divisions == 2u);
+        ringl_shader_source(fragment, gradient_source, -1);
+        ringl_compile_shader(fragment);
+        assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+        assert(ringl_glsl_lower_rsh1(RINGL_FRAGMENT_SHADER, gradient_source,
+                                     sizeof(gradient_source) - 1u,
+                                     &lowered) == 0);
+        assert(lowered.ok != 0u && lowered.sampler_binding_count == 1u);
+        memcpy(&header, lowered.bytes, sizeof(header));
+        instructions = (const RinGLRsh1InstructionV1*)(
+            lowered.bytes + header.header_size);
+        lod_samples = 0u;
+        for (uint32_t index = 0u; index < header.instruction_count; ++index) {
+            if (instructions[index].opcode ==
+                RINGL_RSH1_OP_SAMPLE_IMAGE_2D_GRAD_F32) {
+                assert(instructions[index].resource ==
+                       RINGL_RSH1_SAMPLE_2D_GRAD_PACK_BINDINGS(0u, 1u));
+                assert(instructions[index].immediate + 3u <
+                       header.register_count);
+                ++lod_samples;
+            }
+        }
+        assert(lod_samples == 4u);
+        assert(ringl_glsl_lower_rsh1(
+                   RINGL_FRAGMENT_SHADER, projected_gradient_source,
+                   sizeof(projected_gradient_source) - 1u, &lowered) == 0);
+        assert(lowered.ok != 0u && lowered.sampler_binding_count == 1u);
     }
 
     /* The ordinary GLSL ES texture2D overload keeps implicit derivatives and

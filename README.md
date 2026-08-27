@@ -137,9 +137,13 @@ and the generic RinGPU software backend selects the real mip chain with
 sampler min/max-LOD clamping. The lookup neither asks Aquamarine to select a
 mip nor falls back to implicit derivatives.
 
-`texture2DGradEXT`, cube/3D/array/shadow texture forms, and general GLSL ES
-texture conformance remain unsupported and are rejected before an executable
-module is published.
+The same gate enables `texture2DGradEXT` and `texture2DProjGradEXT` with
+accepted `vec2` dPdx/dPdy expressions. RinGL materializes those four live
+Float values in RSH1 order dU/dX, dU/dY, dV/dX, dV/dY, and the generic RinGPU
+backend uses that explicit footprint to select the real mip chain. It does not
+substitute the rasterizer's derivative or an embedding-side lookup. Cube/3D/
+array/shadow texture forms and general GLSL ES texture conformance remain
+unsupported and are rejected before an executable module is published.
 
 ## Bounded fragment discard
 
@@ -373,7 +377,8 @@ have matching lengths or linking fails.
 
 The generic path has the same finite RSH1 admission limits as every other
 RinGL shader (128 instructions and 96 registers). Unsupported GLSL ES sampler
-forms—dynamic indexing, non-2D sampler types, gradient/shadow forms,
+forms—dynamic indexing, non-2D sampler types other than the documented 2D
+explicit-LOD/gradient slice, shadow forms,
 unsupported control flow/types, and over-limit modules—fail before a module or
 target update is published. The older bounded profiles remain only for their
 stable layouts on forms they already admit.

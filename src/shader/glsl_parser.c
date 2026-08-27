@@ -794,7 +794,8 @@ static int varying_vec2_offset(Parser* parser)
     return 1;
 }
 
-static int texture2d_call(Parser* parser, int explicit_lod, int projected)
+static int texture2d_call(Parser* parser, int explicit_lod, int projected,
+                          int explicit_grad)
 {
     Token sampler_name;
     Symbol* sampler;
@@ -805,11 +806,14 @@ static int texture2d_call(Parser* parser, int explicit_lod, int projected)
                                : "texture2D is only supported in fragment shaders");
         return 0;
     }
-    if (explicit_lod && parser->result->shader_texture_lod_enabled == 0u) {
-        fail(parser, "texture2DLodEXT requires GL_EXT_shader_texture_lod");
+    if ((explicit_lod || explicit_grad) &&
+        parser->result->shader_texture_lod_enabled == 0u) {
+        fail(parser, explicit_grad
+                         ? "texture2DGradEXT requires GL_EXT_shader_texture_lod"
+                         : "texture2DLodEXT requires GL_EXT_shader_texture_lod");
         return 0;
     }
-    if (explicit_lod)
+    if (explicit_lod || explicit_grad)
         parser->result->uses_shader_texture_lod = 1u;
     next_token(parser);
     if (!expect(parser, TOK_LPAREN, "expected '(' after texture2D"))
@@ -846,7 +850,16 @@ static int texture2d_call(Parser* parser, int explicit_lod, int projected)
     if (projected) {
         if (!expression(parser))
             return 0;
-        if (parser->token.kind == TOK_COMMA) {
+        if (explicit_grad) {
+            if (!expect(parser, TOK_COMMA,
+                        "expected ',' before texture2DGradEXT dPdx") ||
+                !expression(parser) ||
+                !expect(parser, TOK_COMMA,
+                        "expected ',' before texture2DGradEXT dPdy") ||
+                !expression(parser)) {
+                return 0;
+            }
+        } else if (parser->token.kind == TOK_COMMA) {
             next_token(parser);
             if (!expression(parser))
                 return 0;
@@ -938,7 +951,16 @@ static int texture2d_call(Parser* parser, int explicit_lod, int projected)
         fail(parser, "texture2D coordinate must be vec2");
         return 0;
     }
-    if (!explicit_lod && !projected && parser->token.kind == TOK_COMMA) {
+    if (explicit_grad) {
+        if (!expect(parser, TOK_COMMA,
+                    "expected ',' before texture2DGradEXT dPdx") ||
+            !expression(parser) ||
+            !expect(parser, TOK_COMMA,
+                    "expected ',' before texture2DGradEXT dPdy") ||
+            !expression(parser)) {
+            return 0;
+        }
+    } else if (!explicit_lod && !projected && parser->token.kind == TOK_COMMA) {
         next_token(parser);
         if (!expression(parser))
             return 0;
@@ -1026,13 +1048,17 @@ static int primary(Parser* parser)
         Symbol* symbol = find_symbol(parser, &ident);
         uint32_t value_width = symbol ? symbol->width : 0u;
         if (token_is_ident(&ident, "texture2D"))
-            return texture2d_call(parser, 0, 0);
+            return texture2d_call(parser, 0, 0, 0);
         if (token_is_ident(&ident, "texture2DLodEXT"))
-            return texture2d_call(parser, 1, 0);
+            return texture2d_call(parser, 1, 0, 0);
         if (token_is_ident(&ident, "texture2DProj"))
-            return texture2d_call(parser, 0, 1);
+            return texture2d_call(parser, 0, 1, 0);
         if (token_is_ident(&ident, "texture2DProjLodEXT"))
-            return texture2d_call(parser, 1, 1);
+            return texture2d_call(parser, 1, 1, 0);
+        if (token_is_ident(&ident, "texture2DGradEXT"))
+            return texture2d_call(parser, 0, 0, 1);
+        if (token_is_ident(&ident, "texture2DProjGradEXT"))
+            return texture2d_call(parser, 0, 1, 1);
         if (token_is_ident(&ident, "equal") ||
             token_is_ident(&ident, "notEqual"))
             return common_math_builtin_call(parser, 2u);

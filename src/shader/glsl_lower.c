@@ -887,6 +887,31 @@ static int emit_texture_bias_sample(Lower* lower, uint16_t destination,
     return 1;
 }
 
+/* Explicit-gradient lookups reserve four consecutive Float32 registers in
+ * immediate order dU/dX, dU/dY, dV/dX, dV/dY. Resource is packed exactly as
+ * the other live-parameter sample opcodes, leaving source0/source1 as U/V. */
+static int emit_texture_grad_sample(Lower* lower, uint16_t destination,
+                                    uint16_t coordinate_u,
+                                    uint16_t coordinate_v,
+                                    uint16_t component, uint16_t resource,
+                                    uint16_t gradient_base)
+{
+    RinGLRsh1InstructionV1* instruction;
+
+    if (lower == NULL || component >= 4u ||
+        resource >= RINGL_RSH1_SAMPLE_2D_LOD_BINDING_MASK ||
+        resource + 1u > RINGL_RSH1_SAMPLE_2D_LOD_BINDING_MASK ||
+        !emit(lower, RINGL_RSH1_OP_SAMPLE_IMAGE_2D_GRAD_F32, destination,
+              coordinate_u, coordinate_v, gradient_base)) {
+        return 0;
+    }
+    instruction = &lower->ins[lower->ins_count - 1u];
+    instruction->flags = component;
+    instruction->resource = RINGL_RSH1_SAMPLE_2D_GRAD_PACK_BINDINGS(
+        resource, (uint16_t)(resource + 1u));
+    return 1;
+}
+
 static Value expression(Lower* lower);
 static Value componentwise_binary(Lower* lower, const Value* left,
                                    const Value* right, uint16_t opcode,
@@ -2774,25 +2799,32 @@ static uint16_t active_sampler_resource(Lower* lower, const Symbol* sampler,
  * are ordinary generic values, so locals, generic varyings, swizzles,
  * arithmetic, and numeric uniforms all share the same expression path; no
  * source-shape profile or host-side texture evaluation participates. */
-static Value texture2d_value(Lower* lower, int explicit_lod, int projected)
+static Value texture2d_value(Lower* lower, int explicit_lod, int projected,
+                             int explicit_grad)
 {
     Value result = invalid_value();
     Value coordinates;
     Value lod;
+    Value gradient_x;
+    Value gradient_y;
     Token name;
     Symbol* sampler;
     uint16_t resource;
     uint32_t component;
     uint32_t sampler_array_index = 0u;
     int implicit_bias = 0;
+    uint16_t gradient_base = RINGL_RSH1_UNUSED;
 
     if (lower->shader_type != RINGL_FRAGMENT_SHADER) {
         fail(lower, projected ? "texture2DProj is only supported in fragment shaders"
                               : "texture2D is only supported in fragment shaders");
         return result;
     }
-    if (explicit_lod && lower->shader_texture_lod_enabled == 0u) {
-        fail(lower, "texture2DLodEXT requires GL_EXT_shader_texture_lod");
+    if ((explicit_lod || explicit_grad) &&
+        lower->shader_texture_lod_enabled == 0u) {
+        fail(lower, explicit_grad
+                        ? "texture2DGradEXT requires GL_EXT_shader_texture_lod"
+                        : "texture2DLodEXT requires GL_EXT_shader_texture_lod");
         return result;
     }
     next(lower);
@@ -2832,7 +2864,34 @@ static Value texture2d_value(Lower* lower, int explicit_lod, int projected)
         return result;
     }
     lod = invalid_value();
-    if (explicit_lod) {
+    gradient_x = invalid_value();
+    gradient_y = invalid_value();
+    if (explicit_grad) {
+        if (!need(lower, T_COMMA,
+                  "expected ',' before texture2DGradEXT dPdx")) {
+            return result;
+        }
+        gradient_x = expression(lower);
+        if (gradient_x.width != 2u || gradient_x.matrix ||
+            gradient_x.is_i32 || gradient_x.is_bool ||
+            !need(lower, T_COMMA,
+                  "expected ',' before texture2DGradEXT dPdy")) {
+            if (lower->result->diagnostic[0] == '\0')
+                fail(lower,
+                     "texture2DGradEXT gradients must be floating-point vec2");
+            return result;
+        }
+        gradient_y = expression(lower);
+        if (gradient_y.width != 2u || gradient_y.matrix ||
+            gradient_y.is_i32 || gradient_y.is_bool ||
+            !need(lower, T_RPAREN,
+                  "expected ')' after texture2DGradEXT arguments")) {
+            if (lower->result->diagnostic[0] == '\0')
+                fail(lower,
+                     "texture2DGradEXT gradients must be floating-point vec2");
+            return result;
+        }
+    } else if (explicit_lod) {
         if (!need(lower, T_COMMA, "expected ',' before texture2DLodEXT level"))
             return result;
         lod = expression(lower);
@@ -2881,6 +2940,25 @@ static Value texture2d_value(Lower* lower, int explicit_lod, int projected)
         if (coordinates.width != 2u)
             return result;
     }
+    if (explicit_grad) {
+        uint16_t sources[4] = {
+            gradient_x.regs[0], gradient_y.regs[0],
+            gradient_x.regs[1], gradient_y.regs[1],
+        };
+        for (uint32_t index = 0u; index < 4u; ++index) {
+            uint16_t destination = new_reg(lower);
+
+            if (destination == RINGL_RSH1_UNUSED ||
+                !emit(lower, RINGL_RSH1_OP_MOV, destination, sources[index],
+                      RINGL_RSH1_UNUSED, 0u)) {
+                return result;
+            }
+            if (index == 0u)
+                gradient_base = destination;
+        }
+        if (gradient_base == RINGL_RSH1_UNUSED)
+            return result;
+    }
     resource = active_sampler_resource(lower, sampler, sampler_array_index);
     if (resource == RINGL_RSH1_UNUSED)
         return result;
@@ -2888,7 +2966,12 @@ static Value texture2d_value(Lower* lower, int explicit_lod, int projected)
         uint16_t register_index = new_reg(lower);
 
         if (register_index == RINGL_RSH1_UNUSED ||
-            (explicit_lod
+            (explicit_grad
+                 ? !emit_texture_grad_sample(
+                       lower, register_index, coordinates.regs[0],
+                       coordinates.regs[1], (uint16_t)component, resource,
+                       gradient_base)
+                 : explicit_lod
                  ? !emit_texture_lod_sample(
                        lower, register_index, coordinates.regs[0],
                        coordinates.regs[1], (uint16_t)component, resource,
@@ -3045,15 +3128,20 @@ static Value primary(Lower* lower)
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "smoothstep"))
         return smoothstep_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "texture2D"))
-        return texture2d_value(lower, 0, 0);
+        return texture2d_value(lower, 0, 0, 0);
     if (lower->token.kind == T_IDENT &&
         text_is(&lower->token, "texture2DLodEXT"))
-        return texture2d_value(lower, 1, 0);
+        return texture2d_value(lower, 1, 0, 0);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "texture2DProj"))
-        return texture2d_value(lower, 0, 1);
+        return texture2d_value(lower, 0, 1, 0);
     if (lower->token.kind == T_IDENT &&
         text_is(&lower->token, "texture2DProjLodEXT"))
-        return texture2d_value(lower, 1, 1);
+        return texture2d_value(lower, 1, 1, 0);
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "texture2DGradEXT"))
+        return texture2d_value(lower, 0, 0, 1);
+    if (lower->token.kind == T_IDENT &&
+        text_is(&lower->token, "texture2DProjGradEXT"))
+        return texture2d_value(lower, 0, 1, 1);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "gl_FragCoord"))
         return frag_coord_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "gl_PointCoord"))

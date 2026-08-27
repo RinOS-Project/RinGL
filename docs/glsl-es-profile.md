@@ -104,8 +104,13 @@ The current first-triangle slice supports:
   image/sampler bindings; projective forms first execute the live homogeneous
   divisions. Generic RinGPU selects the explicit mip with sampler min/max-LOD
   clamping. These forms do not use derivatives or an embedding-side sampler.
-  `texture2DGradEXT`, cube/3D/array/shadow texture forms, and unsupported
-  scalar expressions still reject before module publication;
+- context-gated `texture2DGradEXT(sampler2D, accepted vec2, accepted vec2
+  dPdx, accepted vec2 dPdy)` and the `texture2DProjGradEXT` `vec3`/`vec4`
+  variant. The four gradient components are materialized as consecutive live
+  RSH1 Float32 registers in dU/dX, dU/dY, dV/dX, dV/dY order, and each RGBA
+  `SAMPLE_IMAGE_2D_GRAD_F32` uses that explicit real RinGPU footprint. Cube/
+  3D/array/shadow texture forms and unsupported scalar expressions still
+  reject before module publication;
 - a canonical `varying vec2` texture-coordinate path with one through eight
   `texture2D()` calls over one through eight `uniform sampler2D` declarations,
   where each coordinate is either the shared varying or that varying plus/minus

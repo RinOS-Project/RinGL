@@ -26,6 +26,8 @@
                  << RINGL_RSH1_SAMPLE_2D_LOD_BINDING_BITS)))
 #define RINGL_RSH1_SAMPLE_2D_BIAS_PACK_BINDINGS(image_binding, sampler_binding) \
     RINGL_RSH1_SAMPLE_2D_LOD_PACK_BINDINGS(image_binding, sampler_binding)
+#define RINGL_RSH1_SAMPLE_2D_GRAD_PACK_BINDINGS(image_binding, sampler_binding) \
+    RINGL_RSH1_SAMPLE_2D_LOD_PACK_BINDINGS(image_binding, sampler_binding)
 
 enum RinGLRsh1Stage {
     RINGL_RSH1_STAGE_VERTEX = 1,
@@ -97,6 +99,9 @@ enum RinGLRsh1Opcode {
     /* Implicit samples retain derivative selection and use immediate as the
      * initialized Float32 shader bias before sampler LOD clamping. */
     RINGL_RSH1_OP_SAMPLE_IMAGE_2D_BIAS_F32 = 71,
+    /* Immediate names dU/dX followed by dU/dY, dV/dX, dV/dY in four
+     * consecutive initialized Float32 registers. */
+    RINGL_RSH1_OP_SAMPLE_IMAGE_2D_GRAD_F32 = 72,
 };
 
 enum RinGLRsh1Builtin {

@@ -126,8 +126,9 @@ The current first-triangle slice supports:
   every selected element has its own real resource pair. The same bounded
   constant-index rule applies to bounded numeric
   uniform arrays (eight scalar/vector elements per type; four vertex matrices).
-  Dynamic indexing, non-2D/gradient forms, and over-budget or otherwise
-  unsupported expressions reject;
+  Dynamic indexing, non-2D sampler forms other than the documented 2D
+  explicit-gradient slice, and over-budget or otherwise unsupported
+  expressions reject;
 - generic fragment `texture2D(sampler2D, vec2, float bias)` and
   `texture2DProj(sampler2D, vec3|vec4, float bias)` lowering: every component
   emits `SAMPLE_IMAGE_2D_BIAS_F32` with the live scalar Float bias register
@@ -142,7 +143,7 @@ The current first-triangle slice supports:
   sampled image/sampler lookup. Accepted projected expressions share the
   generic local/varying/swizzle/arithmetic/uniform path. A literal zero
   denominator rejects while lowering, while a dynamic zero reaches normal
-  RinGPU preflight and leaves the target unpublished; cube, gradient, shadow,
+  RinGPU preflight and leaves the target unpublished; cube/3D/array/shadow
   and other texture forms remain unsupported;
 - a constant-coordinate-only texture profile: one declared `sampler2D` may be
   sampled one through eight times, while a multi-declaration program uses each

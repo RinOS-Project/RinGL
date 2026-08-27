@@ -98,10 +98,12 @@ The current first-triangle slice supports:
   from fragment varyings and the supported arithmetic;
 - context-gated fragment `#extension GL_EXT_shader_texture_lod : enable` or
   `require`, with `texture2DLodEXT(sampler2D, accepted vec2, accepted scalar
-  float)`. Every RGBA component is a real `SAMPLE_IMAGE_2D_LOD_F32` RSH1
-  operation carrying the live Float32 LOD register and packed image/sampler
-  bindings; generic RinGPU selects the explicit mip with sampler min/max-LOD
-  clamping. This form does not use derivatives or an embedding-side sampler.
+  float)` and `texture2DProjLodEXT(sampler2D, accepted vec3|vec4, accepted
+  scalar float)`. Every RGBA component is a real `SAMPLE_IMAGE_2D_LOD_F32`
+  RSH1 operation carrying the live Float32 LOD register and packed
+  image/sampler bindings; projective forms first execute the live homogeneous
+  divisions. Generic RinGPU selects the explicit mip with sampler min/max-LOD
+  clamping. These forms do not use derivatives or an embedding-side sampler.
   `texture2DGradEXT`, cube/3D/array/shadow texture forms, and unsupported
   scalar expressions still reject before module publication;
 - a canonical `varying vec2` texture-coordinate path with one through eight

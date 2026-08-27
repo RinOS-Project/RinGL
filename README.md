@@ -126,10 +126,12 @@ conformance claim.
 `EXT_shader_texture_lod` is enabled per context only after Ladybird has
 returned its extension object. A fragment shader must declare
 `#extension GL_EXT_shader_texture_lod : enable` or `require` before it can use
-`texture2DLodEXT`. RinGL's bounded profile accepts a declared `sampler2D`, an
-ordinary accepted `vec2` coordinate expression, and an accepted finite scalar
-float LOD expression (including scalar uniforms and bounded local arithmetic).
-It lowers each RGBA component to `SAMPLE_IMAGE_2D_LOD_F32`; the RSH1
+`texture2DLodEXT` or `texture2DProjLodEXT`. RinGL's bounded profile accepts a
+declared `sampler2D`, an ordinary accepted `vec2` coordinate or `vec3`/`vec4`
+projective coordinate expression, and an accepted finite scalar float LOD
+expression (including scalar uniforms and bounded local arithmetic). Projective
+forms emit their live homogeneous divisions before every real LOD lookup.
+RinGL lowers each RGBA component to `SAMPLE_IMAGE_2D_LOD_F32`; the RSH1
 instruction carries the live Float32 LOD register and image/sampler bindings,
 and the generic RinGPU software backend selects the real mip chain with
 sampler min/max-LOD clamping. The lookup neither asks Aquamarine to select a

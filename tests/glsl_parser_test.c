@@ -58,6 +58,11 @@ int main(void)
             "uniform sampler2D colorTexture; uniform float lod; varying vec2 uv;\n"
             "void main() { gl_FragColor = "
             "texture2DLodEXT(colorTexture, uv, lod); }\n";
+        static const char projected_lod_source[] =
+            "#extension GL_EXT_shader_texture_lod : require\n"
+            "uniform sampler2D colorTexture; void main() { gl_FragColor = "
+            "texture2DProjLodEXT(colorTexture, vec3(0.25, 0.75, 0.5), "
+            "1.0); }\n";
         RinGLGlslUniformValue lod_uniform = {
             .name = "lod", .type = RINGL_FLOAT, .values = { 1.0f },
         };
@@ -65,6 +70,7 @@ int main(void)
         RinGLRsh1HeaderV1 header;
         const RinGLRsh1InstructionV1* instructions;
         uint32_t lod_samples = 0u;
+        uint32_t projected_divisions = 0u;
         int saw_lod_register = 0;
 
         ringl_shader_source(fragment, lod_source, -1);
@@ -104,6 +110,29 @@ int main(void)
             ++lod_samples;
         }
         assert(lod_samples == 4u && saw_lod_register != 0);
+        ringl_shader_source(fragment, projected_lod_source, -1);
+        ringl_compile_shader(fragment);
+        assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+        assert(ringl_glsl_lower_rsh1(RINGL_FRAGMENT_SHADER,
+                                     projected_lod_source,
+                                     sizeof(projected_lod_source) - 1u,
+                                     &lowered) == 0);
+        assert(lowered.ok != 0u && lowered.sampler_binding_count == 1u);
+        memcpy(&header, lowered.bytes, sizeof(header));
+        instructions = (const RinGLRsh1InstructionV1*)(
+            lowered.bytes + header.header_size);
+        lod_samples = 0u;
+        for (uint32_t index = 0u; index < header.instruction_count; ++index) {
+            if (instructions[index].opcode == RINGL_RSH1_OP_DIV_F32)
+                ++projected_divisions;
+            if (instructions[index].opcode ==
+                RINGL_RSH1_OP_SAMPLE_IMAGE_2D_LOD_F32) {
+                assert(instructions[index].resource ==
+                       RINGL_RSH1_SAMPLE_2D_LOD_PACK_BINDINGS(0u, 1u));
+                ++lod_samples;
+            }
+        }
+        assert(lod_samples == 4u && projected_divisions == 2u);
     }
 
     /* The ordinary GLSL ES texture2D overload keeps implicit derivatives and

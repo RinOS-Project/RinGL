@@ -3051,6 +3051,9 @@ static Value primary(Lower* lower)
         return texture2d_value(lower, 1, 0);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "texture2DProj"))
         return texture2d_value(lower, 0, 1);
+    if (lower->token.kind == T_IDENT &&
+        text_is(&lower->token, "texture2DProjLodEXT"))
+        return texture2d_value(lower, 1, 1);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "gl_FragCoord"))
         return frag_coord_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "gl_PointCoord"))

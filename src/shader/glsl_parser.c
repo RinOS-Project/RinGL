@@ -1031,6 +1031,8 @@ static int primary(Parser* parser)
             return texture2d_call(parser, 1, 0);
         if (token_is_ident(&ident, "texture2DProj"))
             return texture2d_call(parser, 0, 1);
+        if (token_is_ident(&ident, "texture2DProjLodEXT"))
+            return texture2d_call(parser, 1, 1);
         if (token_is_ident(&ident, "equal") ||
             token_is_ident(&ident, "notEqual"))
             return common_math_builtin_call(parser, 2u);

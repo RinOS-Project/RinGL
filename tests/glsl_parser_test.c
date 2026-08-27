@@ -115,6 +115,10 @@ int main(void)
         static const char invalid_bias_source[] =
             "uniform sampler2D colorTexture; void main() { gl_FragColor = "
             "texture2D(colorTexture, vec2(0.5), vec2(1.0)); }";
+        static const char projected_bias_source[] =
+            "uniform sampler2D colorTexture; uniform float q; uniform float bias; "
+            "void main() { gl_FragColor = texture2DProj(colorTexture, "
+            "vec3(0.25, 0.75, q), bias); }";
         RinGLGlslUniformValue bias_uniform = {
             .name = "bias", .type = RINGL_FLOAT, .values = { 1.0f },
         };
@@ -156,6 +160,11 @@ int main(void)
             ++bias_samples;
         }
         assert(bias_samples == 4u && saw_bias_register != 0);
+        assert(ringl_glsl_lower_rsh1(RINGL_FRAGMENT_SHADER,
+                                     projected_bias_source,
+                                     sizeof(projected_bias_source) - 1u,
+                                     &lowered) == 0);
+        assert(lowered.ok != 0u && lowered.sampler_binding_count == 1u);
         assert(ringl_glsl_lower_rsh1(RINGL_FRAGMENT_SHADER,
                                      invalid_bias_source,
                                      sizeof(invalid_bias_source) - 1u,

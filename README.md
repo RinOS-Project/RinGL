@@ -341,14 +341,15 @@ live Float expression, including a uniform rebuilt atomically with its module;
 a literal zero is rejected while lowering and a dynamic zero uses the existing
 RinGPU preflight failure path rather than inventing a sample value.
 
-The optional GLSL ES `texture2D(sampler2D, vec2, float bias)` overload also
-uses the generic path. Each RGBA component carries its live scalar Float bias
-in a `SAMPLE_IMAGE_2D_BIAS_F32` instruction with the real packed
-image/sampler pair. RinGPU still derives the implicit footprint (including
-bounded anisotropic selection), adds the shader bias to the sampler bias, then
-applies the sampler's min/max LOD clamp before selecting the real mip chain.
-It does not reinterpret the overload as `texture2DLodEXT` or ask Ladybird or
-Aquamarine to choose a level.
+The optional GLSL ES `texture2D(sampler2D, vec2, float bias)` and
+`texture2DProj(sampler2D, vec3|vec4, float bias)` overloads also use the
+generic path. Each RGBA component carries its live scalar Float bias in a
+`SAMPLE_IMAGE_2D_BIAS_F32` instruction with the real packed image/sampler
+pair; projective forms first emit the actual homogeneous divisions. RinGPU
+still derives the implicit footprint (including bounded anisotropic selection),
+adds the shader bias to the sampler bias, then applies the sampler's min/max
+LOD clamp before selecting the real mip chain. It does not reinterpret either
+overload as `texture2DLodEXT` or ask Ladybird or Aquamarine to choose a level.
 
 The generic path also executes bounded `sampler2D name[N]` arrays: the total
 number of elements is at most eight, and each `texture2D(name[index], uv)`

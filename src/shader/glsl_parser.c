@@ -846,6 +846,11 @@ static int texture2d_call(Parser* parser, int explicit_lod, int projected)
     if (projected) {
         if (!expression(parser))
             return 0;
+        if (parser->token.kind == TOK_COMMA) {
+            next_token(parser);
+            if (!expression(parser))
+                return 0;
+        }
         return expect(parser, TOK_RPAREN,
                       "expected ')' after texture2DProj arguments");
     }

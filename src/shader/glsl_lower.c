@@ -2845,7 +2845,7 @@ static Value texture2d_value(Lower* lower, int explicit_lod, int projected)
             return result;
         }
     } else {
-        if (!projected && take(lower, T_COMMA)) {
+        if (take(lower, T_COMMA)) {
             lod = expression(lower);
             implicit_bias = 1;
             if (lod.width != 1u || lod.matrix || lod.is_i32 || lod.is_bool) {

@@ -419,9 +419,15 @@ For the RinOS Ladybird WebGL 1 embedding, this native-to-RinGL condition is now
 also a browser transition: the command-current, presentation, and
 `isContextLost()` paths latch the WebGL context-lost flag before dispatching one
 cancelable canvas `webglcontextlost` event. A handler can therefore re-enter
-only against the already-lost context. Surface recreation, restoration, and
-`webglcontextrestored` are still absent, so this is a loss-notification
-contract, not a restoration claim.
+only against the already-lost context. A canceled native-loss event queues a
+DOM task which creates and initializes a replacement RinGL bridge/private
+surface before atomically installing it, resetting WebGL state, invalidating
+old object handles by generation, and firing `webglcontextrestored`.
+`WEBGL_lose_context` retires the same bridge/surface but waits for an explicit
+`restoreContext()` after its canceled event. Handler-time, uncanceled,
+native-loss, duplicate, and failed-recreation requests retain the lost state;
+surface/bridge errors that are not an exact device-loss result do not forge this
+browser transition.
 
 ## Expected ownership
 

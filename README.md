@@ -1206,17 +1206,26 @@ its native attachment storage and is not exposed by this regular sample path.
 Only red is relied on by the WebGL depth-texture extension; the remaining
 values are this backend's documented deterministic choice. A texture equal to
 either active FBO attachment is rejected before it can form a feedback loop.
-Multisampling, multiple color attachments, and broad GLES framebuffer
-semantics are not implemented.
+Multisampling and broad GLES framebuffer semantics are not implemented. The
+bounded WebGL 1 `WEBGL_draw_buffers` profile does execute up to four matching
+`TEXTURE_2D` color attachments through the same RinGL/RinGPU route; mixed
+format/sample attachments and the general GLES MRT surface are intentionally
+outside that profile.
 
 RinGL is not a GLES conformance claim. An exact backend
 `RINGL_RIN_GPU_ERROR_DEVICE_LOST` now makes the context sticky-lost: ordinary
 entry points stop observing it, `ringl_get_error()` returns
 `CONTEXT_LOST_WEBGL` once, and subsequent calls cannot mutate its GL state.
 The RinOS Ladybird WebGL 1 embedding latches that browser-visible state and
-emits one canvas `webglcontextlost` event before script can re-enter it. Context
-restoration, `webglcontextrestored`, and broader shader expressions remain
-unfinished. No API or ABI stability guarantee is made yet.
+emits one cancelable canvas `webglcontextlost` event before script can re-enter
+it. For a canceled native-loss event, it creates and initializes a fresh RinGL
+bridge/surface in a later DOM task, resets WebGL state, invalidates old native
+object handles by generation, and then emits `webglcontextrestored`. The
+`WEBGL_lose_context` extension uses the same retirement path but requires an
+explicit `restoreContext()` after a canceled event; handler-time, uncanceled,
+native-loss, duplicate, and failed-recreation requests leave the context lost.
+Broader shader expressions remain unfinished. No API or ABI stability guarantee
+is made yet.
 
 The raw shader path now has a bounded scalar/vector/matrix uniform execution
 profile. A linked program retains `float`, `vec2`, `vec3`, `vec4`, and bounded

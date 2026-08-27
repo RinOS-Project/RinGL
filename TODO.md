@@ -607,7 +607,10 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   - RinOS Ladybird WebGL 1 now translates sticky RinGL loss through command,
     present, and `isContextLost()` into a once-only `webglcontextlost` canvas
     event with the browser lost flag set before handler re-entry. A cancelled
-    native loss queues only a fully initialized replacement RinGL context,
+    native loss queues only a fully initialized replacement RinGL context;
+    logical `0×N`/`N×0` canvases use the same private 1×1 physical target
+    normalization as initial creation, so recovery does not turn a valid
+    zero-sized canvas into a permanently lost context. The replacement
     invalidates old native object handles by generation, resets WebGL state,
     and then sends `webglcontextrestored`. `WEBGL_lose_context` destroys the
     same RinGL bridge/private surface but deliberately waits for explicit

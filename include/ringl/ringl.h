@@ -1532,7 +1532,8 @@ int ringl_enable_webgl_blend_minmax(void);
 int ringl_enable_webgl_standard_derivatives(void);
 /* Enables EXT_shader_texture_lod after the browser has exposed its empty
  * extension object. The bounded shader profile accepts texture2DLodEXT with
- * a finite literal LOD and executes its mip selection in RinGPU. */
+ * an accepted finite scalar Float LOD expression and executes its mip
+ * selection in RinGPU. */
 int ringl_enable_webgl_shader_texture_lod(void);
 /* Enables EXT_frag_depth only after the browser has exposed its empty WebGL
  * extension object. Fragment shaders that write gl_FragDepthEXT then carry a

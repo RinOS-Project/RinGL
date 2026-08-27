@@ -49,18 +49,23 @@ int main(void)
 
     /* EXT_shader_texture_lod is an empty WebGL object, but its GLSL builtin
      * remains unavailable until the current RinGL context has been enabled.
-     * The emitted RSH1 op carries the exact literal level and real resource
-     * pair instead of treating explicit mip selection as a host shortcut. */
+     * The emitted RSH1 op carries a live Float32 LOD register and real
+     * resource pair instead of treating explicit mip selection as a host
+     * shortcut. */
     {
         static const char lod_source[] =
             "#extension GL_EXT_shader_texture_lod : enable\n"
-            "uniform sampler2D colorTexture; varying vec2 uv;\n"
+            "uniform sampler2D colorTexture; uniform float lod; varying vec2 uv;\n"
             "void main() { gl_FragColor = "
-            "texture2DLodEXT(colorTexture, uv, 1.0); }\n";
+            "texture2DLodEXT(colorTexture, uv, lod); }\n";
+        RinGLGlslUniformValue lod_uniform = {
+            .name = "lod", .type = RINGL_FLOAT, .values = { 1.0f },
+        };
         RinGLGlslLowerResult lowered;
         RinGLRsh1HeaderV1 header;
         const RinGLRsh1InstructionV1* instructions;
         uint32_t lod_samples = 0u;
+        int saw_lod_register = 0;
 
         ringl_shader_source(fragment, lod_source, -1);
         ringl_compile_shader(fragment);
@@ -70,9 +75,10 @@ int main(void)
         assert(ringl_enable_webgl_shader_texture_lod() == 0);
         ringl_compile_shader(fragment);
         assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
-        assert(ringl_glsl_lower_rsh1(RINGL_FRAGMENT_SHADER, lod_source,
-                                     sizeof(lod_source) - 1u,
-                                     &lowered) == 0);
+        assert(ringl_glsl_lower_rsh1_with_uniforms(
+                   RINGL_FRAGMENT_SHADER, lod_source,
+                   sizeof(lod_source) - 1u, &lod_uniform, 1u,
+                   &lowered) == 0);
         assert(lowered.ok != 0u && lowered.sampler_binding_count == 1u);
         memcpy(&header, lowered.bytes, sizeof(header));
         instructions = (const RinGLRsh1InstructionV1*)(
@@ -84,10 +90,20 @@ int main(void)
             }
             assert(instructions[index].resource ==
                    RINGL_RSH1_SAMPLE_2D_LOD_PACK_BINDINGS(0u, 1u));
-            assert(instructions[index].immediate == UINT32_C(0x3f800000));
+            assert(instructions[index].immediate < header.register_count);
+            for (uint32_t prior = 0u; prior < index; ++prior) {
+                if (instructions[prior].destination ==
+                    instructions[index].immediate) {
+                    assert(instructions[prior].opcode ==
+                           RINGL_RSH1_OP_CONST_F32);
+                    assert(instructions[prior].immediate ==
+                           UINT32_C(0x3f800000));
+                    saw_lod_register = 1;
+                }
+            }
             ++lod_samples;
         }
-        assert(lod_samples == 4u);
+        assert(lod_samples == 4u && saw_lod_register != 0);
     }
 
     /* Numeric arrays stay in the generic RSH1 path. Alongside decimal

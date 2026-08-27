@@ -90,7 +90,7 @@ enum RinGLRsh1Opcode {
     RINGL_RSH1_OP_LOG2_F32 = 68,
     RINGL_RSH1_OP_POW_F32 = 69,
     /* Explicit LOD samples pack the image/sampler bindings in resource and
-     * retain the finite binary32 LOD bit pattern in immediate. */
+     * retain the initialized Float32 LOD register in immediate. */
     RINGL_RSH1_OP_SAMPLE_IMAGE_2D_LOD_F32 = 70,
 };
 

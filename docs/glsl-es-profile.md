@@ -96,6 +96,14 @@ The current first-triangle slice supports:
 - context-gated fragment `#extension GL_OES_standard_derivatives : enable` or
   `require`, with `dFdx`, `dFdy`, and `fwidth` over float/vecN values formed
   from fragment varyings and the supported arithmetic;
+- context-gated fragment `#extension GL_EXT_shader_texture_lod : enable` or
+  `require`, with `texture2DLodEXT(sampler2D, accepted vec2, accepted scalar
+  float)`. Every RGBA component is a real `SAMPLE_IMAGE_2D_LOD_F32` RSH1
+  operation carrying the live Float32 LOD register and packed image/sampler
+  bindings; generic RinGPU selects the explicit mip with sampler min/max-LOD
+  clamping. This form does not use derivatives or an embedding-side sampler.
+  `texture2DGradEXT`, cube/3D/array/shadow texture forms, and unsupported
+  scalar expressions still reject before module publication;
 - a canonical `varying vec2` texture-coordinate path with one through eight
   `texture2D()` calls over one through eight `uniform sampler2D` declarations,
   where each coordinate is either the shared varying or that varying plus/minus
@@ -111,7 +119,7 @@ The current first-triangle slice supports:
   every selected element has its own real resource pair. The same bounded
   constant-index rule applies to bounded numeric
   uniform arrays (eight scalar/vector elements per type; four vertex matrices).
-  Dynamic indexing, non-2D/LOD/gradient forms, and over-budget or otherwise
+  Dynamic indexing, non-2D/gradient forms, and over-budget or otherwise
   unsupported expressions reject;
 - a constant-coordinate-only texture profile: one declared `sampler2D` may be
   sampled one through eight times, while a multi-declaration program uses each

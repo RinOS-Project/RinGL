@@ -127,16 +127,17 @@ conformance claim.
 returned its extension object. A fragment shader must declare
 `#extension GL_EXT_shader_texture_lod : enable` or `require` before it can use
 `texture2DLodEXT`. RinGL's bounded profile accepts a declared `sampler2D`, an
-ordinary accepted `vec2` coordinate expression, and one finite numeric LOD
-literal. It lowers each RGBA component to `SAMPLE_IMAGE_2D_LOD_F32`; the RSH1
-instruction carries the exact binary32 LOD and image/sampler bindings, and the
-generic RinGPU software backend selects the real mip chain with sampler
-min/max-LOD clamping. The lookup neither asks Aquamarine to select a mip nor
-falls back to implicit derivatives.
+ordinary accepted `vec2` coordinate expression, and an accepted finite scalar
+float LOD expression (including scalar uniforms and bounded local arithmetic).
+It lowers each RGBA component to `SAMPLE_IMAGE_2D_LOD_F32`; the RSH1
+instruction carries the live Float32 LOD register and image/sampler bindings,
+and the generic RinGPU software backend selects the real mip chain with
+sampler min/max-LOD clamping. The lookup neither asks Aquamarine to select a
+mip nor falls back to implicit derivatives.
 
-Dynamic/uniform LOD expressions, `texture2DGradEXT`, cube/3D/array/shadow
-texture forms, and general GLSL ES texture conformance remain unsupported and
-are rejected before an executable module is published.
+`texture2DGradEXT`, cube/3D/array/shadow texture forms, and general GLSL ES
+texture conformance remain unsupported and are rejected before an executable
+module is published.
 
 ## Bounded fragment discard
 

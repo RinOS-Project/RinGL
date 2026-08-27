@@ -843,7 +843,7 @@ static int emit_texture_lod_sample(Lower* lower, uint16_t destination,
                                    uint16_t coordinate_u,
                                    uint16_t coordinate_v,
                                    uint16_t component, uint16_t resource,
-                                   uint32_t lod_bits)
+                                   uint16_t lod_register)
 {
     RinGLRsh1InstructionV1* instruction;
 
@@ -851,7 +851,7 @@ static int emit_texture_lod_sample(Lower* lower, uint16_t destination,
         resource >= RINGL_RSH1_SAMPLE_2D_LOD_BINDING_MASK ||
         resource + 1u > RINGL_RSH1_SAMPLE_2D_LOD_BINDING_MASK ||
         !emit(lower, RINGL_RSH1_OP_SAMPLE_IMAGE_2D_LOD_F32, destination,
-              coordinate_u, coordinate_v, lod_bits)) {
+              coordinate_u, coordinate_v, lod_register)) {
         return 0;
     }
     instruction = &lower->ins[lower->ins_count - 1u];
@@ -2748,46 +2748,16 @@ static uint16_t active_sampler_resource(Lower* lower, const Symbol* sampler,
  * are ordinary generic values, so locals, generic varyings, swizzles,
  * arithmetic, and numeric uniforms all share the same expression path; no
  * source-shape profile or host-side texture evaluation participates. */
-static int explicit_lod_bits(Lower* lower, uint32_t* bits_out)
-{
-    char text[64];
-    char* end = NULL;
-    size_t prefix = 0u;
-    float value;
-
-    if (lower == NULL || bits_out == NULL)
-        return 0;
-    if (lower->token.kind == T_PLUS || lower->token.kind == T_MINUS) {
-        text[prefix++] = lower->token.kind == T_MINUS ? '-' : '+';
-        next(lower);
-    }
-    if (lower->token.kind != T_NUMBER ||
-        lower->token.length + prefix >= sizeof(text)) {
-        fail(lower, "texture2DLodEXT level must be a finite literal");
-        return 0;
-    }
-    memcpy(text + prefix, lower->token.begin, lower->token.length);
-    text[prefix + lower->token.length] = '\0';
-    value = strtof(text, &end);
-    if (end == text || *end != '\0' || !finite_f32(value)) {
-        fail(lower, "texture2DLodEXT level must be a finite literal");
-        return 0;
-    }
-    memcpy(bits_out, &value, sizeof(*bits_out));
-    next(lower);
-    return 1;
-}
-
 static Value texture2d_value(Lower* lower, int explicit_lod)
 {
     Value result = invalid_value();
     Value coordinates;
+    Value lod;
     Token name;
     Symbol* sampler;
     uint16_t resource;
     uint32_t component;
     uint32_t sampler_array_index = 0u;
-    uint32_t lod_bits = 0u;
 
     if (lower->shader_type != RINGL_FRAGMENT_SHADER) {
         fail(lower, "texture2D is only supported in fragment shaders");
@@ -2825,17 +2795,25 @@ static Value texture2d_value(Lower* lower, int explicit_lod)
         return result;
     coordinates = expression(lower);
     if (coordinates.width != 2u || coordinates.matrix || coordinates.is_i32 ||
-        coordinates.is_bool ||
-        (explicit_lod
-             ? (!need(lower, T_COMMA,
-                      "expected ',' before texture2DLodEXT level") ||
-                !explicit_lod_bits(lower, &lod_bits) ||
-                !need(lower, T_RPAREN,
-                      "expected ')' after texture2DLodEXT arguments"))
-             : !need(lower, T_RPAREN,
-                     "expected ')' after texture2D coordinates"))) {
+        coordinates.is_bool) {
         if (lower->result->diagnostic[0] == '\0')
             fail(lower, "texture2D coordinates must be floating-point vec2");
+        return result;
+    }
+    lod = invalid_value();
+    if (explicit_lod) {
+        if (!need(lower, T_COMMA, "expected ',' before texture2DLodEXT level"))
+            return result;
+        lod = expression(lower);
+        if (lod.width != 1u || lod.matrix || lod.is_i32 || lod.is_bool ||
+            !need(lower, T_RPAREN,
+                  "expected ')' after texture2DLodEXT arguments")) {
+            if (lower->result->diagnostic[0] == '\0')
+                fail(lower,
+                     "texture2DLodEXT level must be a floating-point scalar");
+            return result;
+        }
+    } else if (!need(lower, T_RPAREN, "expected ')' after texture2D coordinates")) {
         return result;
     }
     resource = active_sampler_resource(lower, sampler, sampler_array_index);
@@ -2849,7 +2827,7 @@ static Value texture2d_value(Lower* lower, int explicit_lod)
                  ? !emit_texture_lod_sample(
                        lower, register_index, coordinates.regs[0],
                        coordinates.regs[1], (uint16_t)component, resource,
-                       lod_bits)
+                       lod.regs[0])
                  : !emit_texture_sample(
                        lower, register_index, coordinates.regs[0],
                        coordinates.regs[1], (uint16_t)component, resource))) {

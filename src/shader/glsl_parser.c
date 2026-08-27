@@ -923,7 +923,7 @@ static int texture2d_call(Parser* parser, int explicit_lod)
     if (explicit_lod) {
         if (!expect(parser, TOK_COMMA,
                     "expected ',' before texture2DLodEXT level") ||
-            !finite_number(parser)) {
+            !expression(parser)) {
             return 0;
         }
     }

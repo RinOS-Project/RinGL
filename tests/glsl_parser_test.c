@@ -106,6 +106,63 @@ int main(void)
         assert(lod_samples == 4u && saw_lod_register != 0);
     }
 
+    /* The ordinary GLSL ES texture2D overload keeps implicit derivatives and
+     * carries its third Float argument as a live RSH1 bias register. */
+    {
+        static const char bias_source[] =
+            "uniform sampler2D colorTexture; uniform float bias; varying vec2 uv;\n"
+            "void main() { gl_FragColor = texture2D(colorTexture, uv, bias); }\n";
+        static const char invalid_bias_source[] =
+            "uniform sampler2D colorTexture; void main() { gl_FragColor = "
+            "texture2D(colorTexture, vec2(0.5), vec2(1.0)); }";
+        RinGLGlslUniformValue bias_uniform = {
+            .name = "bias", .type = RINGL_FLOAT, .values = { 1.0f },
+        };
+        RinGLGlslLowerResult lowered;
+        RinGLRsh1HeaderV1 header;
+        const RinGLRsh1InstructionV1* instructions;
+        uint32_t bias_samples = 0u;
+        int saw_bias_register = 0;
+
+        ringl_shader_source(fragment, bias_source, -1);
+        ringl_compile_shader(fragment);
+        assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+        assert(ringl_glsl_lower_rsh1_with_uniforms(
+                   RINGL_FRAGMENT_SHADER, bias_source,
+                   sizeof(bias_source) - 1u, &bias_uniform, 1u,
+                   &lowered) == 0);
+        assert(lowered.ok != 0u && lowered.sampler_binding_count == 1u);
+        memcpy(&header, lowered.bytes, sizeof(header));
+        instructions = (const RinGLRsh1InstructionV1*)(
+            lowered.bytes + header.header_size);
+        for (uint32_t index = 0u; index < header.instruction_count; ++index) {
+            if (instructions[index].opcode !=
+                RINGL_RSH1_OP_SAMPLE_IMAGE_2D_BIAS_F32) {
+                continue;
+            }
+            assert(instructions[index].resource ==
+                   RINGL_RSH1_SAMPLE_2D_BIAS_PACK_BINDINGS(0u, 1u));
+            assert(instructions[index].immediate < header.register_count);
+            for (uint32_t prior = 0u; prior < index; ++prior) {
+                if (instructions[prior].destination ==
+                    instructions[index].immediate) {
+                    assert(instructions[prior].opcode ==
+                           RINGL_RSH1_OP_CONST_F32);
+                    assert(instructions[prior].immediate ==
+                           UINT32_C(0x3f800000));
+                    saw_bias_register = 1;
+                }
+            }
+            ++bias_samples;
+        }
+        assert(bias_samples == 4u && saw_bias_register != 0);
+        assert(ringl_glsl_lower_rsh1(RINGL_FRAGMENT_SHADER,
+                                     invalid_bias_source,
+                                     sizeof(invalid_bias_source) - 1u,
+                                     &lowered) != 0);
+        assert(strstr(lowered.diagnostic, "bias must") != NULL);
+    }
+
     /* GLSL ES 1 projective sampling divides xy by the final homogeneous
      * coordinate in RSH1 before the normal real image/sampler lookup. The
      * divisor remains a live uniform register, so this is not a parser-time

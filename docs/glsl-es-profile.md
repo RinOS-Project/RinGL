@@ -121,6 +121,12 @@ The current first-triangle slice supports:
   uniform arrays (eight scalar/vector elements per type; four vertex matrices).
   Dynamic indexing, non-2D/gradient forms, and over-budget or otherwise
   unsupported expressions reject;
+- generic fragment `texture2D(sampler2D, vec2, float bias)` lowering: every
+  component emits `SAMPLE_IMAGE_2D_BIAS_F32` with the live scalar Float bias
+  register and packed real image/sampler bindings. RinGPU preserves the
+  implicit derivative footprint and bounded anisotropic selection, combines
+  shader and sampler LOD bias before min/max LOD clamping, then samples the
+  actual mip chain. This is not an explicit-LOD or embedding-side fallback;
 - generic fragment `texture2DProj(sampler2D, vec3|vec4)` lowering: the first
   two Float components are divided by the last (`xy / z` or `xy / w`) through
   two live RSH1 `DIV_F32` instructions, then use the ordinary four-component

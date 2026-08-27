@@ -933,6 +933,11 @@ static int texture2d_call(Parser* parser, int explicit_lod, int projected)
         fail(parser, "texture2D coordinate must be vec2");
         return 0;
     }
+    if (!explicit_lod && !projected && parser->token.kind == TOK_COMMA) {
+        next_token(parser);
+        if (!expression(parser))
+            return 0;
+    }
     if (explicit_lod) {
         if (!expect(parser, TOK_COMMA,
                     "expected ',' before texture2DLodEXT level") ||

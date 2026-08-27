@@ -861,6 +861,32 @@ static int emit_texture_lod_sample(Lower* lower, uint16_t destination,
     return 1;
 }
 
+/* Bias remains an implicit derivative sample. Its live Float32 register is
+ * packed like explicit LOD only because immediate is no longer available for
+ * the sampler binding; RinGPU computes its normal footprint before applying
+ * the shader bias and sampler LOD clamps. */
+static int emit_texture_bias_sample(Lower* lower, uint16_t destination,
+                                    uint16_t coordinate_u,
+                                    uint16_t coordinate_v,
+                                    uint16_t component, uint16_t resource,
+                                    uint16_t bias_register)
+{
+    RinGLRsh1InstructionV1* instruction;
+
+    if (lower == NULL || component >= 4u ||
+        resource >= RINGL_RSH1_SAMPLE_2D_LOD_BINDING_MASK ||
+        resource + 1u > RINGL_RSH1_SAMPLE_2D_LOD_BINDING_MASK ||
+        !emit(lower, RINGL_RSH1_OP_SAMPLE_IMAGE_2D_BIAS_F32, destination,
+              coordinate_u, coordinate_v, bias_register)) {
+        return 0;
+    }
+    instruction = &lower->ins[lower->ins_count - 1u];
+    instruction->flags = component;
+    instruction->resource = RINGL_RSH1_SAMPLE_2D_BIAS_PACK_BINDINGS(
+        resource, (uint16_t)(resource + 1u));
+    return 1;
+}
+
 static Value expression(Lower* lower);
 static Value componentwise_binary(Lower* lower, const Value* left,
                                    const Value* right, uint16_t opcode,
@@ -2758,6 +2784,7 @@ static Value texture2d_value(Lower* lower, int explicit_lod, int projected)
     uint16_t resource;
     uint32_t component;
     uint32_t sampler_array_index = 0u;
+    int implicit_bias = 0;
 
     if (lower->shader_type != RINGL_FRAGMENT_SHADER) {
         fail(lower, projected ? "texture2DProj is only supported in fragment shaders"
@@ -2817,10 +2844,24 @@ static Value texture2d_value(Lower* lower, int explicit_lod, int projected)
                      "texture2DLodEXT level must be a floating-point scalar");
             return result;
         }
-    } else if (!need(lower, T_RPAREN, projected
-                                          ? "expected ')' after texture2DProj coordinates"
-                                          : "expected ')' after texture2D coordinates")) {
-        return result;
+    } else {
+        if (!projected && take(lower, T_COMMA)) {
+            lod = expression(lower);
+            implicit_bias = 1;
+            if (lod.width != 1u || lod.matrix || lod.is_i32 || lod.is_bool) {
+                if (lower->result->diagnostic[0] == '\0')
+                    fail(lower,
+                         "texture2D bias must be a floating-point scalar");
+                return result;
+            }
+        }
+        if (!need(lower, T_RPAREN, projected
+                                       ? "expected ')' after texture2DProj coordinates"
+                                       : implicit_bias
+                                       ? "expected ')' after texture2D bias"
+                                       : "expected ')' after texture2D coordinates")) {
+            return result;
+        }
     }
     if (projected) {
         Value xy = invalid_value();
@@ -2849,6 +2890,11 @@ static Value texture2d_value(Lower* lower, int explicit_lod, int projected)
         if (register_index == RINGL_RSH1_UNUSED ||
             (explicit_lod
                  ? !emit_texture_lod_sample(
+                       lower, register_index, coordinates.regs[0],
+                       coordinates.regs[1], (uint16_t)component, resource,
+                       lod.regs[0])
+                 : implicit_bias
+                 ? !emit_texture_bias_sample(
                        lower, register_index, coordinates.regs[0],
                        coordinates.regs[1], (uint16_t)component, resource,
                        lod.regs[0])

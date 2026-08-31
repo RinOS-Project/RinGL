@@ -777,8 +777,33 @@ struct RinGLAquamarineSurfaceContext {
     RinGpuHandle depth_image;
     uint32_t color_state;
     uint32_t depth_state;
+    /* Bind groups own decoded Float32 sampler snapshots in addition to the
+     * RinGPU image allocation. Keep those backend-owned copies bounded too. */
+    uint64_t sampled_snapshot_bytes;
     uint32_t initialized;
 };
+
+static int backend_reserve_sampled_snapshot_bytes(
+    RinGLAquamarineSurfaceContext* context, uint64_t bytes)
+{
+    if (!context || bytes > RINGL_AQUAMARINE_SURFACE_MAX_TOTAL_ALLOCATION_BYTES ||
+        context->sampled_snapshot_bytes >
+            RINGL_AQUAMARINE_SURFACE_MAX_TOTAL_ALLOCATION_BYTES - bytes)
+        return 0;
+    context->sampled_snapshot_bytes += bytes;
+    return 1;
+}
+
+static void backend_release_sampled_snapshot_bytes(
+    RinGLAquamarineSurfaceContext* context, uint64_t bytes)
+{
+    if (!context)
+        return;
+    if (bytes >= context->sampled_snapshot_bytes)
+        context->sampled_snapshot_bytes = 0u;
+    else
+        context->sampled_snapshot_bytes -= bytes;
+}
 
 static int target_valid(const RinGLAquamarineSurfaceTargetV1* target)
 {
@@ -1688,6 +1713,7 @@ static void backend_destroy_graphics_pipeline(void* opaque, uint64_t cookie)
 }
 
 static int backend_snapshot_sampled_mip(
+    RinGLAquamarineSurfaceContext* context,
     const RinGLAquamarineSurfaceImage* image, uint32_t mip_level,
     float** texels_out, uint32_t* texel_count_out, uint32_t* width_out,
     uint32_t* height_out)
@@ -1698,6 +1724,7 @@ static int backend_snapshot_sampled_mip(
     uint8_t* source = NULL;
     uint8_t* stencil_storage = NULL;
     uint64_t source_pitch = 0u;
+    uint64_t allocation_bytes;
     uint32_t depth_pitch = 0u;
     uint32_t width;
     uint32_t height;
@@ -1713,18 +1740,27 @@ static int backend_snapshot_sampled_mip(
         texel_count > SIZE_MAX / (4u * sizeof(*texels))) {
         return RIN_GPU_ERROR_BOUNDS;
     }
+    if (!backend_multiply_u64(texel_count, 4u * sizeof(*texels),
+                              &allocation_bytes) ||
+        !backend_reserve_sampled_snapshot_bytes(context, allocation_bytes))
+        return RIN_GPU_ERROR_NO_MEMORY;
     texels = calloc((size_t)texel_count * 4u, sizeof(*texels));
-    if (!texels) return RIN_GPU_ERROR_NO_MEMORY;
+    if (!texels) {
+        backend_release_sampled_snapshot_bytes(context, allocation_bytes);
+        return RIN_GPU_ERROR_NO_MEMORY;
+    }
     if (image->descriptor.format == RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) {
         if (offscreen_depth_stencil_storage_at_mip(
                 image, mip_level, &depth_storage, &stencil_storage,
                 &depth_pitch) != RIN_GPU_OK) {
+            backend_release_sampled_snapshot_bytes(context, allocation_bytes);
             free(texels);
             return RIN_GPU_ERROR_STATE;
         }
     } else if (offscreen_image_storage(image, mip_level, &source,
                                        &source_pitch, &width, &height) !=
                RIN_GPU_OK) {
+        backend_release_sampled_snapshot_bytes(context, allocation_bytes);
         free(texels);
         return RIN_GPU_ERROR_STATE;
     }
@@ -1791,8 +1827,13 @@ static void backend_release_bind_group_texels(RinGLAquamarineSurfaceBindGroup* g
          image < RINGL_AQUAMARINE_SURFACE_MAX_SAMPLED_IMAGES; ++image) {
         for (uint32_t mip = 0u;
              mip < RINGL_AQUAMARINE_SURFACE_MAX_IMAGE_MIP_LEVELS; ++mip) {
+            uint64_t allocation_bytes =
+                (uint64_t)group->texel_counts[image][mip] * 4u * sizeof(float);
+            backend_release_sampled_snapshot_bytes(group->owner,
+                                                   allocation_bytes);
             free(group->texels[image][mip]);
             group->texels[image][mip] = NULL;
+            group->texel_counts[image][mip] = 0u;
         }
     }
 }
@@ -1835,8 +1876,13 @@ static int backend_create_graphics_bind_group(
     sampled_image_count = binding_count / 2u;
     if (sampled_image_count > RINGL_AQUAMARINE_SURFACE_MAX_SAMPLED_IMAGES)
         return RIN_GPU_ERROR_INVALID_ARGUMENT;
+    if (!backend_reserve_sampled_snapshot_bytes(context, sizeof(*group)))
+        return RIN_GPU_ERROR_NO_MEMORY;
     group = calloc(1u, sizeof(*group));
-    if (!group) return RIN_GPU_ERROR_NO_MEMORY;
+    if (!group) {
+        backend_release_sampled_snapshot_bytes(context, sizeof(*group));
+        return RIN_GPU_ERROR_NO_MEMORY;
+    }
     group->owner = context;
     group->pipeline = pipeline;
     group->sampled_image_count = sampled_image_count;
@@ -1897,7 +1943,7 @@ static int backend_create_graphics_bind_group(
         }
         for (uint32_t mip = 0u; mip < mip_count; ++mip) {
             int snapshot_result = backend_snapshot_sampled_mip(
-                image, image_binding->mip_level + mip,
+                context, image, image_binding->mip_level + mip,
                 &group->texels[sampled_index][mip],
                 &group->texel_counts[sampled_index][mip],
                 &group->widths[sampled_index][mip],
@@ -1928,18 +1974,22 @@ static int backend_create_graphics_bind_group(
 
 no_memory:
     backend_release_bind_group_texels(group);
+    backend_release_sampled_snapshot_bytes(context, sizeof(*group));
     free(group);
     return RIN_GPU_ERROR_NO_MEMORY;
 unsupported:
     backend_release_bind_group_texels(group);
+    backend_release_sampled_snapshot_bytes(context, sizeof(*group));
     free(group);
     return RIN_GPU_ERROR_UNSUPPORTED;
 state_error:
     backend_release_bind_group_texels(group);
+    backend_release_sampled_snapshot_bytes(context, sizeof(*group));
     free(group);
     return RIN_GPU_ERROR_STATE;
 invalid_argument:
     backend_release_bind_group_texels(group);
+    backend_release_sampled_snapshot_bytes(context, sizeof(*group));
     free(group);
     return RIN_GPU_ERROR_INVALID_ARGUMENT;
 }
@@ -1951,6 +2001,7 @@ static void backend_destroy_graphics_bind_group(void* opaque, uint64_t cookie)
     (void)opaque;
     if (!group) return;
     backend_release_bind_group_texels(group);
+    backend_release_sampled_snapshot_bytes(group->owner, sizeof(*group));
     free(group);
 }
 

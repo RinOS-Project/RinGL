@@ -53,6 +53,11 @@ compute-bind-group callbacks now return `RIN_GPU_ERROR_UNSUPPORTED` rather than
 publishing synthetic resource cookies; compute execution, storage bindings,
 and dispatch remain an explicit follow-up backend item.
 
+The same surface now bounds backend-owned bind-group metadata and decoded
+Float32 sampled-mip snapshots with a separate 512 MiB owner budget. Snapshot
+bytes are reserved before `calloc`, and every conversion failure, bind-group
+rollback, and destruction path releases the exact amount.
+
 ## Architecture
 
 ```text

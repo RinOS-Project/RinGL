@@ -666,6 +666,13 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     miss is rejected before module or pipeline creation, then succeeds after
     release. Other parser/lowerer workspaces, diagnostics, backend-owned
     resources, and hardware/QEMU accounting remain open.
+  - [x] Bound private Aquamarine bind-group metadata and decoded Float32
+    sampled-mip snapshots to a 512 MiB per-surface budget. The exact RGBA-F32
+    byte count is reserved before each snapshot allocation and released on
+    conversion failure, bind-group rollback, and destruction; metadata is
+    accounted for by the same owner. Compute resources remain explicitly
+    unsupported, while other backend resources and hardware/QEMU accounting
+    remain open.
 - [x] Add WebGL-oriented negative tests for malformed state and shader input.
   `tests/ringl_webgl_negative_test.c` covers failure-atomic descriptor queries,
   invalid viewport/scissor/depth/blend values, and malformed GLSL compile

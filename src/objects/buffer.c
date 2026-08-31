@@ -456,6 +456,47 @@ uint32_t ringl_get_buffer_usage(uint32_t target)
     return object->usage;
 }
 
+int ringl_get_buffer_parameteriv_bounded(uint32_t target, uint32_t pname,
+                                         int32_t* value, size_t value_count)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLBufferObject* object;
+    int32_t result;
+
+    if (context == NULL)
+        return -1;
+    if (!ringl_buffer_target_valid(target)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
+    if (pname != RINGL_BUFFER_SIZE && pname != RINGL_BUFFER_USAGE) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
+    if (value == NULL || value_count < 1u) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+    object = ringl_bound_buffer_object(context, target);
+    if (object == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    if (pname == RINGL_BUFFER_SIZE) {
+        /* The current 512 MiB shadow limit fits in a GLES GLint, but retain
+         * an explicit guard if the storage profile is raised later. */
+        if (object->size_bytes > (uint64_t)INT32_MAX) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return -1;
+        }
+        result = (int32_t)object->size_bytes;
+    } else {
+        result = (int32_t)object->usage;
+    }
+    *value = result;
+    return 0;
+}
+
 void ringl_buffer_objects_destroy_all(RinGLContext* context)
 {
     uint32_t index;

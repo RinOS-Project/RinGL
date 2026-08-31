@@ -88,6 +88,12 @@ provide integer and Float32 adapters with complete-span validation. The raw
 pointer query remains unavailable: exposing a host pointer would violate the
 embedding ABI, so callers must use the versioned attribute record instead.
 
+`glGetBufferParameteriv` is also available through a bounded adapter for the
+represented `BUFFER_SIZE` and `BUFFER_USAGE` pnames. Target, binding, pname,
+and the one-element output span are validated before publication; unbound
+buffers, short spans, and a future size beyond `GLint` leave the caller value
+unchanged.
+
 ## Architecture
 
 ```text

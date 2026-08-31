@@ -1491,6 +1491,11 @@ void ringl_buffer_sub_data_from_bytes(uint32_t target,
                                       uint64_t data_size);
 uint64_t ringl_get_buffer_size(uint32_t target);
 uint32_t ringl_get_buffer_usage(uint32_t target);
+/* Bounded GLES-style buffer parameter query. Only BUFFER_SIZE and
+ * BUFFER_USAGE are represented; the complete one-element output span is
+ * validated before either value is published. */
+int ringl_get_buffer_parameteriv_bounded(uint32_t target, uint32_t pname,
+                                         int32_t* value, size_t value_count);
 
 /* WebGL 1 OES_vertex_array_object support. A generated name becomes an
  * object when bound, matching the extension's isVertexArrayOES behavior.

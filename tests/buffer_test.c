@@ -30,6 +30,30 @@ int main(void)
     assert(ringl_is_buffer(names[1]));
     assert(ringl_get_bound_buffer(RINGL_ELEMENT_ARRAY_BUFFER) == names[1]);
 
+    /* A zero-sized definition is backend-independent but still carries the
+     * usage enum, which is enough to exercise both query pnames here. */
+    ringl_buffer_data_from_bytes(RINGL_ARRAY_BUFFER, 0, NULL, 0u,
+                                 RINGL_STATIC_DRAW);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    {
+        int32_t value = -1;
+        assert(ringl_get_buffer_parameteriv_bounded(
+                   RINGL_ARRAY_BUFFER, RINGL_BUFFER_SIZE, &value, 1u) == 0);
+        assert(value == 0);
+        assert(ringl_get_buffer_parameteriv_bounded(
+                   RINGL_ARRAY_BUFFER, RINGL_BUFFER_USAGE, &value, 1u) == 0);
+        assert(value == (int32_t)RINGL_STATIC_DRAW);
+        value = 777;
+        assert(ringl_get_buffer_parameteriv_bounded(
+                   RINGL_ARRAY_BUFFER, RINGL_BUFFER_SIZE, &value, 0u) == -1);
+        assert(value == 777);
+        assert(ringl_get_error() == RINGL_INVALID_VALUE);
+        assert(ringl_get_buffer_parameteriv_bounded(
+                   RINGL_ARRAY_BUFFER, 0xdeadbeefu, &value, 1u) == -1);
+        assert(value == 777);
+        assert(ringl_get_error() == RINGL_INVALID_ENUM);
+    }
+
     stale = names[0];
     ringl_delete_buffers(1, &names[0]);
     assert(!ringl_is_buffer(stale));
@@ -42,6 +66,13 @@ int main(void)
     ringl_bind_buffer(RINGL_ARRAY_BUFFER, stale);
     assert(ringl_get_error() == RINGL_INVALID_OPERATION);
     assert(ringl_get_bound_buffer(RINGL_ARRAY_BUFFER) == 0u);
+    {
+        int32_t value = 888;
+        assert(ringl_get_buffer_parameteriv_bounded(
+                   RINGL_ARRAY_BUFFER, RINGL_BUFFER_SIZE, &value, 1u) == -1);
+        assert(value == 888);
+        assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    }
 
     ringl_bind_buffer(0xffffffffu, replacement);
     assert(ringl_get_error() == RINGL_INVALID_ENUM);

@@ -512,6 +512,13 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     a complete caller span and publish only after validation. Attribute pointer
     queries remain unavailable because returning raw host pointers would break
     the embedding ABI; unsupported pnames continue to report an error.
+  - [x] Add a bounded `glGetBufferParameteriv` adapter for the represented
+    `BUFFER_SIZE` and `BUFFER_USAGE` pnames. It validates target, binding,
+    pname, and the complete one-element output span before publishing a value;
+    an oversized future buffer profile is rejected instead of truncating to
+    `GLint`. Short/null outputs and unbound buffers leave the destination
+    unchanged. Broader buffer-query pnames and conformance semantics remain
+    open.
 - [x] Expose the executable RSH1 shader precision profile through a versioned
   `ringl_get_shader_precision_format()` query. All accepted float precision
   classes report IEEE-754 binary32; accepted integer classes report the signed

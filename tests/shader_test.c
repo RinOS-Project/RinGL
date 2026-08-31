@@ -35,6 +35,9 @@ int main(void)
     assert(ringl_get_shader_parameteriv_bounded(
                vertex, RINGL_SHADER_TYPE, &query_value, 1u) == 0);
     assert(query_value == (int32_t)RINGL_VERTEX_SHADER);
+    assert(ringl_get_shader_parameteriv_bounded(
+               vertex, RINGL_DELETE_STATUS, &query_value, 1u) == 0);
+    assert(query_value == (int32_t)RINGL_FALSE);
     query_value = 123;
     assert(ringl_get_shader_parameteriv_bounded(
                vertex, RINGL_SHADER_TYPE, &query_value, 0u) == -1);
@@ -138,6 +141,24 @@ int main(void)
                vertex, RINGL_INFO_LOG_LENGTH, &query_value, 1u) == 0);
     assert(query_value == 1);
     assert(ringl_get_error() == RINGL_NO_ERROR);
+
+    /* Delete-pending shaders retained by a program remain queryable until
+     * the program releases its attachment. */
+    {
+        uint32_t retaining_program = ringl_create_program();
+
+        assert(retaining_program != 0u);
+        ringl_attach_shader(retaining_program, fragment);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        ringl_delete_shader(fragment);
+        assert(ringl_get_shader_parameteriv_bounded(
+                   fragment, RINGL_DELETE_STATUS, &query_value, 1u) == 0);
+        assert(query_value == (int32_t)RINGL_TRUE);
+        ringl_delete_program(retaining_program);
+        assert(ringl_get_shader_parameteriv_bounded(
+                   fragment, RINGL_DELETE_STATUS, &query_value, 1u) == -1);
+        assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    }
 
     ringl_delete_shader(vertex);
     assert(!ringl_is_shader(vertex));

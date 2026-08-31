@@ -117,8 +117,11 @@ Shader and program status/count queries now also have bounded integer adapters.
 `COMPILE_STATUS`/`SHADER_TYPE`, source/log lengths, and
 `LINK_STATUS`/`VALIDATE_STATUS` plus attached shader and active
 attribute/uniform counts/name maxima are published from live RinGL state only
-after complete one-element spans validate. Delete-status remains unavailable
-instead of being synthesized.
+after complete one-element spans validate. Shader `DELETE_STATUS` remains
+queryable while an attached program retains a delete-pending shader, then the
+numeric handle is reclaimed after its final release. Program delete-pending
+lifetime and unrepresented pnames remain explicitly unsupported instead of
+being synthesized.
 
 ## Architecture
 

@@ -535,8 +535,15 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     count, log/source-length, and active-name maximum pnames represented by
     RinGL. Compile/type, link/validate, attached shader, active
     attribute/uniform values, and bounded lengths use complete one-element
-    spans and existing versioned records; delete-status and other pnames
-    remain unavailable rather than returning fabricated values.
+    spans and existing versioned records. Shader `DELETE_STATUS` now reports
+    the pending bit while an attached shader remains retained; program
+    delete-pending lifetime and other unrepresented pnames remain unavailable
+    rather than returning fabricated values.
+  - [x] Preserve attached-shader query lifetime for `DELETE_STATUS`: a shader
+    marked by `glDeleteShader` remains queryable until its final program
+    release, then the numeric handle is reclaimed. `shader_test.c` covers
+    live false, retained pending true, and post-release invalidation without
+    exposing a stale object.
 - [x] Expose the executable RSH1 shader precision profile through a versioned
   `ringl_get_shader_precision_format()` query. All accepted float precision
   classes report IEEE-754 binary32; accepted integer classes report the signed

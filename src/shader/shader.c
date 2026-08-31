@@ -503,18 +503,27 @@ int ringl_get_shader_parameteriv_bounded(uint32_t shader, uint32_t pname,
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return -1;
     }
-    if (pname != RINGL_COMPILE_STATUS && pname != RINGL_SHADER_TYPE &&
+    if (pname != RINGL_DELETE_STATUS && pname != RINGL_COMPILE_STATUS &&
+        pname != RINGL_SHADER_TYPE &&
         pname != RINGL_INFO_LOG_LENGTH &&
         pname != RINGL_SHADER_SOURCE_LENGTH) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return -1;
     }
-    object = ringl_shader_object_for_api(context, shader);
+    /* Parameter queries retain the GLES object lifetime: an attached shader
+     * marked for deletion is still visible until its final program release. */
+    object = ringl_shader_object(context, shader);
     if (object == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return -1;
     }
-    if (pname == RINGL_COMPILE_STATUS) {
+    if (pname == RINGL_DELETE_STATUS) {
+        /* A shader attached to a program remains a live query object after
+         * glDeleteShader marks it pending.  The object is only reclaimed when
+         * the last retaining program releases it, so report that state before
+         * publishing any other query value. */
+        result = (int32_t)object->delete_pending;
+    } else if (pname == RINGL_COMPILE_STATUS) {
         result = (int32_t)object->compile_status;
     } else if (pname == RINGL_SHADER_TYPE) {
         result = (int32_t)object->shader_type;

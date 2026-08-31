@@ -15,6 +15,11 @@ headers, and transitive C math dependency. This lets the Ladybird `AK_OS_RINOS`
 target embed the tested RinGL implementation instead of depending on an
 unresolved external archive at final link time.
 
+The repository host runner also builds `tests/ringl_webgl_negative_test.c`
+against the complete RinGL software path. That regression keeps WebGL-facing
+descriptor queries failure-atomic and exercises malformed state and shader
+inputs without requiring a GPU.
+
 ## Architecture
 
 ```text

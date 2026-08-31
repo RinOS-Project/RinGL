@@ -622,7 +622,11 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     WebGL 2 and browser ISO/QEMU evidence remain unfinished, so this parent
     remains unchecked.
 - [ ] Audit allocation limits and integer overflow paths for untrusted content.
-- [ ] Add WebGL-oriented negative tests for malformed state and shader input.
+- [x] Add WebGL-oriented negative tests for malformed state and shader input.
+  `tests/ringl_webgl_negative_test.c` covers failure-atomic descriptor queries,
+  invalid viewport/scissor/depth/blend values, and malformed GLSL compile
+  input. The broader allocation-limit audit and hardware/conformance evidence
+  remain open below.
 
 ## Phase 10 — Testing and conformance
 

@@ -150,7 +150,12 @@ int ringl_get_default_framebuffer(RinGLDefaultFramebufferV1* framebuffer)
 {
     RinGLContext* context = ringl_get_current_context();
 
-    if (context == NULL || framebuffer == NULL)
+    /* Output descriptors are caller-owned ABI records.  Validate the header
+     * before looking at the context so a truncated or future-version record
+     * can never be partially overwritten. */
+    if (context == NULL || framebuffer == NULL ||
+        framebuffer->struct_size < sizeof(*framebuffer) ||
+        framebuffer->api_version != RINGL_API_VERSION)
         return -1;
     if (!context->has_default_framebuffer) {
         memset(framebuffer, 0, sizeof(*framebuffer));

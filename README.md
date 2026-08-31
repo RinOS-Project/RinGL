@@ -48,16 +48,19 @@ allocation and released on validation failure, backend failure, or successful
 module publication, so legacy-format pipeline creation cannot bypass the
 context budget.
 
-The private Aquamarine surface remains graphics-only. Its compute-pipeline and
-compute-bind-group callbacks now return `RIN_GPU_ERROR_UNSUPPORTED` rather than
-publishing synthetic resource cookies; compute execution, storage bindings,
-and dispatch remain an explicit follow-up backend item.
+The built private Aquamarine surface delegates command execution to the generic
+`ringpu_software_backend`, whose bounded compute-pipeline, storage-bind-group,
+and synchronous dispatch path is covered by `ringpu_software_backend_test`.
+RinGL's surface API remains graphics-only: exposing compute resources through a
+surface or browser context is still an explicit follow-up API/security item.
 
 The same surface now bounds every backend-owned CPU allocation with one
-512 MiB owner budget: resource metadata and byte shadows, decoded Float32
-sampled-mip snapshots, and transient draw vertex/index staging. Each exact
-size is reserved before `malloc`/`calloc`, and conversion, rollback, command
-validation, and destruction paths release the reservation before returning.
+512 MiB owner budget: resource metadata and byte shadows, shader/sampler and
+pipeline/bind-group metadata, compute shadows, decoded Float32 sampled-mip
+snapshots, and transient draw vertex/index staging. The generic software
+backend uses one checked reserve/release helper for each exact allocation;
+conversion, rollback, command validation, and destruction paths release the
+reservation before returning.
 
 The strict shader IR regression also carries a bounded malformed-source corpus:
 unbalanced constructors and overflow literals fail before executable

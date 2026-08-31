@@ -162,6 +162,16 @@ static Header lower_and_read_header(uint32_t shader, const char* source,
     return header;
 }
 
+static void expect_shader_rejected(uint32_t shader, const char* source)
+{
+    ringl_shader_source(shader, source, -1);
+    ringl_compile_shader(shader);
+    if (ringl_get_shader_compile_status(shader) == RINGL_TRUE)
+        assert(ringl_lower_shader_rsh1(shader) != 0);
+    assert(ringl_get_shader_rsh1_size(shader) == 0u);
+    assert(ringl_get_shader_module(shader) == 0u);
+}
+
 int main(void)
 {
     FakeBackend backend = {0};
@@ -1393,6 +1403,25 @@ int main(void)
                         "gl_FragColor = vec4(size); }", -1);
     ringl_compile_shader(fragment);
     assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
+
+    /* Keep a compact malformed-source corpus at the compiler boundary. Each
+     * case must fail before an executable RSH1/module is published; this also
+     * catches accidental success stubs when a parser branch is extended. */
+    expect_shader_rejected(
+        vertex,
+        "void main() { gl_Position = vec4(1.0, 0.0, 0.0, 1.0; }");
+    expect_shader_rejected(
+        vertex,
+        "void main() { gl_Position = vec4(1.0e+100, 0.0, 0.0, 1.0); }");
+    ringl_shader_source(
+        fragment,
+        "void main() { for (int i = 0; i < 2; i++) { } "
+        "gl_FragColor = vec4(1.0); }", -1);
+    ringl_compile_shader(fragment);
+    if (ringl_get_shader_compile_status(fragment) == RINGL_TRUE)
+        assert(ringl_lower_shader_rsh1(fragment) != 0);
+    assert(ringl_get_shader_rsh1_size(fragment) == 0u);
+    assert(ringl_get_shader_module(fragment) == 0u);
 
     /* Do not silently consume an incomplete precision declaration. The
      * frontend accepts only the exact GLES qualifier/type grammar it can map

@@ -690,6 +690,11 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Keep the standalone Meson build clean under its C11/`-Werror` policy, including public-header self-containment and texture-module realization coverage.
 - [ ] Add hardware/QEMU integration tests where RinGPU support exists.
 - [ ] Add shader compiler differential/negative tests.
+  - [x] Add a bounded malformed-source corpus to the strict RinGL IR test.
+    Unbalanced constructors and overflow literals are rejected at compile or
+    lowering, unsupported loops cannot publish an RSH1/module, and every case
+    leaves the executable handles empty. Differential comparison against an
+    independent GLSL compiler remains open.
 - [x] Add API trace tests for representative GL sequences. `ringl-sync-test`
   drives the public clear→texture definition→`copyTexSubImage2D`→clear→
   `finish`→`readPixels` sequence and asserts the exact RinGPU command,

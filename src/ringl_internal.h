@@ -52,6 +52,12 @@
 /* RSH1 and the public RinGPU adapter both admit 32 scalar vertex inputs. The
  * public GL limit remains 16 generic vertex-array indices. */
 #define RINGL_MAX_VERTEX_INPUT_COMPONENTS 32u
+/* CPU shadow storage is browser-owned input state. Keep one context from
+ * allowing an untrusted sequence of buffer uploads to consume an unbounded
+ * amount of host memory. Backend allocations remain independently bounded by
+ * the RinGPU binding. */
+#define RINGL_MAX_CPU_SHADOW_BYTES \
+    (UINT64_C(512) * UINT64_C(1024) * UINT64_C(1024))
 
 typedef struct RinGLBufferObject {
     uint64_t ringpu_handle;
@@ -567,6 +573,7 @@ struct RinGLContext {
     uint32_t framebuffer_binding;
     uint32_t renderbuffer_binding;
     uint32_t current_program;
+    uint64_t cpu_shadow_bytes;
     RinGLVertexAttribState vertex_attribs[RINGL_MAX_VERTEX_ATTRIBS];
 };
 
@@ -574,6 +581,10 @@ void ringl_context_record_error(RinGLContext* context, uint32_t error);
 void ringl_context_mark_lost(RinGLContext* context);
 void ringl_context_mark_dirty(RinGLContext* context, uint32_t bits);
 void ringl_context_clear_dirty(RinGLContext* context, uint32_t bits);
+int ringl_context_reserve_shadow_bytes(RinGLContext* context,
+                                       uint64_t bytes);
+void ringl_context_release_shadow_bytes(RinGLContext* context,
+                                        uint64_t bytes);
 void ringl_copy_c_string(char* destination, size_t capacity,
                          const char* source);
 int ringl_resolve_color_target(RinGLContext* context,

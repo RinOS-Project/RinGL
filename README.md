@@ -20,6 +20,12 @@ against the complete RinGL software path. That regression keeps WebGL-facing
 descriptor queries failure-atomic and exercises malformed state and shader
 inputs without requiring a GPU.
 
+Browser-facing buffer shadows have a per-context 512 MiB accounting budget.
+`bufferData` and transactional sub-data replacement reserve bytes before
+allocation and release them on every failure or object destruction, so an
+oversized untrusted request cannot reach `malloc` or the backend. Texture,
+shader/program, and hardware resource budgets remain separate follow-up work.
+
 ## Architecture
 
 ```text

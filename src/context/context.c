@@ -267,3 +267,27 @@ void ringl_context_clear_dirty(RinGLContext* context, uint32_t bits)
         return;
     context->dirty_bits &= ~(bits & RINGL_DIRTY_ALL);
 }
+
+int ringl_context_reserve_shadow_bytes(RinGLContext* context,
+                                       uint64_t bytes)
+{
+    if (!ringl_context_is_valid(context) ||
+        bytes > RINGL_MAX_CPU_SHADOW_BYTES ||
+        context->cpu_shadow_bytes > RINGL_MAX_CPU_SHADOW_BYTES - bytes) {
+        return 0;
+    }
+    context->cpu_shadow_bytes += bytes;
+    return 1;
+}
+
+void ringl_context_release_shadow_bytes(RinGLContext* context,
+                                         uint64_t bytes)
+{
+    if (!ringl_context_is_valid(context))
+        return;
+    /* Never wrap the accounting counter on an internal ownership mismatch. */
+    if (bytes >= context->cpu_shadow_bytes)
+        context->cpu_shadow_bytes = 0u;
+    else
+        context->cpu_shadow_bytes -= bytes;
+}

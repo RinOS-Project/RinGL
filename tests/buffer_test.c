@@ -46,6 +46,15 @@ int main(void)
     ringl_bind_buffer(0xffffffffu, replacement);
     assert(ringl_get_error() == RINGL_INVALID_ENUM);
 
+    /* The browser-facing shadow budget rejects an oversized request before
+     * malloc or a backend callback. The old zero-sized replacement remains
+     * observable, proving the failure is atomic. */
+    ringl_bind_buffer(RINGL_ARRAY_BUFFER, replacement);
+    ringl_buffer_data(RINGL_ARRAY_BUFFER, INT64_C(536870913), NULL,
+                      RINGL_STATIC_DRAW);
+    assert(ringl_get_error() == RINGL_OUT_OF_MEMORY);
+    assert(ringl_get_buffer_size(RINGL_ARRAY_BUFFER) == 0u);
+
     ringl_gen_buffers(-1, &replacement);
     assert(ringl_get_error() == RINGL_INVALID_VALUE);
 

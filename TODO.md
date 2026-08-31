@@ -622,6 +622,13 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     WebGL 2 and browser ISO/QEMU evidence remain unfinished, so this parent
     remains unchecked.
 - [ ] Audit allocation limits and integer overflow paths for untrusted content.
+  - [x] Bound per-context CPU shadow bytes for browser-facing buffer data and
+    transactional sub-data replacement at 512 MiB. Oversized requests are
+    rejected before allocation/backend submission, and delete or failed
+    replacement releases the reservation. `tests/buffer_test.c` covers the
+    pre-allocation rejection and unchanged zero-sized buffer. Texture,
+    shader/program, temporary decode, and hardware/QEMU resource accounting
+    remain open.
 - [x] Add WebGL-oriented negative tests for malformed state and shader input.
   `tests/ringl_webgl_negative_test.c` covers failure-atomic descriptor queries,
   invalid viewport/scissor/depth/blend values, and malformed GLSL compile

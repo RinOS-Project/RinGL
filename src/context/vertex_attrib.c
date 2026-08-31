@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: MIT */
 #include "ringl_internal.h"
 
+#include <limits.h>
+#include <math.h>
 #include <stddef.h>
 #include <string.h>
 
@@ -225,5 +227,139 @@ int ringl_get_vertex_attrib_current(uint32_t index, float values[4])
         return -1;
     }
     memcpy(values, attrib->current_value, sizeof(attrib->current_value));
+    return 0;
+}
+
+static size_t ringl_vertex_attrib_query_count(uint32_t pname)
+{
+    return pname == RINGL_CURRENT_VERTEX_ATTRIB ? 4u :
+        (pname == RINGL_VERTEX_ATTRIB_ARRAY_ENABLED ||
+         pname == RINGL_VERTEX_ATTRIB_ARRAY_SIZE ||
+         pname == RINGL_VERTEX_ATTRIB_ARRAY_STRIDE ||
+         pname == RINGL_VERTEX_ATTRIB_ARRAY_TYPE ||
+         pname == RINGL_VERTEX_ATTRIB_ARRAY_NORMALIZED ||
+         pname == RINGL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING ||
+         pname == RINGL_VERTEX_ATTRIB_ARRAY_DIVISOR ? 1u : 0u);
+}
+
+static int ringl_vertex_attrib_query_validate(
+    RinGLContext* context, uint32_t index, uint32_t pname,
+    size_t value_count, RinGLVertexAttribState** attrib_out,
+    size_t* required_out)
+{
+    size_t required;
+    RinGLVertexAttribState* attrib;
+
+    if (context == NULL || attrib_out == NULL || required_out == NULL)
+        return -1;
+    required = ringl_vertex_attrib_query_count(pname);
+    if (required == 0u) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
+    if (value_count < required) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    attrib = ringl_vertex_attrib(context, index);
+    if (attrib == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+    *attrib_out = attrib;
+    *required_out = required;
+    return 0;
+}
+
+int ringl_get_vertex_attribiv_bounded(uint32_t index, uint32_t pname,
+                                      int32_t* values, size_t value_count)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLVertexAttribState* attrib;
+    int32_t converted[4] = {0, 0, 0, 0};
+    size_t required;
+
+    if (context == NULL)
+        return -1;
+    if (values == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    if (ringl_vertex_attrib_query_validate(context, index, pname,
+                                           value_count, &attrib,
+                                           &required) != 0)
+        return -1;
+    if (pname == RINGL_CURRENT_VERTEX_ATTRIB) {
+        for (size_t component = 0u; component < required; ++component) {
+            float current = attrib->current_value[component];
+
+            if (!isfinite(current) || current < (float)INT32_MIN ||
+                current > (float)INT32_MAX) {
+                ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+                return -1;
+            }
+            converted[component] = (int32_t)current;
+        }
+    } else {
+        switch (pname) {
+        case RINGL_VERTEX_ATTRIB_ARRAY_ENABLED:
+            converted[0] = (int32_t)attrib->enabled;
+            break;
+        case RINGL_VERTEX_ATTRIB_ARRAY_SIZE:
+            converted[0] = (int32_t)attrib->size;
+            break;
+        case RINGL_VERTEX_ATTRIB_ARRAY_STRIDE:
+            converted[0] = (int32_t)attrib->stride;
+            break;
+        case RINGL_VERTEX_ATTRIB_ARRAY_TYPE:
+            converted[0] = (int32_t)attrib->type;
+            break;
+        case RINGL_VERTEX_ATTRIB_ARRAY_NORMALIZED:
+            converted[0] = (int32_t)attrib->normalized;
+            break;
+        case RINGL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING:
+            converted[0] = (int32_t)attrib->buffer;
+            break;
+        case RINGL_VERTEX_ATTRIB_ARRAY_DIVISOR:
+            converted[0] = (int32_t)attrib->divisor;
+            break;
+        default:
+            /* The validator rejects this path before the switch. */
+            return -1;
+        }
+    }
+    memcpy(values, converted, required * sizeof(*values));
+    return 0;
+}
+
+int ringl_get_vertex_attribfv_bounded(uint32_t index, uint32_t pname,
+                                      float* values, size_t value_count)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLVertexAttribState* attrib;
+    float converted[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    size_t required;
+
+    if (context == NULL)
+        return -1;
+    if (values == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    if (ringl_vertex_attrib_query_validate(context, index, pname,
+                                           value_count, &attrib,
+                                           &required) != 0)
+        return -1;
+    if (pname == RINGL_CURRENT_VERTEX_ATTRIB) {
+        memcpy(converted, attrib->current_value, required * sizeof(*converted));
+    } else {
+        int32_t integer_value[1] = {0};
+
+        if (ringl_get_vertex_attribiv_bounded(index, pname, integer_value,
+                                              1u) != 0)
+            return -1;
+        converted[0] = (float)integer_value[0];
+    }
+    memcpy(values, converted, required * sizeof(*values));
     return 0;
 }

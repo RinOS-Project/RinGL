@@ -1512,6 +1512,14 @@ void ringl_tex_parameteri(uint32_t target, uint32_t pname, int32_t param);
 int32_t ringl_get_tex_parameteri(uint32_t target, uint32_t pname);
 void ringl_tex_parameterf(uint32_t target, uint32_t pname, float param);
 float ringl_get_tex_parameterf(uint32_t target, uint32_t pname);
+/* Bounded texture-parameter adapters.  The integer form accepts the four
+ * sampler enum pnames represented by ringl_get_tex_parameteri(); the float
+ * form accepts the gated anisotropy pname.  A short/null output records an
+ * error and leaves caller storage unchanged. */
+int ringl_get_tex_parameteriv_bounded(uint32_t target, uint32_t pname,
+                                      int32_t* value, size_t value_count);
+int ringl_get_tex_parameterfv_bounded(uint32_t target, uint32_t pname,
+                                      float* value, size_t value_count);
 float ringl_get_max_texture_anisotropy(void);
 /* Enables the WebGL 1 OES_texture_float_linear completion rules for the
  * current context. It is deliberately opt-in: Float textures continue to be
@@ -1712,6 +1720,15 @@ int ringl_get_vertex_attrib(uint32_t index, RinGLVertexAttribInfoV1* info);
 /* Copies the current generic attribute value into exactly four floats. The
  * caller owns the fixed-size output; invalid indices leave it unchanged. */
 int ringl_get_vertex_attrib_current(uint32_t index, float values[4]);
+/* Bounded GLES-style attribute queries.  The integer form accepts scalar
+ * descriptor pnames and converts CURRENT_VERTEX_ATTRIB to four integers; the
+ * float form accepts CURRENT_VERTEX_ATTRIB and the scalar descriptor pnames.
+ * The pointer pname remains unavailable because raw host pointers are not a
+ * safe embedding ABI. */
+int ringl_get_vertex_attribiv_bounded(uint32_t index, uint32_t pname,
+                                      int32_t* values, size_t value_count);
+int ringl_get_vertex_attribfv_bounded(uint32_t index, uint32_t pname,
+                                      float* values, size_t value_count);
 
 uint32_t ringl_create_shader(uint32_t shader_type);
 void ringl_delete_shader(uint32_t shader);

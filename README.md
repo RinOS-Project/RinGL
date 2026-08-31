@@ -74,6 +74,12 @@ color, line width, polygon offset, and sample coverage return their tracked
 Float32 state. Null or short caller spans record an error without changing the
 destination.
 
+Texture filter/wrap and extension-gated anisotropy queries now have the same
+bounded typed treatment, and vertex-attribute descriptor/current-value queries
+provide integer and Float32 adapters with complete-span validation. The raw
+pointer query remains unavailable: exposing a host pointer would violate the
+embedding ABI, so callers must use the versioned attribute record instead.
+
 ## Architecture
 
 ```text

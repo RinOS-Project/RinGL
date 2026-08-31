@@ -195,6 +195,32 @@ int main(void)
     assert(ringl_get_error() == RINGL_INVALID_VALUE);
     assert(current_value[0] == -1.5f && current_value[1] == 2.25f &&
            current_value[2] == 3.5f && current_value[3] == 1.0f);
+    {
+        int32_t integer_value = -77;
+        float float_values[4] = {-77.0f, -77.0f, -77.0f, -77.0f};
+
+        assert(ringl_get_vertex_attribiv_bounded(
+                   0u, RINGL_VERTEX_ATTRIB_ARRAY_ENABLED, &integer_value,
+                   1u) == 0);
+        assert(integer_value == 0);
+        assert(ringl_get_vertex_attribiv_bounded(
+                   0u, RINGL_VERTEX_ATTRIB_ARRAY_SIZE, &integer_value,
+                   1u) == 0);
+        assert(integer_value == 2);
+        assert(ringl_get_vertex_attribfv_bounded(
+                   0u, RINGL_CURRENT_VERTEX_ATTRIB, float_values, 4u) == 0);
+        assert(float_values[0] == -1.5f && float_values[1] == 2.25f &&
+               float_values[2] == 3.5f && float_values[3] == 1.0f);
+        float_values[0] = -77.0f;
+        assert(ringl_get_vertex_attribfv_bounded(
+                   0u, RINGL_CURRENT_VERTEX_ATTRIB, float_values, 3u) == -1);
+        assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+        assert(float_values[0] == -77.0f);
+        assert(ringl_get_vertex_attribiv_bounded(
+                   0u, RINGL_VERTEX_ATTRIB_ARRAY_POINTER, &integer_value,
+                   1u) == -1);
+        assert(ringl_get_error() == RINGL_INVALID_ENUM);
+    }
     assert(ringl_resolve_vertex_layout(context, &layout) == 0);
     assert(layout.buffer == 0u && layout.stride == 0u);
     assert(layout.attribute_count == 4u &&

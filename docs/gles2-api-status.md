@@ -59,11 +59,11 @@ Status meanings:
 | `glGetShaderPrecisionFormat` | B | `ringl_get_shader_precision_format` returns the executable RSH1 binary32 or signed-i32 profile through a validated versioned record. |
 | `glGetString` | P | `ringl_get_string` returns only RinGL's static vendor, renderer, bounded-profile version, and RSH1 language-profile strings; extension strings remain unavailable. |
 | `glGetTexParameteriv` | P | Integer values for `MIN_FILTER`, `MAG_FILTER`, `WRAP_S`, `WRAP_T` only. |
-| `glGetTexParameterfv` | P | `ringl_get_tex_parameterf` exposes only the gated `TEXTURE_MAX_ANISOTROPY_EXT` value; it does not manufacture float views of enum-valued sampler state. |
+| `glGetTexParameterfv` | P | `ringl_get_tex_parameterf` and bounded `ringl_get_tex_parameterfv_bounded` expose only the gated `TEXTURE_MAX_ANISOTROPY_EXT` value; they do not manufacture float views of enum-valued sampler state. |
 | `glGetUniformiv` | P | `ringl_get_uniform_1i` for linked scalar `sampler2D`, `int`, or `bool`, plus `ringl_get_uniform_{2,3,4}i` for complete `ivec` or normalized `bvec` values; each getter accepts one element of a bounded reflected array. |
 | `glGetUniformfv` | P | `ringl_get_uniform_{1,2,3,4}f` for linked `float`/`vec2`/`vec3`/`vec4` locations and `ringl_get_uniform_matrix{2,3,4}f` for bounded vertex/fragment square-matrix profiles; each getter accepts one element of a bounded reflected array. |
 | `glGetUniformLocation` | P | Linked `sampler2D`, scalar/vector float, signed integer, scalar/vector Boolean, and bounded vertex/fragment `mat2`/`mat3`/`mat4` uniforms. The base name aliases bounded array element zero. |
-| `glGetVertexAttribfv`, `glGetVertexAttribiv`, `glGetVertexAttribPointerv` | P | Versioned attribute record/current-value copy; no generic GLES getter. |
+| `glGetVertexAttribfv`, `glGetVertexAttribiv`, `glGetVertexAttribPointerv` | P | Bounded `ringl_get_vertex_attrib{f,i}v_bounded` exposes descriptor pnames, divisor, and the four-component current value with failure-atomic spans. `glGetVertexAttribPointerv` remains unavailable because raw host pointers are not an embedding ABI. |
 | `glHint` | P | `GENERATE_MIPMAP_HINT` is advisory. `FRAGMENT_SHADER_DERIVATIVE_HINT` is stored/queryable only after the WebGL `OES_standard_derivatives` context gate; it does not claim a general driver-quality control API. |
 | `glLineWidth`, `glPolygonOffset`, `glSampleCoverage`, `glScissor`, `glViewport` | B | Bounded native raster state; viewport dimensions above the 4096 image limit reject without mutating state. |
 | `glPixelStorei` | P | `PACK_ALIGNMENT` and `UNPACK_ALIGNMENT` values 1, 2, 4, 8 only. |

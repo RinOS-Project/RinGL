@@ -1820,6 +1820,87 @@ float ringl_get_tex_parameterf(uint32_t target, uint32_t pname)
     return texture->max_anisotropy;
 }
 
+int ringl_get_tex_parameteriv_bounded(uint32_t target, uint32_t pname,
+                                      int32_t* value, size_t value_count)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLTextureObject* texture;
+    int32_t result;
+
+    if (context == NULL)
+        return -1;
+    if (value == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    if (value_count < 1u) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    if (!texture_target_valid(target)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
+    texture = bound_texture_2d(context);
+    if (texture == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+
+    switch (pname) {
+    case RINGL_TEXTURE_MIN_FILTER:
+        result = (int32_t)texture->min_filter;
+        break;
+    case RINGL_TEXTURE_MAG_FILTER:
+        result = (int32_t)texture->mag_filter;
+        break;
+    case RINGL_TEXTURE_WRAP_S:
+        result = (int32_t)texture->wrap_s;
+        break;
+    case RINGL_TEXTURE_WRAP_T:
+        result = (int32_t)texture->wrap_t;
+        break;
+    default:
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
+    *value = result;
+    return 0;
+}
+
+int ringl_get_tex_parameterfv_bounded(uint32_t target, uint32_t pname,
+                                      float* value, size_t value_count)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLTextureObject* texture;
+    float result;
+
+    if (context == NULL)
+        return -1;
+    if (value == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    if (value_count < 1u) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    if (!texture_target_valid(target) ||
+        pname != RINGL_TEXTURE_MAX_ANISOTROPY_EXT ||
+        context->webgl_texture_filter_anisotropic_enabled == RINGL_FALSE) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
+    texture = bound_texture_2d(context);
+    if (texture == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    result = texture->max_anisotropy;
+    *value = result;
+    return 0;
+}
+
 float ringl_get_max_texture_anisotropy(void)
 {
     RinGLContext* context = ringl_get_current_context();

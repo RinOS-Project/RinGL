@@ -505,6 +505,12 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     short output records an error without mutation. Legacy unbounded forms
     delegate to the bounded implementation. Broader conformance semantics and
     unsupported query pnames remain open.
+  - [x] Add bounded typed texture-parameter and vertex-attribute query
+    adapters. Filter/wrap enum pnames, extension-gated anisotropy, descriptor
+    fields, and the four-component current generic attribute value now require
+    a complete caller span and publish only after validation. Attribute pointer
+    queries remain unavailable because returning raw host pointers would break
+    the embedding ABI; unsupported pnames continue to report an error.
 - [x] Expose the executable RSH1 shader precision profile through a versioned
   `ringl_get_shader_precision_format()` query. All accepted float precision
   classes report IEEE-754 binary32; accepted integer classes report the signed

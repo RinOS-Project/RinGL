@@ -73,6 +73,26 @@ int main(void)
     assert(ringl_get_tex_parameteri(RINGL_TEXTURE_2D,
                                     RINGL_TEXTURE_WRAP_T) ==
            (int32_t)RINGL_REPEAT);
+    {
+        int32_t parameter = -77;
+        float anisotropy = -77.0f;
+
+        assert(ringl_get_tex_parameteriv_bounded(
+                   RINGL_TEXTURE_2D, RINGL_TEXTURE_MIN_FILTER, &parameter,
+                   1u) == 0);
+        assert(parameter == (int32_t)RINGL_NEAREST_MIPMAP_LINEAR);
+        parameter = -77;
+        assert(ringl_get_tex_parameteriv_bounded(
+                   RINGL_TEXTURE_2D, RINGL_TEXTURE_WRAP_S, &parameter,
+                   0u) == -1);
+        assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+        assert(parameter == -77);
+        assert(ringl_get_tex_parameterfv_bounded(
+                   RINGL_TEXTURE_2D, RINGL_TEXTURE_MAX_ANISOTROPY_EXT,
+                   &anisotropy, 1u) == -1);
+        assert(ringl_get_error() == RINGL_INVALID_ENUM);
+        assert(anisotropy == -77.0f);
+    }
 
     /* EXT_texture_filter_anisotropic is a context-local WebGL capability:
      * before its extension object is acquired, its tokens cannot leak into
@@ -86,6 +106,20 @@ int main(void)
     assert(ringl_enable_webgl_texture_filter_anisotropic() == 0);
     assert(ringl_get_tex_parameterf(
                RINGL_TEXTURE_2D, RINGL_TEXTURE_MAX_ANISOTROPY_EXT) == 1.0f);
+    {
+        float anisotropy = -77.0f;
+
+        assert(ringl_get_tex_parameterfv_bounded(
+                   RINGL_TEXTURE_2D, RINGL_TEXTURE_MAX_ANISOTROPY_EXT,
+                   &anisotropy, 1u) == 0);
+        assert(anisotropy == 1.0f);
+        anisotropy = -77.0f;
+        assert(ringl_get_tex_parameterfv_bounded(
+                   RINGL_TEXTURE_2D, RINGL_TEXTURE_MAX_ANISOTROPY_EXT,
+                   &anisotropy, 0u) == -1);
+        assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+        assert(anisotropy == -77.0f);
+    }
     ringl_tex_parameterf(RINGL_TEXTURE_2D,
                          RINGL_TEXTURE_MAX_ANISOTROPY_EXT, 4.5f);
     assert(ringl_get_error() == RINGL_NO_ERROR);

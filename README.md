@@ -94,6 +94,13 @@ and the one-element output span are validated before publication; unbound
 buffers, short spans, and a future size beyond `GLint` leave the caller value
 unchanged.
 
+Framebuffer attachment queries now have the same bounded treatment through
+`ringl_get_framebuffer_attachment_parameteriv_bounded()`. Custom-FBO object
+type/name, texture level, the 2D-only cube-face sentinel, and logical
+`EXT_sRGB` color encoding are published only after a complete one-element span
+and the existing attachment record validate; default-FBO semantics and
+unsupported pnames remain fail-closed.
+
 ## Architecture
 
 ```text

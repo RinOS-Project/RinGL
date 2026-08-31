@@ -519,6 +519,13 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     `GLint`. Short/null outputs and unbound buffers leave the destination
     unchanged. Broader buffer-query pnames and conformance semantics remain
     open.
+  - [x] Add a bounded `glGetFramebufferAttachmentParameteriv` adapter for the
+    represented custom-FBO attachments. Object type/name, texture level, the
+    2D-only cube-face sentinel, and logical `EXT_sRGB` color encoding require
+    a complete one-element output span and publish only after the existing
+    versioned attachment record validates. Depth/stencil color-encoding
+    queries, unknown pnames, and unavailable default-FBO semantics remain
+    rejected rather than synthesized.
 - [x] Expose the executable RSH1 shader precision profile through a versioned
   `ringl_get_shader_precision_format()` query. All accepted float precision
   classes report IEEE-754 binary32; accepted integer classes report the signed

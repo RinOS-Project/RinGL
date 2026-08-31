@@ -253,6 +253,26 @@ int main(void)
            RINGL_FRAMEBUFFER_COMPLETE);
     assert(ringl_framebuffer_color_attachment_is_srgb(&is_srgb) == 0);
     assert(is_srgb == RINGL_TRUE);
+    {
+        int32_t attachment_value = -1;
+
+        assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+                   RINGL_COLOR_ATTACHMENT0,
+                   RINGL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT,
+                   &attachment_value, 1u) == 0);
+        assert(attachment_value == (int32_t)RINGL_SRGB_EXT);
+        assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+                   RINGL_COLOR_ATTACHMENT0,
+                   RINGL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE,
+                   &attachment_value, 1u) == 0);
+        assert(attachment_value ==
+               (int32_t)RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D);
+        assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+                   RINGL_COLOR_ATTACHMENT0,
+                   RINGL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME,
+                   &attachment_value, 1u) == 0);
+        assert((uint32_t)attachment_value == texture);
+    }
     assert(ringl_framebuffer_color_attachment_component_type(&component_type) == 0);
     assert(component_type == RINGL_UNSIGNED_BYTE);
     component_type = UINT32_C(0xdeadbeef);

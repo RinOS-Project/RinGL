@@ -872,6 +872,65 @@ int ringl_get_framebuffer_attachment(
     return 0;
 }
 
+int ringl_get_framebuffer_attachment_parameteriv_bounded(
+    uint32_t attachment, uint32_t pname, int32_t* value, size_t value_count)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLFramebufferAttachmentInfoV1 info;
+    int32_t result;
+
+    if (context == NULL)
+        return -1;
+    if (value == NULL || value_count < 1u) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+    if (pname != RINGL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE &&
+        pname != RINGL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME &&
+        pname != RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL &&
+        pname != RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE &&
+        pname != RINGL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.struct_size = sizeof(info);
+    info.api_version = RINGL_API_VERSION;
+    if (ringl_get_framebuffer_attachment(attachment, &info) != 0)
+        return -1;
+    if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT) {
+        uint32_t is_srgb;
+
+        if (!color_attachment_valid(attachment)) {
+            ringl_context_record_error(context, RINGL_INVALID_ENUM);
+            return -1;
+        }
+        if (ringl_framebuffer_color_attachment_is_srgb_at(attachment,
+                                                           &is_srgb) != 0) {
+            return -1;
+        }
+        result = (int32_t)(is_srgb != RINGL_FALSE ? RINGL_SRGB_EXT
+                                                   : RINGL_LINEAR);
+    } else if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE) {
+        result = (int32_t)info.kind;
+    } else if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME) {
+        if (info.object > (uint32_t)INT32_MAX) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return -1;
+        }
+        result = (int32_t)info.object;
+    } else if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL) {
+        result = info.level;
+    } else {
+        /* RinGL's framebuffer attachments are always TEXTURE_2D or
+         * renderbuffers; the cube-map-face query therefore has the GLES
+         * non-cube sentinel value. */
+        result = 0;
+    }
+    *value = result;
+    return 0;
+}
+
 int ringl_get_framebuffer_color_attachment(
     RinGLFramebufferAttachmentInfoV1* attachment)
 {

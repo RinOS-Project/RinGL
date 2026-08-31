@@ -50,6 +50,31 @@ int main(void)
     assert(ringl_get_framebuffer_color_attachment(&attachment) == 0);
     assert(attachment.kind == RINGL_FRAMEBUFFER_ATTACHMENT_NONE);
     assert(attachment.object == 0u);
+    assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+               RINGL_COLOR_ATTACHMENT0,
+               RINGL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, &value, 1u) == 0);
+    assert(value == (int32_t)RINGL_FRAMEBUFFER_ATTACHMENT_NONE);
+    assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+               RINGL_COLOR_ATTACHMENT0,
+               RINGL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME, &value, 1u) == 0);
+    assert(value == 0);
+    assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+               RINGL_COLOR_ATTACHMENT0,
+               RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL, &value, 1u) == 0);
+    assert(value == 0);
+    value = 0;
+    assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+               RINGL_DEPTH_ATTACHMENT,
+               RINGL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT, &value,
+               1u) == -1);
+    assert(value == 0);
+    assert(ringl_get_error() == RINGL_INVALID_ENUM);
+    value = 777;
+    assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+               RINGL_COLOR_ATTACHMENT0,
+               RINGL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME, &value, 0u) == -1);
+    assert(value == 777);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
     attachment = attachment_info();
     assert(ringl_get_framebuffer_attachment(RINGL_DEPTH_ATTACHMENT,
                                             &attachment) == 0);

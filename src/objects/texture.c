@@ -198,7 +198,23 @@ static uint32_t texture_highest_defined_mip_count(
     return count;
 }
 
-static void texture_drop_mip_storage_from(RinGLTextureObject* texture,
+static void texture_release_storage(RinGLContext* context, uint8_t** bytes,
+                                    uint64_t* size)
+{
+    uint64_t owned_size = size != NULL ? *size : 0u;
+
+    if (context != NULL)
+        ringl_context_release_shadow_bytes(context, owned_size);
+    if (bytes != NULL)
+        free(*bytes);
+    if (bytes != NULL)
+        *bytes = NULL;
+    if (size != NULL)
+        *size = 0u;
+}
+
+static void texture_drop_mip_storage_from(RinGLContext* context,
+                                          RinGLTextureObject* texture,
                                           uint32_t first_level)
 {
     uint32_t level;
@@ -210,12 +226,14 @@ static void texture_drop_mip_storage_from(RinGLTextureObject* texture,
 
         if (storage == NULL)
             continue;
-        free(storage->shadow_bytes);
+        texture_release_storage(context, &storage->shadow_bytes,
+                                &storage->shadow_size);
         memset(storage, 0, sizeof(*storage));
     }
 }
 
-static void texture_drop_generated_mips(RinGLTextureObject* texture)
+static void texture_drop_generated_mips(RinGLContext* context,
+                                        RinGLTextureObject* texture)
 {
     uint32_t level;
 
@@ -226,7 +244,8 @@ static void texture_drop_generated_mips(RinGLTextureObject* texture)
 
         if (storage == NULL || storage->generated == 0u)
             continue;
-        free(storage->shadow_bytes);
+        texture_release_storage(context, &storage->shadow_bytes,
+                                &storage->shadow_size);
         memset(storage, 0, sizeof(*storage));
     }
 }
@@ -1549,8 +1568,11 @@ void ringl_delete_textures(int32_t count, const uint32_t* textures)
             ringl_backend_destroy_object(context,
                                          context->textures[slot_index].ringpu_sampler);
             texture_discard_image(context, &context->textures[slot_index]);
-            texture_drop_mip_storage_from(&context->textures[slot_index], 1u);
-            free(context->textures[slot_index].shadow_bytes);
+            texture_drop_mip_storage_from(context,
+                                          &context->textures[slot_index], 1u);
+            texture_release_storage(context,
+                                    &context->textures[slot_index].shadow_bytes,
+                                    &context->textures[slot_index].shadow_size);
             memset(&context->textures[slot_index], 0,
                    sizeof(context->textures[slot_index]));
         }
@@ -1812,18 +1834,20 @@ float ringl_get_max_texture_anisotropy(void)
 }
 
 static void texture_free_generated_mips(
+    RinGLContext* context,
     RinGLTextureMipStorage generated[RINGL_MAX_TEXTURE_MIP_LEVELS - 1u])
 {
     uint32_t index;
 
     for (index = 0u; index < RINGL_MAX_TEXTURE_MIP_LEVELS - 1u; ++index) {
-        free(generated[index].shadow_bytes);
+        texture_release_storage(context, &generated[index].shadow_bytes,
+                                &generated[index].shadow_size);
         memset(&generated[index], 0, sizeof(generated[index]));
     }
 }
 
 static int texture_generate_color_mips(
-    const RinGLTextureObject* texture,
+    RinGLContext* context, const RinGLTextureObject* texture,
     RinGLTextureMipStorage generated[RINGL_MAX_TEXTURE_MIP_LEVELS - 1u])
 {
     const uint8_t* source = texture->shadow_bytes;
@@ -1848,12 +1872,17 @@ static int texture_generate_color_mips(
         size = (uint64_t)destination->width * destination->height *
                texel_bytes;
         if (size > SIZE_MAX) {
-            texture_free_generated_mips(generated);
+            texture_free_generated_mips(context, generated);
+            return -1;
+        }
+        if (!ringl_context_reserve_shadow_bytes(context, size)) {
+            texture_free_generated_mips(context, generated);
             return -1;
         }
         destination->shadow_bytes = malloc((size_t)size);
         if (destination->shadow_bytes == NULL) {
-            texture_free_generated_mips(generated);
+            ringl_context_release_shadow_bytes(context, size);
+            texture_free_generated_mips(context, generated);
             return -1;
         }
         destination->shadow_size = size;
@@ -1993,18 +2022,18 @@ void ringl_generate_mipmap(uint32_t target)
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
-    if (texture_generate_color_mips(texture, generated) != 0) {
+    if (texture_generate_color_mips(context, texture, generated) != 0) {
         ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
         return;
     }
 
     texture_discard_image(context, texture);
-    texture_drop_mip_storage_from(texture, 1u);
+    texture_drop_mip_storage_from(context, texture, 1u);
     for (level = 1u; level < level_count; ++level) {
         texture->mip_storage[level - 1u] = generated[level - 1u];
         memset(&generated[level - 1u], 0, sizeof(generated[level - 1u]));
     }
-    texture_free_generated_mips(generated);
+    texture_free_generated_mips(context, generated);
     ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
 }
 
@@ -2110,8 +2139,13 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
         return;
     }
     if (size != 0u) {
+        if (!ringl_context_reserve_shadow_bytes(context, size)) {
+            ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+            return;
+        }
         replacement = malloc((size_t)size);
         if (replacement == NULL) {
+            ringl_context_release_shadow_bytes(context, size);
             ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
             return;
         }
@@ -2185,8 +2219,9 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
     if (level == 0) {
         /* A new base definition can change the entire level hierarchy. Drop
          * every old level only after allocation and conversion succeeded. */
-        texture_drop_mip_storage_from(texture, 1u);
-        free(texture->shadow_bytes);
+        texture_drop_mip_storage_from(context, texture, 1u);
+        texture_release_storage(context, &texture->shadow_bytes,
+                                &texture->shadow_size);
         texture->shadow_bytes = replacement;
         texture->shadow_size = size;
         texture->width = (uint32_t)width;
@@ -2197,7 +2232,8 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
         texture->srgb_encoding = requested_srgb_encoding;
         texture->defined = RINGL_TRUE;
     } else {
-        free(mip_storage->shadow_bytes);
+        texture_release_storage(context, &mip_storage->shadow_bytes,
+                                &mip_storage->shadow_size);
         mip_storage->shadow_bytes = replacement;
         mip_storage->shadow_size = size;
         mip_storage->width = (uint32_t)width;
@@ -2344,7 +2380,7 @@ static void ringl_tex_sub_image_2d_impl(uint32_t target, int32_t level,
      * their WebGL image contents. */
     texture_discard_image(context, texture);
     if (level == 0)
-        texture_drop_generated_mips(texture);
+        texture_drop_generated_mips(context, texture);
     else
         mip_storage->generated = RINGL_FALSE;
     ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
@@ -2476,7 +2512,7 @@ void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
     free(snapshot);
     texture_discard_image(context, texture);
     if (level == 0)
-        texture_drop_generated_mips(texture);
+        texture_drop_generated_mips(context, texture);
     else
         mip_storage->generated = RINGL_FALSE;
     ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
@@ -3359,8 +3395,14 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }
+    if (!ringl_context_reserve_shadow_bytes(context, replacement_size)) {
+        free(snapshot);
+        ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+        return;
+    }
     replacement = malloc((size_t)replacement_size);
     if (replacement == NULL) {
+        ringl_context_release_shadow_bytes(context, replacement_size);
         free(snapshot);
         ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
         return;
@@ -3369,6 +3411,7 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
             replacement, snapshot, snapshot_component_type, storage_format,
             storage_component_type, srgb_encoding,
             (uint32_t)width * (uint32_t)height) != 0) {
+        ringl_context_release_shadow_bytes(context, replacement_size);
         free(replacement);
         free(snapshot);
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
@@ -3378,8 +3421,9 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
 
     texture_discard_image(context, texture);
     if (level == 0) {
-        texture_drop_mip_storage_from(texture, 1u);
-        free(texture->shadow_bytes);
+        texture_drop_mip_storage_from(context, texture, 1u);
+        texture_release_storage(context, &texture->shadow_bytes,
+                                &texture->shadow_size);
         texture->shadow_bytes = replacement;
         texture->shadow_size = replacement_size;
         texture->width = (uint32_t)width;
@@ -3390,7 +3434,8 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
         texture->srgb_encoding = srgb_encoding;
         texture->defined = RINGL_TRUE;
     } else {
-        free(mip_storage->shadow_bytes);
+        texture_release_storage(context, &mip_storage->shadow_bytes,
+                                &mip_storage->shadow_size);
         mip_storage->shadow_bytes = replacement;
         mip_storage->shadow_size = replacement_size;
         mip_storage->width = (uint32_t)width;
@@ -3414,10 +3459,9 @@ void ringl_texture_objects_destroy_all(RinGLContext* context)
         ringl_backend_destroy_object(context, context->textures[index].ringpu_sampler);
         texture_discard_image(context, &context->textures[index]);
         context->textures[index].ringpu_sampler = 0u;
-        texture_drop_mip_storage_from(&context->textures[index], 1u);
-        free(context->textures[index].shadow_bytes);
-        context->textures[index].shadow_bytes = NULL;
-        context->textures[index].shadow_size = 0u;
+        texture_drop_mip_storage_from(context, &context->textures[index], 1u);
+        texture_release_storage(context, &context->textures[index].shadow_bytes,
+                                &context->textures[index].shadow_size);
     }
 }
 

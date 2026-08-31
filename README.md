@@ -26,6 +26,11 @@ allocation and release them on every failure or object destruction, so an
 oversized untrusted request cannot reach `malloc` or the backend. Texture,
 shader/program, and hardware resource budgets remain separate follow-up work.
 
+Persistent texture shadows now use the same budget, including explicit mip
+levels and generated mipmaps. Texture replacement, copy-image, deletion, and
+context teardown release the exact owned byte count; temporary decode/readback
+buffers and shader/program allocations remain separate follow-up audits.
+
 ## Architecture
 
 ```text

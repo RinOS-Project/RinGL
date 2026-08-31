@@ -629,6 +629,14 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     pre-allocation rejection and unchanged zero-sized buffer. Texture,
     shader/program, temporary decode, and hardware/QEMU resource accounting
     remain open.
+  - [x] Bound persistent texture and generated-mipmap CPU shadows through the
+    same per-context 512 MiB budget. Base-level, explicit-mip, copy-image, and
+    mipmap generation paths reserve before allocation and release on rollback,
+    replacement, generated-level discard, delete, and context teardown.
+    `tests/texture_test.c` fills the budget without allocating it, verifies an
+    upload is rejected before allocation, and confirms the reservation can be
+    released. Shader/program, temporary decode, and hardware/QEMU accounting
+    remain open.
 - [x] Add WebGL-oriented negative tests for malformed state and shader input.
   `tests/ringl_webgl_negative_test.c` covers failure-atomic descriptor queries,
   invalid viewport/scissor/depth/blend values, and malformed GLSL compile

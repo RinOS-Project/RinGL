@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include <ringl/ringl.h>
+#include "../src/ringl_internal.h"
 
 int main(void)
 {
@@ -197,6 +198,26 @@ int main(void)
     assert(ringl_get_bound_texture(RINGL_TEXTURE_2D) == recycled);
     ringl_delete_textures(1, &recycled);
     assert(ringl_get_bound_texture(RINGL_TEXTURE_2D) == 0u);
+
+    /* A context-wide shadow budget must reject a new texture before malloc or
+     * backend publication, and releasing the reservation must make the
+     * context usable again.  This exercises the same accounting boundary as
+     * large real uploads without allocating hundreds of megabytes in a unit
+     * test. */
+    assert(ringl_context_reserve_shadow_bytes(
+               context, RINGL_MAX_CPU_SHADOW_BYTES) != 0);
+    ringl_gen_textures(1, &recycled);
+    assert(recycled != 0u);
+    ringl_bind_texture(RINGL_TEXTURE_2D, recycled);
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 1, 1, 0,
+                       RINGL_RGBA, RINGL_UNSIGNED_BYTE, pixels);
+    assert(ringl_get_error() == RINGL_OUT_OF_MEMORY);
+    ringl_context_release_shadow_bytes(context, RINGL_MAX_CPU_SHADOW_BYTES);
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 1, 1, 0,
+                       RINGL_RGBA, RINGL_UNSIGNED_BYTE, pixels);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    ringl_delete_textures(1, &recycled);
+    assert(context->cpu_shadow_bytes == 0u);
 
     ringl_context_destroy(context);
     return 0;

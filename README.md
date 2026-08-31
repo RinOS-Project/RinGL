@@ -53,10 +53,11 @@ compute-bind-group callbacks now return `RIN_GPU_ERROR_UNSUPPORTED` rather than
 publishing synthetic resource cookies; compute execution, storage bindings,
 and dispatch remain an explicit follow-up backend item.
 
-The same surface now bounds backend-owned bind-group metadata and decoded
-Float32 sampled-mip snapshots with a separate 512 MiB owner budget. Snapshot
-bytes are reserved before `calloc`, and every conversion failure, bind-group
-rollback, and destruction path releases the exact amount.
+The same surface now bounds every backend-owned CPU allocation with one
+512 MiB owner budget: resource metadata and byte shadows, decoded Float32
+sampled-mip snapshots, and transient draw vertex/index staging. Each exact
+size is reserved before `malloc`/`calloc`, and conversion, rollback, command
+validation, and destruction paths release the reservation before returning.
 
 The strict shader IR regression also carries a bounded malformed-source corpus:
 unbalanced constructors and overflow literals fail before executable

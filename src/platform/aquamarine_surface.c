@@ -10,6 +10,11 @@
 #include <ringpu/core.h>
 #include "rin_webgl_software.h"
 
+static int backend_reserve_cpu_bytes(RinGLAquamarineSurfaceContext* context,
+                                     uint64_t bytes);
+static void backend_release_cpu_bytes(RinGLAquamarineSurfaceContext* context,
+                                      uint64_t bytes);
+
 #define RINGL_AQUAMARINE_SURFACE_MAX_SAMPLED_IMAGES \
     (RIN_SHADER_MAX_RESOURCES / 2u)
 #define RINGL_AQUAMARINE_SURFACE_MAX_IMAGE_MIP_LEVELS 13u
@@ -512,31 +517,38 @@ static int backend_decode_vertex_component(uint32_t format,
 }
 
 static int backend_unpack_vertex_values(
+    RinGLAquamarineSurfaceContext* context,
     const RinGLAquamarineSurfacePipeline* pipeline, const uint8_t* source,
     uint64_t source_bytes, uint32_t vertex_count, float** values_out)
 {
     uint64_t value_count;
+    uint64_t allocation_bytes;
     float* values;
     uint32_t vertex;
 
-    if (!pipeline || !values_out || pipeline->input_count == 0u ||
+    if (!context || !pipeline || !values_out || pipeline->input_count == 0u ||
         pipeline->input_count > RIN_GPU_MAX_VERTEX_ATTRIBUTES ||
         (pipeline->vertex_stride != 0u && source == NULL)) {
         return RIN_GPU_ERROR_INVALID_ARGUMENT;
     }
     *values_out = NULL;
     value_count = (uint64_t)vertex_count * pipeline->input_count;
-    if (value_count == 0u || value_count > SIZE_MAX / sizeof(*values))
+    if (value_count == 0u || value_count > SIZE_MAX / sizeof(*values) ||
+        !backend_multiply_u64(value_count, sizeof(*values), &allocation_bytes) ||
+        !backend_reserve_cpu_bytes(context, allocation_bytes))
         return RIN_GPU_ERROR_LIMIT;
     values = calloc((size_t)value_count, sizeof(*values));
-    if (!values)
+    if (!values) {
+        backend_release_cpu_bytes(context, allocation_bytes);
         return RIN_GPU_ERROR_NO_MEMORY;
+    }
 
     for (vertex = 0u; vertex < vertex_count; ++vertex) {
         uint64_t vertex_base = (uint64_t)vertex * pipeline->vertex_stride;
         uint32_t attribute;
 
         if (pipeline->vertex_stride != 0u && vertex_base > source_bytes) {
+            backend_release_cpu_bytes(context, allocation_bytes);
             free(values);
             return RIN_GPU_ERROR_BOUNDS;
         }
@@ -550,11 +562,13 @@ static int backend_unpack_vertex_values(
 
             if (layout->location >= pipeline->input_count ||
                 component_bytes == 0u) {
+                backend_release_cpu_bytes(context, allocation_bytes);
                 free(values);
                 return RIN_GPU_ERROR_INVALID_ARGUMENT;
             }
             if (layout->flags == RIN_GPU_VERTEX_ATTRIBUTE_CONSTANT_FLOAT32) {
                 if (layout->format != RIN_GPU_VERTEX_FLOAT32) {
+                    backend_release_cpu_bytes(context, allocation_bytes);
                     free(values);
                     return RIN_GPU_ERROR_INVALID_ARGUMENT;
                 }
@@ -569,11 +583,13 @@ static int backend_unpack_vertex_values(
                 pipeline->vertex_stride == 0u ||
                 layout->offset > pipeline->vertex_stride - component_bytes ||
                 layout->offset > source_bytes - vertex_base) {
+                backend_release_cpu_bytes(context, allocation_bytes);
                 free(values);
                 return RIN_GPU_ERROR_INVALID_ARGUMENT;
             }
             offset = vertex_base + layout->offset;
             if (component_bytes > source_bytes - offset) {
+                backend_release_cpu_bytes(context, allocation_bytes);
                 free(values);
                 return RIN_GPU_ERROR_BOUNDS;
             }
@@ -582,6 +598,7 @@ static int backend_unpack_vertex_values(
                 &values[(size_t)vertex * pipeline->input_count +
                         layout->location]);
             if (result != RIN_GPU_OK) {
+                backend_release_cpu_bytes(context, allocation_bytes);
                 free(values);
                 return result;
             }
@@ -777,32 +794,32 @@ struct RinGLAquamarineSurfaceContext {
     RinGpuHandle depth_image;
     uint32_t color_state;
     uint32_t depth_state;
-    /* Bind groups own decoded Float32 sampler snapshots in addition to the
-     * RinGPU image allocation. Keep those backend-owned copies bounded too. */
-    uint64_t sampled_snapshot_bytes;
+    /* Bound every private allocation owned by this surface, including
+     * resource metadata, shadows, sampled snapshots, and draw staging. */
+    uint64_t backend_cpu_bytes;
     uint32_t initialized;
 };
 
-static int backend_reserve_sampled_snapshot_bytes(
-    RinGLAquamarineSurfaceContext* context, uint64_t bytes)
+static int backend_reserve_cpu_bytes(RinGLAquamarineSurfaceContext* context,
+                                     uint64_t bytes)
 {
     if (!context || bytes > RINGL_AQUAMARINE_SURFACE_MAX_TOTAL_ALLOCATION_BYTES ||
-        context->sampled_snapshot_bytes >
+        context->backend_cpu_bytes >
             RINGL_AQUAMARINE_SURFACE_MAX_TOTAL_ALLOCATION_BYTES - bytes)
         return 0;
-    context->sampled_snapshot_bytes += bytes;
+    context->backend_cpu_bytes += bytes;
     return 1;
 }
 
-static void backend_release_sampled_snapshot_bytes(
-    RinGLAquamarineSurfaceContext* context, uint64_t bytes)
+static void backend_release_cpu_bytes(RinGLAquamarineSurfaceContext* context,
+                                      uint64_t bytes)
 {
     if (!context)
         return;
-    if (bytes >= context->sampled_snapshot_bytes)
-        context->sampled_snapshot_bytes = 0u;
+    if (bytes >= context->backend_cpu_bytes)
+        context->backend_cpu_bytes = 0u;
     else
-        context->sampled_snapshot_bytes -= bytes;
+        context->backend_cpu_bytes -= bytes;
 }
 
 static int target_valid(const RinGLAquamarineSurfaceTargetV1* target)
@@ -867,15 +884,24 @@ static int backend_create_buffer(void* opaque, const RinGpuBufferDescV1* desc,
 {
     RinGLAquamarineSurfaceContext* context = opaque;
     RinGLAquamarineSurfaceBuffer* buffer;
+    uint64_t owned_bytes;
 
     if (!context || !desc || !cookie || desc->size_bytes == 0u ||
         desc->size_bytes > SIZE_MAX) {
         return RIN_GPU_ERROR_INVALID_ARGUMENT;
     }
+    if (!backend_add_u64(sizeof(*buffer), desc->size_bytes, &owned_bytes) ||
+        !backend_reserve_cpu_bytes(context, owned_bytes)) {
+        return RIN_GPU_ERROR_LIMIT;
+    }
     buffer = calloc(1u, sizeof(*buffer));
-    if (!buffer) return RIN_GPU_ERROR_NO_MEMORY;
+    if (!buffer) {
+        backend_release_cpu_bytes(context, owned_bytes);
+        return RIN_GPU_ERROR_NO_MEMORY;
+    }
     buffer->bytes = calloc(1u, (size_t)desc->size_bytes);
     if (!buffer->bytes) {
+        backend_release_cpu_bytes(context, owned_bytes);
         free(buffer);
         return RIN_GPU_ERROR_NO_MEMORY;
     }
@@ -889,9 +915,11 @@ static void backend_destroy_buffer(void* opaque, uint64_t cookie)
 {
     RinGLAquamarineSurfaceBuffer* buffer =
         (RinGLAquamarineSurfaceBuffer*)(uintptr_t)cookie;
-    (void)opaque;
+    RinGLAquamarineSurfaceContext* context = opaque;
     if (!buffer) return;
     free(buffer->bytes);
+    if (context && buffer->owner == context)
+        backend_release_cpu_bytes(context, sizeof(*buffer) + buffer->size_bytes);
     free(buffer);
 }
 
@@ -930,6 +958,8 @@ static int backend_create_image(void* opaque, const RinGpuImageDescV1* desc,
 {
     RinGLAquamarineSurfaceContext* context = opaque;
     RinGLAquamarineSurfaceImage* image;
+    uint64_t owned_bytes;
+    int caller_owned_color = 0;
     int caller_owned_depth = 0;
     int caller_owned_depth_stencil = 0;
 
@@ -949,6 +979,7 @@ static int backend_create_image(void* opaque, const RinGpuImageDescV1* desc,
         desc->width == context->target.width &&
         desc->height == context->target.height) {
         /* The caller-owned display target is this image's backing store. */
+        caller_owned_color = 1;
     } else if (desc->format == RIN_GPU_FORMAT_D32_FLOAT &&
                (desc->usage & RIN_GPU_IMAGE_DEPTH_STENCIL) != 0u &&
                context->target.depth != NULL &&
@@ -992,8 +1023,18 @@ static int backend_create_image(void* opaque, const RinGpuImageDescV1* desc,
          caller_owned_depth_stencil)) {
         return RIN_GPU_ERROR_INVALID_ARGUMENT;
     }
+    if (!backend_add_u64(sizeof(*image),
+                         (caller_owned_color || caller_owned_depth ||
+                          caller_owned_depth_stencil) ? 0u : allocation_bytes,
+                         &owned_bytes) ||
+        !backend_reserve_cpu_bytes(context, owned_bytes)) {
+        return RIN_GPU_ERROR_LIMIT;
+    }
     image = calloc(1u, sizeof(*image));
-    if (!image) return RIN_GPU_ERROR_NO_MEMORY;
+    if (!image) {
+        backend_release_cpu_bytes(context, owned_bytes);
+        return RIN_GPU_ERROR_NO_MEMORY;
+    }
     image->owner = context;
     image->descriptor = *desc;
     image->descriptor.struct_size = sizeof(image->descriptor);
@@ -1007,6 +1048,7 @@ static int backend_create_image(void* opaque, const RinGpuImageDescV1* desc,
     } else {
         image->bytes = calloc(1u, (size_t)allocation_bytes);
         if (!image->bytes) {
+            backend_release_cpu_bytes(context, owned_bytes);
             free(image);
             return RIN_GPU_ERROR_NO_MEMORY;
         }
@@ -1028,9 +1070,13 @@ static void backend_destroy_image(void* opaque, uint64_t cookie)
 {
     RinGLAquamarineSurfaceImage* image =
         (RinGLAquamarineSurfaceImage*)(uintptr_t)cookie;
-    (void)opaque;
+    RinGLAquamarineSurfaceContext* context = opaque;
+    uint64_t owned_bytes;
     if (!image) return;
+    owned_bytes = sizeof(*image) + (image->bytes ? image->allocation_bytes : 0u);
     free(image->bytes);
+    if (context && image->owner == context)
+        backend_release_cpu_bytes(context, owned_bytes);
     free(image);
 }
 
@@ -1310,8 +1356,13 @@ static int backend_create_sampler(void* opaque, const RinGpuSamplerDescV1* desc,
         desc->flags != 0u || desc->compare_op != 0u) {
         return RIN_GPU_ERROR_UNSUPPORTED;
     }
+    if (!backend_reserve_cpu_bytes(context, sizeof(*sampler)))
+        return RIN_GPU_ERROR_LIMIT;
     sampler = calloc(1u, sizeof(*sampler));
-    if (!sampler) return RIN_GPU_ERROR_NO_MEMORY;
+    if (!sampler) {
+        backend_release_cpu_bytes(context, sizeof(*sampler));
+        return RIN_GPU_ERROR_NO_MEMORY;
+    }
     sampler->owner = context;
     sampler->descriptor = *desc;
     sampler->descriptor.struct_size = sizeof(sampler->descriptor);
@@ -1323,7 +1374,10 @@ static void backend_destroy_sampler(void* opaque, uint64_t cookie)
 {
     RinGLAquamarineSurfaceSampler* sampler =
         (RinGLAquamarineSurfaceSampler*)(uintptr_t)cookie;
-    (void)opaque;
+    RinGLAquamarineSurfaceContext* context = opaque;
+    if (!sampler) return;
+    if (context && sampler->owner == context)
+        backend_release_cpu_bytes(context, sizeof(*sampler));
     free(sampler);
 }
 
@@ -1334,6 +1388,7 @@ static int backend_create_shader(void* opaque, const void* shader,
 {
     RinGLAquamarineSurfaceContext* context = opaque;
     RinGLAquamarineSurfaceShader* module;
+    uint64_t owned_bytes;
 
     if (!context || !shader || !shader_info || !cookie ||
         shader_size == 0u || shader_size > UINT32_MAX ||
@@ -1341,10 +1396,17 @@ static int backend_create_shader(void* opaque, const void* shader,
         shader_info->abi_version != RIN_GPU_ABI_VERSION) {
         return RIN_GPU_ERROR_INVALID_ARGUMENT;
     }
+    if (!backend_add_u64(sizeof(*module), shader_size, &owned_bytes) ||
+        !backend_reserve_cpu_bytes(context, owned_bytes))
+        return RIN_GPU_ERROR_LIMIT;
     module = calloc(1u, sizeof(*module));
-    if (!module) return RIN_GPU_ERROR_NO_MEMORY;
+    if (!module) {
+        backend_release_cpu_bytes(context, owned_bytes);
+        return RIN_GPU_ERROR_NO_MEMORY;
+    }
     module->bytes = malloc((size_t)shader_size);
     if (!module->bytes) {
+        backend_release_cpu_bytes(context, owned_bytes);
         free(module);
         return RIN_GPU_ERROR_NO_MEMORY;
     }
@@ -1360,9 +1422,11 @@ static void backend_destroy_shader(void* opaque, uint64_t cookie)
 {
     RinGLAquamarineSurfaceShader* module =
         (RinGLAquamarineSurfaceShader*)(uintptr_t)cookie;
-    (void)opaque;
+    RinGLAquamarineSurfaceContext* context = opaque;
     if (!module) return;
     free(module->bytes);
+    if (context && module->owner == context)
+        backend_release_cpu_bytes(context, sizeof(*module) + module->size_bytes);
     free(module);
 }
 
@@ -1649,8 +1713,13 @@ static int backend_create_graphics_pipeline(
             return RIN_GPU_ERROR_INVALID_ARGUMENT;
         }
     }
+    if (!backend_reserve_cpu_bytes(context, sizeof(*pipeline)))
+        return RIN_GPU_ERROR_LIMIT;
     pipeline = calloc(1u, sizeof(*pipeline));
-    if (!pipeline) return RIN_GPU_ERROR_NO_MEMORY;
+    if (!pipeline) {
+        backend_release_cpu_bytes(context, sizeof(*pipeline));
+        return RIN_GPU_ERROR_NO_MEMORY;
+    }
     pipeline->owner = context;
     pipeline->vertex_shader = vertex_shader;
     pipeline->fragment_shader = fragment_shader;
@@ -1708,8 +1777,13 @@ static int backend_create_graphics_pipeline(
 
 static void backend_destroy_graphics_pipeline(void* opaque, uint64_t cookie)
 {
-    (void)opaque;
-    free((void*)(uintptr_t)cookie);
+    RinGLAquamarineSurfaceContext* context = opaque;
+    RinGLAquamarineSurfacePipeline* pipeline =
+        (RinGLAquamarineSurfacePipeline*)(uintptr_t)cookie;
+    if (!pipeline) return;
+    if (context && pipeline->owner == context)
+        backend_release_cpu_bytes(context, sizeof(*pipeline));
+    free(pipeline);
 }
 
 static int backend_snapshot_sampled_mip(
@@ -1742,25 +1816,25 @@ static int backend_snapshot_sampled_mip(
     }
     if (!backend_multiply_u64(texel_count, 4u * sizeof(*texels),
                               &allocation_bytes) ||
-        !backend_reserve_sampled_snapshot_bytes(context, allocation_bytes))
+        !backend_reserve_cpu_bytes(context, allocation_bytes))
         return RIN_GPU_ERROR_NO_MEMORY;
     texels = calloc((size_t)texel_count * 4u, sizeof(*texels));
     if (!texels) {
-        backend_release_sampled_snapshot_bytes(context, allocation_bytes);
+        backend_release_cpu_bytes(context, allocation_bytes);
         return RIN_GPU_ERROR_NO_MEMORY;
     }
     if (image->descriptor.format == RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) {
         if (offscreen_depth_stencil_storage_at_mip(
                 image, mip_level, &depth_storage, &stencil_storage,
                 &depth_pitch) != RIN_GPU_OK) {
-            backend_release_sampled_snapshot_bytes(context, allocation_bytes);
+            backend_release_cpu_bytes(context, allocation_bytes);
             free(texels);
             return RIN_GPU_ERROR_STATE;
         }
     } else if (offscreen_image_storage(image, mip_level, &source,
                                        &source_pitch, &width, &height) !=
                RIN_GPU_OK) {
-        backend_release_sampled_snapshot_bytes(context, allocation_bytes);
+        backend_release_cpu_bytes(context, allocation_bytes);
         free(texels);
         return RIN_GPU_ERROR_STATE;
     }
@@ -1829,8 +1903,7 @@ static void backend_release_bind_group_texels(RinGLAquamarineSurfaceBindGroup* g
              mip < RINGL_AQUAMARINE_SURFACE_MAX_IMAGE_MIP_LEVELS; ++mip) {
             uint64_t allocation_bytes =
                 (uint64_t)group->texel_counts[image][mip] * 4u * sizeof(float);
-            backend_release_sampled_snapshot_bytes(group->owner,
-                                                   allocation_bytes);
+            backend_release_cpu_bytes(group->owner, allocation_bytes);
             free(group->texels[image][mip]);
             group->texels[image][mip] = NULL;
             group->texel_counts[image][mip] = 0u;
@@ -1876,11 +1949,11 @@ static int backend_create_graphics_bind_group(
     sampled_image_count = binding_count / 2u;
     if (sampled_image_count > RINGL_AQUAMARINE_SURFACE_MAX_SAMPLED_IMAGES)
         return RIN_GPU_ERROR_INVALID_ARGUMENT;
-    if (!backend_reserve_sampled_snapshot_bytes(context, sizeof(*group)))
+    if (!backend_reserve_cpu_bytes(context, sizeof(*group)))
         return RIN_GPU_ERROR_NO_MEMORY;
     group = calloc(1u, sizeof(*group));
     if (!group) {
-        backend_release_sampled_snapshot_bytes(context, sizeof(*group));
+        backend_release_cpu_bytes(context, sizeof(*group));
         return RIN_GPU_ERROR_NO_MEMORY;
     }
     group->owner = context;
@@ -1974,22 +2047,22 @@ static int backend_create_graphics_bind_group(
 
 no_memory:
     backend_release_bind_group_texels(group);
-    backend_release_sampled_snapshot_bytes(context, sizeof(*group));
+    backend_release_cpu_bytes(context, sizeof(*group));
     free(group);
     return RIN_GPU_ERROR_NO_MEMORY;
 unsupported:
     backend_release_bind_group_texels(group);
-    backend_release_sampled_snapshot_bytes(context, sizeof(*group));
+    backend_release_cpu_bytes(context, sizeof(*group));
     free(group);
     return RIN_GPU_ERROR_UNSUPPORTED;
 state_error:
     backend_release_bind_group_texels(group);
-    backend_release_sampled_snapshot_bytes(context, sizeof(*group));
+    backend_release_cpu_bytes(context, sizeof(*group));
     free(group);
     return RIN_GPU_ERROR_STATE;
 invalid_argument:
     backend_release_bind_group_texels(group);
-    backend_release_sampled_snapshot_bytes(context, sizeof(*group));
+    backend_release_cpu_bytes(context, sizeof(*group));
     free(group);
     return RIN_GPU_ERROR_INVALID_ARGUMENT;
 }
@@ -2001,7 +2074,7 @@ static void backend_destroy_graphics_bind_group(void* opaque, uint64_t cookie)
     (void)opaque;
     if (!group) return;
     backend_release_bind_group_texels(group);
-    backend_release_sampled_snapshot_bytes(group->owner, sizeof(*group));
+    backend_release_cpu_bytes(group->owner, sizeof(*group));
     free(group);
 }
 
@@ -3170,13 +3243,15 @@ static int backend_draw_vertices(RinGLAquamarineSurfaceContext* context,
         source = vertex_buffer->bytes + (size_t)first_byte;
         source_bytes = vertex_buffer->size_bytes - first_byte;
     }
-    result = backend_unpack_vertex_values(pipeline, source, source_bytes,
-                                          draw->vertex_count, &values);
+    result = backend_unpack_vertex_values(context, pipeline, source,
+                                          source_bytes, draw->vertex_count,
+                                          &values);
     if (result != RIN_GPU_OK)
         return result;
     byte_length = (uint64_t)draw->vertex_count * pipeline->input_count *
         sizeof(*values);
     if (byte_length > UINT32_MAX) {
+        backend_release_cpu_bytes(context, byte_length);
         free(values);
         return RIN_GPU_ERROR_LIMIT;
     }
@@ -3196,6 +3271,7 @@ static int backend_draw_vertices(RinGLAquamarineSurfaceContext* context,
                                            active_pass->stencil_mip_level,
                                            &vertices, NULL,
                                            raster_state, bind_group, active_pass);
+    backend_release_cpu_bytes(context, byte_length);
     free(values);
     return result;
 }
@@ -3229,8 +3305,13 @@ static int backend_draw_vertices_v2(
         byte_length > SIZE_MAX) {
         return RIN_GPU_ERROR_LIMIT;
     }
+    if (!backend_reserve_cpu_bytes(context, byte_length))
+        return RIN_GPU_ERROR_LIMIT;
     values = calloc(1u, (size_t)byte_length);
-    if (!values) return RIN_GPU_ERROR_NO_MEMORY;
+    if (!values) {
+        backend_release_cpu_bytes(context, byte_length);
+        return RIN_GPU_ERROR_NO_MEMORY;
+    }
     /* Validate every instance before the first raster write. The values array
      * is reused below, so this does not make instance count scale memory use. */
     for (instance = 0u; instance < draw->instance_count; ++instance) {
@@ -3239,6 +3320,7 @@ static int backend_draw_vertices_v2(
             draw->first_vertex, draw->vertex_count, draw->first_instance,
             instance, values);
         if (result != RIN_GPU_OK) {
+            backend_release_cpu_bytes(context, byte_length);
             free(values);
             return result;
         }
@@ -3265,6 +3347,7 @@ static int backend_draw_vertices_v2(
         if (result != RIN_GPU_OK)
             break;
     }
+    backend_release_cpu_bytes(context, byte_length);
     free(values);
     return result;
 }
@@ -3295,6 +3378,7 @@ static int backend_draw_indexed_valid(
     uint64_t vertex_bytes;
     uint64_t index_bytes;
     uint64_t first_index_byte;
+    uint64_t allocation_bytes;
 
     if (native_indices) *native_indices = NULL;
     if (!context || !draw || !active_pass || !native_indices ||
@@ -3361,8 +3445,15 @@ static int backend_draw_indexed_valid(
         index_bytes > index_buffer->size_bytes - first_index_byte) {
         return RIN_GPU_ERROR_BOUNDS;
     }
+    if (!backend_multiply_u64(draw->index_count, sizeof(*values),
+                              &allocation_bytes) ||
+        !backend_reserve_cpu_bytes(context, allocation_bytes))
+        return RIN_GPU_ERROR_LIMIT;
     values = calloc(draw->index_count, sizeof(*values));
-    if (!values) return RIN_GPU_ERROR_NO_MEMORY;
+    if (!values) {
+        backend_release_cpu_bytes(context, allocation_bytes);
+        return RIN_GPU_ERROR_NO_MEMORY;
+    }
     source = index_buffer->bytes + (size_t)first_index_byte;
     for (index = 0u; index < draw->index_count; ++index) {
         uint32_t value = 0u;
@@ -3379,6 +3470,7 @@ static int backend_draw_indexed_valid(
                    sizeof(value));
         }
         if (value >= draw->vertex_count) {
+            backend_release_cpu_bytes(context, allocation_bytes);
             free(values);
             return RIN_GPU_ERROR_BOUNDS;
         }
@@ -3416,7 +3508,7 @@ static int backend_draw_indexed(
 
     if (!native_indices) return RIN_GPU_ERROR_BACKEND;
     result = backend_unpack_vertex_values(
-        pipeline,
+        context, pipeline,
         pipeline->vertex_stride != 0u
             ? vertex_buffer->bytes + (size_t)draw->vertex_offset : NULL,
         pipeline->vertex_stride != 0u
@@ -3427,6 +3519,7 @@ static int backend_draw_indexed(
     byte_length = (uint64_t)draw->vertex_count * pipeline->input_count *
         sizeof(*values);
     if (byte_length > UINT32_MAX) {
+        backend_release_cpu_bytes(context, byte_length);
         free(values);
         return RIN_GPU_ERROR_LIMIT;
     }
@@ -3451,6 +3544,7 @@ static int backend_draw_indexed(
                                            active_pass->stencil_mip_level,
                                            &vertices, &indices,
                                            raster_state, bind_group, active_pass);
+    backend_release_cpu_bytes(context, byte_length);
     free(values);
     return result;
 }
@@ -3470,6 +3564,7 @@ static int backend_draw_indexed_valid_v2(
     uint32_t index_stride;
     uint64_t index_bytes;
     uint64_t first_index_byte;
+    uint64_t allocation_bytes;
 
     if (native_indices) *native_indices = NULL;
     if (!context || !draw || !active_pass || !native_indices ||
@@ -3532,8 +3627,15 @@ static int backend_draw_indexed_valid_v2(
         index_bytes > index_buffer->size_bytes - first_index_byte) {
         return RIN_GPU_ERROR_BOUNDS;
     }
+    if (!backend_multiply_u64(draw->index_count, sizeof(*values),
+                              &allocation_bytes) ||
+        !backend_reserve_cpu_bytes(context, allocation_bytes))
+        return RIN_GPU_ERROR_LIMIT;
     values = calloc(draw->index_count, sizeof(*values));
-    if (!values) return RIN_GPU_ERROR_NO_MEMORY;
+    if (!values) {
+        backend_release_cpu_bytes(context, allocation_bytes);
+        return RIN_GPU_ERROR_NO_MEMORY;
+    }
     source = index_buffer->bytes + (size_t)first_index_byte;
     for (uint32_t index = 0u; index < draw->index_count; ++index) {
         uint32_t value;
@@ -3549,6 +3651,7 @@ static int backend_draw_indexed_valid_v2(
                    sizeof(value));
         }
         if (value >= draw->vertex_count) {
+            backend_release_cpu_bytes(context, allocation_bytes);
             free(values);
             return RIN_GPU_ERROR_BOUNDS;
         }
@@ -3590,13 +3693,19 @@ static int backend_draw_indexed_v2(
         byte_length > SIZE_MAX) {
         return RIN_GPU_ERROR_LIMIT;
     }
+    if (!backend_reserve_cpu_bytes(context, byte_length))
+        return RIN_GPU_ERROR_LIMIT;
     values = calloc(1u, (size_t)byte_length);
-    if (!values) return RIN_GPU_ERROR_NO_MEMORY;
+    if (!values) {
+        backend_release_cpu_bytes(context, byte_length);
+        return RIN_GPU_ERROR_NO_MEMORY;
+    }
     for (instance = 0u; instance < draw->instance_count; ++instance) {
         result = backend_unpack_vertex_values_v2(
             context, pipeline, draw->vertex_buffers, draw->vertex_binding_count,
             0u, draw->vertex_count, draw->first_instance, instance, values);
         if (result != RIN_GPU_OK) {
+            backend_release_cpu_bytes(context, byte_length);
             free(values);
             return result;
         }
@@ -3628,6 +3737,7 @@ static int backend_draw_indexed_v2(
         if (result != RIN_GPU_OK)
             break;
     }
+    backend_release_cpu_bytes(context, byte_length);
     free(values);
     return result;
 }
@@ -3643,6 +3753,7 @@ static int backend_submit(void* opaque,
     uint32_t indexed_draw_count = 0u;
     uint32_t indexed_value_index = 0u;
     uint32_t index;
+    uint64_t indexed_array_bytes = 0u;
     int result = RIN_GPU_OK;
 
     if (!context || (!commands && command_count != 0u))
@@ -3656,10 +3767,15 @@ static int backend_submit(void* opaque,
         }
     }
     if (indexed_draw_count != 0u) {
-        if (indexed_draw_count > UINT32_MAX / sizeof(*indexed_values))
-            return RIN_GPU_ERROR_NO_MEMORY;
+        if (!backend_multiply_u64(indexed_draw_count, sizeof(*indexed_values),
+                                  &indexed_array_bytes) ||
+            !backend_reserve_cpu_bytes(context, indexed_array_bytes))
+            return RIN_GPU_ERROR_LIMIT;
         indexed_values = calloc(indexed_draw_count, sizeof(*indexed_values));
-        if (!indexed_values) return RIN_GPU_ERROR_NO_MEMORY;
+        if (!indexed_values) {
+            backend_release_cpu_bytes(context, indexed_array_bytes);
+            return RIN_GPU_ERROR_NO_MEMORY;
+        }
     }
 
     memset(&raster_state, 0, sizeof(raster_state));
@@ -4221,8 +4337,28 @@ static int backend_submit(void* opaque,
         }
     }
 cleanup:
-    for (index = 0u; index < indexed_draw_count; ++index)
-        free(indexed_values ? indexed_values[index] : NULL);
+    indexed_value_index = 0u;
+    for (index = 0u; index < command_count; ++index) {
+        const RinGpuBackendCommandV1* command = &commands[index];
+        uint64_t native_index_bytes = 0u;
+        if (command->type == RIN_GPU_BACKEND_COMMAND_DRAW_INDEXED) {
+            (void)backend_multiply_u64(command->value.draw_indexed.index_count,
+                                        sizeof(uint32_t), &native_index_bytes);
+        } else if (command->type == RIN_GPU_BACKEND_COMMAND_DRAW_INDEXED_V2) {
+            (void)backend_multiply_u64(
+                command->value.draw_indexed_v2.index_count, sizeof(uint32_t),
+                &native_index_bytes);
+        } else {
+            continue;
+        }
+        if (indexed_values && indexed_value_index < indexed_draw_count &&
+            indexed_values[indexed_value_index]) {
+            backend_release_cpu_bytes(context, native_index_bytes);
+            free(indexed_values[indexed_value_index]);
+        }
+        indexed_value_index++;
+    }
+    backend_release_cpu_bytes(context, indexed_array_bytes);
     free(indexed_values);
     return result;
 }

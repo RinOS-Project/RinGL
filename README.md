@@ -56,11 +56,12 @@ surface or browser context is still an explicit follow-up API/security item.
 
 The same surface now bounds every backend-owned CPU allocation with one
 512 MiB owner budget: resource metadata and byte shadows, shader/sampler and
-pipeline/bind-group metadata, compute shadows, decoded Float32 sampled-mip
-snapshots, and transient draw vertex/index staging. The generic software
-backend uses one checked reserve/release helper for each exact allocation;
-conversion, rollback, command validation, and destruction paths release the
-reservation before returning.
+pipeline/bind-group metadata, compute shadows, and decoded Float32 sampled-mip
+snapshots. The generic software backend uses one checked reserve/release helper
+for each exact dynamic allocation; conversion, rollback, command validation,
+and destruction paths release the reservation before returning. The historical
+`aquamarine_surface.c` direct path is not part of the current CMake/source
+manifest and is not used as production evidence.
 
 The strict shader IR regression also carries a bounded malformed-source corpus:
 unbalanced constructors and overflow literals fail before executable

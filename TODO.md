@@ -673,12 +673,14 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     accounted for by the same owner. Compute resources remain explicitly
     unsupported, while other backend resources and hardware/QEMU accounting
     remain open.
-  - [x] Extended the Aquamarine budget to every backend-owned CPU allocation:
-    buffer/image/shader shadows, sampler and pipeline metadata, transient
-    vertex/index arrays for both draw contracts, and indexed-command staging.
-    Each exact size is admitted before allocation and released on all
-    validation, execution, rollback, destruction, and surface teardown paths.
-    GPU-driver accounting and hardware/QEMU evidence remain open.
+  - [x] Extended the built generic software-backend budget to every dynamic
+    backend-owned CPU allocation: buffer/image/shader shadows, resource
+    metadata, sampler and pipeline metadata, graphics/compute bind groups, and
+    compute writable-buffer shadows. Each exact size is admitted before
+    allocation and released on validation, dispatch rollback, destruction, and
+    backend teardown paths. The historical direct Aquamarine source is not in
+    the current CMake/source manifest; GPU-driver accounting and hardware/QEMU
+    evidence remain open.
 - [x] Add WebGL-oriented negative tests for malformed state and shader input.
   `tests/ringl_webgl_negative_test.c` covers failure-atomic descriptor queries,
   invalid viewport/scissor/depth/blend values, and malformed GLSL compile

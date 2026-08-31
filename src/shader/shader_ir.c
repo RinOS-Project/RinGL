@@ -22,7 +22,7 @@ int ringl_lower_shader_rsh1(uint32_t shader)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLShaderObject* object;
-    RinGLGlslLowerResult lowered;
+    RinGLGlslLowerResult* lowered;
     uint8_t* copy;
     int rc;
 
@@ -38,6 +38,16 @@ int ringl_lower_shader_rsh1(uint32_t shader)
         return -1;
     }
 
+    /* Keep the complete lowerer result (instruction storage plus diagnostic)
+     * inside the context's temporary shadow budget. This prevents a full
+     * reservation from being bypassed by a large stack workspace. */
+    lowered = ringl_context_alloc_temporary(context, sizeof(*lowered));
+    if (lowered == NULL) {
+        ringl_copy_c_string(object->info_log, sizeof(object->info_log),
+                            "shader lowerer workspace exhausted");
+        ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+        return -1;
+    }
     if (object->uses_standard_derivatives == 0u &&
         object->uses_shader_texture_lod == 0u &&
         object->uses_webgl_frag_depth == 0u &&
@@ -45,13 +55,13 @@ int ringl_lower_shader_rsh1(uint32_t shader)
         strstr(object->source, "varying") != NULL) {
         rc = ringl_glsl_lower_varying_rsh1(
             context, object->shader_type, object->source,
-            (size_t)object->source_length, &lowered);
+            (size_t)object->source_length, lowered);
         /* Preserve byte-stable compact profiles, but do not let their shape
          * matcher reject a valid generic vec2/vec3/vec4 interface. */
-        if (rc != 0 || !lowered.ok || lowered.byte_size == 0u) {
+        if (rc != 0 || !lowered->ok || lowered->byte_size == 0u) {
             rc = ringl_glsl_lower_rsh1(
                 object->shader_type, object->source,
-                (size_t)object->source_length, &lowered);
+                (size_t)object->source_length, lowered);
         }
     } else if (object->sampler_uniform_count != 0u &&
                strstr(object->source, "texture2D") != NULL) {
@@ -59,56 +69,62 @@ int ringl_lower_shader_rsh1(uint32_t shader)
             ringl_copy_c_string(
                 object->info_log, sizeof(object->info_log),
                 "texture2D lowering requires a fragment shader");
+            ringl_context_free_temporary(context, lowered, sizeof(*lowered));
             return -1;
         }
         rc = ringl_glsl_lower_texture2d_rsh1(
-            object->source, (size_t)object->source_length,
+                object->source, (size_t)object->source_length,
             &object->sampler_uniform_names[0][0],
             sizeof(object->sampler_uniform_names[0]),
-            object->sampler_uniform_count, &lowered);
+            object->sampler_uniform_count, lowered);
         /* The compact no-varying sampler profile is intentionally retained
          * for its stable module layout. Its rejection is not a semantic
          * rejection: let the generic sampler lowerer handle supported local
          * expressions with the same real RinGPU image/sampler ABI. */
-        if (rc != 0 || !lowered.ok || lowered.byte_size == 0u) {
+        if (rc != 0 || !lowered->ok || lowered->byte_size == 0u) {
             rc = ringl_glsl_lower_rsh1(
                 object->shader_type, object->source,
-                (size_t)object->source_length, &lowered);
+                (size_t)object->source_length, lowered);
         }
     } else {
         rc = ringl_glsl_lower_rsh1(object->shader_type, object->source,
-                                   (size_t)object->source_length, &lowered);
+                                   (size_t)object->source_length, lowered);
     }
-    if (rc != 0 || !lowered.ok) {
+    if (rc != 0 || !lowered->ok) {
         ringl_copy_c_string(object->info_log, sizeof(object->info_log),
-                            lowered.diagnostic);
+                            lowered->diagnostic);
+        ringl_context_free_temporary(context, lowered, sizeof(*lowered));
         return -1;
     }
-    if (lowered.sampler_binding_count > object->sampler_uniform_count) {
+    if (lowered->sampler_binding_count > object->sampler_uniform_count) {
         ringl_copy_c_string(object->info_log, sizeof(object->info_log),
                             "invalid active sampler reflection");
+        ringl_context_free_temporary(context, lowered, sizeof(*lowered));
         return -1;
     }
-    for (uint32_t index = 0u; index < lowered.sampler_binding_count; ++index) {
-        if (lowered.sampler_binding_indices[index] >=
+    for (uint32_t index = 0u; index < lowered->sampler_binding_count; ++index) {
+        if (lowered->sampler_binding_indices[index] >=
             object->sampler_uniform_count) {
             ringl_copy_c_string(object->info_log, sizeof(object->info_log),
                                 "invalid active sampler reflection");
+            ringl_context_free_temporary(context, lowered, sizeof(*lowered));
             return -1;
         }
     }
 
-    if (!ringl_context_reserve_shadow_bytes(context, lowered.byte_size)) {
+    if (!ringl_context_reserve_shadow_bytes(context, lowered->byte_size)) {
+        ringl_context_free_temporary(context, lowered, sizeof(*lowered));
         ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
         return -1;
     }
-    copy = malloc(lowered.byte_size);
+    copy = malloc(lowered->byte_size);
     if (copy == NULL) {
-        ringl_context_release_shadow_bytes(context, lowered.byte_size);
+        ringl_context_release_shadow_bytes(context, lowered->byte_size);
+        ringl_context_free_temporary(context, lowered, sizeof(*lowered));
         ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
         return -1;
     }
-    memcpy(copy, lowered.bytes, lowered.byte_size);
+    memcpy(copy, lowered->bytes, lowered->byte_size);
 
     if (object->ringpu_module != 0u) {
         ringl_invalidate_graphics_artifacts(context);
@@ -118,12 +134,13 @@ int ringl_lower_shader_rsh1(uint32_t shader)
     ringl_context_release_shadow_bytes(context, object->rsh1_size);
     free(object->rsh1);
     object->rsh1 = copy;
-    object->rsh1_size = lowered.byte_size;
-    object->rsh1_sampler_binding_count = lowered.sampler_binding_count;
+    object->rsh1_size = lowered->byte_size;
+    object->rsh1_sampler_binding_count = lowered->sampler_binding_count;
     memcpy(object->rsh1_sampler_binding_indices,
-           lowered.sampler_binding_indices,
+           lowered->sampler_binding_indices,
            sizeof(object->rsh1_sampler_binding_indices));
     object->info_log[0] = '\0';
+    ringl_context_free_temporary(context, lowered, sizeof(*lowered));
     return 0;
 }
 

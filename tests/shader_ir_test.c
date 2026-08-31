@@ -621,6 +621,26 @@ int main(void)
     fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
     assert(vertex != 0u && fragment != 0u);
 
+    /* Generic lowerer instruction storage and diagnostics are also charged
+     * temporary workspace. Keep a compiled source, fill the remaining
+     * context budget, and verify lower-before-publish failure is atomic. */
+    ringl_shader_source(vertex, scalar_source, -1);
+    ringl_compile_shader(vertex);
+    assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
+    {
+        const uint64_t available_shadow_budget =
+            RINGL_MAX_CPU_SHADOW_BYTES - context->cpu_shadow_bytes;
+        assert(ringl_context_reserve_shadow_bytes(
+                   context, available_shadow_budget) != 0);
+        assert(ringl_lower_shader_rsh1(vertex) != 0);
+        assert(ringl_get_error() == RINGL_OUT_OF_MEMORY);
+        assert(ringl_get_shader_rsh1_size(vertex) == 0u);
+        assert(context->cpu_shadow_bytes == RINGL_MAX_CPU_SHADOW_BYTES);
+        ringl_context_release_shadow_bytes(context, available_shadow_budget);
+    }
+    assert(ringl_lower_shader_rsh1(vertex) == 0);
+    assert(ringl_get_shader_rsh1_size(vertex) != 0u);
+
     header = lower_and_read_header(vertex, scalar_source, blob, sizeof(blob));
     assert(header.stage == 1u);
     assert(header.input_count == 1u);

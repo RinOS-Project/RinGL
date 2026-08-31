@@ -312,7 +312,7 @@ void ringl_compile_shader(uint32_t shader)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLShaderObject* object;
-    RinGLGlslParseResult result;
+    RinGLGlslParseResult* result;
     int parse_result;
 
     if (context == NULL)
@@ -329,94 +329,111 @@ void ringl_compile_shader(uint32_t shader)
         return;
     }
 
-    parse_result = ringl_glsl_parse(object->shader_type, object->source,
-                                    (size_t)object->source_length, &result);
-    if (parse_result != 0 || !result.ok) {
+    /* Parsing is a bounded, caller-independent workspace just like source
+     * snapshots and lowered modules. Charge the complete result before the
+     * parser touches source so an exhausted context cannot build an
+     * unaccounted stack-sized diagnostic/reflection snapshot. */
+    result = ringl_context_alloc_temporary(context, sizeof(*result));
+    if (result == NULL) {
         ringl_copy_c_string(object->info_log, sizeof(object->info_log),
-                            result.diagnostic);
+                            "shader parser workspace exhausted");
+        ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
         return;
     }
-    if (result.uses_standard_derivatives != 0u &&
+    parse_result = ringl_glsl_parse(object->shader_type, object->source,
+                                    (size_t)object->source_length, result);
+    if (parse_result != 0 || !result->ok) {
+        ringl_copy_c_string(object->info_log, sizeof(object->info_log),
+                            result->diagnostic);
+        ringl_context_free_temporary(context, result, sizeof(*result));
+        return;
+    }
+    if (result->uses_standard_derivatives != 0u &&
         context->webgl_standard_derivatives_enabled == RINGL_FALSE) {
         ringl_copy_c_string(object->info_log, sizeof(object->info_log),
                             "GL_OES_standard_derivatives is not enabled");
+        ringl_context_free_temporary(context, result, sizeof(*result));
         return;
     }
-    if (result.uses_shader_texture_lod != 0u &&
+    if (result->uses_shader_texture_lod != 0u &&
         context->webgl_shader_texture_lod_enabled == RINGL_FALSE) {
         ringl_copy_c_string(object->info_log, sizeof(object->info_log),
                             "GL_EXT_shader_texture_lod is not enabled");
+        ringl_context_free_temporary(context, result, sizeof(*result));
         return;
     }
-    if (result.uses_webgl_frag_depth != 0u &&
+    if (result->uses_webgl_frag_depth != 0u &&
         context->webgl_frag_depth_enabled == RINGL_FALSE) {
         ringl_copy_c_string(object->info_log, sizeof(object->info_log),
                             "GL_EXT_frag_depth is not enabled");
+        ringl_context_free_temporary(context, result, sizeof(*result));
         return;
     }
-    if (result.uses_webgl_draw_buffers != 0u &&
+    if (result->uses_webgl_draw_buffers != 0u &&
         context->webgl_draw_buffers_enabled == RINGL_FALSE) {
         ringl_copy_c_string(object->info_log, sizeof(object->info_log),
                             "GL_EXT_draw_buffers is not enabled");
+        ringl_context_free_temporary(context, result, sizeof(*result));
         return;
     }
 
     object->compile_status = RINGL_TRUE;
-    object->declaration_count = result.declaration_count;
-    object->statement_count = result.statement_count;
-    object->attribute_count = result.attribute_count;
-    object->sampler_uniform_count = result.sampler_uniform_count;
-    memcpy(object->sampler_uniform_names, result.sampler_uniform_names,
+    object->declaration_count = result->declaration_count;
+    object->statement_count = result->statement_count;
+    object->attribute_count = result->attribute_count;
+    object->sampler_uniform_count = result->sampler_uniform_count;
+    memcpy(object->sampler_uniform_names, result->sampler_uniform_names,
            sizeof(object->sampler_uniform_names));
-    object->float_uniform_count = result.float_uniform_count;
-    memcpy(object->float_uniform_names, result.float_uniform_names,
+    object->float_uniform_count = result->float_uniform_count;
+    memcpy(object->float_uniform_names, result->float_uniform_names,
            sizeof(object->float_uniform_names));
-    object->int_uniform_count = result.int_uniform_count;
-    memcpy(object->int_uniform_names, result.int_uniform_names,
+    object->int_uniform_count = result->int_uniform_count;
+    memcpy(object->int_uniform_names, result->int_uniform_names,
            sizeof(object->int_uniform_names));
-    object->bool_uniform_count = result.bool_uniform_count;
-    memcpy(object->bool_uniform_names, result.bool_uniform_names,
+    object->bool_uniform_count = result->bool_uniform_count;
+    memcpy(object->bool_uniform_names, result->bool_uniform_names,
            sizeof(object->bool_uniform_names));
-    object->bvec2_uniform_count = result.bvec2_uniform_count;
-    memcpy(object->bvec2_uniform_names, result.bvec2_uniform_names,
+    object->bvec2_uniform_count = result->bvec2_uniform_count;
+    memcpy(object->bvec2_uniform_names, result->bvec2_uniform_names,
            sizeof(object->bvec2_uniform_names));
-    object->bvec3_uniform_count = result.bvec3_uniform_count;
-    memcpy(object->bvec3_uniform_names, result.bvec3_uniform_names,
+    object->bvec3_uniform_count = result->bvec3_uniform_count;
+    memcpy(object->bvec3_uniform_names, result->bvec3_uniform_names,
            sizeof(object->bvec3_uniform_names));
-    object->bvec4_uniform_count = result.bvec4_uniform_count;
-    memcpy(object->bvec4_uniform_names, result.bvec4_uniform_names,
+    object->bvec4_uniform_count = result->bvec4_uniform_count;
+    memcpy(object->bvec4_uniform_names, result->bvec4_uniform_names,
            sizeof(object->bvec4_uniform_names));
-    object->vec2_uniform_count = result.vec2_uniform_count;
-    memcpy(object->vec2_uniform_names, result.vec2_uniform_names,
+    object->vec2_uniform_count = result->vec2_uniform_count;
+    memcpy(object->vec2_uniform_names, result->vec2_uniform_names,
            sizeof(object->vec2_uniform_names));
-    object->vec3_uniform_count = result.vec3_uniform_count;
-    memcpy(object->vec3_uniform_names, result.vec3_uniform_names,
+    object->vec3_uniform_count = result->vec3_uniform_count;
+    memcpy(object->vec3_uniform_names, result->vec3_uniform_names,
            sizeof(object->vec3_uniform_names));
-    object->vec4_uniform_count = result.vec4_uniform_count;
-    memcpy(object->vec4_uniform_names, result.vec4_uniform_names,
+    object->vec4_uniform_count = result->vec4_uniform_count;
+    memcpy(object->vec4_uniform_names, result->vec4_uniform_names,
            sizeof(object->vec4_uniform_names));
-    object->ivec2_uniform_count = result.ivec2_uniform_count;
-    memcpy(object->ivec2_uniform_names, result.ivec2_uniform_names,
+    object->ivec2_uniform_count = result->ivec2_uniform_count;
+    memcpy(object->ivec2_uniform_names, result->ivec2_uniform_names,
            sizeof(object->ivec2_uniform_names));
-    object->ivec3_uniform_count = result.ivec3_uniform_count;
-    memcpy(object->ivec3_uniform_names, result.ivec3_uniform_names,
+    object->ivec3_uniform_count = result->ivec3_uniform_count;
+    memcpy(object->ivec3_uniform_names, result->ivec3_uniform_names,
            sizeof(object->ivec3_uniform_names));
-    object->ivec4_uniform_count = result.ivec4_uniform_count;
-    memcpy(object->ivec4_uniform_names, result.ivec4_uniform_names,
+    object->ivec4_uniform_count = result->ivec4_uniform_count;
+    memcpy(object->ivec4_uniform_names, result->ivec4_uniform_names,
            sizeof(object->ivec4_uniform_names));
-    object->mat2_uniform_count = result.mat2_uniform_count;
-    memcpy(object->mat2_uniform_names, result.mat2_uniform_names,
+    object->mat2_uniform_count = result->mat2_uniform_count;
+    memcpy(object->mat2_uniform_names, result->mat2_uniform_names,
            sizeof(object->mat2_uniform_names));
-    object->mat3_uniform_count = result.mat3_uniform_count;
-    memcpy(object->mat3_uniform_names, result.mat3_uniform_names,
+    object->mat3_uniform_count = result->mat3_uniform_count;
+    memcpy(object->mat3_uniform_names, result->mat3_uniform_names,
            sizeof(object->mat3_uniform_names));
-    object->mat4_uniform_count = result.mat4_uniform_count;
-    memcpy(object->mat4_uniform_names, result.mat4_uniform_names,
+    object->mat4_uniform_count = result->mat4_uniform_count;
+    memcpy(object->mat4_uniform_names, result->mat4_uniform_names,
            sizeof(object->mat4_uniform_names));
-    object->uses_standard_derivatives = result.uses_standard_derivatives;
-    object->uses_shader_texture_lod = result.uses_shader_texture_lod;
-    object->uses_webgl_frag_depth = result.uses_webgl_frag_depth;
-    object->uses_webgl_draw_buffers = result.uses_webgl_draw_buffers;
+    object->uses_standard_derivatives = result->uses_standard_derivatives;
+    object->uses_shader_texture_lod = result->uses_shader_texture_lod;
+    object->uses_webgl_frag_depth = result->uses_webgl_frag_depth;
+    object->uses_webgl_draw_buffers = result->uses_webgl_draw_buffers;
+    ringl_context_free_temporary(context, result, sizeof(*result));
 }
 
 uint32_t ringl_get_shader_compile_status(uint32_t shader)

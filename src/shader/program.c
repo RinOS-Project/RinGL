@@ -1075,31 +1075,40 @@ static int ringl_program_collect_ivec4_uniforms(RinGLProgramObject* program,
     return 1;
 }
 
-static int ringl_program_collect_attributes(RinGLProgramObject* program,
+static int ringl_program_collect_attributes(RinGLContext* context,
+                                            RinGLProgramObject* program,
                                             const RinGLShaderObject* vertex)
 {
-    RinGLGlslParseResult result;
+    RinGLGlslParseResult* result;
     uint32_t assigned_locations = 0u;
     uint32_t scalar_width = 0u;
     uint32_t index;
 
     program->attribute_count = 0u;
     memset(program->attributes, 0, sizeof(program->attributes));
-    if (ringl_glsl_parse(RINGL_VERTEX_SHADER, vertex->source,
-                         (size_t)vertex->source_length, &result) != 0 ||
-        !result.ok || result.attribute_count > RINGL_MAX_VERTEX_ATTRIBS)
+    result = ringl_context_alloc_temporary(context, sizeof(*result));
+    if (result == NULL) {
+        ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
         return 0;
+    }
+    if (ringl_glsl_parse(RINGL_VERTEX_SHADER, vertex->source,
+                         (size_t)vertex->source_length, result) != 0 ||
+        !result->ok || result->attribute_count > RINGL_MAX_VERTEX_ATTRIBS) {
+        ringl_context_free_temporary(context, result, sizeof(*result));
+        return 0;
+    }
 
-    for (index = 0u; index < result.attribute_count; ++index) {
+    for (index = 0u; index < result->attribute_count; ++index) {
         ringl_copy_c_string(program->attributes[index].name,
                             sizeof(program->attributes[index].name),
-                            result.attribute_names[index]);
-        program->attributes[index].width = result.attribute_widths[index];
+                            result->attribute_names[index]);
+        program->attributes[index].width = result->attribute_widths[index];
         if (program->attributes[index].width == 0u ||
             program->attributes[index].width >
                 RINGL_MAX_VERTEX_INPUT_COMPONENTS ||
             scalar_width > RINGL_MAX_VERTEX_INPUT_COMPONENTS -
                 program->attributes[index].width) {
+            ringl_context_free_temporary(context, result, sizeof(*result));
             return 0;
         }
         scalar_width += program->attributes[index].width;
@@ -1109,7 +1118,7 @@ static int ringl_program_collect_attributes(RinGLProgramObject* program,
     /* A requested location may name an attribute which is inactive in this
      * executable. Such a request is retained but cannot collide until both
      * names become active on a later link. */
-    for (index = 0u; index < result.attribute_count; ++index) {
+    for (index = 0u; index < result->attribute_count; ++index) {
         uint32_t binding_index;
         for (binding_index = 0u;
              binding_index < RINGL_MAX_VERTEX_ATTRIBS;
@@ -1123,8 +1132,10 @@ static int ringl_program_collect_attributes(RinGLProgramObject* program,
                 continue;
             }
             location_bit = UINT32_C(1) << binding->location;
-            if ((assigned_locations & location_bit) != 0u)
+            if ((assigned_locations & location_bit) != 0u) {
+                ringl_context_free_temporary(context, result, sizeof(*result));
                 return 0;
+            }
             program->attributes[index].location = binding->location;
             assigned_locations |= location_bit;
             break;
@@ -1134,7 +1145,7 @@ static int ringl_program_collect_attributes(RinGLProgramObject* program,
     /* WebGL permits the implementation to choose unbound locations. Choose
      * the first remaining generic index deterministically, rather than
      * accidentally colliding with a later explicit binding. */
-    for (index = 0u; index < result.attribute_count; ++index) {
+    for (index = 0u; index < result->attribute_count; ++index) {
         uint32_t location;
 
         if (program->attributes[index].location != UINT32_MAX)
@@ -1147,62 +1158,101 @@ static int ringl_program_collect_attributes(RinGLProgramObject* program,
                 break;
             }
         }
-        if (location == RINGL_MAX_VERTEX_ATTRIBS)
+        if (location == RINGL_MAX_VERTEX_ATTRIBS) {
+            ringl_context_free_temporary(context, result, sizeof(*result));
             return 0;
+        }
     }
-    program->attribute_count = result.attribute_count;
+    program->attribute_count = result->attribute_count;
+    ringl_context_free_temporary(context, result, sizeof(*result));
     return 1;
 }
 
-static int ringl_program_collect_varyings(RinGLProgramObject* program,
+static int ringl_program_collect_varyings(RinGLContext* context,
+                                          RinGLProgramObject* program,
                                           const RinGLShaderObject* vertex,
                                           const RinGLShaderObject* fragment)
 {
-    RinGLGlslParseResult vertex_result;
-    RinGLGlslParseResult fragment_result;
+    RinGLGlslParseResult* vertex_result;
+    RinGLGlslParseResult* fragment_result;
     uint32_t fragment_location = 0u;
     uint32_t fi;
 
     program->varying_count = 0u;
     memset(program->varyings, 0, sizeof(program->varyings));
+    vertex_result = ringl_context_alloc_temporary(context, sizeof(*vertex_result));
+    fragment_result = ringl_context_alloc_temporary(context, sizeof(*fragment_result));
+    if (vertex_result == NULL || fragment_result == NULL) {
+        ringl_context_free_temporary(context, vertex_result,
+                                     sizeof(*vertex_result));
+        ringl_context_free_temporary(context, fragment_result,
+                                     sizeof(*fragment_result));
+        ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+        return 0;
+    }
     if (ringl_glsl_parse(RINGL_VERTEX_SHADER, vertex->source,
-                         (size_t)vertex->source_length, &vertex_result) != 0 ||
+                         (size_t)vertex->source_length, vertex_result) != 0 ||
         ringl_glsl_parse(RINGL_FRAGMENT_SHADER, fragment->source,
-                         (size_t)fragment->source_length, &fragment_result) != 0)
+                         (size_t)fragment->source_length, fragment_result) != 0) {
+        ringl_context_free_temporary(context, vertex_result,
+                                     sizeof(*vertex_result));
+        ringl_context_free_temporary(context, fragment_result,
+                                     sizeof(*fragment_result));
         return 0;
-    if (fragment_result.varying_count > RINGL_MAX_VARYINGS)
+    }
+    if (!vertex_result->ok || !fragment_result->ok ||
+        fragment_result->varying_count > RINGL_MAX_VARYINGS) {
+        ringl_context_free_temporary(context, vertex_result,
+                                     sizeof(*vertex_result));
+        ringl_context_free_temporary(context, fragment_result,
+                                     sizeof(*fragment_result));
         return 0;
+    }
 
-    for (fi = 0u; fi < fragment_result.varying_count; ++fi) {
+    for (fi = 0u; fi < fragment_result->varying_count; ++fi) {
         uint32_t vi;
         uint32_t vertex_location = 4u;
         int found = 0;
-        for (vi = 0u; vi < vertex_result.varying_count; ++vi) {
-            if (strcmp(vertex_result.varying_names[vi],
-                       fragment_result.varying_names[fi]) == 0) {
-                if (vertex_result.varying_widths[vi] !=
-                    fragment_result.varying_widths[fi])
+        for (vi = 0u; vi < vertex_result->varying_count; ++vi) {
+            if (strcmp(vertex_result->varying_names[vi],
+                       fragment_result->varying_names[fi]) == 0) {
+                if (vertex_result->varying_widths[vi] !=
+                    fragment_result->varying_widths[fi]) {
+                    ringl_context_free_temporary(context, vertex_result,
+                                                 sizeof(*vertex_result));
+                    ringl_context_free_temporary(context, fragment_result,
+                                                 sizeof(*fragment_result));
                     return 0;
+                }
                 found = 1;
                 break;
             }
-            vertex_location += vertex_result.varying_widths[vi];
+            vertex_location += vertex_result->varying_widths[vi];
         }
         if (!found ||
-            vertex_location + fragment_result.varying_widths[fi] >
+            vertex_location + fragment_result->varying_widths[fi] >
                 RINGL_MAX_VARYING_COMPONENTS + 4u ||
-            fragment_location + fragment_result.varying_widths[fi] >
-                RINGL_MAX_VARYING_COMPONENTS)
+            fragment_location + fragment_result->varying_widths[fi] >
+                RINGL_MAX_VARYING_COMPONENTS) {
+            ringl_context_free_temporary(context, vertex_result,
+                                         sizeof(*vertex_result));
+            ringl_context_free_temporary(context, fragment_result,
+                                         sizeof(*fragment_result));
             return 0;
+        }
         ringl_copy_c_string(program->varyings[fi].name,
                             sizeof(program->varyings[fi].name),
-                            fragment_result.varying_names[fi]);
-        program->varyings[fi].width = fragment_result.varying_widths[fi];
+                            fragment_result->varying_names[fi]);
+        program->varyings[fi].width = fragment_result->varying_widths[fi];
         program->varyings[fi].vertex_output_location = vertex_location;
         program->varyings[fi].fragment_input_location = fragment_location;
-        fragment_location += fragment_result.varying_widths[fi];
+        fragment_location += fragment_result->varying_widths[fi];
         program->varying_count++;
     }
+    ringl_context_free_temporary(context, vertex_result,
+                                 sizeof(*vertex_result));
+    ringl_context_free_temporary(context, fragment_result,
+                                 sizeof(*fragment_result));
     return 1;
 }
 
@@ -1442,7 +1492,7 @@ static int ringl_program_lower_uniform_shader(
     const RinGLGlslUniformValue* uniforms, uint32_t uniform_count,
     uint8_t** rsh1_out, uint32_t* rsh1_size_out, uint64_t* module_out)
 {
-    RinGLGlslLowerResult lowered;
+    RinGLGlslLowerResult* lowered;
     uint8_t* copy;
     uint64_t module = 0u;
     int lower_result;
@@ -1453,6 +1503,11 @@ static int ringl_program_lower_uniform_shader(
     *rsh1_out = NULL;
     *rsh1_size_out = 0u;
     *module_out = 0u;
+    lowered = ringl_context_alloc_temporary(context, sizeof(*lowered));
+    if (lowered == NULL) {
+        ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+        return 0;
+    }
     if (shader->uses_standard_derivatives == 0u &&
         shader->uses_shader_texture_lod == 0u &&
         shader->uses_webgl_frag_depth == 0u &&
@@ -1461,48 +1516,53 @@ static int ringl_program_lower_uniform_shader(
         lower_result = ringl_glsl_lower_varying_rsh1_with_uniforms(
             context, shader->shader_type, shader->source,
             (size_t)shader->source_length,
-            uniforms, uniform_count, &lowered);
+            uniforms, uniform_count, lowered);
         /* The compact profile lowerer retains its byte-stable fast paths, but
          * a valid mixed scalar interface must fall through to the generic
          * RSH1 lowerer rather than being rejected by those historic shapes. */
-        if (lower_result != 0 || !lowered.ok || lowered.byte_size == 0u) {
+        if (lower_result != 0 || !lowered->ok || lowered->byte_size == 0u) {
             lower_result = ringl_glsl_lower_rsh1_with_uniforms(
                 shader->shader_type, shader->source,
                 (size_t)shader->source_length, uniforms, uniform_count,
-                &lowered);
+                lowered);
         }
     } else {
         lower_result = ringl_glsl_lower_rsh1_with_uniforms(
             shader->shader_type, shader->source,
             (size_t)shader->source_length, uniforms, uniform_count,
-            &lowered);
+            lowered);
     }
-    if (lower_result != 0 || !lowered.ok || lowered.byte_size == 0u) {
+    if (lower_result != 0 || !lowered->ok || lowered->byte_size == 0u) {
+        ringl_context_free_temporary(context, lowered, sizeof(*lowered));
         return 0;
     }
-    if (!ringl_context_reserve_shadow_bytes(context, lowered.byte_size)) {
+    if (!ringl_context_reserve_shadow_bytes(context, lowered->byte_size)) {
+        ringl_context_free_temporary(context, lowered, sizeof(*lowered));
         ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
         return 0;
     }
-    copy = malloc(lowered.byte_size);
+    copy = malloc(lowered->byte_size);
     if (copy == NULL) {
-        ringl_context_release_shadow_bytes(context, lowered.byte_size);
+        ringl_context_release_shadow_bytes(context, lowered->byte_size);
+        ringl_context_free_temporary(context, lowered, sizeof(*lowered));
         ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
         return 0;
     }
-    memcpy(copy, lowered.bytes, lowered.byte_size);
+    memcpy(copy, lowered->bytes, lowered->byte_size);
     if (context->has_ringpu_ops &&
         context->ringpu_ops.create_shader_module != NULL &&
-        (ringl_backend_create_shader_module(context, copy, lowered.byte_size,
+        (ringl_backend_create_shader_module(context, copy, lowered->byte_size,
                                             &module) != 0 ||
          module == 0u)) {
-        ringl_context_release_shadow_bytes(context, lowered.byte_size);
+        ringl_context_release_shadow_bytes(context, lowered->byte_size);
         free(copy);
+        ringl_context_free_temporary(context, lowered, sizeof(*lowered));
         return 0;
     }
     *rsh1_out = copy;
-    *rsh1_size_out = lowered.byte_size;
+    *rsh1_size_out = lowered->byte_size;
     *module_out = module;
+    ringl_context_free_temporary(context, lowered, sizeof(*lowered));
     return 1;
 }
 
@@ -1826,7 +1886,7 @@ void ringl_link_program(uint32_t program)
         ringl_program_set_log(object, "all attached shaders must compile successfully");
         return;
     }
-    if (!ringl_program_collect_attributes(object, vertex)) {
+    if (!ringl_program_collect_attributes(context, object, vertex)) {
         ringl_program_set_log(object, "invalid active attribute interface");
         return;
     }
@@ -1876,7 +1936,7 @@ void ringl_link_program(uint32_t program)
                               "integer/bool uniform interface mismatch or capacity exceeded");
         return;
     }
-    if (!ringl_program_collect_varyings(object, vertex, fragment)) {
+    if (!ringl_program_collect_varyings(context, object, vertex, fragment)) {
         ringl_program_set_log(object, "vertex/fragment varying interface mismatch");
         return;
     }

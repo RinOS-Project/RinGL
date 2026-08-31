@@ -24,7 +24,9 @@ Browser-facing buffer shadows have a per-context 512 MiB accounting budget.
 `bufferData` and transactional sub-data replacement reserve bytes before
 allocation and release them on every failure or object destruction, so an
 oversized untrusted request cannot reach `malloc` or the backend. Texture,
-shader/program, and hardware resource budgets remain separate follow-up work.
+shader/program, temporary staging, parser/lowerer workspaces, and the built
+software backend now use the same checked budget; hardware/QEMU accounting
+remains a separate follow-up.
 
 Persistent texture shadows now use the same budget, including explicit mip
 levels and generated mipmaps. Texture replacement, copy-image, deletion, and
@@ -41,6 +43,12 @@ readback, or publication, so transient peaks cannot bypass the context limit.
 The bounded varying-profile source compactor is covered by the same helper:
 its normalization buffer is admitted before scanning and released on every
 lowering result, including profile rejection.
+
+Shader compilation and link-time interface collection also charge their full
+bounded parser result before parsing. RSH1 lowering and program-owned uniform
+rebuilds charge the complete instruction/diagnostic result before lowering.
+Exhausted reservations therefore fail before source traversal or executable
+publication, while the fixed object info log stays bounded and failure-atomic.
 
 LUMINANCE/LUMINANCE_ALPHA pipeline-cache misses also account for their
 rewritten fragment-module copy. The exact RSH1 staging size is admitted before

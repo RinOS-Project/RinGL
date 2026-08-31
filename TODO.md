@@ -698,6 +698,15 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     backend teardown paths. The historical direct Aquamarine source is not in
     the current CMake/source manifest; GPU-driver accounting and hardware/QEMU
     evidence remain open.
+  - [x] Charge parser and RSH1 lowerer reflection/instruction workspaces to
+    the same per-context budget. Compile, shader lowering, link-time interface
+    parsing, and program-owned uniform rebuilds reserve their complete bounded
+    result (including the fixed diagnostic buffer) before touching source and
+    release it on every success or rejection path. Full-budget regressions now
+    reject before parsing/lowering and leave compile/link/module state unchanged;
+    fixed-size object info logs remain bounded storage rather than an
+    unaccounted dynamic allocation. Diagnostic text from future dynamically
+    allocated consumers and hardware/QEMU accounting remain open.
 - [x] Add WebGL-oriented negative tests for malformed state and shader input.
   `tests/ringl_webgl_negative_test.c` covers failure-atomic descriptor queries,
   invalid viewport/scissor/depth/blend values, and malformed GLSL compile

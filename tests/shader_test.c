@@ -98,6 +98,29 @@ int main(void)
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(ringl_get_shader_source_length(vertex) == 11u);
 
+    /* Parser reflection and its diagnostic buffer are temporary workspace,
+     * not an uncharged stack escape. A full reservation rejects compilation
+     * before publication and the same shader compiles after the reservation
+     * is released. */
+    ringl_shader_source(vertex,
+                        "attribute vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }",
+                        -1);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    {
+        const uint64_t available_shadow_budget =
+            RINGL_MAX_CPU_SHADOW_BYTES - context->cpu_shadow_bytes;
+        assert(ringl_context_reserve_shadow_bytes(
+                   context, available_shadow_budget) != 0);
+        ringl_compile_shader(vertex);
+        assert(ringl_get_shader_compile_status(vertex) == RINGL_FALSE);
+        assert(ringl_get_error() == RINGL_OUT_OF_MEMORY);
+        assert(context->cpu_shadow_bytes == RINGL_MAX_CPU_SHADOW_BYTES);
+        ringl_context_release_shadow_bytes(context, available_shadow_budget);
+    }
+    ringl_compile_shader(vertex);
+    assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+
     ringl_delete_shader(vertex);
     assert(!ringl_is_shader(vertex));
     ringl_delete_shader(fragment);

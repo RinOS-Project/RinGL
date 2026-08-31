@@ -48,6 +48,11 @@ allocation and released on validation failure, backend failure, or successful
 module publication, so legacy-format pipeline creation cannot bypass the
 context budget.
 
+The private Aquamarine surface remains graphics-only. Its compute-pipeline and
+compute-bind-group callbacks now return `RIN_GPU_ERROR_UNSUPPORTED` rather than
+publishing synthetic resource cookies; compute execution, storage bindings,
+and dispatch remain an explicit follow-up backend item.
+
 ## Architecture
 
 ```text

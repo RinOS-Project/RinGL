@@ -837,15 +837,6 @@ static void initialize_aquamarine_surface(
     surface->clip = AQ_RECT(0, 0, surface->width, surface->height);
 }
 
-static int backend_placeholder_create(void* opaque, const void* descriptor,
-                                      uint64_t* cookie)
-{
-    (void)opaque;
-    if (!descriptor || !cookie) return RIN_GPU_ERROR_INVALID_ARGUMENT;
-    *cookie = UINT64_C(1);
-    return RIN_GPU_OK;
-}
-
 static int backend_create_buffer(void* opaque, const RinGpuBufferDescV1* desc,
                                  uint64_t* cookie)
 {
@@ -897,7 +888,13 @@ static int backend_upload_buffer(void* opaque, uint64_t cookie,
     return RIN_GPU_OK;
 }
 
-static void backend_destroy_placeholder(void* opaque, uint64_t cookie)
+static void backend_destroy_compute_pipeline(void* opaque, uint64_t cookie)
+{
+    (void)opaque;
+    (void)cookie;
+}
+
+static void backend_destroy_compute_bind_group(void* opaque, uint64_t cookie)
 {
     (void)opaque;
     (void)cookie;
@@ -1349,8 +1346,14 @@ static int backend_create_compute_pipeline(void* opaque,
                                            const RinShaderInfoV1* shader_info,
                                            uint64_t* cookie)
 {
-    return backend_placeholder_create(
-        opaque, shader_cookie != 0u ? shader_info : NULL, cookie);
+    (void)opaque;
+    (void)shader_cookie;
+    (void)shader_info;
+    (void)cookie;
+    /* This surface is graphics-only. Never publish the old synthetic cookie
+     * 1: a caller that asks for compute must receive an explicit unsupported
+     * result and cannot later submit against a fake pipeline. */
+    return RIN_GPU_ERROR_UNSUPPORTED;
 }
 
 static int backend_stencil_face_valid(uint32_t compare, uint32_t reference,
@@ -1799,10 +1802,13 @@ static int backend_create_compute_bind_group(
     const RinGpuBackendBufferBindingV1* bindings, uint32_t binding_count,
     uint64_t* cookie)
 {
+    (void)opaque;
+    (void)pipeline_cookie;
     (void)bindings;
     (void)binding_count;
-    return backend_placeholder_create(
-        opaque, pipeline_cookie != 0u ? &pipeline_cookie : NULL, cookie);
+    (void)cookie;
+    /* No graphics surface-owned compute storage exists yet. */
+    return RIN_GPU_ERROR_UNSUPPORTED;
 }
 
 static int backend_create_graphics_bind_group(
@@ -4244,11 +4250,11 @@ static int initialize_context(RinGLAquamarineSurfaceContext* context,
     config.backend.create_shader_module = backend_create_shader;
     config.backend.destroy_shader_module = backend_destroy_shader;
     config.backend.create_compute_pipeline = backend_create_compute_pipeline;
-    config.backend.destroy_compute_pipeline = backend_destroy_placeholder;
+    config.backend.destroy_compute_pipeline = backend_destroy_compute_pipeline;
     config.backend.create_graphics_pipeline = backend_create_graphics_pipeline;
     config.backend.destroy_graphics_pipeline = backend_destroy_graphics_pipeline;
     config.backend.create_compute_bind_group = backend_create_compute_bind_group;
-    config.backend.destroy_compute_bind_group = backend_destroy_placeholder;
+    config.backend.destroy_compute_bind_group = backend_destroy_compute_bind_group;
     config.backend.create_graphics_bind_group = backend_create_graphics_bind_group;
     config.backend.destroy_graphics_bind_group = backend_destroy_graphics_bind_group;
     config.backend.submit_commands = backend_submit;

@@ -703,6 +703,11 @@ See `docs/ringpu-gaps.md`. There are currently no known native-contract blockers
 
 ## Optional software backend
 
+- [ ] Implement compute-pipeline and compute-bind-group resources for the
+  private Aquamarine surface. Its graphics-only backend now returns explicit
+  `RIN_GPU_ERROR_UNSUPPORTED` for compute creation instead of publishing the
+  former synthetic cookie; compute execution, storage bindings, and dispatch
+  remain unimplemented.
 - [ ] Evaluate whether `OS-Core/libs/aquamarine` can be evolved into a useful RinGL software backend.
 - [ ] Keep the existing Aquamarine software graphics library distinct from Aquamarine Shader Language.
 - [ ] Do not make the GL frontend depend on software-rasterizer-specific types.

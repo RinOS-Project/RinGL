@@ -42,6 +42,12 @@ The bounded varying-profile source compactor is covered by the same helper:
 its normalization buffer is admitted before scanning and released on every
 lowering result, including profile rejection.
 
+LUMINANCE/LUMINANCE_ALPHA pipeline-cache misses also account for their
+rewritten fragment-module copy. The exact RSH1 staging size is admitted before
+allocation and released on validation failure, backend failure, or successful
+module publication, so legacy-format pipeline creation cannot bypass the
+context budget.
+
 ## Architecture
 
 ```text

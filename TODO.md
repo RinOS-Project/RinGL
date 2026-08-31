@@ -659,6 +659,13 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     `tests/shader_ir_test.c` verifies both paths. Other parser/lowerer
     workspaces, diagnostic strings, backend-owned resources, and hardware/QEMU
     accounting remain open.
+  - [x] Bound LUMINANCE/LUMINANCE_ALPHA pipeline-cache fragment rewrites to the
+    same per-context budget. The cache admits the exact temporary RSH1 copy
+    before allocation and releases it on every validation, backend, and success
+    path; `tests/pipeline_cache_test.c` fills the budget and verifies the cache
+    miss is rejected before module or pipeline creation, then succeeds after
+    release. Other parser/lowerer workspaces, diagnostics, backend-owned
+    resources, and hardware/QEMU accounting remain open.
 - [x] Add WebGL-oriented negative tests for malformed state and shader input.
   `tests/ringl_webgl_negative_test.c` covers failure-atomic descriptor queries,
   invalid viewport/scissor/depth/blend values, and malformed GLSL compile

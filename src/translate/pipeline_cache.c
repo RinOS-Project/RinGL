@@ -161,7 +161,10 @@ static int create_luminance_fragment_module(RinGLContext* context,
                                      sizeof(RinGLRsh1InstructionV1)) {
         return -1;
     }
-    copy = malloc(source_size);
+    /* The rewritten LUMINANCE module is short-lived CPU staging, but shader
+     * source is application-controlled. Admit the exact copy before asking
+     * the allocator so a cache miss cannot bypass the context budget. */
+    copy = (uint8_t*)ringl_context_alloc_temporary(context, source_size);
     if (copy == NULL)
         return -1;
     memcpy(copy, source, source_size);
@@ -178,7 +181,7 @@ static int create_luminance_fragment_module(RinGLContext* context,
         if (instruction->immediate >= header.output_count ||
             instruction->source0 == RINGL_RSH1_UNUSED ||
             instruction->source0 >= header.register_count) {
-            free(copy);
+            ringl_context_free_temporary(context, copy, source_size);
             return -1;
         }
         output = instruction->immediate >> 2u;
@@ -187,7 +190,7 @@ static int create_luminance_fragment_module(RinGLContext* context,
             continue;
         if (component == 0u) {
             if ((red_seen & (UINT32_C(1) << output)) != 0u) {
-                free(copy);
+                ringl_context_free_temporary(context, copy, source_size);
                 return -1;
             }
             red_sources[output] = instruction->source0;
@@ -208,7 +211,7 @@ static int create_luminance_fragment_module(RinGLContext* context,
             continue;
         }
         if ((red_seen & (UINT32_C(1) << output)) == 0u) {
-            free(copy);
+            ringl_context_free_temporary(context, copy, source_size);
             return -1;
         }
         instruction->source0 = red_sources[output];
@@ -216,10 +219,10 @@ static int create_luminance_fragment_module(RinGLContext* context,
     if (ringl_backend_create_shader_module(context, copy, source_size,
                                            &module) != 0 ||
         module == 0u) {
-        free(copy);
+        ringl_context_free_temporary(context, copy, source_size);
         return -1;
     }
-    free(copy);
+    ringl_context_free_temporary(context, copy, source_size);
     *module_out = module;
     return 0;
 }

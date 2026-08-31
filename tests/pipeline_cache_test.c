@@ -3,10 +3,12 @@
 #include <string.h>
 
 #include "translate/pipeline_cache.h"
+#include "shader/rsh1_abi.h"
 
 typedef struct FakeBackend {
     uint64_t next_handle;
     uint32_t pipeline_creates;
+    uint32_t shader_module_creates;
     uint32_t destroys;
 } FakeBackend;
 
@@ -53,6 +55,19 @@ static int fake_create_graphics_pipeline(
         assert(attributes != NULL);
     ++backend->pipeline_creates;
     *pipeline_out = ++backend->next_handle;
+    return 0;
+}
+
+static int fake_create_shader_module(void* session, const void* rsh1,
+                                     uint64_t size_bytes,
+                                     uint64_t* shader_module_out)
+{
+    FakeBackend* backend = (FakeBackend*)session;
+    assert(rsh1 != NULL);
+    assert(size_bytes != 0u);
+    assert(shader_module_out != NULL);
+    ++backend->shader_module_creates;
+    *shader_module_out = ++backend->next_handle;
     return 0;
 }
 
@@ -158,5 +173,90 @@ int main(void)
 
     ringl_context_destroy(context);
     assert(backend.destroys == backend.pipeline_creates);
+
+    /* LUMINANCE pipeline realization rewrites a fragment RSH1 module into a
+     * short-lived CPU copy. Keep a minimal linked program here so the cache
+     * miss exercises that exact staging path rather than only the allocator
+     * helper. */
+    {
+        RinGLContext* luminance_context = NULL;
+        RinGLPipelineKey luminance_key = make_key(2u, 4u);
+        RinGLShaderObject* fragment;
+        RinGLProgramObject* program_object;
+        RinGLRsh1HeaderV1 header;
+        RinGLRsh1InstructionV1* instructions;
+        uint8_t* rsh1;
+        uint32_t fragment_shader;
+        uint32_t program;
+        uint64_t pipeline;
+        uint64_t held_bytes;
+        uint32_t index;
+
+        ops.create_shader_module = fake_create_shader_module;
+        assert(ringl_context_create(&desc, &luminance_context) == 0);
+        fragment_shader = ringl_object_allocate(luminance_context,
+                                                 RINGL_OBJECT_SHADER);
+        program = ringl_object_allocate(luminance_context,
+                                         RINGL_OBJECT_PROGRAM);
+        assert(fragment_shader != 0u && program != 0u);
+        ringl_object_promote(ringl_object_lookup(luminance_context,
+                                                  fragment_shader,
+                                                  RINGL_OBJECT_SHADER));
+        ringl_object_promote(ringl_object_lookup(luminance_context, program,
+                                                  RINGL_OBJECT_PROGRAM));
+        fragment = &luminance_context->shaders[
+            ringl_object_slot_index(fragment_shader)];
+        program_object = &luminance_context->programs[
+            ringl_object_slot_index(program)];
+        memset(&header, 0, sizeof(header));
+        header.magic = RINGL_RSH1_MAGIC;
+        header.version = RINGL_RSH1_VERSION;
+        header.header_size = sizeof(header);
+        header.instruction_count = 3u;
+        header.register_count = 1u;
+        header.output_count = 4u;
+        header.stage = RINGL_RSH1_STAGE_FRAGMENT;
+        header.total_size = sizeof(header) +
+            header.instruction_count * sizeof(RinGLRsh1InstructionV1);
+        rsh1 = (uint8_t*)ringl_context_alloc_temporary(
+            luminance_context, header.total_size);
+        assert(rsh1 != NULL);
+        memcpy(rsh1, &header, sizeof(header));
+        instructions = (RinGLRsh1InstructionV1*)(rsh1 + sizeof(header));
+        for (index = 0u; index < header.instruction_count; ++index) {
+            memset(&instructions[index], 0, sizeof(instructions[index]));
+            instructions[index].opcode = RINGL_RSH1_OP_STORE_OUTPUT_F32;
+            instructions[index].source0 = 0u;
+            instructions[index].immediate = index;
+        }
+        fragment->rsh1 = rsh1;
+        fragment->rsh1_size = header.total_size;
+        fragment->ringpu_module = 12u;
+        fragment->shader_type = RINGL_FRAGMENT_SHADER;
+        program_object->linked_fragment_shader = fragment_shader;
+        program_object->fragment_shader = fragment_shader;
+        program_object->link_status = RINGL_TRUE;
+        luminance_context->current_program = program;
+        luminance_key.logical_color_format = RINGL_LUMINANCE;
+        luminance_key.fragment_shader_module = fragment->ringpu_module;
+
+        held_bytes = RINGL_MAX_CPU_SHADOW_BYTES -
+            luminance_context->cpu_shadow_bytes;
+        assert(ringl_context_reserve_shadow_bytes(luminance_context,
+                                                  held_bytes));
+        assert(ringl_pipeline_cache_get_or_create(luminance_context,
+                                                  &luminance_key,
+                                                  &pipeline) != 0);
+        assert(pipeline == 0u);
+        assert(backend.shader_module_creates == 0u);
+        assert(backend.pipeline_creates == 2u + RINGL_PIPELINE_CACHE_CAPACITY);
+        ringl_context_release_shadow_bytes(luminance_context, held_bytes);
+        assert(ringl_pipeline_cache_get_or_create(luminance_context,
+                                                  &luminance_key,
+                                                  &pipeline) == 0);
+        assert(pipeline != 0u);
+        assert(backend.shader_module_creates == 1u);
+        ringl_context_destroy(luminance_context);
+    }
     return 0;
 }

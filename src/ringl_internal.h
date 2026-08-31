@@ -313,6 +313,10 @@ typedef struct RinGLProgramObject {
     uint32_t linked_fragment_shader;
     uint32_t link_status;
     uint32_t validate_status;
+    /* A current program survives glDeleteProgram until the embedding binds
+     * another program (or zero).  Non-current programs are reclaimed at the
+     * delete call, so this bit never turns into an unbounded tombstone list. */
+    uint32_t delete_pending;
     uint32_t attribute_count;
     uint32_t sampler_uniform_count;
     uint32_t float_uniform_count;

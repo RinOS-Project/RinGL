@@ -119,8 +119,11 @@ Shader and program status/count queries now also have bounded integer adapters.
 attribute/uniform counts/name maxima are published from live RinGL state only
 after complete one-element spans validate. Shader `DELETE_STATUS` remains
 queryable while an attached program retains a delete-pending shader, then the
-numeric handle is reclaimed after its final release. Program delete-pending
-lifetime and unrepresented pnames remain explicitly unsupported instead of
+numeric handle is reclaimed after its final release. A currently bound program
+also remains queryable after `glDeleteProgram`: its `DELETE_STATUS` becomes
+true, `glIsProgram` becomes false, and the handle is reclaimed only when the
+binding changes to another program or zero. Non-current programs are reclaimed
+at deletion time; unrepresented pnames remain explicitly unsupported instead of
 being synthesized.
 
 ## Architecture

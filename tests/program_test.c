@@ -1268,6 +1268,9 @@ int main(void)
         assert(ringl_get_error() == RINGL_INVALID_VALUE);
     }
     ringl_delete_program(matrix_program);
+    /* A current program is retained after deletion until the binding is
+     * explicitly replaced, matching the GLES object lifetime rule. */
+    ringl_use_program(0u);
 
     multi_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
     multi_fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
@@ -1380,7 +1383,31 @@ int main(void)
     assert(ringl_get_error() == RINGL_INVALID_OPERATION);
 
     ringl_delete_shader(retained_fragment);
-    ringl_delete_program(retained_program);
+    {
+        int32_t delete_status = -1;
+
+        ringl_use_program(retained_program);
+        assert(ringl_get_program_parameteriv_bounded(
+                   retained_program, RINGL_DELETE_STATUS, &delete_status,
+                   1u) == 0);
+        assert(delete_status == (int32_t)RINGL_FALSE);
+        ringl_delete_program(retained_program);
+        assert(!ringl_is_program(retained_program));
+        assert(ringl_get_current_program() == retained_program);
+        delete_status = -1;
+        assert(ringl_get_program_parameteriv_bounded(
+                   retained_program, RINGL_DELETE_STATUS, &delete_status,
+                   1u) == 0);
+        assert(delete_status == (int32_t)RINGL_TRUE);
+        ringl_use_program(0u);
+        assert(ringl_get_current_program() == 0u);
+        delete_status = 0x5a5a;
+        assert(ringl_get_program_parameteriv_bounded(
+                   retained_program, RINGL_DELETE_STATUS, &delete_status,
+                   1u) == -1);
+        assert(delete_status == 0x5a5a);
+        assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    }
 
     ringl_context_destroy(context);
     return 0;

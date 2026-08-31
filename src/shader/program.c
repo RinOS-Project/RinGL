@@ -124,8 +124,8 @@ static int ringl_program_sampler_interfaces_match(
     return 1;
 }
 
-static RinGLProgramObject* ringl_program_object(RinGLContext* context,
-                                                uint32_t program)
+static RinGLProgramObject* ringl_program_object_any(RinGLContext* context,
+                                                    uint32_t program)
 {
     uint32_t index;
     if (ringl_object_lookup(context, program, RINGL_OBJECT_PROGRAM) == NULL)
@@ -134,6 +134,16 @@ static RinGLProgramObject* ringl_program_object(RinGLContext* context,
     if (index >= RINGL_OBJECT_SLOT_COUNT)
         return NULL;
     return &context->programs[index];
+}
+
+static RinGLProgramObject* ringl_program_object(RinGLContext* context,
+                                                uint32_t program)
+{
+    RinGLProgramObject* object = ringl_program_object_any(context, program);
+
+    if (object != NULL && object->delete_pending)
+        return NULL;
+    return object;
 }
 
 static RinGLShaderObject* ringl_program_shader(RinGLContext* context,
@@ -1278,18 +1288,15 @@ uint32_t ringl_create_program(void)
     return program;
 }
 
-void ringl_delete_program(uint32_t program)
+static void ringl_program_destroy_now(RinGLContext* context, uint32_t program,
+                                      RinGLProgramObject* object)
 {
-    RinGLContext* context = ringl_get_current_context();
-    RinGLProgramObject* object;
     uint32_t vertex_shader;
     uint32_t fragment_shader;
     uint32_t linked_vertex_shader;
     uint32_t linked_fragment_shader;
-    if (context == NULL || program == 0u)
-        return;
-    object = ringl_program_object(context, program);
-    if (object == NULL)
+
+    if (context == NULL || object == NULL)
         return;
     vertex_shader = object->vertex_shader;
     fragment_shader = object->fragment_shader;
@@ -1313,6 +1320,22 @@ void ringl_delete_program(uint32_t program)
     ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
 }
 
+void ringl_delete_program(uint32_t program)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLProgramObject* object;
+    if (context == NULL || program == 0u)
+        return;
+    object = ringl_program_object_any(context, program);
+    if (object == NULL)
+        return;
+    if (object->delete_pending)
+        return;
+    object->delete_pending = RINGL_TRUE;
+    if (context->current_program != program)
+        ringl_program_destroy_now(context, program, object);
+}
+
 int ringl_is_program(uint32_t program)
 {
     RinGLContext* context = ringl_get_current_context();
@@ -1320,7 +1343,10 @@ int ringl_is_program(uint32_t program)
     if (context == NULL || program == 0u)
         return 0;
     slot = ringl_object_lookup_const(context, program, RINGL_OBJECT_PROGRAM);
-    return slot != NULL && slot->state == RINGL_OBJECT_LIVE;
+    if (slot == NULL || slot->state != RINGL_OBJECT_LIVE)
+        return 0;
+    return context->programs[ringl_object_slot_index(program)].delete_pending ==
+           RINGL_FALSE;
 }
 
 void ringl_attach_shader(uint32_t program, uint32_t shader)
@@ -2005,7 +2031,7 @@ uint32_t ringl_get_program_link_status(uint32_t program)
     RinGLProgramObject* object;
     if (context == NULL)
         return RINGL_FALSE;
-    object = ringl_program_object(context, program);
+    object = ringl_program_object_any(context, program);
     if (object == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return RINGL_FALSE;
@@ -2250,7 +2276,7 @@ int ringl_get_program_info(uint32_t program, RinGLProgramInfoV1* info)
         return -1;
     if (info->struct_size < sizeof(*info) || info->api_version != RINGL_API_VERSION)
         return -1;
-    object = ringl_program_object(context, program);
+    object = ringl_program_object_any(context, program);
     if (object == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return -1;
@@ -2286,7 +2312,8 @@ int ringl_get_program_parameteriv_bounded(uint32_t program, uint32_t pname,
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return -1;
     }
-    if (pname != RINGL_LINK_STATUS && pname != RINGL_VALIDATE_STATUS &&
+    if (pname != RINGL_DELETE_STATUS &&
+        pname != RINGL_LINK_STATUS && pname != RINGL_VALIDATE_STATUS &&
         pname != RINGL_ATTACHED_SHADERS &&
         pname != RINGL_ACTIVE_ATTRIBUTES &&
         pname != RINGL_ACTIVE_UNIFORMS &&
@@ -2301,12 +2328,14 @@ int ringl_get_program_parameteriv_bounded(uint32_t program, uint32_t pname,
     info.api_version = RINGL_API_VERSION;
     if (ringl_get_program_info(program, &info) != 0)
         return -1;
-    object = ringl_program_object(context, program);
+    object = ringl_program_object_any(context, program);
     if (object == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return -1;
     }
-    if (pname == RINGL_LINK_STATUS)
+    if (pname == RINGL_DELETE_STATUS)
+        result = object->delete_pending;
+    else if (pname == RINGL_LINK_STATUS)
         result = info.link_status;
     else if (pname == RINGL_VALIDATE_STATUS)
         result = info.validate_status;
@@ -2385,7 +2414,7 @@ int ringl_get_attached_shaders(uint32_t program, uint32_t* shaders,
 
     if (context == NULL || shader_count_out == NULL)
         return -1;
-    object = ringl_program_object(context, program);
+    object = ringl_program_object_any(context, program);
     if (object == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return -1;
@@ -2760,7 +2789,7 @@ uint64_t ringl_get_program_info_log(uint32_t program, char* buffer,
     size_t copy_length;
     if (context == NULL)
         return 0u;
-    object = ringl_program_object(context, program);
+    object = ringl_program_object_any(context, program);
     if (object == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return 0u;
@@ -2840,10 +2869,18 @@ void ringl_use_program(uint32_t program)
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLProgramObject* object;
+    uint32_t previous;
     if (context == NULL)
         return;
     if (program == 0u) {
+        previous = context->current_program;
         context->current_program = 0u;
+        if (previous != 0u) {
+            RinGLProgramObject* previous_object =
+                ringl_program_object_any(context, previous);
+            if (previous_object != NULL && previous_object->delete_pending)
+                ringl_program_destroy_now(context, previous, previous_object);
+        }
         ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE);
         return;
     }
@@ -2857,7 +2894,14 @@ void ringl_use_program(uint32_t program)
         return;
     }
     if (context->current_program != program) {
+        previous = context->current_program;
         context->current_program = program;
+        if (previous != 0u) {
+            RinGLProgramObject* previous_object =
+                ringl_program_object_any(context, previous);
+            if (previous_object != NULL && previous_object->delete_pending)
+                ringl_program_destroy_now(context, previous, previous_object);
+        }
         ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE | RINGL_DIRTY_BINDINGS);
     }
 }

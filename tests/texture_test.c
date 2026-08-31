@@ -107,8 +107,13 @@ int main(void)
     assert(ringl_get_tex_parameterf(
                RINGL_TEXTURE_2D, RINGL_TEXTURE_MAX_ANISOTROPY_EXT) == 1.0f);
     {
+        int32_t anisotropy_integer = -77;
         float anisotropy = -77.0f;
 
+        assert(ringl_get_tex_parameteriv_bounded(
+                   RINGL_TEXTURE_2D, RINGL_TEXTURE_MAX_ANISOTROPY_EXT,
+                   &anisotropy_integer, 1u) == 0);
+        assert(anisotropy_integer == 1);
         assert(ringl_get_tex_parameterfv_bounded(
                    RINGL_TEXTURE_2D, RINGL_TEXTURE_MAX_ANISOTROPY_EXT,
                    &anisotropy, 1u) == 0);

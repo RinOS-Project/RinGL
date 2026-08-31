@@ -506,7 +506,8 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     delegate to the bounded implementation. Broader conformance semantics and
     unsupported query pnames remain open.
   - [x] Add bounded typed texture-parameter and vertex-attribute query
-    adapters. Filter/wrap enum pnames, extension-gated anisotropy, descriptor
+    adapters. Filter/wrap enum pnames, extension-gated anisotropy (integer and
+    Float32), descriptor
     fields, and the four-component current generic attribute value now require
     a complete caller span and publish only after validation. Attribute pointer
     queries remain unavailable because returning raw host pointers would break

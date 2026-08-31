@@ -1860,6 +1860,13 @@ int ringl_get_tex_parameteriv_bounded(uint32_t target, uint32_t pname,
     case RINGL_TEXTURE_WRAP_T:
         result = (int32_t)texture->wrap_t;
         break;
+    case RINGL_TEXTURE_MAX_ANISOTROPY_EXT:
+        if (context->webgl_texture_filter_anisotropic_enabled == RINGL_FALSE) {
+            ringl_context_record_error(context, RINGL_INVALID_ENUM);
+            return -1;
+        }
+        result = (int32_t)texture->max_anisotropy;
+        break;
     default:
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return -1;

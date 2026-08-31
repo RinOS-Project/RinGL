@@ -14,6 +14,7 @@ int main(void)
     };
     uint32_t vertex;
     uint32_t fragment;
+    int32_t query_value = -1;
     RinGLShaderPrecisionFormatV1 precision = {
         .struct_size = sizeof(precision),
         .api_version = RINGL_API_VERSION,
@@ -31,6 +32,14 @@ int main(void)
     assert(fragment != 0u);
     assert(ringl_is_shader(vertex));
     assert(ringl_get_shader_type(vertex) == RINGL_VERTEX_SHADER);
+    assert(ringl_get_shader_parameteriv_bounded(
+               vertex, RINGL_SHADER_TYPE, &query_value, 1u) == 0);
+    assert(query_value == (int32_t)RINGL_VERTEX_SHADER);
+    query_value = 123;
+    assert(ringl_get_shader_parameteriv_bounded(
+               vertex, RINGL_SHADER_TYPE, &query_value, 0u) == -1);
+    assert(query_value == 123);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
 
     assert(ringl_get_shader_precision_format(RINGL_VERTEX_SHADER,
                                              RINGL_HIGH_FLOAT,
@@ -119,6 +128,9 @@ int main(void)
     }
     ringl_compile_shader(vertex);
     assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
+    assert(ringl_get_shader_parameteriv_bounded(
+               vertex, RINGL_COMPILE_STATUS, &query_value, 1u) == 0);
+    assert(query_value == (int32_t)RINGL_TRUE);
     assert(ringl_get_error() == RINGL_NO_ERROR);
 
     ringl_delete_shader(vertex);

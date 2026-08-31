@@ -490,6 +490,34 @@ uint32_t ringl_get_shader_type(uint32_t shader)
     return object->shader_type;
 }
 
+int ringl_get_shader_parameteriv_bounded(uint32_t shader, uint32_t pname,
+                                         int32_t* value, size_t value_count)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLShaderObject* object;
+    int32_t result;
+
+    if (context == NULL)
+        return -1;
+    if (value == NULL || value_count < 1u) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+    if (pname != RINGL_COMPILE_STATUS && pname != RINGL_SHADER_TYPE) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
+    object = ringl_shader_object_for_api(context, shader);
+    if (object == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+    result = pname == RINGL_COMPILE_STATUS
+        ? (int32_t)object->compile_status : (int32_t)object->shader_type;
+    *value = result;
+    return 0;
+}
+
 int ringl_get_shader_precision_format(
     uint32_t shader_type, uint32_t precision_type,
     RinGLShaderPrecisionFormatV1* format)

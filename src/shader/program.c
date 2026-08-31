@@ -2272,6 +2272,49 @@ int ringl_get_program_info(uint32_t program, RinGLProgramInfoV1* info)
     return 0;
 }
 
+int ringl_get_program_parameteriv_bounded(uint32_t program, uint32_t pname,
+                                          int32_t* value, size_t value_count)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLProgramInfoV1 info;
+    uint32_t result;
+
+    if (context == NULL)
+        return -1;
+    if (value == NULL || value_count < 1u) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+    if (pname != RINGL_LINK_STATUS && pname != RINGL_VALIDATE_STATUS &&
+        pname != RINGL_ATTACHED_SHADERS &&
+        pname != RINGL_ACTIVE_ATTRIBUTES &&
+        pname != RINGL_ACTIVE_UNIFORMS) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.struct_size = sizeof(info);
+    info.api_version = RINGL_API_VERSION;
+    if (ringl_get_program_info(program, &info) != 0)
+        return -1;
+    if (pname == RINGL_LINK_STATUS)
+        result = info.link_status;
+    else if (pname == RINGL_VALIDATE_STATUS)
+        result = info.validate_status;
+    else if (pname == RINGL_ATTACHED_SHADERS)
+        result = info.attached_shader_count;
+    else if (pname == RINGL_ACTIVE_ATTRIBUTES)
+        result = info.active_attribute_count;
+    else
+        result = info.active_uniform_count;
+    if (result > (uint32_t)INT32_MAX) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    *value = (int32_t)result;
+    return 0;
+}
+
 int ringl_get_attached_shaders(uint32_t program, uint32_t* shaders,
                                uint32_t capacity,
                                uint32_t* shader_count_out)

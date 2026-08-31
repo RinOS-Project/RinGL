@@ -123,6 +123,7 @@ int main(void)
     uint32_t attached_shader_count = 0u;
     int32_t location;
     int32_t uniform_value = -1;
+    int32_t query_value = -1;
     char log[160];
     RinGLActiveInfoV1 active_info = {
         .struct_size = sizeof(active_info),
@@ -192,9 +193,26 @@ int main(void)
     assert(info.link_status == RINGL_TRUE && info.validate_status == RINGL_FALSE &&
            info.attached_shader_count == 2u && info.active_attribute_count == 1u &&
            info.active_uniform_count == 1u);
+    assert(ringl_get_program_parameteriv_bounded(
+               program, RINGL_LINK_STATUS, &query_value, 1u) == 0);
+    assert(query_value == (int32_t)RINGL_TRUE);
+    assert(ringl_get_program_parameteriv_bounded(
+               program, RINGL_ACTIVE_ATTRIBUTES, &query_value, 1u) == 0);
+    assert(query_value == 1);
+    assert(ringl_get_program_parameteriv_bounded(
+               program, RINGL_ACTIVE_UNIFORMS, &query_value, 1u) == 0);
+    assert(query_value == 1);
     ringl_validate_program(program);
     assert(ringl_get_program_info(program, &info) == 0);
     assert(info.validate_status == RINGL_TRUE);
+    assert(ringl_get_program_parameteriv_bounded(
+               program, RINGL_VALIDATE_STATUS, &query_value, 1u) == 0);
+    assert(query_value == (int32_t)RINGL_TRUE);
+    query_value = 999;
+    assert(ringl_get_program_parameteriv_bounded(
+               program, RINGL_LINK_STATUS, &query_value, 0u) == -1);
+    assert(query_value == 999);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
     assert(ringl_get_program_info_log(program, log, sizeof(log)) == 0u);
     assert(ringl_get_attrib_location(program, "position") == 3);
     assert(ringl_get_attrib_location(program, "missing") == -1);

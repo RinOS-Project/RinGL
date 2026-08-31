@@ -1757,6 +1757,11 @@ void ringl_shader_source(uint32_t shader, const char* source, int64_t length);
 void ringl_compile_shader(uint32_t shader);
 uint32_t ringl_get_shader_compile_status(uint32_t shader);
 uint32_t ringl_get_shader_type(uint32_t shader);
+/* Bounded GLES-style shader query for the represented COMPILE_STATUS and
+ * SHADER_TYPE pnames. The one-element output span is validated before the
+ * value is published; unsupported shader pnames remain unavailable. */
+int ringl_get_shader_parameteriv_bounded(uint32_t shader, uint32_t pname,
+                                         int32_t* value, size_t value_count);
 /* Queries only the documented RSH1 precision profile. The supplied output
  * header must be complete; failures leave the caller's record unchanged. */
 int ringl_get_shader_precision_format(
@@ -1790,6 +1795,12 @@ void ringl_link_program(uint32_t program);
 uint32_t ringl_get_program_link_status(uint32_t program);
 void ringl_validate_program(uint32_t program);
 int ringl_get_program_info(uint32_t program, RinGLProgramInfoV1* info);
+/* Bounded GLES-style program query for the represented link/validate,
+ * attachment, and active attribute/uniform counts. Unsupported pnames are
+ * rejected rather than synthesized and the caller slot is failure-atomic. */
+int ringl_get_program_parameteriv_bounded(uint32_t program, uint32_t pname,
+                                          int32_t* value,
+                                          size_t value_count);
 /* Copies the pending attached shader names in deterministic vertex, fragment
  * order. `shader_count_out` is required. Passing NULL/zero capacity is a
  * count-only query; otherwise capacity must cover the complete result. Every

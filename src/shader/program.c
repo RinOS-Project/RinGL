@@ -1459,7 +1459,8 @@ static int ringl_program_lower_uniform_shader(
         shader->uses_webgl_draw_buffers == 0u &&
         strstr(shader->source, "varying") != NULL) {
         lower_result = ringl_glsl_lower_varying_rsh1_with_uniforms(
-            shader->shader_type, shader->source, (size_t)shader->source_length,
+            context, shader->shader_type, shader->source,
+            (size_t)shader->source_length,
             uniforms, uniform_count, &lowered);
         /* The compact profile lowerer retains its byte-stable fast paths, but
          * a valid mixed scalar interface must fall through to the generic

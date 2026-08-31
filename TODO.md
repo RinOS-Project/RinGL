@@ -653,6 +653,12 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     and that successful readback leaves the persistent balance unchanged.
     Parser/lowerer workspace, diagnostic strings, backend-owned resources, and
     hardware/QEMU accounting remain open.
+  - [x] Bound the varying-profile compacted-source workspace to the same
+    per-context budget. The lowerer rejects a full reservation before malloc
+    and releases its normalized source on profile success or rejection;
+    `tests/shader_ir_test.c` verifies both paths. Other parser/lowerer
+    workspaces, diagnostic strings, backend-owned resources, and hardware/QEMU
+    accounting remain open.
 - [x] Add WebGL-oriented negative tests for malformed state and shader input.
   `tests/ringl_webgl_negative_test.c` covers failure-atomic descriptor queries,
   invalid viewport/scissor/depth/blend values, and malformed GLSL compile

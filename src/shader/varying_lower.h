@@ -7,12 +7,16 @@
 
 #include "glsl_lower.h"
 
-int ringl_glsl_lower_varying_rsh1(uint32_t shader_type,
+typedef struct RinGLContext RinGLContext;
+
+int ringl_glsl_lower_varying_rsh1(RinGLContext* context,
+                                  uint32_t shader_type,
                                   const char* source,
                                   size_t source_length,
                                   RinGLGlslLowerResult* result);
 int ringl_glsl_lower_varying_rsh1_with_uniforms(
-    uint32_t shader_type, const char* source, size_t source_length,
+    RinGLContext* context, uint32_t shader_type, const char* source,
+    size_t source_length,
     const RinGLGlslUniformValue* uniforms, uint32_t uniform_count,
     RinGLGlslLowerResult* result);
 

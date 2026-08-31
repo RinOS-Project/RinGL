@@ -44,7 +44,7 @@ int ringl_lower_shader_rsh1(uint32_t shader)
         object->uses_webgl_draw_buffers == 0u &&
         strstr(object->source, "varying") != NULL) {
         rc = ringl_glsl_lower_varying_rsh1(
-            object->shader_type, object->source,
+            context, object->shader_type, object->source,
             (size_t)object->source_length, &lowered);
         /* Preserve byte-stable compact profiles, but do not let their shape
          * matcher reject a valid generic vec2/vec3/vec4 interface. */

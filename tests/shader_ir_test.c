@@ -4,6 +4,8 @@
 #include <string.h>
 
 #include <ringl/ringl.h>
+#include "../src/ringl_internal.h"
+#include "../src/shader/varying_lower.h"
 
 #define RSH1_MAGIC UINT32_C(0x31485352)
 
@@ -578,6 +580,31 @@ int main(void)
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
+    {
+        RinGLGlslLowerResult workspace_result;
+        const uint64_t available_shadow_budget =
+            RINGL_MAX_CPU_SHADOW_BYTES - context->cpu_shadow_bytes;
+
+        /* The varying profile's compacted source is temporary workspace. A
+         * full reservation must reject it before malloc, while releasing the
+         * reservation must make the same lowerer reusable. */
+        assert(ringl_context_reserve_shadow_bytes(
+                   context, available_shadow_budget) != 0);
+        assert(ringl_glsl_lower_varying_rsh1(
+                   context, RINGL_VERTEX_SHADER,
+                   point_size_color_varying_vertex_source,
+                   strlen(point_size_color_varying_vertex_source),
+                   &workspace_result) != 0);
+        assert(context->cpu_shadow_bytes == RINGL_MAX_CPU_SHADOW_BYTES);
+        ringl_context_release_shadow_bytes(context, available_shadow_budget);
+        assert(ringl_glsl_lower_varying_rsh1(
+                   context, RINGL_VERTEX_SHADER,
+                   point_size_color_varying_vertex_source,
+                   strlen(point_size_color_varying_vertex_source),
+                   &workspace_result) == 0);
+        assert(workspace_result.ok == RINGL_TRUE);
+        assert(context->cpu_shadow_bytes == 0u);
+    }
     assert(ringl_enable_webgl_standard_derivatives() == 0);
 
     vertex = ringl_create_shader(RINGL_VERTEX_SHADER);

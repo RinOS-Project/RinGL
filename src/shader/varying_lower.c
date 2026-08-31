@@ -2,6 +2,8 @@
 #include "varying_lower.h"
 #include "rsh1_abi.h"
 
+#include "../ringl_internal.h"
+
 #include <ctype.h>
 #include <math.h>
 #include <stdarg.h>
@@ -66,15 +68,17 @@ static void strip_precision_declarations(char* source)
     *write = '\0';
 }
 
-static char* compact_source(const char* source, size_t length)
+static char* compact_source(RinGLContext* context, const char* source,
+                            size_t length)
 {
     char* compact;
     size_t read_index;
     size_t write_index = 0u;
 
-    if (source == NULL || strstr(source, "//") != NULL)
+    if (context == NULL || source == NULL || strstr(source, "//") != NULL ||
+        length == SIZE_MAX)
         return NULL;
-    compact = malloc(length + 1u);
+    compact = ringl_context_alloc_temporary(context, (uint64_t)length + 1u);
     if (compact == NULL)
         return NULL;
     for (read_index = 0u; read_index < length; ++read_index) {
@@ -3264,7 +3268,8 @@ static int lower_fragment_two_vec2(const char* source,
 }
 
 int ringl_glsl_lower_varying_rsh1_with_uniforms(
-    uint32_t shader_type, const char* source, size_t source_length,
+    RinGLContext* context, uint32_t shader_type, const char* source,
+    size_t source_length,
     const RinGLGlslUniformValue* uniforms, uint32_t uniform_count,
     RinGLGlslLowerResult* result)
 {
@@ -3283,7 +3288,7 @@ int ringl_glsl_lower_varying_rsh1_with_uniforms(
         (uniform_count != 0u && uniforms == NULL))
         return -1;
     memset(result, 0, sizeof(*result));
-    compact = compact_source(source, source_length);
+    compact = compact_source(context, source, source_length);
     if (compact == NULL) {
         (void)snprintf(result->diagnostic, sizeof(result->diagnostic),
                        "varying lowering could not normalize shader source");
@@ -3298,7 +3303,8 @@ int ringl_glsl_lower_varying_rsh1_with_uniforms(
                                        &point_size_uses_attribute,
                                        &point_size_attribute_opcode,
                                        &point_size_attribute_operand)) {
-        free(compact);
+        ringl_context_free_temporary(context, compact,
+                                      (uint64_t)source_length + 1u);
         (void)snprintf(result->diagnostic, sizeof(result->diagnostic),
                        "varying gl_PointSize must be a finite literal or float uniform");
         return 1;
@@ -3388,18 +3394,20 @@ int ringl_glsl_lower_varying_rsh1_with_uniforms(
             rc = 1;
         }
     }
-    free(compact);
+    ringl_context_free_temporary(context, compact,
+                                  (uint64_t)source_length + 1u);
     if (rc != 0 && result->diagnostic[0] == '\0')
         (void)snprintf(result->diagnostic, sizeof(result->diagnostic),
                        "shader is outside the initial varying lowering profile");
     return rc;
 }
 
-int ringl_glsl_lower_varying_rsh1(uint32_t shader_type,
+int ringl_glsl_lower_varying_rsh1(RinGLContext* context,
+                                  uint32_t shader_type,
                                   const char* source,
                                   size_t source_length,
                                   RinGLGlslLowerResult* result)
 {
     return ringl_glsl_lower_varying_rsh1_with_uniforms(
-        shader_type, source, source_length, NULL, 0u, result);
+        context, shader_type, source, source_length, NULL, 0u, result);
 }

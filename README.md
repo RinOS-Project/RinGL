@@ -38,6 +38,10 @@ readback staging buffers now use the same admission helper. Their exact sizes
 are reserved before allocation and released after decode, conversion, failed
 readback, or publication, so transient peaks cannot bypass the context limit.
 
+The bounded varying-profile source compactor is covered by the same helper:
+its normalization buffer is admitted before scanning and released on every
+lowering result, including profile rejection.
+
 ## Architecture
 
 ```text

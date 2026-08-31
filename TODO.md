@@ -637,6 +637,14 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     upload is rejected before allocation, and confirms the reservation can be
     released. Shader/program, temporary decode, and hardware/QEMU accounting
     remain open.
+  - [x] Bound shader source snapshots, lowered RSH1 shader modules, and
+    program-owned uniform RSH1 modules to the same per-context 512 MiB budget.
+    Source length scanning is bounded, replacement is failure-atomic, and
+    compile/lower failure, relink replacement, delete, and context teardown
+    release the exact owned byte count. `tests/shader_test.c` and the root
+    WebGL negative test verify source replacement is rejected before allocation
+    under a full reservation. Temporary parser/lowerer workspace, shader
+    diagnostics, and hardware/QEMU accounting remain open.
 - [x] Add WebGL-oriented negative tests for malformed state and shader input.
   `tests/ringl_webgl_negative_test.c` covers failure-atomic descriptor queries,
   invalid viewport/scissor/depth/blend values, and malformed GLSL compile

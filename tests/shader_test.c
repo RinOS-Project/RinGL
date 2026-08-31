@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include <ringl/ringl.h>
+#include "../src/ringl_internal.h"
 
 #include <assert.h>
 #include <string.h>
@@ -81,6 +82,21 @@ int main(void)
     ringl_shader_source(vertex, NULL, -1);
     assert(ringl_get_error() == RINGL_INVALID_VALUE);
     assert(ringl_get_shader_source_length(vertex) == 3u);
+
+    /* Source snapshots are browser-owned shader input and participate in the
+     * same per-context budget.  A full reservation must reject replacement
+     * before malloc while preserving the previous source. */
+    const uint64_t available_shadow_budget =
+        RINGL_MAX_CPU_SHADOW_BYTES - context->cpu_shadow_bytes;
+    assert(ringl_context_reserve_shadow_bytes(
+               context, available_shadow_budget) != 0);
+    ringl_shader_source(vertex, "replacement", -1);
+    assert(ringl_get_error() == RINGL_OUT_OF_MEMORY);
+    assert(ringl_get_shader_source_length(vertex) == 3u);
+    ringl_context_release_shadow_bytes(context, available_shadow_budget);
+    ringl_shader_source(vertex, "replacement", -1);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(ringl_get_shader_source_length(vertex) == 11u);
 
     ringl_delete_shader(vertex);
     assert(!ringl_is_shader(vertex));

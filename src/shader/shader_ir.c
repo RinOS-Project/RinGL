@@ -98,8 +98,13 @@ int ringl_lower_shader_rsh1(uint32_t shader)
         }
     }
 
+    if (!ringl_context_reserve_shadow_bytes(context, lowered.byte_size)) {
+        ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+        return -1;
+    }
     copy = malloc(lowered.byte_size);
     if (copy == NULL) {
+        ringl_context_release_shadow_bytes(context, lowered.byte_size);
         ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
         return -1;
     }
@@ -110,6 +115,7 @@ int ringl_lower_shader_rsh1(uint32_t shader)
         ringl_backend_destroy_object(context, object->ringpu_module);
         object->ringpu_module = 0u;
     }
+    ringl_context_release_shadow_bytes(context, object->rsh1_size);
     free(object->rsh1);
     object->rsh1 = copy;
     object->rsh1_size = lowered.byte_size;

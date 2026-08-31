@@ -29,7 +29,9 @@ shader/program, and hardware resource budgets remain separate follow-up work.
 Persistent texture shadows now use the same budget, including explicit mip
 levels and generated mipmaps. Texture replacement, copy-image, deletion, and
 context teardown release the exact owned byte count; temporary decode/readback
-buffers and shader/program allocations remain separate follow-up audits.
+buffers remain a separate follow-up audit. Shader source snapshots, lowered
+RSH1 modules, and program-owned uniform modules now reserve and release their
+exact persistent byte counts through the same context budget.
 
 ## Architecture
 

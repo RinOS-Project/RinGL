@@ -7,6 +7,17 @@
 
 #define RINGL_MAX_SHADER_SOURCE_BYTES UINT64_C(16777216)
 
+static void ringl_shader_release_storage(RinGLContext* context,
+                                          void** bytes, uint64_t owned_size)
+{
+    if (context != NULL)
+        ringl_context_release_shadow_bytes(context, owned_size);
+    if (bytes != NULL)
+        free(*bytes);
+    if (bytes != NULL)
+        *bytes = NULL;
+}
+
 static int ringl_shader_type_valid(uint32_t type)
 {
     return type == RINGL_VERTEX_SHADER || type == RINGL_FRAGMENT_SHADER;
@@ -69,8 +80,8 @@ static void ringl_shader_discard_artifacts(RinGLContext* context,
         ringl_backend_destroy_object(context, object->ringpu_module);
         object->ringpu_module = 0u;
     }
-    free(object->rsh1);
-    object->rsh1 = NULL;
+    ringl_shader_release_storage(context, (void**)&object->rsh1,
+                                 object->rsh1_size);
     object->rsh1_size = 0u;
     object->rsh1_sampler_binding_count = 0u;
     memset(object->rsh1_sampler_binding_indices, 0,
@@ -84,7 +95,11 @@ static void ringl_shader_destroy(RinGLContext* context, uint32_t shader)
     object = ringl_shader_object(context, shader);
     if (object == NULL)
         return;
-    free(object->source);
+    if (object->source != NULL) {
+        uint64_t source_size = object->source_length + 1u;
+        ringl_shader_release_storage(context, (void**)&object->source,
+                                     source_size);
+    }
     ringl_shader_discard_artifacts(context, object);
     memset(object, 0, sizeof(*object));
     ringl_object_release(context, shader, RINGL_OBJECT_SHADER);
@@ -242,7 +257,15 @@ void ringl_shader_source(uint32_t shader, const char* source, int64_t length)
     }
 
     if (length < 0) {
-        source_length = strlen(source);
+        source_length = 0u;
+        while (source_length <= RINGL_MAX_SHADER_SOURCE_BYTES &&
+               source[source_length] != '\0') {
+            ++source_length;
+        }
+        if (source_length > RINGL_MAX_SHADER_SOURCE_BYTES) {
+            ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+            return;
+        }
         source_length64 = (uint64_t)source_length;
     } else {
         source_length64 = (uint64_t)length;
@@ -262,15 +285,24 @@ void ringl_shader_source(uint32_t shader, const char* source, int64_t length)
         return;
     }
 
+    if (!ringl_context_reserve_shadow_bytes(context, source_length64 + 1u)) {
+        ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+        return;
+    }
     copy = malloc(source_length + 1u);
     if (copy == NULL) {
+        ringl_context_release_shadow_bytes(context, source_length64 + 1u);
         ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
         return;
     }
     memcpy(copy, source, source_length);
     copy[source_length] = '\0';
 
-    free(object->source);
+    if (object->source != NULL) {
+        uint64_t old_source_size = object->source_length + 1u;
+        ringl_shader_release_storage(context, (void**)&object->source,
+                                     old_source_size);
+    }
     object->source = copy;
     object->source_length = source_length64;
     ringl_shader_reset_compile_state(context, object);
@@ -531,8 +563,16 @@ void ringl_shader_objects_destroy_all(RinGLContext* context)
         if (context->objects[index].type != RINGL_OBJECT_SHADER ||
             context->objects[index].state == RINGL_OBJECT_FREE)
             continue;
-        free(context->shaders[index].source);
-        free(context->shaders[index].rsh1);
+        if (context->shaders[index].source != NULL) {
+            uint64_t source_size = context->shaders[index].source_length + 1u;
+            ringl_shader_release_storage(context,
+                                         (void**)&context->shaders[index].source,
+                                         source_size);
+        }
+        ringl_shader_release_storage(context,
+                                     (void**)&context->shaders[index].rsh1,
+                                     context->shaders[index].rsh1_size);
+        context->shaders[index].rsh1_size = 0u;
         if (context->shaders[index].ringpu_module != 0u)
             ringl_backend_destroy_object(context,
                                          context->shaders[index].ringpu_module);

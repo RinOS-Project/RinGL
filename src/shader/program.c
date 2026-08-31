@@ -164,6 +164,21 @@ static void ringl_program_set_log(RinGLProgramObject* program,
     program->info_log[length] = '\0';
 }
 
+static void ringl_program_release_rsh1(RinGLContext* context, uint8_t** bytes,
+                                       uint32_t* size)
+{
+    uint64_t owned_size = size != NULL ? (uint64_t)*size : 0u;
+
+    if (context != NULL)
+        ringl_context_release_shadow_bytes(context, owned_size);
+    if (bytes != NULL)
+        free(*bytes);
+    if (bytes != NULL)
+        *bytes = NULL;
+    if (size != NULL)
+        *size = 0u;
+}
+
 static void ringl_program_discard_uniform_artifacts(
     RinGLContext* context, RinGLProgramObject* program)
 {
@@ -173,14 +188,12 @@ static void ringl_program_discard_uniform_artifacts(
         ringl_backend_destroy_object(context, program->vertex_uniform_module);
     if (program->fragment_uniform_module != 0u)
         ringl_backend_destroy_object(context, program->fragment_uniform_module);
-    free(program->vertex_uniform_rsh1);
-    free(program->fragment_uniform_rsh1);
-    program->vertex_uniform_rsh1 = NULL;
-    program->fragment_uniform_rsh1 = NULL;
+    ringl_program_release_rsh1(context, &program->vertex_uniform_rsh1,
+                               &program->vertex_uniform_rsh1_size);
+    ringl_program_release_rsh1(context, &program->fragment_uniform_rsh1,
+                               &program->fragment_uniform_rsh1_size);
     program->vertex_uniform_module = 0u;
     program->fragment_uniform_module = 0u;
-    program->vertex_uniform_rsh1_size = 0u;
-    program->fragment_uniform_rsh1_size = 0u;
 }
 
 static int ringl_program_add_sampler_uniform(RinGLProgramObject* program,
@@ -1466,8 +1479,13 @@ static int ringl_program_lower_uniform_shader(
     if (lower_result != 0 || !lowered.ok || lowered.byte_size == 0u) {
         return 0;
     }
+    if (!ringl_context_reserve_shadow_bytes(context, lowered.byte_size)) {
+        ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+        return 0;
+    }
     copy = malloc(lowered.byte_size);
     if (copy == NULL) {
+        ringl_context_release_shadow_bytes(context, lowered.byte_size);
         ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
         return 0;
     }
@@ -1477,6 +1495,7 @@ static int ringl_program_lower_uniform_shader(
         (ringl_backend_create_shader_module(context, copy, lowered.byte_size,
                                             &module) != 0 ||
          module == 0u)) {
+        ringl_context_release_shadow_bytes(context, lowered.byte_size);
         free(copy);
         return 0;
     }
@@ -1654,8 +1673,10 @@ static int ringl_program_rebuild_uniform_artifacts(
             ringl_backend_destroy_object(context, vertex_module);
         if (fragment_module != 0u)
             ringl_backend_destroy_object(context, fragment_module);
-        free(vertex_rsh1);
-        free(fragment_rsh1);
+        ringl_program_release_rsh1(context, &vertex_rsh1,
+                                   &vertex_rsh1_size);
+        ringl_program_release_rsh1(context, &fragment_rsh1,
+                                   &fragment_rsh1_size);
         return 0;
     }
 
@@ -1663,7 +1684,8 @@ static int ringl_program_rebuild_uniform_artifacts(
     if (rebuild_vertex) {
         if (program->vertex_uniform_module != 0u)
             ringl_backend_destroy_object(context, program->vertex_uniform_module);
-        free(program->vertex_uniform_rsh1);
+        ringl_program_release_rsh1(context, &program->vertex_uniform_rsh1,
+                                   &program->vertex_uniform_rsh1_size);
         program->vertex_uniform_rsh1 = vertex_rsh1;
         program->vertex_uniform_rsh1_size = vertex_rsh1_size;
         program->vertex_uniform_module = vertex_module;
@@ -1671,7 +1693,8 @@ static int ringl_program_rebuild_uniform_artifacts(
     if (rebuild_fragment) {
         if (program->fragment_uniform_module != 0u)
             ringl_backend_destroy_object(context, program->fragment_uniform_module);
-        free(program->fragment_uniform_rsh1);
+        ringl_program_release_rsh1(context, &program->fragment_uniform_rsh1,
+                                   &program->fragment_uniform_rsh1_size);
         program->fragment_uniform_rsh1 = fragment_rsh1;
         program->fragment_uniform_rsh1_size = fragment_rsh1_size;
         program->fragment_uniform_module = fragment_module;

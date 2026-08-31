@@ -324,9 +324,13 @@ extern "C" {
 #define RINGL_COMPILE_STATUS     0x8b81u
 #define RINGL_LINK_STATUS        0x8b82u
 #define RINGL_VALIDATE_STATUS    0x8b83u
+#define RINGL_INFO_LOG_LENGTH    0x8b84u
 #define RINGL_ATTACHED_SHADERS   0x8b85u
 #define RINGL_ACTIVE_UNIFORMS    0x8b86u
+#define RINGL_SHADER_SOURCE_LENGTH 0x8b88u
 #define RINGL_ACTIVE_ATTRIBUTES  0x8b89u
+#define RINGL_ACTIVE_ATTRIBUTE_MAX_LENGTH 0x8b8au
+#define RINGL_ACTIVE_UNIFORM_MAX_LENGTH   0x8b87u
 #define RINGL_SHADER_TYPE        0x8b4fu
 
 #define RINGL_MAX_VERTEX_ATTRIBS 16u
@@ -1757,9 +1761,11 @@ void ringl_shader_source(uint32_t shader, const char* source, int64_t length);
 void ringl_compile_shader(uint32_t shader);
 uint32_t ringl_get_shader_compile_status(uint32_t shader);
 uint32_t ringl_get_shader_type(uint32_t shader);
-/* Bounded GLES-style shader query for the represented COMPILE_STATUS and
- * SHADER_TYPE pnames. The one-element output span is validated before the
- * value is published; unsupported shader pnames remain unavailable. */
+/* Bounded GLES-style shader query for the represented COMPILE_STATUS,
+ * SHADER_TYPE, INFO_LOG_LENGTH, and SHADER_SOURCE_LENGTH pnames. The
+ * one-element output span is validated before the value is published;
+ * DELETE_STATUS remains unavailable because deleted shader handles are
+ * released from the public namespace. */
 int ringl_get_shader_parameteriv_bounded(uint32_t shader, uint32_t pname,
                                          int32_t* value, size_t value_count);
 /* Queries only the documented RSH1 precision profile. The supplied output
@@ -1796,8 +1802,9 @@ uint32_t ringl_get_program_link_status(uint32_t program);
 void ringl_validate_program(uint32_t program);
 int ringl_get_program_info(uint32_t program, RinGLProgramInfoV1* info);
 /* Bounded GLES-style program query for the represented link/validate,
- * attachment, and active attribute/uniform counts. Unsupported pnames are
- * rejected rather than synthesized and the caller slot is failure-atomic. */
+ * attachment, active attribute/uniform counts, log length, and active-name
+ * maxima. Unsupported pnames are rejected rather than synthesized and the
+ * caller slot is failure-atomic. */
 int ringl_get_program_parameteriv_bounded(uint32_t program, uint32_t pname,
                                           int32_t* value,
                                           size_t value_count);

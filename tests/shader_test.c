@@ -70,6 +70,9 @@ int main(void)
 
     ringl_shader_source(vertex, "abcXYZ", 3);
     assert(ringl_get_shader_source_length(vertex) == 3u);
+    assert(ringl_get_shader_parameteriv_bounded(
+               vertex, RINGL_SHADER_SOURCE_LENGTH, &query_value, 1u) == 0);
+    assert(query_value == 4);
     {
         char complete[8] = { 0 };
         char truncated[3] = { 0 };
@@ -131,6 +134,9 @@ int main(void)
     assert(ringl_get_shader_parameteriv_bounded(
                vertex, RINGL_COMPILE_STATUS, &query_value, 1u) == 0);
     assert(query_value == (int32_t)RINGL_TRUE);
+    assert(ringl_get_shader_parameteriv_bounded(
+               vertex, RINGL_INFO_LOG_LENGTH, &query_value, 1u) == 0);
+    assert(query_value == 1);
     assert(ringl_get_error() == RINGL_NO_ERROR);
 
     ringl_delete_shader(vertex);

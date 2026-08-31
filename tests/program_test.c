@@ -202,6 +202,16 @@ int main(void)
     assert(ringl_get_program_parameteriv_bounded(
                program, RINGL_ACTIVE_UNIFORMS, &query_value, 1u) == 0);
     assert(query_value == 1);
+    assert(ringl_get_program_parameteriv_bounded(
+               program, RINGL_INFO_LOG_LENGTH, &query_value, 1u) == 0);
+    assert(query_value == 1);
+    assert(ringl_get_program_parameteriv_bounded(
+               program, RINGL_ACTIVE_ATTRIBUTE_MAX_LENGTH, &query_value, 1u) ==
+           0);
+    assert(query_value == 9);
+    assert(ringl_get_program_parameteriv_bounded(
+               program, RINGL_ACTIVE_UNIFORM_MAX_LENGTH, &query_value, 1u) == 0);
+    assert(query_value == 13);
     ringl_validate_program(program);
     assert(ringl_get_program_info(program, &info) == 0);
     assert(info.validate_status == RINGL_TRUE);

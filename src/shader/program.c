@@ -2276,6 +2276,7 @@ int ringl_get_program_parameteriv_bounded(uint32_t program, uint32_t pname,
                                           int32_t* value, size_t value_count)
 {
     RinGLContext* context = ringl_get_current_context();
+    RinGLProgramObject* object;
     RinGLProgramInfoV1 info;
     uint32_t result;
 
@@ -2288,7 +2289,10 @@ int ringl_get_program_parameteriv_bounded(uint32_t program, uint32_t pname,
     if (pname != RINGL_LINK_STATUS && pname != RINGL_VALIDATE_STATUS &&
         pname != RINGL_ATTACHED_SHADERS &&
         pname != RINGL_ACTIVE_ATTRIBUTES &&
-        pname != RINGL_ACTIVE_UNIFORMS) {
+        pname != RINGL_ACTIVE_UNIFORMS &&
+        pname != RINGL_INFO_LOG_LENGTH &&
+        pname != RINGL_ACTIVE_ATTRIBUTE_MAX_LENGTH &&
+        pname != RINGL_ACTIVE_UNIFORM_MAX_LENGTH) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return -1;
     }
@@ -2297,6 +2301,11 @@ int ringl_get_program_parameteriv_bounded(uint32_t program, uint32_t pname,
     info.api_version = RINGL_API_VERSION;
     if (ringl_get_program_info(program, &info) != 0)
         return -1;
+    object = ringl_program_object(context, program);
+    if (object == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
     if (pname == RINGL_LINK_STATUS)
         result = info.link_status;
     else if (pname == RINGL_VALIDATE_STATUS)
@@ -2305,8 +2314,58 @@ int ringl_get_program_parameteriv_bounded(uint32_t program, uint32_t pname,
         result = info.attached_shader_count;
     else if (pname == RINGL_ACTIVE_ATTRIBUTES)
         result = info.active_attribute_count;
-    else
+    else if (pname == RINGL_ACTIVE_UNIFORMS)
         result = info.active_uniform_count;
+    else if (pname == RINGL_INFO_LOG_LENGTH) {
+        size_t length = strlen(object->info_log);
+
+        if (length >= (size_t)INT32_MAX) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return -1;
+        }
+        result = (uint32_t)(length + 1u);
+    } else if (pname == RINGL_ACTIVE_ATTRIBUTE_MAX_LENGTH) {
+        size_t max_length = 0u;
+        uint32_t index;
+
+        for (index = 0u; index < info.active_attribute_count; ++index) {
+            size_t length = strlen(object->attributes[index].name) + 1u;
+
+            if (length > max_length)
+                max_length = length;
+        }
+        if (max_length > (size_t)INT32_MAX) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return -1;
+        }
+        result = (uint32_t)max_length;
+    } else {
+        size_t max_length = 0u;
+        uint32_t index;
+
+        for (index = 0u; index < info.active_uniform_count; ++index) {
+            const char* name;
+            uint32_t type;
+            uint32_t array_length;
+            size_t length;
+
+            if (ringl_program_active_uniform_at(object, index, &type, &name,
+                                                 &array_length) != 0) {
+                ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+                return -1;
+            }
+            (void)type;
+            (void)array_length;
+            length = strlen(name) + 1u;
+            if (length > max_length)
+                max_length = length;
+        }
+        if (max_length > (size_t)INT32_MAX) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return -1;
+        }
+        result = (uint32_t)max_length;
+    }
     if (result > (uint32_t)INT32_MAX) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return -1;

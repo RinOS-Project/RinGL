@@ -108,10 +108,11 @@ and one-element span validation; future values that cannot fit in `GLint` are
 rejected without changing the caller's value.
 
 Shader and program status/count queries now also have bounded integer adapters.
-`COMPILE_STATUS`/`SHADER_TYPE` and `LINK_STATUS`/`VALIDATE_STATUS` plus attached
-shader and active attribute/uniform counts are published from live RinGL state
-only after complete one-element spans validate. Delete-status and
-info/source-length pnames remain unavailable instead of being synthesized.
+`COMPILE_STATUS`/`SHADER_TYPE`, source/log lengths, and
+`LINK_STATUS`/`VALIDATE_STATUS` plus attached shader and active
+attribute/uniform counts/name maxima are published from live RinGL state only
+after complete one-element spans validate. Delete-status remains unavailable
+instead of being synthesized.
 
 ## Architecture
 

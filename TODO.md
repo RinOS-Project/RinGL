@@ -531,11 +531,12 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     and the zero-sample profile are returned only after complete one-element
     span, target, binding, and pname validation. Future values that cannot fit
     in `GLint` leave the caller unchanged; multisample storage remains absent.
-  - [x] Add bounded `glGetShaderiv`/`glGetProgramiv` adapters for the status and
-    count pnames represented by RinGL. Compile/type, link/validate, attached
-    shader, and active attribute/uniform values use complete one-element spans
-    and existing versioned records; unsupported delete/log-length and other
-    pnames remain unavailable rather than returning fabricated values.
+  - [x] Add bounded `glGetShaderiv`/`glGetProgramiv` adapters for the status,
+    count, log/source-length, and active-name maximum pnames represented by
+    RinGL. Compile/type, link/validate, attached shader, active
+    attribute/uniform values, and bounded lengths use complete one-element
+    spans and existing versioned records; delete-status and other pnames
+    remain unavailable rather than returning fabricated values.
 - [x] Expose the executable RSH1 shader precision profile through a versioned
   `ringl_get_shader_precision_format()` query. All accepted float precision
   classes report IEEE-754 binary32; accepted integer classes report the signed

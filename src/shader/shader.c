@@ -503,7 +503,9 @@ int ringl_get_shader_parameteriv_bounded(uint32_t shader, uint32_t pname,
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return -1;
     }
-    if (pname != RINGL_COMPILE_STATUS && pname != RINGL_SHADER_TYPE) {
+    if (pname != RINGL_COMPILE_STATUS && pname != RINGL_SHADER_TYPE &&
+        pname != RINGL_INFO_LOG_LENGTH &&
+        pname != RINGL_SHADER_SOURCE_LENGTH) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return -1;
     }
@@ -512,8 +514,26 @@ int ringl_get_shader_parameteriv_bounded(uint32_t shader, uint32_t pname,
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return -1;
     }
-    result = pname == RINGL_COMPILE_STATUS
-        ? (int32_t)object->compile_status : (int32_t)object->shader_type;
+    if (pname == RINGL_COMPILE_STATUS) {
+        result = (int32_t)object->compile_status;
+    } else if (pname == RINGL_SHADER_TYPE) {
+        result = (int32_t)object->shader_type;
+    } else if (pname == RINGL_INFO_LOG_LENGTH) {
+        size_t length = strlen(object->info_log);
+
+        if (length >= (size_t)INT32_MAX) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return -1;
+        }
+        result = (int32_t)(length + 1u);
+    } else {
+        if (object->source_length >= (uint64_t)INT32_MAX) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return -1;
+        }
+        /* GLES source length includes the terminating NUL. */
+        result = (int32_t)(object->source_length + 1u);
+    }
     *value = result;
     return 0;
 }

@@ -56,6 +56,12 @@ allocation and released on validation failure, backend failure, or successful
 module publication, so legacy-format pipeline creation cannot bypass the
 context budget.
 
+The pipeline cache's fixed entry table is accounted for as well. Cache creation
+reserves the complete metadata table before `calloc`, releases the reservation
+on allocation failure or context teardown, and leaves the backend untouched
+when a full context budget rejects a cache miss. The table is currently fixed;
+dynamic growth and hardware/QEMU resource accounting remain follow-up work.
+
 The built private Aquamarine surface delegates command execution to the generic
 `ringpu_software_backend`, whose bounded compute-pipeline, storage-bind-group,
 and synchronous dispatch path is covered by `ringpu_software_backend_test`.

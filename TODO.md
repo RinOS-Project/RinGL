@@ -732,6 +732,13 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     fixed-size object info logs remain bounded storage rather than an
     unaccounted dynamic allocation. Diagnostic text from future dynamically
     allocated consumers and hardware/QEMU accounting remain open.
+  - [x] Charge the fixed pipeline-cache metadata itself to the context budget.
+    Cache creation reserves the complete bounded entry table before `calloc`
+    and releases that reservation on allocation failure and context teardown;
+    `tests/pipeline_cache_test.c` fills the budget and verifies a cache miss
+    fails before module or pipeline creation, then succeeds after release.
+    Dynamic cache growth, backend-owned resources, and hardware/QEMU
+    accounting remain open.
 - [x] Add WebGL-oriented negative tests for malformed state and shader input.
   `tests/ringl_webgl_negative_test.c` covers failure-atomic descriptor queries,
   invalid viewport/scissor/depth/blend values, and malformed GLSL compile

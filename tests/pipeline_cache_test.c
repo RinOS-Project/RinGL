@@ -152,6 +152,19 @@ int main(void)
     assert(!ringl_pipeline_key_equal(&a, &b));
 
     assert(ringl_context_create(&desc, &context) == 0);
+    /* Cache metadata is part of the same per-context budget. A full
+     * reservation must reject cache creation before the backend sees a
+     * pipeline request, then become reusable after release. */
+    {
+        uint64_t available = RINGL_MAX_CPU_SHADOW_BYTES -
+            context->cpu_shadow_bytes;
+
+        assert(ringl_context_reserve_shadow_bytes(context, available) != 0);
+        first = 0u;
+        assert(ringl_pipeline_cache_get_or_create(context, &a, &first) == -1);
+        assert(first == 0u && backend.pipeline_creates == 0u);
+        ringl_context_release_shadow_bytes(context, available);
+    }
     assert(ringl_pipeline_cache_get_or_create(context, &a, &first) == 0);
     assert(first != 0u);
     assert(backend.pipeline_creates == 1u);

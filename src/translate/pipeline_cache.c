@@ -236,9 +236,13 @@ static RinGLPipelineCache* cache_for(RinGLContext* context, int create)
     cache = (RinGLPipelineCache*)context->pipeline_cache;
     if (cache != NULL || !create)
         return cache;
-    cache = (RinGLPipelineCache*)calloc(1, sizeof(*cache));
-    if (cache == NULL)
+    if (!ringl_context_reserve_shadow_bytes(context, sizeof(*cache)))
         return NULL;
+    cache = (RinGLPipelineCache*)calloc(1, sizeof(*cache));
+    if (cache == NULL) {
+        ringl_context_release_shadow_bytes(context, sizeof(*cache));
+        return NULL;
+    }
     context->pipeline_cache = cache;
     return cache;
 }
@@ -933,6 +937,7 @@ void ringl_pipeline_cache_destroy(RinGLContext* context)
         }
     }
     free(cache);
+    ringl_context_release_shadow_bytes(context, sizeof(*cache));
     context->pipeline_cache = NULL;
 }
 

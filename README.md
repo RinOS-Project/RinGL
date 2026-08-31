@@ -67,6 +67,13 @@ The strict shader IR regression also carries a bounded malformed-source corpus:
 unbalanced constructors and overflow literals fail before executable
 publication, and unsupported loop syntax cannot publish an RSH1/module.
 
+The raw GLES-shaped query surface now includes bounded typed adapters for
+`glGetBooleanv` and `glGetFloatv`. Integer/capability queries convert through
+the existing failure-atomic state path, while depth range, clear values, blend
+color, line width, polygon offset, and sample coverage return their tracked
+Float32 state. Null or short caller spans record an error without changing the
+destination.
+
 ## Architecture
 
 ```text

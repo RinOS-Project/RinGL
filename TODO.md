@@ -498,6 +498,13 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
 - [x] Track implementation status per API instead of claiming version support early. `docs/gles2-api-status.md` classifies every GLES 2.0 entry point as bounded, partial, or absent and defines the embedding rule that absent APIs must not synthesize success.
 - [x] Expose WebGL's `drawingBufferFormat` from the effective context attributes: an alpha-capable buffer reports `RGBA8`, while an opaque buffer reports `RGB8`. The value describes the WebGL buffer rather than the embedding's physical channel order, so RinGL's private BGRA presentation storage remains unobservable. `drawingBufferColorSpace`, `unpackColorSpace`, drawing-buffer reallocation, and non-sRGB display remain separate unsupported work.
 - [ ] Close GLES 2.0 semantic gaps found by conformance-style tests.
+  - [x] Add bounded typed `glGetBooleanv`/`glGetFloatv` adapters for every
+    accepted RinGL query and tracked floating state. Capability, integer,
+    vector, clear, blend, depth-range, line-width, polygon-offset, and
+    sample-coverage values convert only after complete span validation; null or
+    short output records an error without mutation. Legacy unbounded forms
+    delegate to the bounded implementation. Broader conformance semantics and
+    unsupported query pnames remain open.
 - [x] Expose the executable RSH1 shader precision profile through a versioned
   `ringl_get_shader_precision_format()` query. All accepted float precision
   classes report IEEE-754 binary32; accepted integer classes report the signed

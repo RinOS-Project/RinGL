@@ -141,6 +141,8 @@ extern "C" {
 #define RINGL_STENCIL_BACK_WRITEMASK  0x8ca5u
 #define RINGL_DEPTH_WRITEMASK 0x0b72u
 #define RINGL_DEPTH_FUNC     0x0b74u
+#define RINGL_POLYGON_OFFSET_FACTOR 0x8038u
+#define RINGL_POLYGON_OFFSET_UNITS  0x2a00u
 #define RINGL_BLEND          0x0be2u
 #define RINGL_DEPTH_CLEAR_VALUE 0x0b73u
 #define RINGL_STENCIL_CLEAR_VALUE 0x0b91u
@@ -1347,6 +1349,16 @@ int ringl_get_integerv_bounded(uint32_t pname, int32_t* values,
 /* Legacy unbounded form. New embedding code must use
  * ringl_get_integerv_bounded() so vector queries cannot overrun its output. */
 void ringl_get_integerv(uint32_t pname, int32_t* values);
+/* Bounded GLES-style typed query adapters. They accept the same explicitly
+ * represented pnames as ringl_get_integerv_bounded(), convert integer and
+ * capability values without changing output on failure, and additionally
+ * expose the tracked floating-point state records. */
+int ringl_get_booleanv_bounded(uint32_t pname, uint32_t* values,
+                               size_t value_count);
+void ringl_get_booleanv(uint32_t pname, uint32_t* values);
+int ringl_get_floatv_bounded(uint32_t pname, float* values,
+                             size_t value_count);
+void ringl_get_floatv(uint32_t pname, float* values);
 void ringl_enable(uint32_t capability);
 void ringl_disable(uint32_t capability);
 int ringl_is_enabled(uint32_t capability);

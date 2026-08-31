@@ -1292,3 +1292,175 @@ void ringl_get_integerv(uint32_t pname, int32_t* values)
 {
     (void)ringl_get_integerv_bounded(pname, values, 4u);
 }
+
+static int ringl_query_count_or_error(RinGLContext* context, uint32_t pname,
+                                       size_t value_count, size_t* count_out)
+{
+    size_t count;
+
+    if (!context || !count_out)
+        return -1;
+    count = ringl_get_integerv_value_count(pname);
+    if (count == 0u) {
+        switch (pname) {
+        case RINGL_CULL_FACE:
+        case RINGL_DITHER:
+        case RINGL_DEPTH_TEST:
+        case RINGL_POLYGON_OFFSET_FILL:
+        case RINGL_SAMPLE_COVERAGE:
+        case RINGL_STENCIL_TEST:
+        case RINGL_BLEND:
+            count = 1u;
+            break;
+        default:
+            ringl_context_record_error(context, RINGL_INVALID_ENUM);
+            return -1;
+        }
+    }
+    if (value_count < count) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    *count_out = count;
+    return 0;
+}
+
+int ringl_get_booleanv_bounded(uint32_t pname, uint32_t* values,
+                               size_t value_count)
+{
+    RinGLContext* context = ringl_get_current_context();
+    int32_t integer_values[4] = {0};
+    uint32_t converted[4] = {0};
+    size_t count;
+    uint32_t* capability;
+
+    if (!context)
+        return -1;
+    if (!values) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    if (ringl_query_count_or_error(context, pname, value_count, &count) != 0)
+        return -1;
+    capability = capability_field(context, pname);
+    if (capability != NULL) {
+        converted[0] = *capability != 0u ? RINGL_TRUE : RINGL_FALSE;
+    } else {
+        if (ringl_get_integerv_bounded(pname, integer_values, count) != 0)
+            return -1;
+        for (size_t index = 0u; index < count; ++index)
+            converted[index] = integer_values[index] != 0
+                ? RINGL_TRUE : RINGL_FALSE;
+    }
+    memcpy(values, converted, count * sizeof(*values));
+    return 0;
+}
+
+void ringl_get_booleanv(uint32_t pname, uint32_t* values)
+{
+    (void)ringl_get_booleanv_bounded(pname, values, 4u);
+}
+
+static size_t ringl_get_floatv_value_count(uint32_t pname)
+{
+    switch (pname) {
+    case RINGL_DEPTH_RANGE:
+    case RINGL_MAX_VIEWPORT_DIMS:
+    case RINGL_ALIASED_POINT_SIZE_RANGE:
+    case RINGL_ALIASED_LINE_WIDTH_RANGE:
+        return 2u;
+    case RINGL_COLOR_CLEAR_VALUE:
+    case RINGL_BLEND_COLOR:
+    case RINGL_VIEWPORT:
+    case RINGL_SCISSOR_BOX:
+        return 4u;
+    case RINGL_LINE_WIDTH:
+    case RINGL_POLYGON_OFFSET_FACTOR:
+    case RINGL_POLYGON_OFFSET_UNITS:
+    case RINGL_DEPTH_CLEAR_VALUE:
+    case RINGL_STENCIL_CLEAR_VALUE:
+    case RINGL_SAMPLE_COVERAGE_VALUE:
+        return 1u;
+    default:
+        return ringl_get_integerv_value_count(pname);
+    }
+}
+
+int ringl_get_floatv_bounded(uint32_t pname, float* values,
+                             size_t value_count)
+{
+    RinGLContext* context = ringl_get_current_context();
+    float converted[4] = {0.0f};
+    int32_t integer_values[4] = {0};
+    size_t count;
+
+    if (!context)
+        return -1;
+    if (!values) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    count = ringl_get_floatv_value_count(pname);
+    if (count == 0u) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
+    if (value_count < count) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    switch (pname) {
+    case RINGL_DEPTH_RANGE:
+        converted[0] = context->depth_range_near;
+        converted[1] = context->depth_range_far;
+        break;
+    case RINGL_LINE_WIDTH:
+        converted[0] = context->line_width;
+        break;
+    case RINGL_ALIASED_LINE_WIDTH_RANGE:
+    case RINGL_ALIASED_POINT_SIZE_RANGE:
+        converted[0] = 1.0f;
+        converted[1] = 64.0f;
+        break;
+    case RINGL_POLYGON_OFFSET_FACTOR:
+        converted[0] = context->polygon_offset_factor;
+        break;
+    case RINGL_POLYGON_OFFSET_UNITS:
+        converted[0] = context->polygon_offset_units;
+        break;
+    case RINGL_COLOR_CLEAR_VALUE:
+        converted[0] = context->clear_red;
+        converted[1] = context->clear_green;
+        converted[2] = context->clear_blue;
+        converted[3] = context->clear_alpha;
+        break;
+    case RINGL_DEPTH_CLEAR_VALUE:
+        converted[0] = context->clear_depth;
+        break;
+    case RINGL_STENCIL_CLEAR_VALUE:
+        converted[0] = (float)context->clear_stencil;
+        break;
+    case RINGL_BLEND_COLOR:
+        converted[0] = context->blend_constant_red;
+        converted[1] = context->blend_constant_green;
+        converted[2] = context->blend_constant_blue;
+        converted[3] = context->blend_constant_alpha;
+        break;
+    case RINGL_SAMPLE_COVERAGE_VALUE:
+        converted[0] = context->sample_coverage_value;
+        break;
+    default:
+        if (ringl_get_integerv_bounded(pname, integer_values, count) != 0)
+            return -1;
+        for (size_t index = 0u; index < count; ++index)
+            converted[index] = (float)integer_values[index];
+        break;
+    }
+    memcpy(values, converted, count * sizeof(*values));
+    return 0;
+}
+
+void ringl_get_floatv(uint32_t pname, float* values)
+{
+    (void)ringl_get_floatv_bounded(pname, values, 4u);
+}

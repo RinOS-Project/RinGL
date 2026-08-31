@@ -21,6 +21,8 @@ int main(void)
 {
     RinGLContext* context = make_context();
     int32_t values[4] = {0};
+    uint32_t boolean_values[4] = {0};
+    float float_values[4] = {0.0f};
     uint32_t embedding_clear_error = RINGL_NO_ERROR;
     RinGLClearValuesV1 clear_values = {
         .struct_size = sizeof(clear_values),
@@ -67,6 +69,42 @@ int main(void)
                   "RinGL RSH1 (GLSL ES 1.00 subset)") == 0);
     assert(ringl_get_string(0xdeadbeefu) == NULL);
     assert(ringl_get_error() == RINGL_INVALID_ENUM);
+
+    assert(ringl_get_booleanv_bounded(RINGL_DITHER, boolean_values, 1u) ==
+           0);
+    assert(boolean_values[0] == RINGL_TRUE);
+    assert(ringl_get_booleanv_bounded(RINGL_CULL_FACE, boolean_values, 1u) ==
+           0);
+    assert(boolean_values[0] == RINGL_FALSE);
+    assert(ringl_get_booleanv_bounded(RINGL_COLOR_WRITEMASK,
+                                      boolean_values, 4u) == 0);
+    assert(boolean_values[0] == RINGL_TRUE &&
+           boolean_values[1] == RINGL_TRUE &&
+           boolean_values[2] == RINGL_TRUE &&
+           boolean_values[3] == RINGL_TRUE);
+    boolean_values[0] = 17u;
+    assert(ringl_get_booleanv_bounded(RINGL_VIEWPORT, boolean_values, 3u) ==
+           -1);
+    assert(boolean_values[0] == 17u);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+
+    assert(ringl_get_floatv_bounded(RINGL_DEPTH_RANGE, float_values, 2u) ==
+           0);
+    assert(float_values[0] == 0.0f && float_values[1] == 1.0f);
+    assert(ringl_get_floatv_bounded(RINGL_LINE_WIDTH, float_values, 1u) == 0);
+    assert(float_values[0] == 1.0f);
+    ringl_polygon_offset(-1.25f, 2.5f);
+    assert(ringl_get_floatv_bounded(RINGL_POLYGON_OFFSET_FACTOR,
+                                    float_values, 1u) == 0);
+    assert(float_values[0] == -1.25f);
+    assert(ringl_get_floatv_bounded(RINGL_POLYGON_OFFSET_UNITS,
+                                    float_values, 1u) == 0);
+    assert(float_values[0] == 2.5f);
+    float_values[0] = 23.0f;
+    assert(ringl_get_floatv_bounded(RINGL_DEPTH_RANGE, float_values, 1u) ==
+           -1);
+    assert(float_values[0] == 23.0f);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
 
     assert(ringl_get_clear_values(&clear_values) == 0);
     assert(clear_values.red == 0.0f && clear_values.green == 0.0f &&

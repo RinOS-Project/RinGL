@@ -48,7 +48,7 @@ Status meanings:
 | `glGenerateMipmap` | B | Bounded 2D canonical/native packed color chains only; logical `EXT_sRGB` textures reject rather than deriving an unspecified sRGB chain. |
 | `glGetActiveAttrib`, `glGetActiveUniform` | P | Versioned `RinGLActiveInfoV1`; current linker exposes bounded attributes plus `sampler2D`, scalar/vector float, signed integer, Boolean (`bool`/`bvec2`/`bvec3`/`bvec4`), and vertex/fragment `mat2`/`mat3`/`mat4` uniforms. Every supported array coalesces to one `name[0]` record with its WebGL size. |
 | `glGetAttachedShaders` | B | `ringl_get_attached_shaders` copies the pending vertex/fragment names in deterministic order, including delete-pending shaders retained by a program. |
-| `glGetBooleanv`, `glGetFloatv` | P | Dedicated state snapshots exist; no generic typed getter. |
+| `glGetBooleanv`, `glGetFloatv` | B | `ringl_get_booleanv_bounded` and `ringl_get_floatv_bounded` expose every accepted integer query plus tracked depth/clear/blend/line/polygon/sample floating state, with caller-span checks and failure-atomic output. The legacy unbounded wrappers retain the same bounded implementation. |
 | `glGetBufferParameteriv` | P | `ringl_get_buffer_size` / `ringl_get_buffer_usage` only. |
 | `glGetError` | B | `ringl_get_error`. |
 | `glGetFramebufferAttachmentParameteriv` | P | Versioned attachment record plus logical `EXT_sRGB` color-encoding state; supported attachments and fields only. |

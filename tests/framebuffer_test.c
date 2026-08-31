@@ -177,6 +177,8 @@ int main(void)
     assert(ringl_get_error() == RINGL_INVALID_ENUM);
 
     memset(&copy, 0, sizeof(copy));
+    copy.struct_size = sizeof(copy);
+    copy.api_version = RINGL_API_VERSION;
     assert(ringl_get_default_framebuffer(&copy) == 0);
     assert(copy.color_target == framebuffer.color_target);
     assert(copy.color_format == framebuffer.color_format);
@@ -213,11 +215,15 @@ int main(void)
     assert(ringl_set_default_framebuffer(&framebuffer) == -1);
     assert(ringl_get_error() == RINGL_INVALID_VALUE);
     memset(&copy, 0, sizeof(copy));
+    copy.struct_size = sizeof(copy);
+    copy.api_version = RINGL_API_VERSION;
     assert(ringl_get_default_framebuffer(&copy) == 0);
     assert(copy.width == 800u);
 
     assert(ringl_set_default_framebuffer(NULL) == 0);
     memset(&copy, 0xff, sizeof(copy));
+    copy.struct_size = sizeof(copy);
+    copy.api_version = RINGL_API_VERSION;
     assert(ringl_get_default_framebuffer(&copy) == 1);
     assert(copy.color_target == 0u);
 

@@ -500,6 +500,8 @@ int main(void)
     {
         RinGLDefaultFramebufferV1 current_framebuffer = { 0 };
 
+        current_framebuffer.struct_size = sizeof(current_framebuffer);
+        current_framebuffer.api_version = RINGL_API_VERSION;
         assert(ringl_get_default_framebuffer(&current_framebuffer) == 0);
         assert(current_framebuffer.width == 320u &&
                current_framebuffer.height == 200u);

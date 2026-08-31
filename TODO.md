@@ -552,7 +552,10 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   clear/depth-tested draw/readback, all three packed generated mip FBO
   clear/draw/readback paths, and distinct level-one sampled output from a
   three-level texture.
-- [ ] Decide the boundary for OpenGL ES 3.x features.
+- [x] Decide the boundary for OpenGL ES 3.x features. `docs/gles3-boundary.md`
+  fixes RinGL as a bounded GLES 2.0-shaped raw API with no GLES 3 core or
+  WebGL 2 advertisement; OES/ANGLE/WEBGL extension slices remain independent
+  gates and do not imply core-version support.
 - [ ] Add VAOs, instancing, additional texture formats, MRT, and other GLES 3.x features only after the underlying RinGPU contracts are ready.
   - [x] Add the WebGL 1 `OES_vertex_array_object` subset without admitting a
     GLES backend. RinGL owns a default VAO plus bounded named VAO descriptors

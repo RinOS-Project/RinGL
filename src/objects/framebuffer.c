@@ -1497,6 +1497,66 @@ int ringl_get_renderbuffer_info(uint32_t target, RinGLRenderbufferInfoV1* info)
     return 0;
 }
 
+int ringl_get_renderbuffer_parameteriv_bounded(uint32_t target, uint32_t pname,
+                                               int32_t* value,
+                                               size_t value_count)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLRenderbufferInfoV1 info;
+    uint32_t result;
+
+    if (context == NULL)
+        return -1;
+    if (value == NULL || value_count < 1u) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+    if (pname != RINGL_RENDERBUFFER_WIDTH &&
+        pname != RINGL_RENDERBUFFER_HEIGHT &&
+        pname != RINGL_RENDERBUFFER_INTERNAL_FORMAT &&
+        pname != RINGL_RENDERBUFFER_RED_SIZE &&
+        pname != RINGL_RENDERBUFFER_GREEN_SIZE &&
+        pname != RINGL_RENDERBUFFER_BLUE_SIZE &&
+        pname != RINGL_RENDERBUFFER_ALPHA_SIZE &&
+        pname != RINGL_RENDERBUFFER_DEPTH_SIZE &&
+        pname != RINGL_RENDERBUFFER_STENCIL_SIZE &&
+        pname != RINGL_SAMPLES) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.struct_size = sizeof(info);
+    info.api_version = RINGL_API_VERSION;
+    if (ringl_get_renderbuffer_info(target, &info) != 0)
+        return -1;
+    if (pname == RINGL_RENDERBUFFER_WIDTH)
+        result = info.width;
+    else if (pname == RINGL_RENDERBUFFER_HEIGHT)
+        result = info.height;
+    else if (pname == RINGL_RENDERBUFFER_INTERNAL_FORMAT)
+        result = info.internal_format;
+    else if (pname == RINGL_RENDERBUFFER_RED_SIZE)
+        result = info.red_size;
+    else if (pname == RINGL_RENDERBUFFER_GREEN_SIZE)
+        result = info.green_size;
+    else if (pname == RINGL_RENDERBUFFER_BLUE_SIZE)
+        result = info.blue_size;
+    else if (pname == RINGL_RENDERBUFFER_ALPHA_SIZE)
+        result = info.alpha_size;
+    else if (pname == RINGL_RENDERBUFFER_DEPTH_SIZE)
+        result = info.depth_size;
+    else if (pname == RINGL_RENDERBUFFER_STENCIL_SIZE)
+        result = info.stencil_size;
+    else
+        result = info.samples;
+    if (result > (uint32_t)INT32_MAX) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    *value = (int32_t)result;
+    return 0;
+}
+
 void ringl_renderbuffer_storage(uint32_t target, uint32_t internal_format,
                                 int32_t width, int32_t height)
 {

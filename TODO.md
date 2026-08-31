@@ -526,6 +526,11 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     versioned attachment record validates. Depth/stencil color-encoding
     queries, unknown pnames, and unavailable default-FBO semantics remain
     rejected rather than synthesized.
+  - [x] Add a bounded `glGetRenderbufferParameteriv` adapter for represented
+    renderbuffer metadata. Width/height, internal format, component bit sizes,
+    and the zero-sample profile are returned only after complete one-element
+    span, target, binding, and pname validation. Future values that cannot fit
+    in `GLint` leave the caller unchanged; multisample storage remains absent.
 - [x] Expose the executable RSH1 shader precision profile through a versioned
   `ringl_get_shader_precision_format()` query. All accepted float precision
   classes report IEEE-754 binary32; accepted integer classes report the signed

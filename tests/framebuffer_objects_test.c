@@ -256,6 +256,29 @@ int main(void)
            renderbuffer_info.blue_size == 8u && renderbuffer_info.alpha_size == 8u &&
            renderbuffer_info.depth_size == 0u && renderbuffer_info.stencil_size == 0u &&
            renderbuffer_info.samples == 0u);
+    assert(ringl_get_renderbuffer_parameteriv_bounded(
+               RINGL_RENDERBUFFER, RINGL_RENDERBUFFER_WIDTH, &value, 1u) == 0);
+    assert(value == 32);
+    assert(ringl_get_renderbuffer_parameteriv_bounded(
+               RINGL_RENDERBUFFER, RINGL_RENDERBUFFER_INTERNAL_FORMAT, &value,
+               1u) == 0);
+    assert(value == (int32_t)RINGL_RGBA8);
+    assert(ringl_get_renderbuffer_parameteriv_bounded(
+               RINGL_RENDERBUFFER, RINGL_RENDERBUFFER_ALPHA_SIZE, &value, 1u) ==
+           0);
+    assert(value == 8);
+    assert(ringl_get_renderbuffer_parameteriv_bounded(
+               RINGL_RENDERBUFFER, RINGL_SAMPLES, &value, 1u) == 0);
+    assert(value == 0);
+    value = 333;
+    assert(ringl_get_renderbuffer_parameteriv_bounded(
+               RINGL_RENDERBUFFER, RINGL_RENDERBUFFER_WIDTH, &value, 0u) == -1);
+    assert(value == 333);
+    assert(ringl_get_error() == RINGL_INVALID_VALUE);
+    assert(ringl_get_renderbuffer_parameteriv_bounded(
+               RINGL_RENDERBUFFER, 0xdeadbeefu, &value, 1u) == -1);
+    assert(value == 333);
+    assert(ringl_get_error() == RINGL_INVALID_ENUM);
 
     ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT0,
                                    RINGL_RENDERBUFFER, renderbuffer);
@@ -271,6 +294,11 @@ int main(void)
     assert(ringl_get_framebuffer_color_attachment(&attachment) == 0);
     assert(attachment.kind == RINGL_FRAMEBUFFER_ATTACHMENT_NONE);
     assert(ringl_get_bound_renderbuffer(RINGL_RENDERBUFFER) == 0u);
+    value = 444;
+    assert(ringl_get_renderbuffer_parameteriv_bounded(
+               RINGL_RENDERBUFFER, RINGL_RENDERBUFFER_WIDTH, &value, 1u) == -1);
+    assert(value == 444);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
 
     ringl_bind_framebuffer(0u, framebuffer);
     assert(ringl_get_error() == RINGL_INVALID_ENUM);

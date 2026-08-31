@@ -1704,6 +1704,14 @@ void ringl_bind_renderbuffer(uint32_t target, uint32_t renderbuffer);
 int ringl_is_renderbuffer(uint32_t renderbuffer);
 uint32_t ringl_get_bound_renderbuffer(uint32_t target);
 int ringl_get_renderbuffer_info(uint32_t target, RinGLRenderbufferInfoV1* info);
+/* Bounded GLES-style renderbuffer query. The represented storage metadata
+ * fields (dimensions, internal format, component sizes, and samples) are
+ * returned through one validated GLint slot; the destination is unchanged on
+ * invalid target/pname, missing binding, short output, or representation
+ * overflow. */
+int ringl_get_renderbuffer_parameteriv_bounded(uint32_t target, uint32_t pname,
+                                               int32_t* value,
+                                               size_t value_count);
 void ringl_renderbuffer_storage(uint32_t target, uint32_t internal_format,
                                 int32_t width, int32_t height);
 void ringl_framebuffer_renderbuffer(uint32_t target, uint32_t attachment,

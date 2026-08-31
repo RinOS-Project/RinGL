@@ -101,6 +101,12 @@ type/name, texture level, the 2D-only cube-face sentinel, and logical
 and the existing attachment record validate; default-FBO semantics and
 unsupported pnames remain fail-closed.
 
+Renderbuffer parameter queries likewise use a bounded adapter. Width, height,
+internal format, component bit sizes, and the represented zero-sample value
+are published from `RinGLRenderbufferInfoV1` only after target, binding, pname,
+and one-element span validation; future values that cannot fit in `GLint` are
+rejected without changing the caller's value.
+
 ## Architecture
 
 ```text

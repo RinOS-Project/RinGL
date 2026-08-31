@@ -55,7 +55,7 @@ Status meanings:
 | `glGetIntegerv` | P | `ringl_get_integerv_bounded` and the target-sensitive `ringl_get_implementation_color_read_format_type` accept only the inventory below, including default drawing-buffer component/depth/stencil bit counts derived from real configured planes; `PACK_ALIGNMENT`, `IMPLEMENTATION_COLOR_READ_{FORMAT,TYPE}`, `MAX_RENDERBUFFER_SIZE`/`MAX_VIEWPORT_DIMS`, single-sample counts, and the executable `[1, 64]` point range are actual bounded profile values. |
 | `glGetProgramiv`, `glGetShaderiv` | P | Versioned program record and dedicated shader-status/type calls; not every GLES pname. |
 | `glGetProgramInfoLog`, `glGetShaderInfoLog`, `glGetShaderSource` | B | Caller-owned bounded copies. |
-| `glGetRenderbufferParameteriv` | P | `RinGLRenderbufferInfoV1` supplies bounded storage metadata, including logical `SRGB8_ALPHA8_EXT` renderbuffers. |
+| `glGetRenderbufferParameteriv` | P | Bounded `ringl_get_renderbuffer_parameteriv_bounded` exposes width/height, internal format, component bit sizes, and the represented zero-sample profile through a complete one-element output span. Logical `SRGB8_ALPHA8_EXT` metadata is preserved; multisample storage and unsupported pnames remain unavailable. |
 | `glGetShaderPrecisionFormat` | B | `ringl_get_shader_precision_format` returns the executable RSH1 binary32 or signed-i32 profile through a validated versioned record. |
 | `glGetString` | P | `ringl_get_string` returns only RinGL's static vendor, renderer, bounded-profile version, and RSH1 language-profile strings; extension strings remain unavailable. |
 | `glGetTexParameteriv` | P | Bounded integer values for `MIN_FILTER`, `MAG_FILTER`, `WRAP_S`, `WRAP_T`, and extension-gated `TEXTURE_MAX_ANISOTROPY_EXT`. |

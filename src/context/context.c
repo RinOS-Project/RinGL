@@ -291,3 +291,25 @@ void ringl_context_release_shadow_bytes(RinGLContext* context,
     else
         context->cpu_shadow_bytes -= bytes;
 }
+
+void* ringl_context_alloc_temporary(RinGLContext* context, uint64_t bytes)
+{
+    void* memory;
+
+    if (bytes == 0u || bytes > SIZE_MAX ||
+        !ringl_context_reserve_shadow_bytes(context, bytes))
+        return NULL;
+    memory = malloc((size_t)bytes);
+    if (memory == NULL)
+        ringl_context_release_shadow_bytes(context, bytes);
+    return memory;
+}
+
+void ringl_context_free_temporary(RinGLContext* context, void* memory,
+                                  uint64_t bytes)
+{
+    if (memory == NULL)
+        return;
+    ringl_context_release_shadow_bytes(context, bytes);
+    free(memory);
+}

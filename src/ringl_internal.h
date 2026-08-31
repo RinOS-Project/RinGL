@@ -585,6 +585,9 @@ int ringl_context_reserve_shadow_bytes(RinGLContext* context,
                                        uint64_t bytes);
 void ringl_context_release_shadow_bytes(RinGLContext* context,
                                         uint64_t bytes);
+void* ringl_context_alloc_temporary(RinGLContext* context, uint64_t bytes);
+void ringl_context_free_temporary(RinGLContext* context, void* memory,
+                                  uint64_t bytes);
 void ringl_copy_c_string(char* destination, size_t capacity,
                          const char* source);
 int ringl_resolve_color_target(RinGLContext* context,

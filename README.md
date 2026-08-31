@@ -33,6 +33,11 @@ buffers remain a separate follow-up audit. Shader source snapshots, lowered
 RSH1 modules, and program-owned uniform modules now reserve and release their
 exact persistent byte counts through the same context budget.
 
+Temporary compressed-texture decode buffers, copy-image snapshots, and
+readback staging buffers now use the same admission helper. Their exact sizes
+are reserved before allocation and released after decode, conversion, failed
+readback, or publication, so transient peaks cannot bypass the context limit.
+
 ## Architecture
 
 ```text

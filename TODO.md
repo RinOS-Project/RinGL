@@ -645,6 +645,14 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     WebGL negative test verify source replacement is rejected before allocation
     under a full reservation. Temporary parser/lowerer workspace, shader
     diagnostics, and hardware/QEMU accounting remain open.
+  - [x] Bound temporary compressed-texture decode buffers, copy-image
+    snapshots, and readback native/tight/clipped staging to the same per-context
+    512 MiB budget. Each candidate reserves its exact byte count before
+    allocation and releases it on decode/conversion/readback failure and
+    success; focused texture and sync regressions verify full-budget rejection
+    and that successful readback leaves the persistent balance unchanged.
+    Parser/lowerer workspace, diagnostic strings, backend-owned resources, and
+    hardware/QEMU accounting remain open.
 - [x] Add WebGL-oriented negative tests for malformed state and shader input.
   `tests/ringl_webgl_negative_test.c` covers failure-atomic descriptor queries,
   invalid viewport/scissor/depth/blend values, and malformed GLSL compile

@@ -219,6 +219,31 @@ int main(void)
     ringl_delete_textures(1, &recycled);
     assert(context->cpu_shadow_bytes == 0u);
 
+    /* Compressed uploads use a temporary decoded image before publishing a
+     * persistent texture shadow.  The temporary must obey the same budget and
+     * must be released on both the admission failure and success paths. */
+    {
+        const uint8_t etc1_block[8] = {0u};
+
+        ringl_gen_textures(1, &recycled);
+        ringl_bind_texture(RINGL_TEXTURE_2D, recycled);
+        assert(ringl_context_reserve_shadow_bytes(
+                   context, RINGL_MAX_CPU_SHADOW_BYTES) != 0);
+        ringl_compressed_tex_image_2d_from_bytes(
+            RINGL_TEXTURE_2D, 0, RINGL_ETC1_RGB8_OES, 4, 4, 0,
+            etc1_block, sizeof(etc1_block));
+        assert(ringl_get_error() == RINGL_OUT_OF_MEMORY);
+        assert(context->cpu_shadow_bytes == RINGL_MAX_CPU_SHADOW_BYTES);
+        ringl_context_release_shadow_bytes(context, RINGL_MAX_CPU_SHADOW_BYTES);
+        ringl_compressed_tex_image_2d_from_bytes(
+            RINGL_TEXTURE_2D, 0, RINGL_ETC1_RGB8_OES, 4, 4, 0,
+            etc1_block, sizeof(etc1_block));
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(context->cpu_shadow_bytes > 0u);
+        ringl_delete_textures(1, &recycled);
+        assert(context->cpu_shadow_bytes == 0u);
+    }
+
     ringl_context_destroy(context);
     return 0;
 }

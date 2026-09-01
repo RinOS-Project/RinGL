@@ -494,7 +494,14 @@ void ringl_stencil_func_separate(uint32_t face, uint32_t func,
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
-    clamped_reference = (uint32_t)reference & 0xffu;
+    /* GLES clamps the signed reference to the representable stencil range;
+     * casting and masking would incorrectly turn negative values into 255. */
+    if (reference < 0)
+        clamped_reference = 0u;
+    else if (reference > 0xff)
+        clamped_reference = 0xffu;
+    else
+        clamped_reference = (uint32_t)reference;
     mask &= 0xffu;
     faces[0] = face == RINGL_BACK ? RINGL_BACK : RINGL_FRONT;
     count = face == RINGL_FRONT_AND_BACK ? 2u : 1u;

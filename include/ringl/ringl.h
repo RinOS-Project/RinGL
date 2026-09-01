@@ -1409,6 +1409,9 @@ void ringl_hint(uint32_t target, uint32_t mode);
 void ringl_polygon_offset(float factor, float units);
 /* Returns the tracked depth range only for a complete v1 output header. */
 int ringl_get_depth_range(RinGLDepthRangeV1* range);
+/* Stencil references and clear values use the represented 8-bit plane. The
+ * signed API inputs are saturated to [0, 255], matching GLES integer state
+ * conversion; they are not truncated through unsigned wraparound. */
 void ringl_stencil_func(uint32_t func, int32_t reference, uint32_t mask);
 void ringl_stencil_func_separate(uint32_t face, uint32_t func,
                                  int32_t reference, uint32_t mask);

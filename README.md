@@ -1046,7 +1046,12 @@ rejection, replacement, write masking, depth-fail behavior, reversed winding,
 back-face culling, and an enabled `DEPTH_TEST` with `NEVER` on a stencil-only
 FBO. `ringl_clear(RINGL_STENCIL_BUFFER_BIT)` also forwards the front stencil
 write mask through the native render pass, so it preserves masked-off stencil
-bits rather than overwriting the complete S8 plane. Separate D32 depth and
+bits rather than overwriting the complete S8 plane.
+The signed `ringl_stencil_func` reference and `ringl_clear_stencil` value are
+saturated to the 8-bit `[0, 255]` range before state publication, so negative
+values do not wrap to 255 and oversized values do not truncate. This keeps the
+raw API's snapshots and native stencil replacement/clear behavior aligned with
+the GLES integer conversion rules. Separate D32 depth and
 native S8 stencil renderbuffers are supported through a versioned three-target
 RinGPU pass. RinGL preserves the two attachment owners and only reports a
 combined attachment when they are identical; the surface backend passes their

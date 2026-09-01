@@ -116,7 +116,10 @@ int main(void)
     assert(ringl_get_clear_values(&clear_values) == 0);
     assert(clear_values.red == 0.25f && clear_values.green == 0.5f &&
            clear_values.blue == 0.75f && clear_values.alpha == 1.0f &&
-           clear_values.depth == 0.125f && clear_values.stencil == 255);
+           clear_values.depth == 0.125f && clear_values.stencil == 0);
+    ringl_clear_stencil(0x100);
+    assert(ringl_get_clear_values(&clear_values) == 0);
+    assert(clear_values.stencil == 255);
     clear_values.struct_size = sizeof(clear_values) - 1u;
     assert(ringl_get_clear_values(&clear_values) == -1);
     clear_values.struct_size = sizeof(clear_values);
@@ -377,6 +380,9 @@ int main(void)
     ringl_stencil_op(RINGL_REPLACE, RINGL_INCR_WRAP, RINGL_DECR);
     ringl_get_integerv(RINGL_STENCIL_FUNC, values);
     assert(values[0] == (int32_t)RINGL_GEQUAL);
+    ringl_get_integerv(RINGL_STENCIL_REF, values);
+    assert(values[0] == 0);
+    ringl_stencil_func(RINGL_GEQUAL, INT32_MAX, 0x123u);
     ringl_get_integerv(RINGL_STENCIL_REF, values);
     assert(values[0] == 0xff);
     ringl_get_integerv(RINGL_STENCIL_VALUE_MASK, values);

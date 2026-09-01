@@ -1459,7 +1459,15 @@ void ringl_clear_stencil(int32_t stencil)
 
     if (context == NULL)
         return;
-    context->clear_stencil = (uint32_t)stencil & 0xffu;
+    /* glClearStencil clamps to the implementation's stencil bit depth. The
+     * bounded profile exposes an 8-bit plane, so do a saturating conversion
+     * instead of allowing signed values to wrap through an integer cast. */
+    if (stencil < 0)
+        context->clear_stencil = 0u;
+    else if (stencil > 0xff)
+        context->clear_stencil = 0xffu;
+    else
+        context->clear_stencil = (uint32_t)stencil;
 }
 
 static uint32_t ringl_submit_clear(RinGLContext* context, uint32_t mask)

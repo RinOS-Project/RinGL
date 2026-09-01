@@ -66,8 +66,10 @@ paths. In particular:
 - The bounded depth/stencil paths implement only their documented D24S8/S8
   behavior. Attachment metadata queries now report the represented component
   type and logical channel/aspect widths for configured default and custom
-  targets, but multisampled, cube, and unverified attachment semantics must
-  not be exposed as working stencil support.
+  targets; the default drawing buffer's versioned attachment record is exposed
+  as the standard NONE/zero object sentinel. Multisampled, cube, and
+  unverified attachment semantics must not be exposed as working stencil
+  support.
 
 ## GLSL ES and shader execution
 

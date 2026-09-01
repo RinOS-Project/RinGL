@@ -820,6 +820,24 @@ int ringl_get_framebuffer_attachment(
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return -1;
     }
+    if (context->framebuffer_binding == 0u) {
+        if (!context->has_default_framebuffer) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return -1;
+        }
+        if (!color_attachment_valid(attachment_point) &&
+            !depth_attachment_valid(attachment_point)) {
+            ringl_context_record_error(context, RINGL_INVALID_ENUM);
+            return -1;
+        }
+        /* The default drawing buffer is not a user-created object.  Expose
+         * its standard object sentinel while the bounded parameter query
+         * supplies physical format/aspect metadata separately. */
+        attachment->kind = RINGL_FRAMEBUFFER_ATTACHMENT_NONE;
+        attachment->object = 0u;
+        attachment->level = 0;
+        return 0;
+    }
     framebuffer = bound_framebuffer(context);
     if (framebuffer == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);

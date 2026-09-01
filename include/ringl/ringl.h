@@ -1681,10 +1681,10 @@ int ringl_get_framebuffer_attachment(
  * UNSIGNED_NORMALIZED for normalized color/depth, FLOAT for float color or
  * D32F, and UNSIGNED_INT for S8/D24S8. RED/GREEN/BLUE/ALPHA/DEPTH/STENCIL
  * SIZE report the logical attached aspect widths (zero for other aspects or
- * an unattached slot). Default-framebuffer object/name/texture pnames report
- * the standard NONE/zero values; its color/depth/stencil metadata comes from
- * the configured descriptor. The destination is unchanged on every
- * validation or object-model failure. */
+ * an unattached slot). The versioned attachment record also reports
+ * default-framebuffer attachment points as NONE/zero; its color/depth/stencil
+ * metadata comes from the configured descriptor. The destination is
+ * unchanged on every validation or object-model failure. */
 int ringl_get_framebuffer_attachment_parameteriv_bounded(
     uint32_t attachment, uint32_t pname, int32_t* value, size_t value_count);
 /* Compatibility shorthand for COLOR_ATTACHMENT0. New embedding code should

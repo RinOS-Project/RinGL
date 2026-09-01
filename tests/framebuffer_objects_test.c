@@ -377,6 +377,16 @@ int main(void)
     assert(ringl_set_default_framebuffer(&default_framebuffer) == 0);
     ringl_bind_framebuffer(RINGL_FRAMEBUFFER, 0u);
     assert(ringl_get_bound_framebuffer(RINGL_FRAMEBUFFER) == 0u);
+    attachment = attachment_info();
+    assert(ringl_get_framebuffer_attachment(RINGL_COLOR_ATTACHMENT0,
+                                            &attachment) == 0);
+    assert(attachment.kind == RINGL_FRAMEBUFFER_ATTACHMENT_NONE);
+    assert(attachment.object == 0u && attachment.level == 0);
+    attachment = attachment_info();
+    assert(ringl_get_framebuffer_attachment(RINGL_DEPTH_ATTACHMENT,
+                                            &attachment) == 0);
+    assert(attachment.kind == RINGL_FRAMEBUFFER_ATTACHMENT_NONE);
+    assert(attachment.object == 0u && attachment.level == 0);
     assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
                RINGL_COLOR_ATTACHMENT0,
                RINGL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, &value, 1u) == 0);

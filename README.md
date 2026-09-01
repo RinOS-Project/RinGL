@@ -110,9 +110,9 @@ renderbuffer storage for normalized, Float32/binary16, D16/D32F, D24S8, and S8
 attachments; a D24S8 object attached to one logical aspect reports only that
 aspect. Unattached slots return zero metadata, while default-FBO, cube,
 multisample, and unsupported-format semantics remain fail-closed. On a
-configured default framebuffer, object/type queries return the standard
-`NONE`/zero values while component and logical aspect widths come from the
-physical format and explicit depth/stencil flags.
+configured default framebuffer, the versioned attachment record and object/type
+queries return the standard `NONE`/zero values while component and logical
+aspect widths come from the physical format and explicit depth/stencil flags.
 
 Renderbuffer parameter queries likewise use a bounded adapter. Width, height,
 internal format, component bit sizes, and the represented zero-sample value

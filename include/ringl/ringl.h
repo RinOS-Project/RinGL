@@ -1673,7 +1673,7 @@ void ringl_draw_buffers(int32_t count, const uint32_t* buffers);
  * is attached to both logical aspects. */
 int ringl_get_framebuffer_attachment(
     uint32_t attachment, RinGLFramebufferAttachmentInfoV1* info);
-/* Bounded GLES-style attachment query for the represented custom-FBO
+/* Bounded GLES-style attachment query for the represented default/custom-FBO
  * profile. OBJECT_TYPE, OBJECT_NAME, TEXTURE_LEVEL, and the 2D-only cube-face
  * value are returned through one validated GLint slot. COLOR_ENCODING and its
  * RinGL compatibility alias COLOR_ENCODING_EXT are accepted only for color
@@ -1681,8 +1681,10 @@ int ringl_get_framebuffer_attachment(
  * UNSIGNED_NORMALIZED for normalized color/depth, FLOAT for float color or
  * D32F, and UNSIGNED_INT for S8/D24S8. RED/GREEN/BLUE/ALPHA/DEPTH/STENCIL
  * SIZE report the logical attached aspect widths (zero for other aspects or
- * an unattached slot). The destination is unchanged on every validation or
- * object-model failure. */
+ * an unattached slot). Default-framebuffer object/name/texture pnames report
+ * the standard NONE/zero values; its color/depth/stencil metadata comes from
+ * the configured descriptor. The destination is unchanged on every
+ * validation or object-model failure. */
 int ringl_get_framebuffer_attachment_parameteriv_bounded(
     uint32_t attachment, uint32_t pname, int32_t* value, size_t value_count);
 /* Compatibility shorthand for COLOR_ATTACHMENT0. New embedding code should

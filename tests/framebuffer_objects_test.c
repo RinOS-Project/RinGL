@@ -27,6 +27,14 @@ int main(void)
     uint32_t depth_stencil_texture = 0u;
     uint32_t renderbuffer = 0u;
     uint32_t packed_depth_stencil = 0x7fffffa5u;
+    RinGLDefaultFramebufferV1 default_framebuffer = {
+        .struct_size = sizeof(default_framebuffer),
+        .api_version = RINGL_API_VERSION,
+        .color_target = 101u,
+        .color_format = RINGL_RIN_GPU_FORMAT_RGBA8_UNORM,
+        .width = 32u,
+        .height = 16u,
+    };
     RinGLFramebufferAttachmentInfoV1 attachment;
     RinGLRenderbufferInfoV1 renderbuffer_info = {
         .struct_size = sizeof(renderbuffer_info),
@@ -362,6 +370,100 @@ int main(void)
                RINGL_RENDERBUFFER, RINGL_RENDERBUFFER_WIDTH, &value, 1u) == -1);
     assert(value == 444);
     assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+
+    /* The default drawing buffer is not an object-backed FBO, but its
+     * configured physical format still answers the attachment metadata
+     * queries.  The object pnames expose the GLES default-buffer sentinel. */
+    assert(ringl_set_default_framebuffer(&default_framebuffer) == 0);
+    ringl_bind_framebuffer(RINGL_FRAMEBUFFER, 0u);
+    assert(ringl_get_bound_framebuffer(RINGL_FRAMEBUFFER) == 0u);
+    assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+               RINGL_COLOR_ATTACHMENT0,
+               RINGL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, &value, 1u) == 0);
+    assert(value == (int32_t)RINGL_FRAMEBUFFER_ATTACHMENT_NONE);
+    assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+               RINGL_COLOR_ATTACHMENT0,
+               RINGL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME, &value, 1u) == 0);
+    assert(value == 0);
+    assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+               RINGL_COLOR_ATTACHMENT0,
+               RINGL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING, &value, 1u) == 0);
+    assert(value == (int32_t)RINGL_LINEAR);
+    assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+               RINGL_COLOR_ATTACHMENT0,
+               RINGL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE, &value, 1u) == 0);
+    assert(value == (int32_t)RINGL_UNSIGNED_NORMALIZED);
+    assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+               RINGL_COLOR_ATTACHMENT0,
+               RINGL_FRAMEBUFFER_ATTACHMENT_RED_SIZE, &value, 1u) == 0 &&
+           value == 8);
+    assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+               RINGL_COLOR_ATTACHMENT0,
+               RINGL_FRAMEBUFFER_ATTACHMENT_ALPHA_SIZE, &value, 1u) == 0 &&
+           value == 8);
+    assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+               RINGL_COLOR_ATTACHMENT0,
+               RINGL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE, &value, 1u) == 0 &&
+           value == 0);
+    value = 919;
+    assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+               RINGL_DEPTH_ATTACHMENT,
+               RINGL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE, &value, 1u) == -1);
+    assert(value == 919);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+
+    /* A packed default depth/stencil image can expose either logical plane
+     * independently.  The combined query reports the physical depth/stencil
+     * widths, while each logical aspect zeros the other plane. */
+    default_framebuffer.depth_target = 102u;
+    default_framebuffer.depth_format =
+        RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT;
+    default_framebuffer.flags = RINGL_DEFAULT_FRAMEBUFFER_EXPLICIT_ASPECTS |
+                                RINGL_DEFAULT_FRAMEBUFFER_STENCIL;
+    assert(ringl_set_default_framebuffer(&default_framebuffer) == 0);
+    assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+               RINGL_STENCIL_ATTACHMENT,
+               RINGL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE, &value, 1u) == 0);
+    assert(value == (int32_t)RINGL_UNSIGNED_INT);
+    assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+               RINGL_STENCIL_ATTACHMENT,
+               RINGL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE, &value, 1u) == 0 &&
+           value == 8);
+    assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+               RINGL_STENCIL_ATTACHMENT,
+               RINGL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE, &value, 1u) == 0);
+    assert(value == 0);
+
+    default_framebuffer.flags = RINGL_DEFAULT_FRAMEBUFFER_EXPLICIT_ASPECTS |
+                                RINGL_DEFAULT_FRAMEBUFFER_DEPTH;
+    assert(ringl_set_default_framebuffer(&default_framebuffer) == 0);
+    assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+               RINGL_DEPTH_ATTACHMENT,
+               RINGL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE, &value, 1u) == 0);
+    assert(value == (int32_t)RINGL_FLOAT);
+    assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+               RINGL_DEPTH_ATTACHMENT,
+               RINGL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE, &value, 1u) == 0 &&
+           value == 32);
+    assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+               RINGL_DEPTH_ATTACHMENT,
+               RINGL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE, &value, 1u) == 0);
+    assert(value == 0);
+
+    default_framebuffer.flags = 0u;
+    assert(ringl_set_default_framebuffer(&default_framebuffer) == 0);
+    assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+               RINGL_DEPTH_STENCIL_ATTACHMENT,
+               RINGL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE, &value, 1u) == 0);
+    assert(value == (int32_t)RINGL_FLOAT);
+    assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+               RINGL_DEPTH_STENCIL_ATTACHMENT,
+               RINGL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE, &value, 1u) == 0 &&
+           value == 32);
+    assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+               RINGL_DEPTH_STENCIL_ATTACHMENT,
+               RINGL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE, &value, 1u) == 0 &&
+           value == 8);
 
     ringl_bind_framebuffer(0u, framebuffer);
     assert(ringl_get_error() == RINGL_INVALID_ENUM);

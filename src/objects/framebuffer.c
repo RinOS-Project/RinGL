@@ -872,6 +872,109 @@ int ringl_get_framebuffer_attachment(
     return 0;
 }
 
+static int default_framebuffer_attachment_metadata(
+    const RinGLContext* context, uint32_t attachment, uint32_t* red_size,
+    uint32_t* green_size, uint32_t* blue_size, uint32_t* alpha_size,
+    uint32_t* depth_size, uint32_t* stencil_size, uint32_t* component_type)
+{
+    const RinGLDefaultFramebufferV1* framebuffer;
+    uint32_t color_format;
+    uint32_t depth_exposed;
+    uint32_t stencil_exposed;
+
+    if (context == NULL || red_size == NULL || green_size == NULL ||
+        blue_size == NULL || alpha_size == NULL || depth_size == NULL ||
+        stencil_size == NULL || component_type == NULL ||
+        !context->has_default_framebuffer)
+        return -1;
+    if (attachment != RINGL_COLOR_ATTACHMENT0 &&
+        attachment != RINGL_DEPTH_ATTACHMENT &&
+        attachment != RINGL_STENCIL_ATTACHMENT &&
+        attachment != RINGL_DEPTH_STENCIL_ATTACHMENT)
+        return -1;
+    framebuffer = &context->default_framebuffer;
+    color_format = framebuffer->color_format;
+    if (attachment == RINGL_COLOR_ATTACHMENT0) {
+        if (color_format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM ||
+            color_format == RINGL_RIN_GPU_FORMAT_BGRA8_UNORM) {
+            *red_size = *green_size = *blue_size = 8u;
+            *alpha_size = (framebuffer->flags &
+                           RINGL_DEFAULT_FRAMEBUFFER_EXPLICIT_ALPHA) != 0u &&
+                    (framebuffer->flags & RINGL_DEFAULT_FRAMEBUFFER_ALPHA) == 0u
+                ? 0u : 8u;
+            *component_type = RINGL_UNSIGNED_NORMALIZED;
+            return 0;
+        }
+        if (color_format == RINGL_RIN_GPU_FORMAT_RGB565_UNORM) {
+            *red_size = 5u;
+            *green_size = 6u;
+            *blue_size = 5u;
+            *component_type = RINGL_UNSIGNED_NORMALIZED;
+            return 0;
+        }
+        if (color_format == RINGL_RIN_GPU_FORMAT_RGBA4_UNORM) {
+            *red_size = *green_size = *blue_size = *alpha_size = 4u;
+            *component_type = RINGL_UNSIGNED_NORMALIZED;
+            return 0;
+        }
+        if (color_format == RINGL_RIN_GPU_FORMAT_RGB5_A1_UNORM) {
+            *red_size = *green_size = *blue_size = 5u;
+            *alpha_size = 1u;
+            *component_type = RINGL_UNSIGNED_NORMALIZED;
+            return 0;
+        }
+        if (color_format == RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT) {
+            *red_size = *green_size = *blue_size = *alpha_size = 16u;
+            *component_type = RINGL_FLOAT;
+            return 0;
+        }
+        if (color_format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT) {
+            *red_size = *green_size = *blue_size = *alpha_size = 32u;
+            *component_type = RINGL_FLOAT;
+            return 0;
+        }
+        return -1;
+    }
+    if (framebuffer->depth_target == 0u)
+        return -1;
+    if (framebuffer->flags == 0u) {
+        depth_exposed = RINGL_TRUE;
+        stencil_exposed = framebuffer->depth_format ==
+            RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT;
+    } else {
+        depth_exposed = (framebuffer->flags &
+                         RINGL_DEFAULT_FRAMEBUFFER_DEPTH) != 0u;
+        stencil_exposed = (framebuffer->flags &
+                           RINGL_DEFAULT_FRAMEBUFFER_STENCIL) != 0u;
+    }
+    if (attachment == RINGL_DEPTH_ATTACHMENT && depth_exposed == RINGL_FALSE)
+        return -1;
+    if (attachment == RINGL_STENCIL_ATTACHMENT &&
+        stencil_exposed == RINGL_FALSE)
+        return -1;
+    if (attachment == RINGL_DEPTH_STENCIL_ATTACHMENT &&
+        (depth_exposed == RINGL_FALSE || stencil_exposed == RINGL_FALSE))
+        return -1;
+    if (framebuffer->depth_format == RINGL_RIN_GPU_FORMAT_D32_FLOAT) {
+        *depth_size = 32u;
+        *component_type = RINGL_FLOAT;
+    } else if (framebuffer->depth_format ==
+               RINGL_RIN_GPU_FORMAT_D32_FLOAT_S8_UINT) {
+        *depth_size = 32u;
+        *stencil_size = 8u;
+        *component_type = attachment == RINGL_STENCIL_ATTACHMENT
+            ? RINGL_UNSIGNED_INT : RINGL_FLOAT;
+    } else {
+        return -1;
+    }
+    if (attachment == RINGL_STENCIL_ATTACHMENT) {
+        *depth_size = 0u;
+    } else if (attachment == RINGL_DEPTH_ATTACHMENT) {
+        *stencil_size = 0u;
+    }
+    return 0;
+}
+
 int ringl_get_framebuffer_attachment_parameteriv_bounded(
     uint32_t attachment, uint32_t pname, int32_t* value, size_t value_count)
 {
@@ -908,6 +1011,62 @@ int ringl_get_framebuffer_attachment_parameteriv_bounded(
         pname != RINGL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return -1;
+    }
+    if (context->framebuffer_binding == 0u) {
+        if (!context->has_default_framebuffer) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return -1;
+        }
+        if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE ||
+            pname == RINGL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME ||
+            pname == RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL ||
+            pname == RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE) {
+            if (attachment != RINGL_COLOR_ATTACHMENT0 &&
+                attachment != RINGL_DEPTH_ATTACHMENT &&
+                attachment != RINGL_STENCIL_ATTACHMENT &&
+                attachment != RINGL_DEPTH_STENCIL_ATTACHMENT) {
+                ringl_context_record_error(context, RINGL_INVALID_ENUM);
+                return -1;
+            }
+            result = pname == RINGL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE
+                ? (int32_t)RINGL_FRAMEBUFFER_ATTACHMENT_NONE : 0;
+            *value = result;
+            return 0;
+        }
+        if ((pname == RINGL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING ||
+             pname == RINGL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT) &&
+            attachment != RINGL_COLOR_ATTACHMENT0) {
+            ringl_context_record_error(context, RINGL_INVALID_ENUM);
+            return -1;
+        }
+        if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING ||
+            pname == RINGL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT) {
+            *value = (int32_t)RINGL_LINEAR;
+            return 0;
+        }
+        if (default_framebuffer_attachment_metadata(
+                context, attachment, &red_size, &green_size, &blue_size,
+                &alpha_size, &depth_size, &stencil_size,
+                &component_type) != 0) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return -1;
+        }
+        if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE)
+            result = (int32_t)component_type;
+        else if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_RED_SIZE)
+            result = (int32_t)red_size;
+        else if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_GREEN_SIZE)
+            result = (int32_t)green_size;
+        else if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_BLUE_SIZE)
+            result = (int32_t)blue_size;
+        else if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_ALPHA_SIZE)
+            result = (int32_t)alpha_size;
+        else if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE)
+            result = (int32_t)depth_size;
+        else
+            result = (int32_t)stencil_size;
+        *value = result;
+        return 0;
     }
     memset(&info, 0, sizeof(info));
     info.struct_size = sizeof(info);

@@ -282,6 +282,18 @@ extern "C" {
 #define RINGL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME 0x8cd1u
 #define RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL 0x8cd2u
 #define RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE 0x8cd3u
+/* GLES 3 framebuffer attachment inspection pnames. RinGL exposes the
+ * represented subset through the bounded query below; the values are kept
+ * public so an embedding does not need private numeric aliases. */
+#define RINGL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING 0x8210u
+#define RINGL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE 0x8211u
+#define RINGL_FRAMEBUFFER_ATTACHMENT_RED_SIZE 0x8212u
+#define RINGL_FRAMEBUFFER_ATTACHMENT_GREEN_SIZE 0x8213u
+#define RINGL_FRAMEBUFFER_ATTACHMENT_BLUE_SIZE 0x8214u
+#define RINGL_FRAMEBUFFER_ATTACHMENT_ALPHA_SIZE 0x8215u
+#define RINGL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE 0x8216u
+#define RINGL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE 0x8217u
+#define RINGL_UNSIGNED_NORMALIZED 0x8c17u
 #define RINGL_COLOR_ATTACHMENT0     0x8ce0u
 #define RINGL_COLOR_ATTACHMENT1     0x8ce1u
 #define RINGL_COLOR_ATTACHMENT2     0x8ce2u
@@ -1663,9 +1675,14 @@ int ringl_get_framebuffer_attachment(
     uint32_t attachment, RinGLFramebufferAttachmentInfoV1* info);
 /* Bounded GLES-style attachment query for the represented custom-FBO
  * profile. OBJECT_TYPE, OBJECT_NAME, TEXTURE_LEVEL, and the 2D-only cube-face
- * value are returned through one validated GLint slot. COLOR_ENCODING_EXT is
- * accepted only for color attachments and reports SRGB_EXT or LINEAR. The
- * destination is unchanged on every validation or object-model failure. */
+ * value are returned through one validated GLint slot. COLOR_ENCODING and its
+ * RinGL compatibility alias COLOR_ENCODING_EXT are accepted only for color
+ * attachments and report SRGB_EXT or LINEAR. COMPONENT_TYPE reports
+ * UNSIGNED_NORMALIZED for normalized color/depth, FLOAT for float color or
+ * D32F, and UNSIGNED_INT for S8/D24S8. RED/GREEN/BLUE/ALPHA/DEPTH/STENCIL
+ * SIZE report the logical attached aspect widths (zero for other aspects or
+ * an unattached slot). The destination is unchanged on every validation or
+ * object-model failure. */
 int ringl_get_framebuffer_attachment_parameteriv_bounded(
     uint32_t attachment, uint32_t pname, int32_t* value, size_t value_count);
 /* Compatibility shorthand for COLOR_ATTACHMENT0. New embedding code should

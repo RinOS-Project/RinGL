@@ -877,6 +877,14 @@ int ringl_get_framebuffer_attachment_parameteriv_bounded(
 {
     RinGLContext* context = ringl_get_current_context();
     RinGLFramebufferAttachmentInfoV1 info;
+    uint32_t red_size = 0u;
+    uint32_t green_size = 0u;
+    uint32_t blue_size = 0u;
+    uint32_t alpha_size = 0u;
+    uint32_t depth_size = 0u;
+    uint32_t stencil_size = 0u;
+    uint32_t component_type = 0u;
+    uint32_t object_index;
     int32_t result;
 
     if (context == NULL)
@@ -889,6 +897,14 @@ int ringl_get_framebuffer_attachment_parameteriv_bounded(
         pname != RINGL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME &&
         pname != RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL &&
         pname != RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE &&
+        pname != RINGL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING &&
+        pname != RINGL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE &&
+        pname != RINGL_FRAMEBUFFER_ATTACHMENT_RED_SIZE &&
+        pname != RINGL_FRAMEBUFFER_ATTACHMENT_GREEN_SIZE &&
+        pname != RINGL_FRAMEBUFFER_ATTACHMENT_BLUE_SIZE &&
+        pname != RINGL_FRAMEBUFFER_ATTACHMENT_ALPHA_SIZE &&
+        pname != RINGL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE &&
+        pname != RINGL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE &&
         pname != RINGL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return -1;
@@ -898,7 +914,8 @@ int ringl_get_framebuffer_attachment_parameteriv_bounded(
     info.api_version = RINGL_API_VERSION;
     if (ringl_get_framebuffer_attachment(attachment, &info) != 0)
         return -1;
-    if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT) {
+    if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING ||
+        pname == RINGL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT) {
         uint32_t is_srgb;
 
         if (!color_attachment_valid(attachment)) {
@@ -921,11 +938,194 @@ int ringl_get_framebuffer_attachment_parameteriv_bounded(
         result = (int32_t)info.object;
     } else if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL) {
         result = info.level;
-    } else {
+    } else if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE) {
         /* RinGL's framebuffer attachments are always TEXTURE_2D or
          * renderbuffers; the cube-map-face query therefore has the GLES
          * non-cube sentinel value. */
         result = 0;
+    } else {
+        if (info.kind == RINGL_FRAMEBUFFER_ATTACHMENT_NONE) {
+            /* An unattached slot has no component type or storage width. Keep
+             * this a successful zero-valued inspection, matching the bounded
+             * object query's existing NONE behavior. */
+            result = 0;
+        } else {
+            object_index = ringl_object_slot_index(info.object);
+            if (object_index >= RINGL_OBJECT_SLOT_COUNT) {
+                ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+                return -1;
+            }
+            if (info.kind == RINGL_FRAMEBUFFER_ATTACHMENT_RENDERBUFFER) {
+                RinGLRenderbufferObject* renderbuffer =
+                    &context->renderbuffers[object_index];
+
+                if (!renderbuffer->defined) {
+                    ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+                    return -1;
+                }
+                if (renderbuffer->internal_format == RINGL_RGBA8) {
+                    red_size = green_size = blue_size = alpha_size = 8u;
+                    component_type = RINGL_UNSIGNED_NORMALIZED;
+                } else if (renderbuffer->internal_format == RINGL_RGBA32F) {
+                    red_size = green_size = blue_size = alpha_size = 32u;
+                    component_type = RINGL_FLOAT;
+                } else if (renderbuffer->internal_format == RINGL_SRGB8_ALPHA8_EXT) {
+                    red_size = green_size = blue_size = alpha_size = 8u;
+                    component_type = RINGL_UNSIGNED_NORMALIZED;
+                } else if (renderbuffer->internal_format == RINGL_RGB16F) {
+                    red_size = green_size = blue_size = 16u;
+                    component_type = RINGL_FLOAT;
+                } else if (renderbuffer->internal_format == RINGL_RGBA16F) {
+                    red_size = green_size = blue_size = alpha_size = 16u;
+                    component_type = RINGL_FLOAT;
+                } else if (renderbuffer->internal_format == RINGL_RGB565) {
+                    red_size = 5u;
+                    green_size = 6u;
+                    blue_size = 5u;
+                    component_type = RINGL_UNSIGNED_NORMALIZED;
+                } else if (renderbuffer->internal_format == RINGL_RGBA4) {
+                    red_size = green_size = blue_size = alpha_size = 4u;
+                    component_type = RINGL_UNSIGNED_NORMALIZED;
+                } else if (renderbuffer->internal_format == RINGL_RGB5_A1) {
+                    red_size = green_size = blue_size = 5u;
+                    alpha_size = 1u;
+                    component_type = RINGL_UNSIGNED_NORMALIZED;
+                } else if (renderbuffer->internal_format == RINGL_DEPTH_COMPONENT16) {
+                    depth_size = 16u;
+                    component_type = RINGL_UNSIGNED_NORMALIZED;
+                } else if (renderbuffer->internal_format == RINGL_DEPTH_COMPONENT32F) {
+                    depth_size = 32u;
+                    component_type = RINGL_FLOAT;
+                } else if (renderbuffer->internal_format == RINGL_STENCIL_INDEX8) {
+                    stencil_size = 8u;
+                    component_type = RINGL_UNSIGNED_INT;
+                } else if (renderbuffer->internal_format == RINGL_DEPTH24_STENCIL8) {
+                    depth_size = 24u;
+                    stencil_size = 8u;
+                    component_type = RINGL_UNSIGNED_INT;
+                } else {
+                    ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+                    return -1;
+                }
+            } else if (info.kind == RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D) {
+                RinGLTextureObject* texture = &context->textures[object_index];
+
+                if (ringl_object_lookup(context, info.object,
+                                        RINGL_OBJECT_TEXTURE) == NULL ||
+                    !texture->defined) {
+                    ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+                    return -1;
+                }
+                if (texture->format == RINGL_RGBA ||
+                    texture->format == RINGL_RGBA8) {
+                    uint32_t bits = texture->srgb_encoding != RINGL_FALSE
+                        ? 8u
+                        : texture->color_component_type == RINGL_FLOAT
+                        ? 32u
+                        : texture->color_component_type == RINGL_HALF_FLOAT_OES
+                            ? 16u : 8u;
+
+                    red_size = green_size = blue_size = alpha_size = bits;
+                    component_type = texture->srgb_encoding != RINGL_FALSE
+                        ? RINGL_UNSIGNED_NORMALIZED
+                        : texture->color_component_type == RINGL_FLOAT
+                        ? RINGL_FLOAT
+                        : texture->color_component_type == RINGL_HALF_FLOAT_OES
+                            ? RINGL_FLOAT : RINGL_UNSIGNED_NORMALIZED;
+                } else if (texture->format == RINGL_RGB565) {
+                    red_size = 5u;
+                    green_size = 6u;
+                    blue_size = 5u;
+                    component_type = RINGL_UNSIGNED_NORMALIZED;
+                } else if (texture->format == RINGL_RGBA4) {
+                    red_size = green_size = blue_size = alpha_size = 4u;
+                    component_type = RINGL_UNSIGNED_NORMALIZED;
+                } else if (texture->format == RINGL_RGB5_A1) {
+                    red_size = green_size = blue_size = 5u;
+                    alpha_size = 1u;
+                    component_type = RINGL_UNSIGNED_NORMALIZED;
+                } else if (texture->format == RINGL_RGB) {
+                    red_size = green_size = blue_size =
+                        texture->srgb_encoding != RINGL_FALSE ? 8u
+                        : texture->color_component_type == RINGL_FLOAT ? 32u
+                        : texture->color_component_type == RINGL_HALF_FLOAT_OES
+                            ? 16u : 8u;
+                    component_type = texture->srgb_encoding != RINGL_FALSE
+                        ? RINGL_UNSIGNED_NORMALIZED
+                        : texture->color_component_type == RINGL_FLOAT
+                        || texture->color_component_type == RINGL_HALF_FLOAT_OES
+                        ? RINGL_FLOAT : RINGL_UNSIGNED_NORMALIZED;
+                } else if (texture->format == RINGL_ALPHA) {
+                    alpha_size = texture->srgb_encoding != RINGL_FALSE ? 8u
+                        : texture->color_component_type == RINGL_FLOAT
+                        ? 32u : texture->color_component_type == RINGL_HALF_FLOAT_OES
+                            ? 16u : 8u;
+                    component_type = texture->srgb_encoding != RINGL_FALSE
+                        ? RINGL_UNSIGNED_NORMALIZED
+                        : texture->color_component_type == RINGL_FLOAT
+                        || texture->color_component_type == RINGL_HALF_FLOAT_OES
+                        ? RINGL_FLOAT : RINGL_UNSIGNED_NORMALIZED;
+                } else if (texture->format == RINGL_LUMINANCE) {
+                    red_size = green_size = blue_size =
+                        texture->srgb_encoding != RINGL_FALSE ? 8u
+                        : texture->color_component_type == RINGL_FLOAT ? 32u
+                        : texture->color_component_type == RINGL_HALF_FLOAT_OES
+                            ? 16u : 8u;
+                    component_type = texture->srgb_encoding != RINGL_FALSE
+                        ? RINGL_UNSIGNED_NORMALIZED
+                        : texture->color_component_type == RINGL_FLOAT
+                        || texture->color_component_type == RINGL_HALF_FLOAT_OES
+                        ? RINGL_FLOAT : RINGL_UNSIGNED_NORMALIZED;
+                } else if (texture->format == RINGL_LUMINANCE_ALPHA) {
+                    red_size = green_size = blue_size =
+                        texture->srgb_encoding != RINGL_FALSE ? 8u
+                        : texture->color_component_type == RINGL_FLOAT ? 32u
+                        : texture->color_component_type == RINGL_HALF_FLOAT_OES
+                            ? 16u : 8u;
+                    alpha_size = red_size;
+                    component_type = texture->srgb_encoding != RINGL_FALSE
+                        ? RINGL_UNSIGNED_NORMALIZED
+                        : texture->color_component_type == RINGL_FLOAT
+                        || texture->color_component_type == RINGL_HALF_FLOAT_OES
+                        ? RINGL_FLOAT : RINGL_UNSIGNED_NORMALIZED;
+                } else if (texture->format == RINGL_DEPTH_COMPONENT16) {
+                    depth_size = 16u;
+                    component_type = RINGL_UNSIGNED_NORMALIZED;
+                } else if (texture->format == RINGL_DEPTH_COMPONENT32F) {
+                    depth_size = 32u;
+                    component_type = RINGL_FLOAT;
+                } else if (texture->format == RINGL_DEPTH24_STENCIL8) {
+                    depth_size = 24u;
+                    stencil_size = 8u;
+                    component_type = RINGL_UNSIGNED_INT;
+                } else {
+                    ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+                    return -1;
+                }
+            } else {
+                ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+                return -1;
+            }
+            if (attachment == RINGL_DEPTH_ATTACHMENT) {
+                stencil_size = 0u;
+            } else if (attachment == RINGL_STENCIL_ATTACHMENT) {
+                depth_size = 0u;
+            }
+            if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE)
+                result = (int32_t)component_type;
+            else if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_RED_SIZE)
+                result = (int32_t)red_size;
+            else if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_GREEN_SIZE)
+                result = (int32_t)green_size;
+            else if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_BLUE_SIZE)
+                result = (int32_t)blue_size;
+            else if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_ALPHA_SIZE)
+                result = (int32_t)alpha_size;
+            else if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE)
+                result = (int32_t)depth_size;
+            else
+                result = (int32_t)stencil_size;
+        }
     }
     *value = result;
     return 0;

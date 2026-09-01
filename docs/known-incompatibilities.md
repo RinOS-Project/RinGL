@@ -64,8 +64,10 @@ paths. In particular:
   and explicit RinGPU bindings. General vertex pulling, integer WebGL 2
   attributes, and unsupported resource layouts are unavailable.
 - The bounded depth/stencil paths implement only their documented D24S8/S8
-  behavior. Multisampled, cube, and unverified attachment semantics must not
-  be exposed as working stencil support.
+  behavior. Attachment metadata queries now report the represented component
+  type and logical channel/aspect widths, but multisampled, cube, default-FBO,
+  and unverified attachment semantics must not be exposed as working stencil
+  support.
 
 ## GLSL ES and shader execution
 

@@ -269,6 +269,21 @@ int main(void)
                (int32_t)RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D);
         assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
                    RINGL_COLOR_ATTACHMENT0,
+                   RINGL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING,
+                   &attachment_value, 1u) == 0);
+        assert(attachment_value == (int32_t)RINGL_SRGB_EXT);
+        assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+                   RINGL_COLOR_ATTACHMENT0,
+                   RINGL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE,
+                   &attachment_value, 1u) == 0);
+        assert(attachment_value == (int32_t)RINGL_UNSIGNED_NORMALIZED);
+        assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+                   RINGL_COLOR_ATTACHMENT0,
+                   RINGL_FRAMEBUFFER_ATTACHMENT_RED_SIZE,
+                   &attachment_value, 1u) == 0);
+        assert(attachment_value == 8);
+        assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+                   RINGL_COLOR_ATTACHMENT0,
                    RINGL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME,
                    &attachment_value, 1u) == 0);
         assert((uint32_t)attachment_value == texture);

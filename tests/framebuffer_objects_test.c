@@ -106,9 +106,38 @@ int main(void)
            RINGL_FRAMEBUFFER_COMPLETE);
     attachment = attachment_info();
     assert(ringl_get_framebuffer_color_attachment(&attachment) == 0);
-    assert(attachment.kind == RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D);
-    assert(attachment.object == texture);
-    assert(attachment.level == 0);
+     assert(attachment.kind == RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D);
+     assert(attachment.object == texture);
+     assert(attachment.level == 0);
+     assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+                RINGL_COLOR_ATTACHMENT0,
+                RINGL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE, &value, 1u) ==
+            0);
+     assert(value == (int32_t)RINGL_UNSIGNED_NORMALIZED);
+     assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+                RINGL_COLOR_ATTACHMENT0,
+                RINGL_FRAMEBUFFER_ATTACHMENT_RED_SIZE, &value, 1u) == 0 &&
+            value == 8);
+     assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+                RINGL_COLOR_ATTACHMENT0,
+                RINGL_FRAMEBUFFER_ATTACHMENT_GREEN_SIZE, &value, 1u) == 0 &&
+            value == 8);
+     assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+                RINGL_COLOR_ATTACHMENT0,
+                RINGL_FRAMEBUFFER_ATTACHMENT_BLUE_SIZE, &value, 1u) == 0 &&
+            value == 8);
+     assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+                RINGL_COLOR_ATTACHMENT0,
+                RINGL_FRAMEBUFFER_ATTACHMENT_ALPHA_SIZE, &value, 1u) == 0 &&
+            value == 8);
+     assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+                RINGL_COLOR_ATTACHMENT0,
+                RINGL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE, &value, 1u) == 0 &&
+            value == 0);
+     assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+                RINGL_COLOR_ATTACHMENT0,
+                RINGL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE, &value, 1u) == 0 &&
+            value == 0);
 
     ringl_gen_textures(1, &depth_texture);
     ringl_bind_texture(RINGL_TEXTURE_2D, depth_texture);
@@ -125,9 +154,22 @@ int main(void)
     attachment = attachment_info();
     assert(ringl_get_framebuffer_attachment(RINGL_DEPTH_ATTACHMENT,
                                             &attachment) == 0);
-    assert(attachment.kind == RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D);
-    assert(attachment.object == depth_texture);
-    assert(attachment.level == 0);
+     assert(attachment.kind == RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D);
+     assert(attachment.object == depth_texture);
+     assert(attachment.level == 0);
+     assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+                RINGL_DEPTH_ATTACHMENT,
+                RINGL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE, &value, 1u) ==
+            0);
+     assert(value == (int32_t)RINGL_FLOAT);
+     assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+                RINGL_DEPTH_ATTACHMENT,
+                RINGL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE, &value, 1u) == 0 &&
+            value == 32);
+     assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+                RINGL_DEPTH_ATTACHMENT,
+                RINGL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE, &value, 1u) == 0 &&
+            value == 0);
     attachment = attachment_info();
     assert(ringl_get_framebuffer_attachment(RINGL_STENCIL_ATTACHMENT,
                                             &attachment) == 0);
@@ -165,9 +207,22 @@ int main(void)
     attachment = attachment_info();
     assert(ringl_get_framebuffer_attachment(
                RINGL_DEPTH_STENCIL_ATTACHMENT, &attachment) == 0);
-    assert(attachment.kind == RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D);
-    assert(attachment.object == depth_stencil_texture);
-    assert(attachment.level == 0);
+     assert(attachment.kind == RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D);
+     assert(attachment.object == depth_stencil_texture);
+     assert(attachment.level == 0);
+     assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+                RINGL_DEPTH_STENCIL_ATTACHMENT,
+                RINGL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE, &value, 1u) ==
+            0);
+     assert(value == (int32_t)RINGL_UNSIGNED_INT);
+     assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+                RINGL_DEPTH_STENCIL_ATTACHMENT,
+                RINGL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE, &value, 1u) == 0 &&
+            value == 24);
+     assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+                RINGL_DEPTH_STENCIL_ATTACHMENT,
+                RINGL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE, &value, 1u) == 0 &&
+            value == 8);
     ringl_framebuffer_texture_2d(RINGL_FRAMEBUFFER,
                                  RINGL_STENCIL_ATTACHMENT,
                                  RINGL_TEXTURE_2D, depth_stencil_texture, 0);
@@ -180,10 +235,18 @@ int main(void)
     assert(attachment.kind == RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D);
     assert(attachment.object == depth_stencil_texture);
     attachment = attachment_info();
-    assert(ringl_get_framebuffer_attachment(RINGL_STENCIL_ATTACHMENT,
-                                            &attachment) == 0);
-    assert(attachment.kind == RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D);
-    assert(attachment.object == depth_stencil_texture);
+     assert(ringl_get_framebuffer_attachment(RINGL_STENCIL_ATTACHMENT,
+                                             &attachment) == 0);
+     assert(attachment.kind == RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D);
+     assert(attachment.object == depth_stencil_texture);
+     assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+                RINGL_STENCIL_ATTACHMENT,
+                RINGL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE, &value, 1u) == 0 &&
+            value == 0);
+     assert(ringl_get_framebuffer_attachment_parameteriv_bounded(
+                RINGL_STENCIL_ATTACHMENT,
+                RINGL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE, &value, 1u) == 0 &&
+            value == 8);
     attachment = attachment_info();
     assert(ringl_get_framebuffer_attachment(
                RINGL_DEPTH_STENCIL_ATTACHMENT, &attachment) == 0);

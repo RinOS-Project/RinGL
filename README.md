@@ -103,9 +103,13 @@ unchanged.
 Framebuffer attachment queries now have the same bounded treatment through
 `ringl_get_framebuffer_attachment_parameteriv_bounded()`. Custom-FBO object
 type/name, texture level, the 2D-only cube-face sentinel, and logical
-`EXT_sRGB` color encoding are published only after a complete one-element span
-and the existing attachment record validate; default-FBO semantics and
-unsupported pnames remain fail-closed.
+`EXT_sRGB` or standard color encoding are published only after a complete
+one-element span and the existing attachment record validate. Component type
+and logical channel/aspect sizes are derived from the actual texture or
+renderbuffer storage for normalized, Float32/binary16, D16/D32F, D24S8, and S8
+attachments; a D24S8 object attached to one logical aspect reports only that
+aspect. Unattached slots return zero metadata, while default-FBO, cube,
+multisample, and unsupported-format semantics remain fail-closed.
 
 Renderbuffer parameter queries likewise use a bounded adapter. Width, height,
 internal format, component bit sizes, and the represented zero-sample value

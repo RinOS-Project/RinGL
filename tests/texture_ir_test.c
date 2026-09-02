@@ -66,6 +66,10 @@ int main(void)
         "void main() {\n"
         "  gl_FragColor = texture2D(colorTexture, vec2(0.25, 0.75));\n"
         "}\n";
+    const char* block_comment_source =
+        "/* declaration */ uniform sampler2D colorTexture;\n"
+        "void main() { gl_FragColor = /* call */ "
+        "texture2D(colorTexture, vec2(0.25, 0.75)); } /* end */\n";
     const char* scalar_splat_source =
         "uniform sampler2D colorTexture;\n"
         "void main() {\n"
@@ -401,6 +405,15 @@ int main(void)
         assert(store->source0 == 2u + component);
         assert(store->immediate == component);
     }
+
+    /* The compact one-sampler profile must treat a block comment exactly as
+     * whitespace and retain its byte-stable module shape. */
+    ringl_shader_source(shader, block_comment_source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) == 0);
+    assert(ringl_get_shader_rsh1_size(shader) ==
+           sizeof(header) + sizeof(instructions));
 
     ringl_shader_source(shader, scalar_splat_source, -1);
     ringl_compile_shader(shader);

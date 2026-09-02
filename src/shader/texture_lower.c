@@ -42,6 +42,18 @@ static const char* skip_space(const char* p, const char* end)
                 ++p;
             continue;
         }
+        if (*p == '/' && p + 1u < end && p[1] == '*') {
+            /* GLSL block comments are whitespace.  Treat an unterminated
+             * comment as end-of-input so the caller's normal grammar check
+             * rejects the shader before publishing a module. */
+            p += 2u;
+            while (p + 1u < end && !(p[0] == '*' && p[1] == '/'))
+                ++p;
+            if (p + 1u >= end)
+                return end;
+            p += 2u;
+            continue;
+        }
         break;
     }
     return p;

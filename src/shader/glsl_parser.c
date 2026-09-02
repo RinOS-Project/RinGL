@@ -121,6 +121,7 @@ typedef struct Parser {
     Token token;
     uint32_t shader_type;
     uint32_t main_seen;
+    int unterminated_comment;
     Symbol symbols[RINGL_GLSL_MAX_SYMBOLS];
     uint32_t symbol_count;
     RinGLGlslParseResult* result;
@@ -161,6 +162,30 @@ static void skip_space(Parser* parser)
             while (parser->offset < parser->length &&
                    parser->source[parser->offset] != '\n')
                 parser->offset++;
+            continue;
+        }
+        if (c == '/' && parser->offset + 1u < parser->length &&
+            parser->source[parser->offset + 1u] == '*') {
+            int terminated = 0;
+
+            parser->offset += 2u;
+            while (parser->offset < parser->length) {
+                c = parser->source[parser->offset];
+                if (c == '\n')
+                    parser->line++;
+                if (c == '*' && parser->offset + 1u < parser->length &&
+                    parser->source[parser->offset + 1u] == '/') {
+                    parser->offset += 2u;
+                    terminated = 1;
+                    break;
+                }
+                parser->offset++;
+            }
+            if (!terminated) {
+                parser->unterminated_comment = 1;
+                parser->offset = parser->length;
+                return;
+            }
             continue;
         }
         break;
@@ -239,6 +264,12 @@ static void next_token(Parser* parser)
     memset(&token, 0, sizeof(token));
     token.line = parser->line;
     token.begin = parser->source + parser->offset;
+
+    if (parser->unterminated_comment) {
+        token.kind = TOK_INVALID;
+        parser->token = token;
+        return;
+    }
 
     if (parser->offset >= parser->length) {
         token.kind = TOK_EOF;

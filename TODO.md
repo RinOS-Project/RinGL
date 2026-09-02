@@ -195,6 +195,10 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   tests verify format/upload/sub-image bytes and the actual RinGL-to-RinGPU
   bridge verifies each `texture2D()` output, including packed alpha semantics.
 - [ ] Expand texture expressions beyond the initial constant/varying-coordinate one-sampler slice.
+  - [x] Treat GLSL `/* … */` block comments as lexical whitespace in both the
+    compact texture lowerer and the generic expression parser. Unterminated
+    comments consume only the bounded source snapshot and fail before RSH1
+    publication; valid comments retain the byte-stable one-sampler profile.
   - [x] Lower `texture2D(sampler2D, vec2(float))` as a finite constant coordinate splat, with the same scalar value stored in both RSH1 sampling-coordinate registers.
   - [x] Add the bounded two-sampler/two-call constant-coordinate addition profile: exactly two declared samplers are each sampled once and combined as `texture2D(a, vec2(...)) + texture2D(b, vec2(...))`. Lowering emits declaration-ordered resource pairs `[0, 1]` and `[2, 3]`; RinGL creates one typed bind group, transitions both distinct images before the draw, and direct/indexed RinGPU/Aquamarine bridge tests read the resulting yellow pixel.
   - [x] Generalize the constant-coordinate additive profile to one through eight declared samplers: a multi-declaration chain uses each sampler exactly once and lowering emits the complete declaration-ordered image/sampler pair table. The formulaic RSH1 layout consumes at most 85 instructions and 80 registers, so the RinGL ceiling is raised to 96 while remaining below RinGPU's public 256-register limit. Strict IR tests preserve the one/two-sampler bytecode layouts, inspect a three-sampler reverse declaration-order chain, and compile/lower all eight samplers; the RinGPU/Aquamarine bridge renders reverse-order red + green + blue and the full eight-sampler/16-resource ceiling as white via direct and indexed draws.

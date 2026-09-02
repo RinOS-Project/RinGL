@@ -81,6 +81,11 @@ The strict shader IR regression also carries a bounded malformed-source corpus:
 unbalanced constructors and overflow literals fail before executable
 publication, and unsupported loop syntax cannot publish an RSH1/module.
 
+The GLSL lexer treats `/* ... */` block comments as bounded lexical
+whitespace in both the generic expression parser and compact texture lowerer.
+An unterminated comment is a compile error before RSH1 publication, while
+valid comments preserve the byte-stable one-sampler profile.
+
 The raw GLES-shaped query surface now includes bounded typed adapters for
 `glGetBooleanv` and `glGetFloatv`. Integer/capability queries convert through
 the existing failure-atomic state path, while depth range, clear values, blend

@@ -201,6 +201,25 @@ static void skip(Lower* lower)
             }
             continue;
         }
+        if (lower->offset + 1u < lower->length &&
+            lower->source[lower->offset] == '/' &&
+            lower->source[lower->offset + 1u] == '*') {
+            /* Block comments have the same lexical role as whitespace in
+             * GLSL.  If the closing delimiter is absent, consume to EOF and
+             * let the parser reject the incomplete token stream. */
+            lower->offset += 2u;
+            while (lower->offset + 1u < lower->length &&
+                   !(lower->source[lower->offset] == '*' &&
+                     lower->source[lower->offset + 1u] == '/')) {
+                lower->offset++;
+            }
+            if (lower->offset + 1u >= lower->length) {
+                lower->offset = lower->length;
+                break;
+            }
+            lower->offset += 2u;
+            continue;
+        }
         break;
     }
 }

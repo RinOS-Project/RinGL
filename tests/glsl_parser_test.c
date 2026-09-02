@@ -47,6 +47,25 @@ int main(void)
     assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
     assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) == 0u);
 
+    /* GLSL block comments are lexical whitespace for both the generic
+     * lowerer and the compact texture profile.  Keep a malformed comment
+     * failure-atomic: it must not publish a stale executable from the
+     * previous source. */
+    ringl_shader_source(fragment,
+        "/* header */ uniform sampler2D colorTexture; /* body */\n"
+        "void main() { gl_FragColor = /* coordinate */\n"
+        "texture2D(colorTexture, vec2(0.25, 0.75)); } /* tail */\n", -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+    assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) == 0u);
+
+    ringl_shader_source(fragment,
+        "uniform sampler2D colorTexture; void main() { /* unterminated",
+        -1);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
+    assert(ringl_get_shader_info_log(fragment, log, sizeof(log)) > 0u);
+
     /* EXT_shader_texture_lod is an empty WebGL object, but its GLSL builtin
      * remains unavailable until the current RinGL context has been enabled.
      * The emitted RSH1 op carries a live Float32 LOD register and real

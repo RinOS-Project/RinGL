@@ -65,6 +65,14 @@ int main(void)
     assert(ringl_validate_vertex_fetch(context, 0u, 4u, &layout) != 0);
     assert(ringl_validate_vertex_fetch(context, UINT32_MAX, 2u, &layout) != 0);
 
+    /* first_instance + instance_count - 1 may legally equal UINT32_MAX.
+     * The divisor keeps the resolved element inside this small test buffer;
+     * only the boundary arithmetic is under test. */
+    ringl_vertex_attrib_divisor(0u, UINT32_MAX);
+    assert(ringl_validate_vertex_fetch_instanced(
+               context, 0u, 1u, UINT32_MAX, 1u, &layout) == 0);
+    ringl_vertex_attrib_divisor(0u, 0u);
+
     ringl_disable_vertex_attrib_array(0u);
     ringl_vertex_attrib_pointer(0u, 1, RINGL_FLOAT, RINGL_FALSE, 8, 0u);
     ringl_vertex_attrib_pointer(1u, 1, RINGL_FLOAT, RINGL_FALSE, 8, 4u);

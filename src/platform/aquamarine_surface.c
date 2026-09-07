@@ -3002,7 +3002,7 @@ static int backend_draw_vertices_valid_v2(
         draw->vertex_count > RIN_WEBGL_SOFTWARE_MAX_VERTICES ||
         draw->instance_count == 0u ||
         draw->instance_count > RIN_GPU_MAX_DRAW_INSTANCES ||
-        draw->first_instance > UINT32_MAX - draw->instance_count ||
+        draw->first_instance > UINT32_MAX - (draw->instance_count - 1u) ||
         draw->vertex_binding_count > RIN_GPU_MAX_VERTEX_BUFFER_BINDINGS ||
         draw->reserved != 0u) {
         return RIN_GPU_ERROR_UNSUPPORTED;
@@ -3578,7 +3578,7 @@ static int backend_draw_indexed_valid_v2(
         draw->vertex_count > RIN_WEBGL_SOFTWARE_MAX_VERTICES ||
         draw->instance_count == 0u ||
         draw->instance_count > RIN_GPU_MAX_DRAW_INSTANCES ||
-        draw->first_instance > UINT32_MAX - draw->instance_count ||
+        draw->first_instance > UINT32_MAX - (draw->instance_count - 1u) ||
         draw->vertex_binding_count > RIN_GPU_MAX_VERTEX_BUFFER_BINDINGS ||
         draw->reserved != 0u) {
         return RIN_GPU_ERROR_UNSUPPORTED;

@@ -254,7 +254,7 @@ int ringl_validate_vertex_fetch_instanced(const RinGLContext* context,
         return 0;
     last_vertex = (uint64_t)first_vertex + (uint64_t)vertex_count - 1u;
     if (last_vertex > UINT32_MAX ||
-        first_instance > UINT32_MAX - instance_count)
+        first_instance > UINT32_MAX - (instance_count - 1u))
         return -1;
 
     for (index = 0; index < layout->attribute_count; ++index) {

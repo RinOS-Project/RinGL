@@ -608,6 +608,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   WebGL 2 advertisement; OES/ANGLE/WEBGL extension slices remain independent
   gates and do not imply core-version support.
 - [ ] Add VAOs, instancing, additional texture formats, MRT, and other GLES 3.x features only after the underlying RinGPU contracts are ready.
+  - [x] [`instancing first-instance boundary v1`](../../docs/architecture/rin-ringl-instancing-first-instance-boundary-v1.md)として、`first_instance + instance_count - 1 == UINT32_MAX`の有効なinstanced fetchをvalidatorとAquamarine backendが受理するよう、full-count減算の早すぎる拒否を修正した。bounded vertex-attrib回帰で最大値境界を確認し、GLES3全体のVAO／format／MRT／hardwareは未完了のまま残す。
   - [x] Add the WebGL 1 `OES_vertex_array_object` subset without admitting a
     GLES backend. RinGL owns a default VAO plus bounded named VAO descriptors
     for captured attribute-array state and `ELEMENT_ARRAY_BUFFER`; generic

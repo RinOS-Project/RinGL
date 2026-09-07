@@ -71,6 +71,8 @@ int main(void)
     ringl_vertex_attrib_divisor(0u, UINT32_MAX);
     assert(ringl_validate_vertex_fetch_instanced(
                context, 0u, 1u, UINT32_MAX, 1u, &layout) == 0);
+    assert(ringl_validate_vertex_fetch_instanced(
+               context, 0u, 1u, UINT32_MAX, 2u, &layout) != 0);
     ringl_vertex_attrib_divisor(0u, 0u);
 
     ringl_disable_vertex_attrib_array(0u);

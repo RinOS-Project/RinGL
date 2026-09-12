@@ -365,6 +365,12 @@ int main(void)
         "  vec4 depth_and_w = vec4(0.5);\n"
         "  gl_Position = vec4(position * scale, depth_and_w.z, depth_and_w.w);\n"
         "}\n";
+    const char* mixed_component_constructor_source =
+        "attribute vec2 position;\n"
+        "void main() {\n"
+        "  vec4 packed = vec4(position, vec2(1.0, 0.0));\n"
+        "  gl_Position = packed;\n"
+        "}\n";
     const char* conditional_vertex_source =
         "attribute vec2 position;\n"
         "void main() {\n"
@@ -841,6 +847,14 @@ int main(void)
     assert(header.input_count == 2u);
     assert(header.output_count == 9u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_I32_TO_F32));
+
+    /* Same-basic-type scalar/vector arguments are packed in source order;
+     * no host-side constructor expansion is involved. */
+    header = lower_and_read_header(vertex, mixed_component_constructor_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 2u);
+    assert(header.output_count == 9u);
 
     /* Bounded scalar if/else emits a true scalar comparison, a zero test,
      * and forward branch instructions. This must remain native RSH1 control

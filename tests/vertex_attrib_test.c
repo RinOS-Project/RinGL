@@ -65,6 +65,18 @@ int main(void)
     assert(layout.attributes[1].offset == 4u);
 
     assert(ringl_validate_vertex_fetch(context, 0u, 3u, &layout) == 0);
+    {
+        uint64_t cache_hits = context->vertex_validation_cache_hits;
+        uint64_t generation = context->vertex_validation_generation;
+
+        assert(ringl_validate_vertex_fetch(context, 0u, 3u, &layout) == 0);
+        assert(context->vertex_validation_cache_hits == cache_hits + 1u);
+        ringl_vertex_attrib_pointer(0u, 2, RINGL_FLOAT, RINGL_FALSE, 8, 0u);
+        assert(context->vertex_validation_generation > generation);
+        cache_hits = context->vertex_validation_cache_hits;
+        assert(ringl_validate_vertex_fetch(context, 0u, 3u, &layout) == 0);
+        assert(context->vertex_validation_cache_hits == cache_hits);
+    }
     assert(ringl_validate_vertex_fetch(context, 0u, 4u, &layout) != 0);
     assert(ringl_validate_vertex_fetch(context, UINT32_MAX, 2u, &layout) != 0);
 

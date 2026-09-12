@@ -61,6 +61,7 @@
 #define RINGL_STAGING_CACHE_BLOCK_COUNT 4u
 #define RINGL_STAGING_CACHE_MAX_BLOCK_BYTES (UINT64_C(1) * 1024u * 1024u)
 #define RINGL_STAGING_CACHE_MAX_BYTES (UINT64_C(4) * 1024u * 1024u)
+#define RINGL_VERTEX_VALIDATION_CACHE_CAPACITY 8u
 
 typedef struct RinGLStagingBlock {
     void* memory;
@@ -425,6 +426,16 @@ typedef struct RinGLResolvedVertexLayout {
         attributes[RINGL_MAX_VERTEX_INPUT_COMPONENTS];
 } RinGLResolvedVertexLayout;
 
+typedef struct RinGLVertexValidationCacheEntry {
+    uint64_t state_generation;
+    uint32_t first_vertex;
+    uint32_t vertex_count;
+    uint32_t first_instance;
+    uint32_t instance_count;
+    uint32_t valid;
+    RinGLResolvedVertexLayout layout;
+} RinGLVertexValidationCacheEntry;
+
 typedef struct RinGLColorTarget {
     uint64_t image;
     uint32_t format;
@@ -473,6 +484,9 @@ struct RinGLContext {
     uint32_t loss_reported;
     uint64_t device_generation;
     uint32_t dirty_bits;
+    uint32_t vertex_validation_cache_next;
+    uint64_t vertex_validation_generation;
+    uint64_t vertex_validation_cache_hits;
     RinGLTraceRuntimeV1* trace;
     RinGLRinGpuBindingV1 ringpu;
     RinGLRinGpuOpsV1 ringpu_ops;
@@ -594,6 +608,8 @@ struct RinGLContext {
     RinGLStagingBlock
         staging_blocks[RINGL_STAGING_CACHE_BLOCK_COUNT];
     RinGLVertexAttribState vertex_attribs[RINGL_MAX_VERTEX_ATTRIBS];
+    RinGLVertexValidationCacheEntry
+        vertex_validation_cache[RINGL_VERTEX_VALIDATION_CACHE_CAPACITY];
 };
 
 void ringl_context_record_error(RinGLContext* context, uint32_t error);

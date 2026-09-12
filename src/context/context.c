@@ -234,6 +234,7 @@ int ringl_context_create(const RinGLContextDescV1* desc,
 
     context->magic = RINGL_CONTEXT_MAGIC;
     context->pending_error = RINGL_NO_ERROR;
+    context->vertex_validation_generation = 1u;
     context->device_generation =
         desc != NULL && desc->struct_size >= sizeof(*desc)
             ? desc->device_generation
@@ -458,9 +459,22 @@ void ringl_context_mark_lost(RinGLContext* context)
 
 void ringl_context_mark_dirty(RinGLContext* context, uint32_t bits)
 {
+    uint32_t vertex_bits;
+
     if (!ringl_context_is_valid(context))
         return;
     context->dirty_bits |= bits & RINGL_DIRTY_ALL;
+    vertex_bits = bits & (RINGL_DIRTY_PIPELINE | RINGL_DIRTY_BINDINGS);
+    if (vertex_bits == 0u)
+        return;
+    if (context->vertex_validation_generation == UINT64_MAX) {
+        context->vertex_validation_generation = 1u;
+        context->vertex_validation_cache_next = 0u;
+        memset(context->vertex_validation_cache, 0,
+               sizeof(context->vertex_validation_cache));
+    } else {
+        ++context->vertex_validation_generation;
+    }
 }
 
 void ringl_context_clear_dirty(RinGLContext* context, uint32_t bits)

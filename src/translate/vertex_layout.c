@@ -244,9 +244,30 @@ int ringl_validate_vertex_fetch_instanced(const RinGLContext* context,
                                           uint32_t instance_count,
                                           RinGLResolvedVertexLayout* layout)
 {
+    RinGLContext* mutable_context;
+    uint32_t cache_index;
     uint32_t index;
     uint64_t last_vertex;
 
+    if (context == NULL || layout == NULL)
+        return -1;
+    mutable_context = (RinGLContext*)(void*)context;
+    for (cache_index = 0u;
+         cache_index < RINGL_VERTEX_VALIDATION_CACHE_CAPACITY;
+         ++cache_index) {
+        const RinGLVertexValidationCacheEntry* entry =
+            &context->vertex_validation_cache[cache_index];
+        if (entry->valid == 0u ||
+            entry->state_generation != context->vertex_validation_generation ||
+            entry->first_vertex != first_vertex ||
+            entry->vertex_count != vertex_count ||
+            entry->first_instance != first_instance ||
+            entry->instance_count != instance_count)
+            continue;
+        *layout = entry->layout;
+        ++mutable_context->vertex_validation_cache_hits;
+        return 0;
+    }
     if (ringl_resolve_vertex_layout(context, layout) != 0)
         return -1;
     if (instance_count == 0u || vertex_count == 0u ||
@@ -305,6 +326,22 @@ int ringl_validate_vertex_fetch_instanced(const RinGLContext* context,
         if (end > buffer->size_bytes)
             return -1;
     }
+    cache_index = mutable_context->vertex_validation_cache_next %
+        RINGL_VERTEX_VALIDATION_CACHE_CAPACITY;
+    mutable_context->vertex_validation_cache[cache_index].state_generation =
+        mutable_context->vertex_validation_generation;
+    mutable_context->vertex_validation_cache[cache_index].first_vertex =
+        first_vertex;
+    mutable_context->vertex_validation_cache[cache_index].vertex_count =
+        vertex_count;
+    mutable_context->vertex_validation_cache[cache_index].first_instance =
+        first_instance;
+    mutable_context->vertex_validation_cache[cache_index].instance_count =
+        instance_count;
+    mutable_context->vertex_validation_cache[cache_index].layout = *layout;
+    mutable_context->vertex_validation_cache[cache_index].valid = 1u;
+    mutable_context->vertex_validation_cache_next =
+        (cache_index + 1u) % RINGL_VERTEX_VALIDATION_CACHE_CAPACITY;
     return 0;
 }
 

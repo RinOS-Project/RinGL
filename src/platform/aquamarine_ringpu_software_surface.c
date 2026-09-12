@@ -23,6 +23,7 @@
 
 struct RinGLAquamarineSurfaceContext {
     RinGpuCore core;
+    RinGpuDiagnosticsRuntime diagnostics;
     RinGpuSoftwareBackend* software_backend;
     RinGpuDisplayInfoV1 display;
     RinGLAquamarineSurfaceTargetV1 target;
@@ -35,6 +36,21 @@ struct RinGLAquamarineSurfaceContext {
     uint32_t external_binding_role;
     uint32_t initialized;
 };
+
+static volatile uint64_t g_surface_device_generation = 1u;
+
+static int next_surface_device_generation(uint64_t* generation_out)
+{
+    uint64_t generation;
+
+    if (generation_out == NULL)
+        return 0;
+    generation = __sync_fetch_and_add(&g_surface_device_generation, 1u);
+    if (generation == 0u || generation == UINT64_MAX)
+        return 0;
+    *generation_out = generation;
+    return 1;
+}
 
 static int multiply_u64(uint64_t left, uint64_t right, uint64_t* result)
 {
@@ -267,10 +283,13 @@ static int initialize_context(RinGLAquamarineSurfaceContext* context,
     RinGpuQueueDescV1 queue;
     RinGpuCommandListDescV1 command_list;
     const RinGpuBackendOpsV1* backend_ops;
+    uint64_t device_generation;
     int result;
 
     if (!context || !target_valid(target))
         return RINGL_AQUAMARINE_SURFACE_INVALID_ARGUMENT;
+    if (!next_surface_device_generation(&device_generation))
+        return RINGL_AQUAMARINE_SURFACE_BACKEND;
 
     memset(context, 0, sizeof(*context));
     memcpy(&context->target, target, target->struct_size);
@@ -329,6 +348,9 @@ static int initialize_context(RinGLAquamarineSurfaceContext* context,
     config.backend = *backend_ops;
     config.backend_family = RIN_GPU_BACKEND_FAMILY_SOFTWARE;
     config.backend_context = context->software_backend;
+    if (rin_gpu_diagnostics_init(&context->diagnostics, device_generation) != 0)
+        goto fail;
+    config.diagnostics = &context->diagnostics;
     config.displays = &context->display;
     config.display_count = 1u;
     result = ringpu_core_init(&context->core, &config);

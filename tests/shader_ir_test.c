@@ -1552,6 +1552,15 @@ int main(void)
     expect_shader_rejected(
         vertex,
         "void main() { gl_Position = vec4(1.0e+100, 0.0, 0.0, 1.0); }");
+    expect_shader_rejected(
+        vertex,
+        "attribute vec2 position; void main() { "
+        "position = vec2(0.0); gl_Position = vec4(position, 0.0, 1.0); }");
+    expect_shader_rejected(
+        vertex,
+        "attribute vec2 position; void main() { "
+        "float scalar = 1.0; scalar.x = 2.0; "
+        "gl_Position = vec4(position, scalar, 1.0); }");
     ringl_shader_source(
         fragment,
         "void main() { for (int i = 0; i < 2; i++) { } "

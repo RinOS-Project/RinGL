@@ -37,6 +37,24 @@ int main(void)
     assert(first != second);
     assert(ringl_context_dirty_bits(first) == RINGL_DIRTY_ALL);
 
+    {
+        void* first_staging = ringl_context_alloc_staging(first, 32u);
+        assert(first_staging != NULL);
+        assert(first->cpu_shadow_bytes == 32u);
+        ringl_context_free_staging(first, first_staging, 32u);
+        assert(first->cpu_shadow_bytes == 0u);
+        assert(first->staging_cached_bytes == 32u);
+        void* reused_staging = ringl_context_alloc_staging(first, 16u);
+        assert(reused_staging == first_staging);
+        ringl_context_free_staging(first, reused_staging, 16u);
+        assert(first->staging_cached_bytes == 32u);
+        assert(ringl_context_reserve_shadow_bytes(
+                   first, RINGL_MAX_CPU_SHADOW_BYTES) != 0);
+        assert(first->staging_cached_bytes == 0u);
+        ringl_context_release_shadow_bytes(first,
+                                           RINGL_MAX_CPU_SHADOW_BYTES);
+    }
+
     assert(ringl_make_current(first) == 0);
     assert(ringl_get_current_context() == first);
 

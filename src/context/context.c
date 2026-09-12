@@ -328,6 +328,9 @@ void ringl_context_destroy(RinGLContext* context)
     ringl_framebuffer_objects_destroy_all(context);
     ringl_texture_objects_destroy_all(context);
     ringl_buffer_objects_destroy_all(context);
+    for (uint32_t index = 0u; index < RINGL_STAGING_CACHE_BLOCK_COUNT;
+         ++index)
+        free(context->staging_blocks[index].memory);
     context->magic = 0u;
     memset(&context->sync_ops, 0, sizeof(context->sync_ops));
     memset(&context->ringpu_ops, 0, sizeof(context->ringpu_ops));
@@ -404,6 +407,24 @@ int ringl_context_observe_device_generation(RinGLContext* context,
     return -2;
 }
 
+static void ringl_context_trim_staging_cache(RinGLContext* context)
+{
+    if (!ringl_context_is_valid(context))
+        return;
+    for (uint32_t index = 0u; index < RINGL_STAGING_CACHE_BLOCK_COUNT;
+         ++index) {
+        RinGLStagingBlock* block = &context->staging_blocks[index];
+        if (block->memory == NULL || block->in_use)
+            continue;
+        free(block->memory);
+        if (block->capacity >= context->staging_cached_bytes)
+            context->staging_cached_bytes = 0u;
+        else
+            context->staging_cached_bytes -= block->capacity;
+        memset(block, 0, sizeof(*block));
+    }
+}
+
 void ringl_context_record_error(RinGLContext* context, uint32_t error)
 {
     if (!ringl_context_is_valid(context) || context->lost ||
@@ -453,10 +474,20 @@ int ringl_context_reserve_shadow_bytes(RinGLContext* context,
                                        uint64_t bytes)
 {
     if (!ringl_context_is_valid(context) ||
-        bytes > RINGL_MAX_CPU_SHADOW_BYTES ||
-        context->cpu_shadow_bytes > RINGL_MAX_CPU_SHADOW_BYTES - bytes) {
+        bytes > RINGL_MAX_CPU_SHADOW_BYTES)
         return 0;
+    if (context->staging_cached_bytes <= RINGL_MAX_CPU_SHADOW_BYTES -
+                                            context->cpu_shadow_bytes &&
+        bytes <= RINGL_MAX_CPU_SHADOW_BYTES - context->cpu_shadow_bytes -
+                     context->staging_cached_bytes) {
+        context->cpu_shadow_bytes += bytes;
+        return 1;
     }
+    /* Cached readback memory is reclaimable. Release it before rejecting a
+     * real persistent allocation so the budget remains a hard total bound. */
+    ringl_context_trim_staging_cache(context);
+    if (context->cpu_shadow_bytes > RINGL_MAX_CPU_SHADOW_BYTES - bytes)
+        return 0;
     context->cpu_shadow_bytes += bytes;
     return 1;
 }
@@ -492,5 +523,91 @@ void ringl_context_free_temporary(RinGLContext* context, void* memory,
     if (memory == NULL)
         return;
     ringl_context_release_shadow_bytes(context, bytes);
+    free(memory);
+}
+
+void* ringl_context_alloc_staging(RinGLContext* context, uint64_t bytes)
+{
+    RinGLStagingBlock* block = NULL;
+    void* memory;
+
+    if (!ringl_context_is_valid(context) || bytes == 0u || bytes > SIZE_MAX)
+        return NULL;
+    for (uint32_t index = 0u; index < RINGL_STAGING_CACHE_BLOCK_COUNT;
+         ++index) {
+        RinGLStagingBlock* candidate = &context->staging_blocks[index];
+        if (candidate->memory != NULL && !candidate->in_use &&
+            candidate->capacity >= bytes) {
+            block = candidate;
+            break;
+        }
+    }
+    if (block != NULL) {
+        const uint64_t capacity = block->capacity;
+        context->staging_cached_bytes -= capacity;
+        block->in_use = 1u;
+        if (!ringl_context_reserve_shadow_bytes(context, capacity)) {
+            block->in_use = 0u;
+            context->staging_cached_bytes += capacity;
+            return NULL;
+        }
+        return block->memory;
+    }
+
+    if (!ringl_context_reserve_shadow_bytes(context, bytes))
+        return NULL;
+    memory = malloc((size_t)bytes);
+    if (memory == NULL) {
+        ringl_context_release_shadow_bytes(context, bytes);
+        return NULL;
+    }
+    if (bytes <= RINGL_STAGING_CACHE_MAX_BLOCK_BYTES) {
+        for (uint32_t index = 0u; index < RINGL_STAGING_CACHE_BLOCK_COUNT;
+             ++index) {
+            RinGLStagingBlock* candidate = &context->staging_blocks[index];
+            if (candidate->memory == NULL) {
+                candidate->memory = memory;
+                candidate->capacity = bytes;
+                candidate->in_use = 1u;
+                return memory;
+            }
+        }
+    }
+    return memory;
+}
+
+void ringl_context_free_staging(RinGLContext* context, void* memory,
+                                uint64_t bytes)
+{
+    if (memory == NULL)
+        return;
+    if (ringl_context_is_valid(context)) {
+        for (uint32_t index = 0u; index < RINGL_STAGING_CACHE_BLOCK_COUNT;
+             ++index) {
+            RinGLStagingBlock* block = &context->staging_blocks[index];
+            if (block->memory != memory)
+                continue;
+            if (!block->in_use)
+                return;
+            if (block->capacity <= RINGL_STAGING_CACHE_MAX_BLOCK_BYTES) {
+                if (context->staging_cached_bytes + block->capacity >
+                    RINGL_STAGING_CACHE_MAX_BYTES)
+                    ringl_context_trim_staging_cache(context);
+                if (context->staging_cached_bytes + block->capacity <=
+                    RINGL_STAGING_CACHE_MAX_BYTES) {
+                    ringl_context_release_shadow_bytes(context,
+                                                       block->capacity);
+                    context->staging_cached_bytes += block->capacity;
+                    block->in_use = 0u;
+                    return;
+                }
+            }
+            ringl_context_release_shadow_bytes(context, block->capacity);
+            free(block->memory);
+            memset(block, 0, sizeof(*block));
+            return;
+        }
+        ringl_context_release_shadow_bytes(context, bytes);
+    }
     free(memory);
 }

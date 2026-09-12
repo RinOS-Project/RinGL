@@ -444,7 +444,7 @@ static int ringl_read_color_target_to_type(RinGLContext* context, int32_t x,
         native_total_bytes = native_row_bytes * (uint64_t)(uint32_t)height;
         if (native_total_bytes > SIZE_MAX)
             return -1;
-        native_pixels = ringl_context_alloc_temporary(context, native_total_bytes);
+        native_pixels = ringl_context_alloc_staging(context, native_total_bytes);
         if (native_pixels == NULL)
             return -1;
     } else if (target.format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT) {
@@ -455,7 +455,7 @@ static int ringl_read_color_target_to_type(RinGLContext* context, int32_t x,
         if (target.srgb_encoding != 0u) {
             if (native_total_bytes > SIZE_MAX)
                 return -1;
-            native_pixels = ringl_context_alloc_temporary(context, native_total_bytes);
+            native_pixels = ringl_context_alloc_staging(context, native_total_bytes);
             if (native_pixels == NULL)
                 return -1;
         }
@@ -466,7 +466,7 @@ static int ringl_read_color_target_to_type(RinGLContext* context, int32_t x,
         native_total_bytes = native_row_bytes * (uint64_t)(uint32_t)height;
         if (native_total_bytes > SIZE_MAX)
             return -1;
-        native_pixels = ringl_context_alloc_temporary(context, native_total_bytes);
+        native_pixels = ringl_context_alloc_staging(context, native_total_bytes);
         if (native_pixels == NULL)
             return -1;
     } else if (target.format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM ||
@@ -494,8 +494,7 @@ static int ringl_read_color_target_to_type(RinGLContext* context, int32_t x,
                         .new_state = RINGL_RIN_GPU_IMAGE_COPY_SOURCE,
                     })) != 0) ||
         submit_and_wait(context, command_list) != 0) {
-        ringl_context_free_temporary(context, native_pixels,
-                                      native_total_bytes);
+        ringl_context_free_staging(context, native_pixels, native_total_bytes);
         return -1;
     }
     *target.state = RINGL_RIN_GPU_IMAGE_COPY_SOURCE;
@@ -520,13 +519,11 @@ static int ringl_read_color_target_to_type(RinGLContext* context, int32_t x,
     }
     if (result == RINGL_RIN_GPU_ERROR_DEVICE_LOST) {
         ringl_context_mark_lost(context);
-        ringl_context_free_temporary(context, native_pixels,
-                                      native_total_bytes);
+        ringl_context_free_staging(context, native_pixels, native_total_bytes);
         return -1;
     }
     if (result != 0) {
-        ringl_context_free_temporary(context, native_pixels,
-                                      native_total_bytes);
+        ringl_context_free_staging(context, native_pixels, native_total_bytes);
         return -1;
     }
 
@@ -551,18 +548,16 @@ static int ringl_read_color_target_to_type(RinGLContext* context, int32_t x,
                unpack_rgba16f_to_rgba(native_pixels, pixels,
                                        (uint64_t)(uint32_t)width *
                                            (uint32_t)height) != 0) {
-        ringl_context_free_temporary(context, native_pixels,
-                                      native_total_bytes);
+        ringl_context_free_staging(context, native_pixels, native_total_bytes);
         return -1;
     }
     if (type == RINGL_FLOAT &&
         !ringl_rgba_float_snapshot_is_finite(
             pixels, (uint64_t)(uint32_t)width * (uint32_t)height)) {
-        ringl_context_free_temporary(context, native_pixels,
-                                      native_total_bytes);
+        ringl_context_free_staging(context, native_pixels, native_total_bytes);
         return -1;
     }
-    ringl_context_free_temporary(context, native_pixels, native_total_bytes);
+    ringl_context_free_staging(context, native_pixels, native_total_bytes);
     return 0;
 }
 
@@ -704,7 +699,7 @@ static int ringl_read_pixels_packed(RinGLContext* context, int32_t x,
         return 1;
     destination_x = (uint64_t)((int64_t)clipped_x0 - (int64_t)x);
     destination_y = (uint64_t)((int64_t)clipped_y0 - (int64_t)y);
-    tight_pixels = ringl_context_alloc_temporary(context, tight_total_bytes);
+    tight_pixels = ringl_context_alloc_staging(context, tight_total_bytes);
     if (tight_pixels == NULL)
         return 1;
 
@@ -719,7 +714,7 @@ static int ringl_read_pixels_packed(RinGLContext* context, int32_t x,
                        (size_t)(row * packed_row_bytes),
                    (size_t)tight_row_bytes);
         }
-        clipped_pixels = ringl_context_alloc_temporary(context, clipped_total_bytes);
+        clipped_pixels = ringl_context_alloc_staging(context, clipped_total_bytes);
         if (clipped_pixels == NULL)
             result = 1;
         else {
@@ -745,8 +740,8 @@ static int ringl_read_pixels_packed(RinGLContext* context, int32_t x,
                    (size_t)tight_row_bytes);
         }
     }
-    ringl_context_free_temporary(context, clipped_pixels, clipped_total_bytes);
-    ringl_context_free_temporary(context, tight_pixels, tight_total_bytes);
+    ringl_context_free_staging(context, clipped_pixels, clipped_total_bytes);
+    ringl_context_free_staging(context, tight_pixels, tight_total_bytes);
     return result;
 }
 

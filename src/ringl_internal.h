@@ -58,6 +58,15 @@
  * the RinGPU binding. */
 #define RINGL_MAX_CPU_SHADOW_BYTES \
     (UINT64_C(512) * UINT64_C(1024) * UINT64_C(1024))
+#define RINGL_STAGING_CACHE_BLOCK_COUNT 4u
+#define RINGL_STAGING_CACHE_MAX_BLOCK_BYTES (UINT64_C(1) * 1024u * 1024u)
+#define RINGL_STAGING_CACHE_MAX_BYTES (UINT64_C(4) * 1024u * 1024u)
+
+typedef struct RinGLStagingBlock {
+    void* memory;
+    uint64_t capacity;
+    uint32_t in_use;
+} RinGLStagingBlock;
 
 typedef struct RinGLBufferObject {
     uint64_t ringpu_handle;
@@ -581,6 +590,9 @@ struct RinGLContext {
     uint32_t renderbuffer_binding;
     uint32_t current_program;
     uint64_t cpu_shadow_bytes;
+    uint64_t staging_cached_bytes;
+    RinGLStagingBlock
+        staging_blocks[RINGL_STAGING_CACHE_BLOCK_COUNT];
     RinGLVertexAttribState vertex_attribs[RINGL_MAX_VERTEX_ATTRIBS];
 };
 
@@ -597,6 +609,11 @@ void ringl_context_release_shadow_bytes(RinGLContext* context,
 void* ringl_context_alloc_temporary(RinGLContext* context, uint64_t bytes);
 void ringl_context_free_temporary(RinGLContext* context, void* memory,
                                   uint64_t bytes);
+/* Readback staging uses a small reclaimable cache. Cached capacity remains
+ * part of the context budget and is discarded automatically under pressure. */
+void* ringl_context_alloc_staging(RinGLContext* context, uint64_t bytes);
+void ringl_context_free_staging(RinGLContext* context, void* memory,
+                                uint64_t bytes);
 void ringl_copy_c_string(char* destination, size_t capacity,
                          const char* source);
 int ringl_resolve_color_target(RinGLContext* context,

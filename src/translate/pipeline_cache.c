@@ -952,6 +952,7 @@ void ringl_invalidate_graphics_artifacts(RinGLContext* context)
     if (context->graphics_bind_group != 0u) {
         ringl_backend_destroy_object(context, context->graphics_bind_group);
         context->graphics_bind_group = 0u;
+        context->graphics_bind_group_pipeline = 0u;
     }
     ringl_pipeline_cache_destroy(context);
     ringl_context_mark_dirty(context, RINGL_DIRTY_PIPELINE | RINGL_DIRTY_BINDINGS);

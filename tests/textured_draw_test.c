@@ -712,6 +712,13 @@ int main(void)
     commands[backend.command_count] = '\0';
     assert(strcmp(commands, "ttTBRGDECS") == 0);
 
+    /* A second draw with identical pipeline and texture bindings resets only
+     * the command list. The native bind group remains valid and is rebound
+     * without another backend allocation. */
+    ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(backend.bind_group_creates == 1u);
+
     /* The common vertex-color texture route uses a distinct six-scalar
      * varying interface. It must preserve the matrix transform and bind the
      * real image/sampler pair instead of falling back to a pre-multiplied CPU

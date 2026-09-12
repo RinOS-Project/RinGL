@@ -518,6 +518,7 @@ struct RinGLContext {
     uint32_t webgl_instanced_arrays_enabled;
     uint64_t graphics_command_list;
     uint64_t graphics_bind_group;
+    uint64_t graphics_bind_group_pipeline;
     uint64_t finish_fence;
     uint64_t finish_value;
     float clear_red;

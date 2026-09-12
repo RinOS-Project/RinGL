@@ -604,10 +604,6 @@ static int begin_commands(RinGLContext* context, uint64_t* command_list)
                                          context->graphics_command_list) != 0)
         return -1;
 
-    if (context->graphics_bind_group != 0u) {
-        ringl_backend_destroy_object(context, context->graphics_bind_group);
-        context->graphics_bind_group = 0u;
-    }
     *command_list = context->graphics_command_list;
     return 0;
 }
@@ -1244,6 +1240,7 @@ static int prepare_graphics_resources(RinGLContext* context,
     uint32_t binding_count;
     uint32_t requires_mip_chain = 0u;
     RinGLTextureTransitionSet transitioned = {0};
+    int rebuild_bind_group;
     int32_t unit;
 
     if (transitioned_out != NULL)
@@ -1255,13 +1252,31 @@ static int prepare_graphics_resources(RinGLContext* context,
     fragment = linked_fragment_shader(context, program);
     if (fragment == NULL)
         return -1;
-    if (fragment->rsh1_sampler_binding_count == 0u)
+    rebuild_bind_group =
+        context->graphics_bind_group == 0u ||
+        context->graphics_bind_group_pipeline != pipeline ||
+        (context->dirty_bits & (RINGL_DIRTY_PIPELINE | RINGL_DIRTY_BINDINGS)) !=
+            0u;
+    if (fragment->rsh1_sampler_binding_count == 0u) {
+        if (rebuild_bind_group && context->graphics_bind_group != 0u) {
+            ringl_backend_destroy_object(context, context->graphics_bind_group);
+            context->graphics_bind_group = 0u;
+            context->graphics_bind_group_pipeline = 0u;
+        }
         return 0;
+    }
     if (program->sampler_uniform_count > RINGL_MAX_SAMPLER_UNIFORMS ||
         fragment->rsh1_sampler_binding_count > RINGL_MAX_SAMPLER_UNIFORMS ||
         context->ringpu_ops.create_graphics_bind_group == NULL ||
         context->ringpu_ops.bind_graphics_resources == NULL)
         return -1;
+    if (!rebuild_bind_group)
+        return 0;
+    if (context->graphics_bind_group != 0u) {
+        ringl_backend_destroy_object(context, context->graphics_bind_group);
+        context->graphics_bind_group = 0u;
+        context->graphics_bind_group_pipeline = 0u;
+    }
 
     memset(bindings, 0, sizeof(bindings));
     memset(mip_bindings, 0, sizeof(mip_bindings));
@@ -1371,6 +1386,7 @@ static int prepare_graphics_resources(RinGLContext* context,
                    &context->graphics_bind_group)) != 0 ||
         context->graphics_bind_group == 0u)
         return -1;
+    context->graphics_bind_group_pipeline = pipeline;
 
     if (transitioned_out != NULL)
         *transitioned_out = transitioned;

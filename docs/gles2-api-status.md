@@ -57,7 +57,7 @@ Status meanings:
 | `glGetProgramInfoLog`, `glGetShaderInfoLog`, `glGetShaderSource` | B | Caller-owned bounded copies. |
 | `glGetRenderbufferParameteriv` | P | Bounded `ringl_get_renderbuffer_parameteriv_bounded` exposes width/height, internal format, component bit sizes, and the represented zero-sample profile through a complete one-element output span. Logical `SRGB8_ALPHA8_EXT` metadata is preserved; multisample storage and unsupported pnames remain unavailable. |
 | `glGetShaderPrecisionFormat` | B | `ringl_get_shader_precision_format` returns the executable RSH1 binary32 or signed-i32 profile through a validated versioned record. |
-| `glGetString` | P | `ringl_get_string` returns only RinGL's static vendor, renderer, bounded-profile version, and RSH1 language-profile strings; extension strings remain unavailable. |
+| `glGetString` | P | `ringl_get_string` returns RinGL's static vendor, renderer, bounded-profile version, RSH1 language-profile, and implementation-generated extension strings. The extension list contains only extension paths implemented by RinGL; the embedding still controls whether a WebGL extension object is exposed. |
 | `glGetTexParameteriv` | P | Bounded integer values for `MIN_FILTER`, `MAG_FILTER`, `WRAP_S`, `WRAP_T`, and extension-gated `TEXTURE_MAX_ANISOTROPY_EXT`. |
 | `glGetTexParameterfv` | P | `ringl_get_tex_parameterf` and bounded `ringl_get_tex_parameterfv_bounded` expose only the gated `TEXTURE_MAX_ANISOTROPY_EXT` value; they do not manufacture float views of enum-valued sampler state. |
 | `glGetUniformiv` | P | `ringl_get_uniform_1i` for linked scalar `sampler2D`, `int`, or `bool`, plus `ringl_get_uniform_{2,3,4}i` for complete `ivec` or normalized `bvec` values; each getter accepts one element of a bounded reflected array. |
@@ -97,7 +97,7 @@ inventing unused aliases.
 | Depth/stencil and renderbuffer formats | P | D16/D32/D24S8/S8 are bounded FBO formats; multisample/resolve and remaining attachment semantics are absent. |
 | Shader/program type and status tokens | P | Current GLSL/RSH1 subset exposes scalar/vector attributes, samplers, scalar/vector float, signed-integer, Boolean, and bounded matrix uniforms. The no-varying profile executes `not`, matching-width `equal`/`notEqual`, `any`/`all`, and scalar `!`/`&&`/`^^`/`||` for bounded Boolean conditions, but not multi-component Boolean swizzles or side-effecting/general control-flow expressions. Bounded vertex/fragment `mat2 * vec2`, `mat3 * vec3`, and `mat4 * vec4` profiles are available. The transformed texture profile remains vertex-`mat4` only: up to eight direct UV pairs (sixteen scalar fragment inputs), or one/two UV pairs plus an RGBA varying used by exact one-sample or two-sample-add `texture2D(...) * vertexColor` materials with optional `vec4` tint and scalar opacity; no general uniform type coverage. |
 | Query tokens | P | Only the exact `ringl_get_integerv_bounded` and dedicated-record names below are accepted. |
-| Cube-map, other compressed-texture, shader-binary, precision, implementation/vendor/renderer/version/extension, multisample, and GLES 3.x tokens | N | They are not declared as successful RinGL capabilities. |
+| Cube-map, other compressed-texture, shader-binary, precision, multisample, and GLES 3.x tokens | N | They are not declared as successful RinGL capabilities. |
 
 Implemented fixed limits are `MAX_VERTEX_ATTRIBS = 16`,
 `MAX_TEXTURE_SIZE = 4096`, and `MAX_TEXTURE_IMAGE_UNITS =

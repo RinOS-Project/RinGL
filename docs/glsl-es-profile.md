@@ -116,8 +116,9 @@ The current first-triangle slice supports:
   where each coordinate is either the shared varying or that varying plus/minus
   one finite literal `vec2` offset;
 - generic fragment `texture2D(sampler2D, vec2)` lowering for coordinates made
-  from other accepted generic Float `vec2` values (locals, matching varyings,
-  swizzles, arithmetic, and numeric uniforms). Each active sampler is reflected
+  from other accepted generic Float `vec2` values (constants, locals, matching
+  varyings, constructors, swizzles, arithmetic, numeric uniforms, and bounded
+  Float vector built-in results such as `normalize`). Each active sampler is reflected
   as an adjacent RSH1 image/sampler pair and each lookup emits four scalar
   samples; the generic 128-instruction/96-register RSH1 budget is enforced
   before module publication. `sampler2D name[N]` accepts a positive decimal

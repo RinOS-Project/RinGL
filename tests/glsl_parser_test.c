@@ -411,6 +411,10 @@ int main(void)
             "uniform sampler2D palette[2]; const int selected = 1; "
             "void main() { gl_FragColor = texture2D(palette[selected], "
             "vec2(0.25, 0.75)); }";
+        static const char builtin_coordinate_source[] =
+            "uniform sampler2D image; uniform vec2 offset; "
+            "void main() { gl_FragColor = texture2D(image, "
+            "normalize(vec2(0.25, 0.75) + offset)); }";
         RinGLGlslLowerResult lowered;
         RinGLRsh1HeaderV1 header;
         const RinGLRsh1InstructionV1* instructions;
@@ -447,6 +451,11 @@ int main(void)
         assert(lowered.ok != 0u);
         assert(lowered.sampler_binding_count == 1u);
         assert(lowered.sampler_binding_indices[0] == 1u);
+        assert(ringl_glsl_lower_rsh1(
+                   RINGL_FRAGMENT_SHADER, builtin_coordinate_source,
+                   sizeof(builtin_coordinate_source) - 1u, &lowered) == 0);
+        assert(lowered.ok != 0u);
+        assert(lowered.sampler_binding_count == 1u);
     }
 
     ringl_shader_source(vertex,

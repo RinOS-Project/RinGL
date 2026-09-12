@@ -327,6 +327,7 @@ static int initialize_context(RinGLAquamarineSurfaceContext* context,
     config.adapter.queue_capabilities = RIN_GPU_QUEUE_GRAPHICS;
     memcpy(config.adapter.name, "RinGL RinGPU adapter", 21u);
     config.backend = *backend_ops;
+    config.backend_family = RIN_GPU_BACKEND_FAMILY_SOFTWARE;
     config.backend_context = context->software_backend;
     config.displays = &context->display;
     config.display_count = 1u;

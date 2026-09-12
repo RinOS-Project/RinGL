@@ -4447,6 +4447,7 @@ static int initialize_context(RinGLAquamarineSurfaceContext* context,
     config.backend.submit_commands = backend_submit;
     config.backend.wait_for_completion = backend_wait_for_completion;
     config.backend.readback_image = backend_readback_image;
+    config.backend_family = RIN_GPU_BACKEND_FAMILY_SOFTWARE;
     config.backend_context = context;
     config.displays = &context->display;
     config.display_count = 1u;

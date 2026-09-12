@@ -7,8 +7,37 @@
 
 static int texture_target_valid(uint32_t target)
 {
-    return target == RINGL_TEXTURE_2D;
+    return target == RINGL_TEXTURE_2D || target == RINGL_TEXTURE_CUBE_MAP;
 }
+
+static int texture_cube_face_index(uint32_t target, uint32_t* index_out)
+{
+    if (index_out == NULL || target < RINGL_TEXTURE_CUBE_MAP_POSITIVE_X ||
+        target > RINGL_TEXTURE_CUBE_MAP_NEGATIVE_Z)
+        return 0;
+    *index_out = target - RINGL_TEXTURE_CUBE_MAP_POSITIVE_X;
+    return 1;
+}
+
+static int texture_image_target_valid(uint32_t target)
+{
+    uint32_t face;
+
+    return target == RINGL_TEXTURE_2D ||
+           texture_cube_face_index(target, &face);
+}
+
+static int texture_dimension_is_power_of_two(uint32_t dimension);
+static const RinGLTextureMipStorage* texture_cube_mip_storage_const(
+    const RinGLTextureCubeFaceStorage* face, uint32_t level);
+static int texture_cube_level_storage_defined(
+    const RinGLTextureCubeFaceStorage* face, uint32_t level);
+static uint32_t texture_cube_expected_mip_width(
+    const RinGLTextureCubeFaceStorage* face, uint32_t level);
+static uint32_t texture_cube_expected_mip_height(
+    const RinGLTextureCubeFaceStorage* face, uint32_t level);
+static int texture_cube_base_images_complete(
+    const RinGLTextureObject* texture);
 
 static int min_filter_valid(uint32_t value)
 {
@@ -58,6 +87,30 @@ static RinGLTextureObject* bound_texture_2d(RinGLContext* context)
     if (slot_index >= RINGL_OBJECT_SLOT_COUNT)
         return NULL;
     return &context->textures[slot_index];
+}
+
+static RinGLTextureObject* bound_texture_cube(RinGLContext* context)
+{
+    uint32_t name;
+    uint32_t slot_index;
+
+    if (context == NULL || context->active_texture_unit >= RINGL_MAX_TEXTURE_UNITS)
+        return NULL;
+    name = context->bound_texture_cube[context->active_texture_unit];
+    if (name == 0u ||
+        ringl_object_lookup(context, name, RINGL_OBJECT_TEXTURE) == NULL)
+        return NULL;
+    slot_index = ringl_object_slot_index(name);
+    if (slot_index >= RINGL_OBJECT_SLOT_COUNT)
+        return NULL;
+    return &context->textures[slot_index];
+}
+
+static RinGLTextureObject* bound_texture_for_target(RinGLContext* context,
+                                                    uint32_t target)
+{
+    return target == RINGL_TEXTURE_CUBE_MAP
+        ? bound_texture_cube(context) : bound_texture_2d(context);
 }
 
 static RinGLTextureMipStorage* texture_mip_storage(RinGLTextureObject* texture,
@@ -149,6 +202,32 @@ uint32_t ringl_texture_sampled_mip_count(const RinGLTextureObject* texture)
     uint32_t count = 1u;
     uint32_t level_count;
 
+    if (texture != NULL && texture->target == RINGL_TEXTURE_CUBE_MAP) {
+        const RinGLTextureCubeFaceStorage* first =
+            &texture->cube_faces[0];
+
+        if (!texture_cube_base_images_complete(texture))
+            return 0u;
+        level_count = texture_mip_level_count(first->width, first->height);
+        for (level = 1u; level < level_count; ++level) {
+            uint32_t face_index;
+
+            for (face_index = 0u; face_index < RINGL_CUBE_FACE_COUNT;
+                 ++face_index) {
+                const RinGLTextureCubeFaceStorage* face =
+                    &texture->cube_faces[face_index];
+                const RinGLTextureMipStorage* storage =
+                    texture_cube_mip_storage_const(face, level);
+
+                if (!texture_cube_level_storage_defined(face, level) ||
+                    storage == NULL ||
+                    storage->width != texture_cube_expected_mip_width(face, level) ||
+                    storage->height != texture_cube_expected_mip_height(face, level))
+                    return level;
+            }
+        }
+        return level_count;
+    }
     if (!texture_level_storage_defined(texture, 0u))
         return 0u;
     level_count = texture_mip_level_count(texture->width, texture->height);
@@ -211,6 +290,265 @@ static void texture_release_storage(RinGLContext* context, uint8_t** bytes,
         *bytes = NULL;
     if (size != NULL)
         *size = 0u;
+}
+
+static RinGLTextureMipStorage* texture_cube_mip_storage(
+    RinGLTextureCubeFaceStorage* face, uint32_t level)
+{
+    if (face == NULL || level == 0u ||
+        level >= RINGL_MAX_TEXTURE_MIP_LEVELS)
+        return NULL;
+    return &face->mip_storage[level - 1u];
+}
+
+static const RinGLTextureMipStorage* texture_cube_mip_storage_const(
+    const RinGLTextureCubeFaceStorage* face, uint32_t level)
+{
+    if (face == NULL || level == 0u ||
+        level >= RINGL_MAX_TEXTURE_MIP_LEVELS)
+        return NULL;
+    return &face->mip_storage[level - 1u];
+}
+
+static int texture_cube_level_storage_defined(
+    const RinGLTextureCubeFaceStorage* face, uint32_t level)
+{
+    const RinGLTextureMipStorage* storage;
+
+    if (face == NULL)
+        return 0;
+    if (level == 0u)
+        return face->defined != 0u && face->width != 0u &&
+               face->height != 0u && face->shadow_bytes != NULL &&
+               face->shadow_size != 0u;
+    storage = texture_cube_mip_storage_const(face, level);
+    return storage != NULL && storage->defined != 0u &&
+           storage->width != 0u && storage->height != 0u &&
+           storage->shadow_bytes != NULL && storage->shadow_size != 0u;
+}
+
+static uint32_t texture_cube_expected_mip_width(
+    const RinGLTextureCubeFaceStorage* face, uint32_t level)
+{
+    uint32_t width;
+
+    if (face == NULL || level >= RINGL_MAX_TEXTURE_MIP_LEVELS)
+        return 0u;
+    width = face->width;
+    while (level != 0u && width > 1u) {
+        width >>= 1u;
+        --level;
+    }
+    return width;
+}
+
+static uint32_t texture_cube_expected_mip_height(
+    const RinGLTextureCubeFaceStorage* face, uint32_t level)
+{
+    uint32_t height;
+
+    if (face == NULL || level >= RINGL_MAX_TEXTURE_MIP_LEVELS)
+        return 0u;
+    height = face->height;
+    while (level != 0u && height > 1u) {
+        height >>= 1u;
+        --level;
+    }
+    return height;
+}
+
+static int texture_cube_base_compatible(
+    const RinGLTextureObject* texture, uint32_t face_index,
+    uint32_t width, uint32_t height, uint32_t format,
+    uint32_t color_component_type, uint32_t compressed_format,
+    uint32_t srgb_encoding)
+{
+    uint32_t index;
+
+    if (texture == NULL || face_index >= RINGL_CUBE_FACE_COUNT)
+        return 0;
+    for (index = 0u; index < RINGL_CUBE_FACE_COUNT; ++index) {
+        const RinGLTextureCubeFaceStorage* face =
+            &texture->cube_faces[index];
+
+        if (index == face_index || face->defined == 0u)
+            continue;
+        if (face->width != width || face->height != height ||
+            face->format != format ||
+            face->color_component_type != color_component_type ||
+            face->compressed_format != compressed_format ||
+            face->srgb_encoding != srgb_encoding)
+            return 0;
+    }
+    return 1;
+}
+
+static void texture_cube_update_summary(RinGLTextureObject* texture)
+{
+    uint32_t index;
+
+    if (texture == NULL)
+        return;
+    texture->shadow_bytes = NULL;
+    texture->shadow_size = 0u;
+    memset(texture->mip_storage, 0, sizeof(texture->mip_storage));
+    texture->width = 0u;
+    texture->height = 0u;
+    texture->format = 0u;
+    texture->color_component_type = 0u;
+    texture->compressed_format = 0u;
+    texture->srgb_encoding = 0u;
+    texture->defined = RINGL_FALSE;
+    for (index = 0u; index < RINGL_CUBE_FACE_COUNT; ++index) {
+        const RinGLTextureCubeFaceStorage* face =
+            &texture->cube_faces[index];
+
+        if (face->defined == 0u)
+            continue;
+        texture->width = face->width;
+        texture->height = face->height;
+        texture->format = face->format;
+        texture->color_component_type = face->color_component_type;
+        texture->compressed_format = face->compressed_format;
+        texture->srgb_encoding = face->srgb_encoding;
+        texture->defined = RINGL_TRUE;
+        break;
+    }
+}
+
+static void texture_cube_face_enter(
+    RinGLTextureObject* texture, RinGLTextureCubeFaceStorage* face,
+    RinGLTextureCubeFaceStorage* saved)
+{
+    if (texture == NULL || face == NULL || saved == NULL)
+        return;
+    saved->shadow_bytes = texture->shadow_bytes;
+    saved->shadow_size = texture->shadow_size;
+    saved->width = texture->width;
+    saved->height = texture->height;
+    saved->format = texture->format;
+    saved->color_component_type = texture->color_component_type;
+    saved->compressed_format = texture->compressed_format;
+    saved->srgb_encoding = texture->srgb_encoding;
+    saved->defined = texture->defined;
+    memcpy(saved->mip_storage, texture->mip_storage,
+           sizeof(saved->mip_storage));
+    texture->shadow_bytes = face->shadow_bytes;
+    texture->shadow_size = face->shadow_size;
+    texture->width = face->width;
+    texture->height = face->height;
+    texture->format = face->format;
+    texture->color_component_type = face->color_component_type;
+    texture->compressed_format = face->compressed_format;
+    texture->srgb_encoding = face->srgb_encoding;
+    texture->defined = face->defined;
+    memcpy(texture->mip_storage, face->mip_storage,
+           sizeof(texture->mip_storage));
+}
+
+static void texture_cube_face_leave(
+    RinGLTextureObject* texture, RinGLTextureCubeFaceStorage* face,
+    const RinGLTextureCubeFaceStorage* saved)
+{
+    if (texture == NULL || face == NULL || saved == NULL)
+        return;
+    face->shadow_bytes = texture->shadow_bytes;
+    face->shadow_size = texture->shadow_size;
+    face->width = texture->width;
+    face->height = texture->height;
+    face->format = texture->format;
+    face->color_component_type = texture->color_component_type;
+    face->compressed_format = texture->compressed_format;
+    face->srgb_encoding = texture->srgb_encoding;
+    face->defined = texture->defined;
+    memcpy(face->mip_storage, texture->mip_storage,
+           sizeof(face->mip_storage));
+    texture->shadow_bytes = saved->shadow_bytes;
+    texture->shadow_size = saved->shadow_size;
+    texture->width = saved->width;
+    texture->height = saved->height;
+    texture->format = saved->format;
+    texture->color_component_type = saved->color_component_type;
+    texture->compressed_format = saved->compressed_format;
+    texture->srgb_encoding = saved->srgb_encoding;
+    texture->defined = saved->defined;
+    memcpy(texture->mip_storage, saved->mip_storage,
+           sizeof(texture->mip_storage));
+    texture_cube_update_summary(texture);
+}
+
+static int texture_cube_base_images_complete(
+    const RinGLTextureObject* texture)
+{
+    const RinGLTextureCubeFaceStorage* first;
+    uint32_t index;
+
+    if (texture == NULL)
+        return 0;
+    first = &texture->cube_faces[0];
+    if (!texture_cube_level_storage_defined(first, 0u) ||
+        first->width != first->height)
+        return 0;
+    for (index = 1u; index < RINGL_CUBE_FACE_COUNT; ++index) {
+        const RinGLTextureCubeFaceStorage* face =
+            &texture->cube_faces[index];
+
+        if (!texture_cube_level_storage_defined(face, 0u) ||
+            face->width != first->width || face->height != first->height ||
+            face->format != first->format ||
+            face->color_component_type != first->color_component_type ||
+            face->compressed_format != first->compressed_format ||
+            face->srgb_encoding != first->srgb_encoding)
+            return 0;
+    }
+    return 1;
+}
+
+static int texture_cube_level0_complete(const RinGLContext* context,
+                                        const RinGLTextureObject* texture)
+{
+    const RinGLTextureCubeFaceStorage* first;
+    uint32_t index;
+    uint32_t level;
+    uint32_t level_count;
+
+    if (context == NULL || texture == NULL ||
+        texture->wrap_s != RINGL_CLAMP_TO_EDGE ||
+        texture->wrap_t != RINGL_CLAMP_TO_EDGE ||
+        !texture_cube_base_images_complete(texture))
+        return 0;
+    first = &texture->cube_faces[0];
+    if (((first->color_component_type == RINGL_FLOAT &&
+          first->compressed_format == 0u && first->srgb_encoding == 0u &&
+          context->webgl_float_texture_linear_enabled == RINGL_FALSE) ||
+         (first->color_component_type == RINGL_HALF_FLOAT_OES &&
+          context->webgl_half_float_texture_linear_enabled == RINGL_FALSE)) &&
+        (texture->mag_filter != RINGL_NEAREST ||
+         (texture->min_filter != RINGL_NEAREST &&
+          texture->min_filter != RINGL_NEAREST_MIPMAP_NEAREST)))
+        return 0;
+    level_count = texture_mip_level_count(first->width, first->height);
+    if (texture->min_filter == RINGL_NEAREST ||
+        texture->min_filter == RINGL_LINEAR)
+        return 1;
+    if (!texture_dimension_is_power_of_two(first->width))
+        return 0;
+    for (index = 0u; index < RINGL_CUBE_FACE_COUNT; ++index) {
+        const RinGLTextureCubeFaceStorage* face =
+            &texture->cube_faces[index];
+
+        for (level = 1u; level < level_count; ++level) {
+            const RinGLTextureMipStorage* storage =
+                texture_cube_mip_storage_const(face, level);
+
+            if (!texture_cube_level_storage_defined(face, level) ||
+                storage == NULL ||
+                storage->width != texture_cube_expected_mip_width(face, level) ||
+                storage->height != texture_cube_expected_mip_height(face, level))
+                return 0;
+        }
+    }
+    return 1;
 }
 
 static void texture_drop_mip_storage_from(RinGLContext* context,
@@ -1251,6 +1589,142 @@ static void texture_discard_image(RinGLContext* context,
     texture->ringpu_image = 0u;
     memset(texture->ringpu_image_state, RINGL_RIN_GPU_IMAGE_UNDEFINED,
            sizeof(texture->ringpu_image_state));
+    memset(texture->ringpu_cube_image_state, RINGL_RIN_GPU_IMAGE_UNDEFINED,
+           sizeof(texture->ringpu_cube_image_state));
+}
+
+static uint32_t texture_cube_highest_defined_mip_count(
+    const RinGLTextureObject* texture)
+{
+    uint32_t face_index;
+    uint32_t level;
+    uint32_t count = 0u;
+
+    if (texture == NULL)
+        return 0u;
+    for (face_index = 0u; face_index < RINGL_CUBE_FACE_COUNT; ++face_index) {
+        const RinGLTextureCubeFaceStorage* face =
+            &texture->cube_faces[face_index];
+        uint32_t level_count;
+
+        if (!texture_cube_level_storage_defined(face, 0u))
+            continue;
+        level_count = texture_mip_level_count(face->width, face->height);
+        for (level = 0u; level < level_count; ++level) {
+            const RinGLTextureMipStorage* storage;
+
+            if (level == 0u) {
+                count = count < 1u ? 1u : count;
+                continue;
+            }
+            storage = texture_cube_mip_storage_const(face, level);
+            if (texture_cube_level_storage_defined(face, level) &&
+                storage != NULL &&
+                storage->width == texture_cube_expected_mip_width(face, level) &&
+                storage->height == texture_cube_expected_mip_height(face, level) &&
+                count < level + 1u)
+                count = level + 1u;
+        }
+    }
+    return count;
+}
+
+static int texture_realize_cube_image(RinGLContext* context,
+                                      RinGLTextureObject* texture)
+{
+    RinGLRinGpuImageArrayV1 desc;
+    RinGLRinGpuImageUploadArrayV1 upload;
+    uint64_t image = 0u;
+    uint32_t mip_count;
+    uint32_t face_index;
+    uint32_t level;
+
+    if (context == NULL || texture == NULL || texture->target !=
+            RINGL_TEXTURE_CUBE_MAP)
+        return -1;
+    if (!texture->requires_color_target &&
+        !texture_cube_level0_complete(context, texture))
+        return -1;
+    mip_count = texture->requires_color_target
+        ? texture_cube_highest_defined_mip_count(texture)
+        : texture_mip_level_count(texture->width, texture->height);
+    if (mip_count == 0u || texture->format == 0u ||
+        !texture_color_format(texture->format))
+        return -1;
+    if (!context->has_ringpu_ops ||
+        context->ringpu_ops.create_image_array_v1 == NULL ||
+        context->ringpu_ops.upload_image_array_v1 == NULL)
+        return -1;
+
+    memset(&desc, 0, sizeof(desc));
+    desc.width = texture->width;
+    desc.height = texture->height;
+    desc.array_layers = RINGL_CUBE_FACE_COUNT;
+    desc.mip_levels = mip_count;
+    desc.format = texture_ringpu_format(texture->format,
+                                        texture->color_component_type);
+    desc.usage = RINGL_RIN_GPU_IMAGE_USAGE_COPY_DESTINATION |
+                 RINGL_RIN_GPU_IMAGE_USAGE_SAMPLED;
+    if (texture->requires_color_target != 0u)
+        desc.usage |= RINGL_RIN_GPU_IMAGE_USAGE_COLOR_TARGET |
+                      RINGL_RIN_GPU_IMAGE_USAGE_COPY_SOURCE;
+    if (ringl_backend_create_image_array_v1(context, &desc, &image) != 0 ||
+        image == 0u)
+        return -1;
+    memset(texture->ringpu_cube_image_state,
+           RINGL_RIN_GPU_IMAGE_UNDEFINED,
+           sizeof(texture->ringpu_cube_image_state));
+    for (face_index = 0u; face_index < RINGL_CUBE_FACE_COUNT; ++face_index) {
+        const RinGLTextureCubeFaceStorage* face =
+            &texture->cube_faces[face_index];
+
+        for (level = 0u; level < mip_count; ++level) {
+            const uint8_t* bytes;
+            uint64_t size;
+            uint32_t width;
+            uint32_t height;
+
+            if (level == 0u) {
+                if (!texture_cube_level_storage_defined(face, 0u))
+                    continue;
+                bytes = face->shadow_bytes;
+                size = face->shadow_size;
+                width = face->width;
+                height = face->height;
+            } else {
+                const RinGLTextureMipStorage* storage =
+                    texture_cube_mip_storage_const(face, level);
+
+                if (!texture_cube_level_storage_defined(face, level) ||
+                    storage == NULL)
+                    continue;
+                bytes = storage->shadow_bytes;
+                size = storage->shadow_size;
+                width = storage->width;
+                height = storage->height;
+            }
+            memset(&upload, 0, sizeof(upload));
+            upload.mip_level = level;
+            upload.array_layer = face_index;
+            upload.width = width;
+            upload.height = height;
+            upload.source_row_pitch_bytes = (uint64_t)width *
+                texture_storage_texel_bytes(texture->format,
+                                            texture->color_component_type);
+            if (ringl_backend_upload_image_array_v1(context, image, &upload,
+                                                     bytes, size) != 0) {
+                ringl_backend_destroy_object(context, image);
+                return -1;
+            }
+            texture->ringpu_cube_image_state[level][face_index] =
+                RINGL_RIN_GPU_IMAGE_COPY_DESTINATION;
+        }
+    }
+    for (level = 0u; level < RINGL_MAX_TEXTURE_MIP_LEVELS; ++level)
+        texture->ringpu_image_state[level] =
+            texture->ringpu_cube_image_state[level][0];
+    texture->ringpu_image = image;
+    return 0;
 }
 
 static int texture_realize_image(RinGLContext* context,
@@ -1267,6 +1741,8 @@ static int texture_realize_image(RinGLContext* context,
 
     if (texture->ringpu_image != 0u)
         return 0;
+    if (texture->target == RINGL_TEXTURE_CUBE_MAP)
+        return texture_realize_cube_image(context, texture);
     if ((texture->requires_color_target ||
          texture->format == RINGL_DEPTH_COMPONENT32F ||
          texture->format == RINGL_DEPTH24_STENCIL8)
@@ -1467,6 +1943,8 @@ int ringl_texture_realize_unit(RinGLContext* context, uint32_t unit,
     *image_out = 0u;
     *sampler_out = 0u;
     name = context->bound_texture_2d[unit];
+    if (name == 0u)
+        name = context->bound_texture_cube[unit];
     if (name == 0u ||
         ringl_object_lookup(context, name, RINGL_OBJECT_TEXTURE) == NULL) {
         return -1;
@@ -1475,10 +1953,13 @@ int ringl_texture_realize_unit(RinGLContext* context, uint32_t unit,
     if (slot_index >= RINGL_OBJECT_SLOT_COUNT)
         return -1;
     texture = &context->textures[slot_index];
-    if (!(texture_color_format(texture->format) ||
-          texture->format == RINGL_DEPTH_COMPONENT32F ||
-          texture->format == RINGL_DEPTH24_STENCIL8) ||
-        !texture_level0_complete(context, texture) ||
+    if (texture->target == RINGL_TEXTURE_CUBE_MAP
+            ? (!texture_cube_level0_complete(context, texture) ||
+               !texture_color_format(texture->format))
+            : (!(texture_color_format(texture->format) ||
+                 texture->format == RINGL_DEPTH_COMPONENT32F ||
+                 texture->format == RINGL_DEPTH24_STENCIL8) ||
+               !texture_level0_complete(context, texture)) ||
         texture_realize_image(context, texture) != 0 ||
         texture_realize_sampler(context, texture) != 0) {
         return -1;
@@ -1585,6 +2066,8 @@ void ringl_delete_textures(int32_t count, const uint32_t* textures)
         for (unit = 0u; unit < RINGL_MAX_TEXTURE_UNITS; ++unit) {
             if (context->bound_texture_2d[unit] == name)
                 context->bound_texture_2d[unit] = 0u;
+            if (context->bound_texture_cube[unit] == name)
+                context->bound_texture_cube[unit] = 0u;
         }
 
         slot_index = ringl_object_slot_index(name);
@@ -1636,10 +2119,23 @@ void ringl_bind_texture(uint32_t target, uint32_t texture)
             }
             texture_init_defaults(&context->textures[slot_index]);
         }
+        {
+            uint32_t slot_index = ringl_object_slot_index(texture);
+
+            if (slot_index >= RINGL_OBJECT_SLOT_COUNT ||
+                (context->textures[slot_index].target != 0u &&
+                 context->textures[slot_index].target != target)) {
+                ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+                return;
+            }
+            context->textures[slot_index].target = target;
+        }
         ringl_object_promote(slot);
     }
 
-    binding = &context->bound_texture_2d[context->active_texture_unit];
+    binding = target == RINGL_TEXTURE_CUBE_MAP
+        ? &context->bound_texture_cube[context->active_texture_unit]
+        : &context->bound_texture_2d[context->active_texture_unit];
     if (*binding != texture) {
         *binding = texture;
         ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
@@ -1696,7 +2192,9 @@ uint32_t ringl_get_bound_texture(uint32_t target)
     }
     if (context->active_texture_unit >= RINGL_MAX_TEXTURE_UNITS)
         return 0u;
-    return context->bound_texture_2d[context->active_texture_unit];
+    return target == RINGL_TEXTURE_CUBE_MAP
+        ? context->bound_texture_cube[context->active_texture_unit]
+        : context->bound_texture_2d[context->active_texture_unit];
 }
 
 void ringl_tex_parameteri(uint32_t target, uint32_t pname, int32_t param)
@@ -1716,7 +2214,7 @@ void ringl_tex_parameteri(uint32_t target, uint32_t pname, int32_t param)
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
-    texture = bound_texture_2d(context);
+    texture = bound_texture_for_target(context, target);
     if (texture == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
@@ -1773,7 +2271,7 @@ void ringl_tex_parameterf(uint32_t target, uint32_t pname, float param)
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
-    texture = bound_texture_2d(context);
+    texture = bound_texture_for_target(context, target);
     if (texture == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
@@ -1805,7 +2303,7 @@ int32_t ringl_get_tex_parameteri(uint32_t target, uint32_t pname)
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return 0;
     }
-    texture = bound_texture_2d(context);
+    texture = bound_texture_for_target(context, target);
     if (texture == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return 0;
@@ -1836,7 +2334,7 @@ float ringl_get_tex_parameterf(uint32_t target, uint32_t pname)
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return 0.0f;
     }
-    texture = bound_texture_2d(context);
+    texture = bound_texture_for_target(context, target);
     if (texture == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return 0.0f;
@@ -1865,7 +2363,7 @@ int ringl_get_tex_parameteriv_bounded(uint32_t target, uint32_t pname,
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return -1;
     }
-    texture = bound_texture_2d(context);
+    texture = bound_texture_for_target(context, target);
     if (texture == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return -1;
@@ -1922,7 +2420,7 @@ int ringl_get_tex_parameterfv_bounded(uint32_t target, uint32_t pname,
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return -1;
     }
-    texture = bound_texture_2d(context);
+    texture = bound_texture_for_target(context, target);
     if (texture == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return -1;
@@ -2119,7 +2617,75 @@ void ringl_generate_mipmap(uint32_t target)
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
-    texture = bound_texture_2d(context);
+    if (target == RINGL_TEXTURE_CUBE_MAP) {
+        RinGLTextureObject* cube = bound_texture_cube(context);
+        RinGLTextureMipStorage generated[RINGL_CUBE_FACE_COUNT]
+            [RINGL_MAX_TEXTURE_MIP_LEVELS - 1u];
+        uint32_t face_index;
+
+        if (cube == NULL || cube->target != RINGL_TEXTURE_CUBE_MAP ||
+            !texture_cube_base_images_complete(cube) ||
+            !texture_color_format(cube->format) ||
+            cube->compressed_format != 0u || cube->srgb_encoding != 0u ||
+            !texture_dimension_is_power_of_two(cube->width) ||
+            !context->has_ringpu_ops ||
+            context->ringpu_ops.create_image_array_v1 == NULL ||
+            context->ringpu_ops.upload_image_array_v1 == NULL) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return;
+        }
+        memset(generated, 0, sizeof(generated));
+        for (face_index = 0u; face_index < RINGL_CUBE_FACE_COUNT;
+             ++face_index) {
+            RinGLTextureObject view;
+
+            memset(&view, 0, sizeof(view));
+            view.shadow_bytes = cube->cube_faces[face_index].shadow_bytes;
+            view.shadow_size = cube->cube_faces[face_index].shadow_size;
+            view.width = cube->cube_faces[face_index].width;
+            view.height = cube->cube_faces[face_index].height;
+            view.format = cube->cube_faces[face_index].format;
+            view.color_component_type =
+                cube->cube_faces[face_index].color_component_type;
+            if (texture_generate_color_mips(context, &view,
+                                             generated[face_index]) != 0) {
+                uint32_t cleanup;
+
+                for (cleanup = 0u; cleanup <= face_index; ++cleanup)
+                    texture_free_generated_mips(context, generated[cleanup]);
+                ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
+                return;
+            }
+        }
+        texture_discard_image(context, cube);
+        for (face_index = 0u; face_index < RINGL_CUBE_FACE_COUNT;
+             ++face_index) {
+            uint32_t level;
+            RinGLTextureCubeFaceStorage* face = &cube->cube_faces[face_index];
+
+            for (level = 1u; level < RINGL_MAX_TEXTURE_MIP_LEVELS; ++level) {
+                RinGLTextureMipStorage* storage =
+                    texture_cube_mip_storage(face, level);
+
+                if (storage == NULL)
+                    continue;
+                texture_release_storage(context, &storage->shadow_bytes,
+                                        &storage->shadow_size);
+                memset(storage, 0, sizeof(*storage));
+            }
+            for (level = 1u; level < texture_mip_level_count(
+                         face->width, face->height); ++level) {
+                face->mip_storage[level - 1u] = generated[face_index][level - 1u];
+                memset(&generated[face_index][level - 1u], 0,
+                       sizeof(generated[face_index][level - 1u]));
+            }
+            texture_free_generated_mips(context, generated[face_index]);
+        }
+        texture_cube_update_summary(cube);
+        ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
+        return;
+    }
+    texture = bound_texture_for_target(context, target);
     if (texture == NULL || !texture_level0_storage_defined(texture) ||
         !texture_color_format(texture->format) ||
         texture->compressed_format != 0u || texture->srgb_encoding != 0u) {
@@ -2153,6 +2719,141 @@ void ringl_generate_mipmap(uint32_t target)
     ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
 }
 
+static int texture_cube_requested_format(uint32_t internal_format,
+                                         uint32_t format, uint32_t type,
+                                         uint32_t* format_out,
+                                         uint32_t* component_type_out,
+                                         uint32_t* srgb_out)
+{
+    uint32_t storage_format;
+
+    if (format_out == NULL || component_type_out == NULL || srgb_out == NULL)
+        return 0;
+    *srgb_out = texture_srgb_internal_format(internal_format)
+        ? RINGL_TRUE : RINGL_FALSE;
+    if (*srgb_out != RINGL_FALSE) {
+        storage_format = texture_srgb_storage_format(internal_format);
+        if (type != RINGL_UNSIGNED_BYTE || format != internal_format)
+            return 0;
+        *format_out = storage_format;
+        *component_type_out = RINGL_FLOAT;
+        return 1;
+    }
+    storage_format = texture_storage_format(internal_format, format, type);
+    *format_out = storage_format != 0u
+        ? storage_format
+        : texture_depth_storage_format(internal_format, format, type);
+    *component_type_out = storage_format != 0u ? type : 0u;
+    return *format_out != 0u;
+}
+
+static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
+                                    uint32_t internal_format, int32_t width,
+                                    int32_t height, int32_t border,
+                                    uint32_t format, uint32_t type,
+                                    const void* pixels, uint64_t pixels_size);
+
+static void ringl_tex_sub_image_2d_impl(uint32_t target, int32_t level,
+                                        int32_t xoffset, int32_t yoffset,
+                                        int32_t width, int32_t height,
+                                        uint32_t format, uint32_t type,
+                                        const void* pixels,
+                                        uint64_t pixels_size);
+
+static int texture_cube_prepare_operation(RinGLContext* context,
+                                           uint32_t face_index,
+                                           RinGLTextureObject** texture_out,
+                                           RinGLTextureCubeFaceStorage** face_out,
+                                           RinGLTextureCubeFaceStorage* saved,
+                                           uint32_t* old_2d_binding)
+{
+    RinGLTextureObject* texture;
+
+    if (context == NULL || face_index >= RINGL_CUBE_FACE_COUNT ||
+        texture_out == NULL || face_out == NULL || saved == NULL ||
+        old_2d_binding == NULL || context->active_texture_unit >=
+                                      RINGL_MAX_TEXTURE_UNITS)
+        return 0;
+    texture = bound_texture_cube(context);
+    if (texture == NULL || texture->target != RINGL_TEXTURE_CUBE_MAP)
+        return 0;
+    *old_2d_binding = context->bound_texture_2d[context->active_texture_unit];
+    context->bound_texture_2d[context->active_texture_unit] =
+        context->bound_texture_cube[context->active_texture_unit];
+    texture_discard_image(context, texture);
+    *texture_out = texture;
+    *face_out = &texture->cube_faces[face_index];
+    texture_cube_face_enter(texture, *face_out, saved);
+    return 1;
+}
+
+static void texture_cube_finish_operation(RinGLContext* context,
+                                           RinGLTextureObject* texture,
+                                           RinGLTextureCubeFaceStorage* face,
+                                           const RinGLTextureCubeFaceStorage* saved,
+                                           uint32_t old_2d_binding)
+{
+    if (context == NULL || texture == NULL || face == NULL || saved == NULL)
+        return;
+    texture_cube_face_leave(texture, face, saved);
+    context->bound_texture_2d[context->active_texture_unit] = old_2d_binding;
+}
+
+static void texture_cube_tex_image_2d(uint32_t target, int32_t level,
+                                      uint32_t internal_format, int32_t width,
+                                      int32_t height, int32_t border,
+                                      uint32_t format, uint32_t type,
+                                      const void* pixels, uint64_t pixels_size)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLTextureObject* texture;
+    RinGLTextureCubeFaceStorage* face;
+    RinGLTextureCubeFaceStorage saved;
+    uint32_t face_index;
+    uint32_t old_2d_binding;
+    uint32_t requested_format;
+    uint32_t requested_component_type;
+    uint32_t requested_srgb;
+
+    if (context == NULL || !texture_cube_face_index(target, &face_index)) {
+        if (context != NULL)
+            ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return;
+    }
+    if (!texture_cube_requested_format(internal_format, format, type,
+                                       &requested_format,
+                                       &requested_component_type,
+                                       &requested_srgb)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return;
+    }
+    if (level == 0 && width != height) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    texture = bound_texture_cube(context);
+    if (texture == NULL || texture->target != RINGL_TEXTURE_CUBE_MAP) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    if (level == 0 && !texture_cube_base_compatible(
+            texture, face_index, (uint32_t)width, (uint32_t)height,
+            requested_format, requested_component_type,
+            context->pending_compressed_format, requested_srgb)) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    if (!texture_cube_prepare_operation(context, face_index, &texture, &face,
+                                        &saved, &old_2d_binding)) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    ringl_tex_image_2d_impl(RINGL_TEXTURE_2D, level, internal_format, width,
+                            height, border, format, type, pixels, pixels_size);
+    texture_cube_finish_operation(context, texture, face, &saved,
+                                  old_2d_binding);
+}
+
 static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
                                     uint32_t internal_format, int32_t width,
                                     int32_t height, int32_t border,
@@ -2171,6 +2872,11 @@ static void ringl_tex_image_2d_impl(uint32_t target, int32_t level,
 
     if (context == NULL)
         return;
+    if (target != RINGL_TEXTURE_2D) {
+        texture_cube_tex_image_2d(target, level, internal_format, width, height,
+                                  border, format, type, pixels, pixels_size);
+        return;
+    }
     requested_srgb_encoding = texture_srgb_internal_format(internal_format)
         ? RINGL_TRUE : RINGL_FALSE;
     if (requested_srgb_encoding != RINGL_FALSE) {
@@ -2410,6 +3116,33 @@ static void ringl_tex_sub_image_2d_impl(uint32_t target, int32_t level,
 
     if (context == NULL)
         return;
+    if (target != RINGL_TEXTURE_2D) {
+        uint32_t face_index;
+
+        if (!texture_cube_face_index(target, &face_index)) {
+            ringl_context_record_error(context, RINGL_INVALID_ENUM);
+            return;
+        }
+        {
+            RinGLTextureObject* cube_texture;
+            RinGLTextureCubeFaceStorage* cube_face;
+            RinGLTextureCubeFaceStorage saved;
+            uint32_t old_2d_binding;
+
+            if (!texture_cube_prepare_operation(
+                    context, face_index, &cube_texture, &cube_face, &saved,
+                    &old_2d_binding)) {
+                ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+                return;
+            }
+            ringl_tex_sub_image_2d_impl(
+                RINGL_TEXTURE_2D, level, xoffset, yoffset, width, height,
+                format, type, pixels, pixels_size);
+            texture_cube_finish_operation(context, cube_texture, cube_face,
+                                          &saved, old_2d_binding);
+        }
+        return;
+    }
     if (!texture_target_valid(target)) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
@@ -2535,7 +3268,7 @@ void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
 
     if (context == NULL)
         return;
-    if (!texture_target_valid(target)) {
+    if (!texture_image_target_valid(target)) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
@@ -2545,7 +3278,29 @@ void ringl_copy_tex_sub_image_2d(uint32_t target, int32_t level,
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
-    texture = bound_texture_2d(context);
+    if (target != RINGL_TEXTURE_2D) {
+        uint32_t face_index;
+        RinGLTextureObject* cube_texture;
+        RinGLTextureCubeFaceStorage* cube_face;
+        RinGLTextureCubeFaceStorage saved;
+        uint32_t old_2d_binding;
+
+        (void)texture_cube_face_index(target, &face_index);
+        cube_texture = bound_texture_cube(context);
+        if (cube_texture == NULL ||
+            !texture_cube_prepare_operation(context, face_index,
+                                            &cube_texture, &cube_face,
+                                            &saved, &old_2d_binding)) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return;
+        }
+        ringl_copy_tex_sub_image_2d(
+            RINGL_TEXTURE_2D, level, xoffset, yoffset, x, y, width, height);
+        texture_cube_finish_operation(context, cube_texture, cube_face,
+                                      &saved, old_2d_binding);
+        return;
+    }
+    texture = bound_texture_for_target(context, target);
     if (texture == NULL || !texture_level0_storage_defined(texture) ||
         !texture_color_format(texture->format) ||
         texture->compressed_format != 0u) {
@@ -3238,7 +3993,7 @@ void ringl_compressed_tex_image_2d_from_bytes(uint32_t target, int32_t level,
 
     if (context == NULL)
         return;
-    if (!texture_target_valid(target)) {
+    if (!texture_image_target_valid(target)) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
@@ -3254,6 +4009,38 @@ void ringl_compressed_tex_image_2d_from_bytes(uint32_t target, int32_t level,
         (uint32_t)width > RINGL_MAX_TEXTURE_SIZE ||
         (uint32_t)height > RINGL_MAX_TEXTURE_SIZE) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if (target != RINGL_TEXTURE_2D) {
+        uint32_t face_index;
+        RinGLTextureObject* cube_texture;
+        RinGLTextureCubeFaceStorage* cube_face;
+        RinGLTextureCubeFaceStorage saved;
+        uint32_t old_2d_binding;
+
+        (void)texture_cube_face_index(target, &face_index);
+        if (level == 0 && width != height) {
+            ringl_context_record_error(context, RINGL_INVALID_VALUE);
+            return;
+        }
+        cube_texture = bound_texture_cube(context);
+        if (cube_texture == NULL ||
+            (level == 0 && !texture_cube_base_compatible(
+                cube_texture, face_index, (uint32_t)width, (uint32_t)height,
+                output_format,
+                srgb != RINGL_FALSE ? RINGL_FLOAT : RINGL_UNSIGNED_BYTE,
+                internal_format, srgb)) ||
+            !texture_cube_prepare_operation(context, face_index,
+                                            &cube_texture, &cube_face,
+                                            &saved, &old_2d_binding)) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return;
+        }
+        ringl_compressed_tex_image_2d_from_bytes(
+            RINGL_TEXTURE_2D, level, internal_format, width, height, border,
+            data, data_size);
+        texture_cube_finish_operation(context, cube_texture, cube_face,
+                                      &saved, old_2d_binding);
         return;
     }
     decode_result = internal_format == RINGL_ETC1_RGB8_OES
@@ -3325,7 +4112,7 @@ void ringl_compressed_tex_sub_image_2d_from_bytes(
 
     if (context == NULL)
         return;
-    if (!texture_target_valid(target)) {
+    if (!texture_image_target_valid(target)) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
@@ -3338,6 +4125,29 @@ void ringl_compressed_tex_sub_image_2d_from_bytes(
     if (level < 0 || (uint32_t)level >= RINGL_MAX_TEXTURE_MIP_LEVELS ||
         xoffset < 0 || yoffset < 0 || width < 0 || height < 0) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return;
+    }
+    if (target != RINGL_TEXTURE_2D) {
+        uint32_t face_index;
+        RinGLTextureObject* cube_texture;
+        RinGLTextureCubeFaceStorage* cube_face;
+        RinGLTextureCubeFaceStorage saved;
+        uint32_t old_2d_binding;
+
+        (void)texture_cube_face_index(target, &face_index);
+        cube_texture = bound_texture_cube(context);
+        if (cube_texture == NULL ||
+            !texture_cube_prepare_operation(context, face_index,
+                                            &cube_texture, &cube_face,
+                                            &saved, &old_2d_binding)) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return;
+        }
+        ringl_compressed_tex_sub_image_2d_from_bytes(
+            RINGL_TEXTURE_2D, level, xoffset, yoffset, width, height, format,
+            data, data_size);
+        texture_cube_finish_operation(context, cube_texture, cube_face,
+                                      &saved, old_2d_binding);
         return;
     }
     texture = bound_texture_2d(context);
@@ -3450,7 +4260,7 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
         ? RINGL_TRUE : RINGL_FALSE;
     storage_format = srgb_encoding != RINGL_FALSE
         ? texture_srgb_storage_format(internal_format) : internal_format;
-    if (!texture_target_valid(target) || !texture_color_format(storage_format)) {
+    if (!texture_image_target_valid(target) || !texture_color_format(storage_format)) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
@@ -3461,9 +4271,14 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
-    texture = bound_texture_2d(context);
+    texture = target == RINGL_TEXTURE_2D
+        ? bound_texture_for_target(context, target) : bound_texture_cube(context);
     if (texture == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    if (target != RINGL_TEXTURE_2D && level == 0 && width != height) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
     }
     if (context->framebuffer_binding != 0u &&
@@ -3486,6 +4301,35 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
             (source.format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT ||
              source.format == RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT)
         ? RINGL_FLOAT : RINGL_UNSIGNED_BYTE;
+    if (target != RINGL_TEXTURE_2D) {
+        uint32_t face_index;
+        RinGLTextureObject* cube_texture = texture;
+        RinGLTextureCubeFaceStorage* cube_face;
+        RinGLTextureCubeFaceStorage saved;
+        uint32_t old_2d_binding;
+        uint32_t copy_component_type = srgb_encoding != RINGL_FALSE
+            ? RINGL_FLOAT
+            : texture_packed_color_format(storage_format)
+                ? texture_packed_component_type(storage_format)
+                : snapshot_component_type;
+
+        (void)texture_cube_face_index(target, &face_index);
+        if (!texture_cube_base_compatible(
+                cube_texture, face_index, (uint32_t)width, (uint32_t)height,
+                storage_format, copy_component_type, 0u, srgb_encoding) ||
+            !texture_cube_prepare_operation(context, face_index, &cube_texture,
+                                            &cube_face, &saved,
+                                            &old_2d_binding)) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return;
+        }
+        ringl_copy_tex_image_2d(
+            RINGL_TEXTURE_2D, level, internal_format, x, y, width, height,
+            border);
+        texture_cube_finish_operation(context, cube_texture, cube_face,
+                                      &saved, old_2d_binding);
+        return;
+    }
     storage_component_type = srgb_encoding != RINGL_FALSE
         ? RINGL_FLOAT
         : texture_packed_color_format(storage_format)
@@ -3651,12 +4495,10 @@ int ringl_texture_require_color_target(RinGLContext* context, uint32_t texture)
     return 0;
 }
 
-int ringl_texture_realize_color_target(RinGLContext* context, uint32_t texture,
-                                       uint32_t mip_level,
-                                       uint64_t* image_out,
-                                       uint32_t** image_state_out,
-                                       uint32_t* width_out,
-                                       uint32_t* height_out)
+int ringl_texture_realize_color_target_layer(
+    RinGLContext* context, uint32_t texture, uint32_t mip_level,
+    uint32_t array_layer, uint64_t* image_out, uint32_t** image_state_out,
+    uint32_t* width_out, uint32_t* height_out)
 {
     uint32_t index;
     RinGLTextureObject* object;
@@ -3670,6 +4512,34 @@ int ringl_texture_realize_color_target(RinGLContext* context, uint32_t texture,
     if (index >= RINGL_OBJECT_SLOT_COUNT)
         return -1;
     object = &context->textures[index];
+    if (object->target == RINGL_TEXTURE_CUBE_MAP) {
+        RinGLTextureCubeFaceStorage* face;
+        const RinGLTextureMipStorage* storage;
+
+        if (array_layer >= RINGL_CUBE_FACE_COUNT)
+            return -1;
+        face = &object->cube_faces[array_layer];
+        if (!texture_cube_level_storage_defined(face, mip_level) ||
+            texture_realize_image(context, object) != 0 ||
+            object->ringpu_image == 0u)
+            return -1;
+        *image_out = object->ringpu_image;
+        *image_state_out = &object->ringpu_cube_image_state[mip_level]
+            [array_layer];
+        if (mip_level == 0u) {
+            *width_out = face->width;
+            *height_out = face->height;
+        } else {
+            storage = texture_cube_mip_storage_const(face, mip_level);
+            if (storage == NULL)
+                return -1;
+            *width_out = storage->width;
+            *height_out = storage->height;
+        }
+        return 0;
+    }
+    if (array_layer != 0u)
+        return -1;
     if (!texture_level_storage_defined(object, mip_level) ||
         texture_realize_image(context, object) != 0 ||
         object->ringpu_image == 0u) {
@@ -3690,6 +4560,18 @@ int ringl_texture_realize_color_target(RinGLContext* context, uint32_t texture,
         *height_out = storage->height;
     }
     return 0;
+}
+
+int ringl_texture_realize_color_target(RinGLContext* context, uint32_t texture,
+                                       uint32_t mip_level,
+                                       uint64_t* image_out,
+                                       uint32_t** image_state_out,
+                                       uint32_t* width_out,
+                                       uint32_t* height_out)
+{
+    return ringl_texture_realize_color_target_layer(
+        context, texture, mip_level, 0u, image_out, image_state_out,
+        width_out, height_out);
 }
 
 int ringl_texture_realize_depth_target(RinGLContext* context, uint32_t texture,

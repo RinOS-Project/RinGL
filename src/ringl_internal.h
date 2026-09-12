@@ -86,7 +86,24 @@ typedef struct RinGLTextureMipStorage {
     uint32_t generated;
 } RinGLTextureMipStorage;
 
+#define RINGL_CUBE_FACE_COUNT 6u
+
+typedef struct RinGLTextureCubeFaceStorage {
+    uint8_t* shadow_bytes;
+    uint64_t shadow_size;
+    uint32_t width;
+    uint32_t height;
+    uint32_t format;
+    uint32_t color_component_type;
+    uint32_t compressed_format;
+    uint32_t srgb_encoding;
+    uint32_t defined;
+    RinGLTextureMipStorage
+        mip_storage[RINGL_MAX_TEXTURE_MIP_LEVELS - 1u];
+} RinGLTextureCubeFaceStorage;
+
 typedef struct RinGLTextureObject {
+    uint32_t target;
     uint64_t ringpu_image;
     uint64_t ringpu_sampler;
     uint8_t* shadow_bytes;
@@ -120,12 +137,16 @@ typedef struct RinGLTextureObject {
      * individually-owned CPU snapshots. */
     RinGLTextureMipStorage
         mip_storage[RINGL_MAX_TEXTURE_MIP_LEVELS - 1u];
+    RinGLTextureCubeFaceStorage cube_faces[RINGL_CUBE_FACE_COUNT];
+    uint32_t ringpu_cube_image_state[RINGL_MAX_TEXTURE_MIP_LEVELS]
+                                  [RINGL_CUBE_FACE_COUNT];
 } RinGLTextureObject;
 
 typedef struct RinGLFramebufferObject {
     uint32_t color_attachment_kind[RINGL_MAX_COLOR_ATTACHMENTS];
     uint32_t color_attachment_object[RINGL_MAX_COLOR_ATTACHMENTS];
     int32_t color_attachment_level[RINGL_MAX_COLOR_ATTACHMENTS];
+    uint32_t color_attachment_array_layer[RINGL_MAX_COLOR_ATTACHMENTS];
     /* Each set bit selects COLOR_ATTACHMENTi for fragment output i. */
     uint32_t draw_buffer_mask;
     uint32_t draw_buffer_state_initialized;
@@ -187,6 +208,7 @@ typedef struct RinGLShaderObject {
     uint32_t uses_webgl_draw_buffers;
     uint32_t delete_pending;
     char sampler_uniform_names[RINGL_MAX_SAMPLER_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
+    uint32_t sampler_uniform_targets[RINGL_MAX_SAMPLER_UNIFORMS];
     char float_uniform_names[RINGL_MAX_FLOAT_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char int_uniform_names[RINGL_MAX_INT_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
     char bool_uniform_names[RINGL_MAX_BOOL_UNIFORMS][RINGL_UNIFORM_NAME_MAX];
@@ -211,6 +233,7 @@ typedef struct RinGLShaderObject {
 typedef struct RinGLProgramSamplerUniform {
     char name[RINGL_UNIFORM_NAME_MAX];
     int32_t texture_unit;
+    uint32_t target;
 } RinGLProgramSamplerUniform;
 
 typedef struct RinGLProgramFloatUniform {
@@ -454,6 +477,7 @@ typedef struct RinGLColorTarget {
     uint32_t width;
     uint32_t height;
     uint32_t mip_level;
+    uint32_t array_layer;
     uint32_t* state;
 } RinGLColorTarget;
 
@@ -599,6 +623,8 @@ struct RinGLContext {
     uint32_t vertex_array_binding;
     uint32_t active_texture_unit;
     uint32_t bound_texture_2d[RINGL_MAX_TEXTURE_UNITS];
+    uint32_t bound_texture_cube[RINGL_MAX_TEXTURE_UNITS];
+    uint32_t texture_cube_operation_face;
     /* Private marker used only while the bounded compressed wrapper invokes
      * the ordinary texture install/update implementation. */
     uint32_t pending_compressed_format;
@@ -677,6 +703,13 @@ int ringl_backend_upload_image_2d(
 int ringl_backend_upload_image_2d_mip_v2(
     RinGLContext* context, uint64_t image,
     const RinGLRinGpuImageUpload2DMipV2* upload,
+    const void* data, uint64_t size_bytes);
+int ringl_backend_create_image_array_v1(
+    RinGLContext* context, const RinGLRinGpuImageArrayV1* desc,
+    uint64_t* image_out);
+int ringl_backend_upload_image_array_v1(
+    RinGLContext* context, uint64_t image,
+    const RinGLRinGpuImageUploadArrayV1* upload,
     const void* data, uint64_t size_bytes);
 int ringl_backend_create_sampler(RinGLContext* context,
                                  const RinGLRinGpuSamplerV1* desc,
@@ -847,6 +880,10 @@ int ringl_texture_realize_color_target(RinGLContext* context,
                                        uint32_t** image_state_out,
                                        uint32_t* width_out,
                                        uint32_t* height_out);
+int ringl_texture_realize_color_target_layer(
+    RinGLContext* context, uint32_t texture, uint32_t mip_level,
+    uint32_t array_layer, uint64_t* image_out, uint32_t** image_state_out,
+    uint32_t* width_out, uint32_t* height_out);
 int ringl_texture_realize_depth_target(RinGLContext* context,
                                        uint32_t texture,
                                        uint32_t mip_level,

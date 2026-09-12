@@ -55,6 +55,7 @@ extern "C" {
 #define RINGL_FLOAT_MAT3     0x8b5bu
 #define RINGL_FLOAT_MAT4     0x8b5cu
 #define RINGL_SAMPLER_2D     0x8b5eu
+#define RINGL_SAMPLER_CUBE   0x8b60u
 
 #define RINGL_ACTIVE_INFO_NAME_MAX 64u
 #define RINGL_MAX_COLOR_ATTACHMENTS 4u
@@ -169,6 +170,7 @@ extern "C" {
 #define RINGL_STENCIL_BITS                  0x0d57u
 #define RINGL_MAX_TEXTURE_SIZE_QUERY        0x0d33u
 #define RINGL_TEXTURE_BINDING_2D            0x8069u
+#define RINGL_TEXTURE_BINDING_CUBE_MAP      0x8514u
 #define RINGL_ACTIVE_TEXTURE                0x84e0u
 #define RINGL_MAX_RENDERBUFFER_SIZE          0x84e8u
 #define RINGL_MAX_VERTEX_ATTRIBS_QUERY      0x8869u
@@ -203,6 +205,13 @@ extern "C" {
 #define RINGL_DYNAMIC_DRAW          0x88e8u
 
 #define RINGL_TEXTURE_2D 0x0de1u
+#define RINGL_TEXTURE_CUBE_MAP 0x8513u
+#define RINGL_TEXTURE_CUBE_MAP_POSITIVE_X 0x8515u
+#define RINGL_TEXTURE_CUBE_MAP_NEGATIVE_X 0x8516u
+#define RINGL_TEXTURE_CUBE_MAP_POSITIVE_Y 0x8517u
+#define RINGL_TEXTURE_CUBE_MAP_NEGATIVE_Y 0x8518u
+#define RINGL_TEXTURE_CUBE_MAP_POSITIVE_Z 0x8519u
+#define RINGL_TEXTURE_CUBE_MAP_NEGATIVE_Z 0x851au
 #define RINGL_TEXTURE0   0x84c0u
 #define RINGL_ALPHA      0x1906u
 #define RINGL_RGB        0x1907u
@@ -901,6 +910,31 @@ typedef struct RinGLRinGpuImageUpload2DMipV2 {
     uint64_t source_row_pitch_bytes;
 } RinGLRinGpuImageUpload2DMipV2;
 
+/* Optional array image ABI used by cube maps. The array layers are part of
+ * the native image allocation; every upload selects one layer explicitly. */
+typedef struct RinGLRinGpuImageArrayV1 {
+    uint32_t width;
+    uint32_t height;
+    uint32_t array_layers;
+    uint32_t mip_levels;
+    uint32_t format;
+    uint32_t usage;
+    uint32_t reserved0;
+    uint32_t reserved1;
+} RinGLRinGpuImageArrayV1;
+
+typedef struct RinGLRinGpuImageUploadArrayV1 {
+    uint32_t mip_level;
+    uint32_t array_layer;
+    uint32_t x;
+    uint32_t y;
+    uint32_t width;
+    uint32_t height;
+    uint32_t reserved0;
+    uint32_t reserved1;
+    uint64_t source_row_pitch_bytes;
+} RinGLRinGpuImageUploadArrayV1;
+
 typedef struct RinGLRinGpuSamplerV1 {
     uint32_t min_filter;
     uint32_t mag_filter;
@@ -1079,6 +1113,12 @@ typedef int (*RinGLRinGpuUploadImage2DMipV2Fn)(
     const void* data, uint64_t size_bytes);
 typedef int (*RinGLRinGpuCreateSamplerFn)(
     void* session, const RinGLRinGpuSamplerV1* desc, uint64_t* sampler_out);
+typedef int (*RinGLRinGpuCreateImageArrayV1Fn)(
+    void* session, const RinGLRinGpuImageArrayV1* desc, uint64_t* image_out);
+typedef int (*RinGLRinGpuUploadImageArrayV1Fn)(
+    void* session, uint64_t image,
+    const RinGLRinGpuImageUploadArrayV1* upload,
+    const void* data, uint64_t size_bytes);
 
 typedef struct RinGLRinGpuOpsV1 {
     uint32_t struct_size;
@@ -1144,6 +1184,9 @@ typedef struct RinGLRinGpuOpsV1 {
     RinGLRinGpuSetRasterStateV2Fn set_raster_state_v2;
     /* Optional V9 tail: independently realized COLOR_ATTACHMENT0..3. */
     RinGLRinGpuBeginRenderPassMrtV1Fn begin_render_pass_mrt_v1;
+    /* Optional V10 tail: six-layer image storage for samplerCube. */
+    RinGLRinGpuCreateImageArrayV1Fn create_image_array_v1;
+    RinGLRinGpuUploadImageArrayV1Fn upload_image_array_v1;
 } RinGLRinGpuOpsV1;
 
 typedef struct RinGLRinGpuBindingV1 {

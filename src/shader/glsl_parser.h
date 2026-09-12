@@ -74,6 +74,7 @@ typedef struct RinGLGlslParseResult {
     char attribute_names[RINGL_GLSL_MAX_ATTRIBUTES][RINGL_GLSL_NAME_MAX];
     uint32_t attribute_widths[RINGL_GLSL_MAX_ATTRIBUTES];
     char sampler_uniform_names[RINGL_GLSL_MAX_SAMPLER_UNIFORMS][RINGL_GLSL_NAME_MAX];
+    uint32_t sampler_uniform_targets[RINGL_GLSL_MAX_SAMPLER_UNIFORMS];
     char float_uniform_names[RINGL_GLSL_MAX_FLOAT_UNIFORMS][RINGL_GLSL_NAME_MAX];
     char int_uniform_names[RINGL_GLSL_MAX_INT_UNIFORMS][RINGL_GLSL_NAME_MAX];
     char bool_uniform_names[RINGL_GLSL_MAX_BOOL_UNIFORMS][RINGL_GLSL_NAME_MAX];

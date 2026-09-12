@@ -114,7 +114,9 @@ static int ringl_program_sampler_interfaces_match(
                 return 0;
             }
             if (strcmp(vertex_base_name, fragment_base_name) == 0 &&
-                vertex_length != fragment_length) {
+                (vertex_length != fragment_length ||
+                 vertex->sampler_uniform_targets[vertex_sampler] !=
+                     fragment->sampler_uniform_targets[fragment_sampler])) {
                 return 0;
             }
             fragment_sampler = fragment_next_sampler;
@@ -207,12 +209,12 @@ static void ringl_program_discard_uniform_artifacts(
 }
 
 static int ringl_program_add_sampler_uniform(RinGLProgramObject* program,
-                                             const char* name)
+                                             const char* name, uint32_t target)
 {
     uint32_t i;
     for (i = 0u; i < program->sampler_uniform_count; ++i) {
         if (strcmp(program->sampler_uniforms[i].name, name) == 0)
-            return 1;
+            return program->sampler_uniforms[i].target == target;
     }
     if (program->sampler_uniform_count >= RINGL_MAX_SAMPLER_UNIFORMS)
         return 0;
@@ -220,6 +222,7 @@ static int ringl_program_add_sampler_uniform(RinGLProgramObject* program,
     ringl_copy_c_string(program->sampler_uniforms[i].name,
                         sizeof(program->sampler_uniforms[i].name), name);
     program->sampler_uniforms[i].texture_unit = 0;
+    program->sampler_uniforms[i].target = target;
     return 1;
 }
 
@@ -235,12 +238,14 @@ static int ringl_program_collect_sampler_uniforms(RinGLProgramObject* program,
     memset(program->sampler_uniforms, 0, sizeof(program->sampler_uniforms));
     for (i = 0u; i < vertex->sampler_uniform_count; ++i) {
         if (!ringl_program_add_sampler_uniform(program,
-                                               vertex->sampler_uniform_names[i]))
+                                               vertex->sampler_uniform_names[i],
+                                               vertex->sampler_uniform_targets[i]))
             return 0;
     }
     for (i = 0u; i < fragment->sampler_uniform_count; ++i) {
         if (!ringl_program_add_sampler_uniform(program,
-                                               fragment->sampler_uniform_names[i]))
+                                               fragment->sampler_uniform_names[i],
+                                               fragment->sampler_uniform_targets[i]))
             return 0;
     }
     return 1;
@@ -2204,7 +2209,26 @@ static int ringl_program_active_uniform_at(const RinGLProgramObject* object,
         } \
         active_index -= group_count; \
     } while (0)
-    RINGL_ACTIVE_UNIFORM_GROUP(RINGL_SAMPLER_2D, sampler_uniforms, sampler_uniform_count);
+    {
+        uint32_t group_count = ringl_active_uniform_group_count(
+            object->sampler_uniforms, sizeof(object->sampler_uniforms[0]),
+            object->sampler_uniform_count);
+        if (active_index < group_count) {
+            uint32_t entry;
+            if (ringl_active_uniform_group_at(
+                    object->sampler_uniforms,
+                    sizeof(object->sampler_uniforms[0]),
+                    object->sampler_uniform_count, active_index, &entry,
+                    array_length_out) != 0)
+                return -1;
+            *type_out = object->sampler_uniforms[entry].target;
+            *name_out = ringl_uniform_entry_name(
+                object->sampler_uniforms,
+                sizeof(object->sampler_uniforms[0]), entry);
+            return 0;
+        }
+        active_index -= group_count;
+    }
     RINGL_ACTIVE_UNIFORM_GROUP(RINGL_FLOAT, float_uniforms, float_uniform_count);
     RINGL_ACTIVE_UNIFORM_GROUP(RINGL_FLOAT_VEC2, vec2_uniforms, vec2_uniform_count);
     RINGL_ACTIVE_UNIFORM_GROUP(RINGL_FLOAT_VEC3, vec3_uniforms, vec3_uniform_count);
@@ -2564,7 +2588,8 @@ int ringl_get_active_uniform(uint32_t program, uint32_t index,
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return -1;
         }
-        ringl_active_info_set(&result, RINGL_SAMPLER_2D,
+        ringl_active_info_set(&result,
+                              object->sampler_uniforms[sampler_index].target,
                               object->sampler_uniforms[sampler_index].name);
         result.size = array_length;
         *info = result;

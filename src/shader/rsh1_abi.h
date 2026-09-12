@@ -28,6 +28,10 @@
     RINGL_RSH1_SAMPLE_2D_LOD_PACK_BINDINGS(image_binding, sampler_binding)
 #define RINGL_RSH1_SAMPLE_2D_GRAD_PACK_BINDINGS(image_binding, sampler_binding) \
     RINGL_RSH1_SAMPLE_2D_LOD_PACK_BINDINGS(image_binding, sampler_binding)
+#define RINGL_RSH1_SAMPLE_CUBE_BINDING_MASK \
+    RINGL_RSH1_SAMPLE_2D_LOD_BINDING_MASK
+#define RINGL_RSH1_SAMPLE_CUBE_PACK_BINDINGS(image_binding, sampler_binding) \
+    RINGL_RSH1_SAMPLE_2D_LOD_PACK_BINDINGS(image_binding, sampler_binding)
 
 enum RinGLRsh1Stage {
     RINGL_RSH1_STAGE_VERTEX = 1,
@@ -102,6 +106,7 @@ enum RinGLRsh1Opcode {
     /* Immediate names dU/dX followed by dU/dY, dV/dX, dV/dY in four
      * consecutive initialized Float32 registers. */
     RINGL_RSH1_OP_SAMPLE_IMAGE_2D_GRAD_F32 = 72,
+    RINGL_RSH1_OP_SAMPLE_IMAGE_CUBE_F32 = 73,
 };
 
 enum RinGLRsh1Builtin {

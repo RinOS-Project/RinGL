@@ -119,11 +119,13 @@ static int ringl_resolve_color_attachment_target(
     framebuffer = &context->framebuffers[index];
     if (framebuffer->color_attachment_kind[attachment_index] ==
         RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D) {
-        if (ringl_texture_realize_color_target(
+        target->array_layer = framebuffer->color_attachment_array_layer[
+            attachment_index];
+        if (ringl_texture_realize_color_target_layer(
                 context, framebuffer->color_attachment_object[attachment_index],
                 (uint32_t)framebuffer->color_attachment_level[attachment_index],
-                &target->image, &target->state, &target->width,
-                &target->height) != 0) {
+                target->array_layer, &target->image, &target->state,
+                &target->width, &target->height) != 0) {
             return -1;
         }
         target->mip_level =
@@ -535,7 +537,7 @@ static int draw_state_supported(const RinGLContext* context,
          context->ringpu_ops.create_graphics_pipeline_native == NULL))
         return 0;
     if ((depth_test_enabled != 0u || stencil_test_enabled != 0u) &&
-        (target->mip_level != 0u ||
+        (target->mip_level != 0u || target->array_layer != 0u ||
          (targets != NULL &&
           (targets->depth.mip_level != 0u ||
            targets->stencil.mip_level != 0u))) &&
@@ -629,7 +631,7 @@ static int transition_to_color_target(RinGLContext* context,
     if (*target->state == RINGL_RIN_GPU_IMAGE_UNDEFINED &&
         context->framebuffer_binding == 0u)
         return -1;
-    if (target->mip_level == 0u) {
+    if (target->mip_level == 0u && target->array_layer == 0u) {
         return ringl_backend_transition_image(
             context, command_list, target->image, *target->state,
             RINGL_RIN_GPU_IMAGE_COLOR_TARGET);
@@ -640,6 +642,7 @@ static int transition_to_color_target(RinGLContext* context,
         memset(&transition, 0, sizeof(transition));
         transition.image = target->image;
         transition.mip_level = target->mip_level;
+        transition.array_layer = target->array_layer;
         transition.old_state = *target->state;
         transition.new_state = RINGL_RIN_GPU_IMAGE_COLOR_TARGET;
         return ringl_backend_transition_image_2d_mip_v2(context, command_list,
@@ -801,13 +804,15 @@ static int begin_mrt_pass(RinGLContext* context, uint64_t command_list,
             (first != NULL && (target->width != first->width ||
                                target->height != first->height ||
                                target->format != first->format ||
-                               target->has_alpha != first->has_alpha))) {
+                               target->has_alpha != first->has_alpha ||
+                               target->array_layer != first->array_layer))) {
             return -1;
         }
         if (first == NULL)
             first = target;
         pass.color_targets[index] = target->image;
         pass.color_mip_levels[index] = target->mip_level;
+        pass.color_array_layers[index] = target->array_layer;
     }
     if (first == NULL)
         return -1;
@@ -870,7 +875,7 @@ static int begin_color_pass(RinGLContext* context,
         render_pass.color_write_mask = ringl_effective_color_write_mask(context);
         configure_clear_region(context, target, &render_pass.clear_region);
     }
-    if (target->mip_level == 0u)
+    if (target->mip_level == 0u && target->array_layer == 0u)
         return ringl_backend_begin_render_pass(context, command_list, &render_pass);
     {
         RinGLRinGpuRenderPassMipV2 mip_render_pass;
@@ -878,6 +883,7 @@ static int begin_color_pass(RinGLContext* context,
         memset(&mip_render_pass, 0, sizeof(mip_render_pass));
         mip_render_pass.base = render_pass;
         mip_render_pass.color_mip_level = target->mip_level;
+        mip_render_pass.color_array_layer = target->array_layer;
         return ringl_backend_begin_render_pass_mip_v2(context, command_list,
                                                        &mip_render_pass);
     }
@@ -938,7 +944,7 @@ static int begin_depth_pass(RinGLContext* context, uint64_t command_list,
             configure_clear_region(context, color_target,
                                    &separate_pass.clear_region);
         }
-        if (color_target->mip_level == 0u &&
+        if (color_target->mip_level == 0u && color_target->array_layer == 0u &&
             targets->depth.mip_level == 0u &&
             targets->stencil.mip_level == 0u) {
             return ringl_backend_begin_render_pass_depth_stencil(
@@ -950,6 +956,7 @@ static int begin_depth_pass(RinGLContext* context, uint64_t command_list,
             memset(&mip_pass, 0, sizeof(mip_pass));
             mip_pass.base = separate_pass;
             mip_pass.color_mip_level = color_target->mip_level;
+            mip_pass.color_array_layer = color_target->array_layer;
             mip_pass.depth_mip_level = targets->depth.mip_level;
             mip_pass.stencil_mip_level = targets->stencil.mip_level;
             return ringl_backend_begin_render_pass_depth_stencil_mip_v2(
@@ -995,7 +1002,8 @@ static int begin_depth_pass(RinGLContext* context, uint64_t command_list,
         stencil_load_op == RINGL_RIN_GPU_RENDER_CLEAR) {
         configure_clear_region(context, color_target, &render_pass.clear_region);
     }
-    if (color_target->mip_level == 0u && depth_target->mip_level == 0u)
+    if (color_target->mip_level == 0u && color_target->array_layer == 0u &&
+        depth_target->mip_level == 0u)
         return ringl_backend_begin_render_pass_depth(context, command_list,
                                                       &render_pass);
     {
@@ -1004,6 +1012,7 @@ static int begin_depth_pass(RinGLContext* context, uint64_t command_list,
         memset(&mip_pass, 0, sizeof(mip_pass));
         mip_pass.base = render_pass;
         mip_pass.color_mip_level = color_target->mip_level;
+        mip_pass.color_array_layer = color_target->array_layer;
         mip_pass.depth_mip_level = depth_target->mip_level;
         return ringl_backend_begin_render_pass_depth_mip_v2(
             context, command_list, &mip_pass);
@@ -1298,7 +1307,10 @@ static int prepare_graphics_resources(RinGLContext* context,
         unit = program->sampler_uniforms[program_sampler_index].texture_unit;
         if (unit < 0 || (uint32_t)unit >= RINGL_MAX_TEXTURE_UNITS)
             return -1;
-        texture_name = context->bound_texture_2d[(uint32_t)unit];
+        texture_name = program->sampler_uniforms[program_sampler_index].target ==
+                RINGL_SAMPLER_CUBE
+            ? context->bound_texture_cube[(uint32_t)unit]
+            : context->bound_texture_2d[(uint32_t)unit];
         if (texture_name == 0u ||
             ringl_object_lookup(context, texture_name,
                                 RINGL_OBJECT_TEXTURE) == NULL) {
@@ -1888,13 +1900,14 @@ static void ringl_draw_arrays_impl(uint32_t mode, int32_t first, int32_t count,
         memcpy(draw_v2.vertex_buffers, vertex_bindings,
                sizeof(RinGLRinGpuVertexBufferBindingV1) *
                    layout.binding_count);
-        if (target->mip_level == 0u) {
+        if (target->mip_level == 0u && target->array_layer == 0u) {
             draw_result = ringl_backend_draw_vertices_v2(context, command_list,
                                                          &draw_v2);
         } else {
             memset(&draw_bindings_mip, 0, sizeof(draw_bindings_mip));
             draw_bindings_mip.base = draw_v2;
             draw_bindings_mip.color_mip_level = target->mip_level;
+            draw_bindings_mip.color_array_layer = target->array_layer;
             draw_result = ringl_backend_draw_vertices_bindings_mip_v3(
                 context, command_list, &draw_bindings_mip);
         }
@@ -1907,13 +1920,14 @@ static void ringl_draw_arrays_impl(uint32_t mode, int32_t first, int32_t count,
         draw.vertex_count = (uint32_t)count;
         draw.first_vertex = (uint32_t)first;
         draw.instance_count = instance_count;
-        if (target->mip_level == 0u) {
+        if (target->mip_level == 0u && target->array_layer == 0u) {
             draw_result = ringl_backend_draw_vertices(context, command_list,
                                                       &draw);
         } else {
             memset(&draw_mip, 0, sizeof(draw_mip));
             draw_mip.base = draw;
             draw_mip.color_mip_level = target->mip_level;
+            draw_mip.color_array_layer = target->array_layer;
             draw_result = ringl_backend_draw_vertices_mip_v3(context,
                                                               command_list,
                                                               &draw_mip);
@@ -2167,13 +2181,14 @@ static void ringl_draw_elements_impl(uint32_t mode, int32_t count,
         memcpy(draw_v2.vertex_buffers, vertex_bindings,
                sizeof(RinGLRinGpuVertexBufferBindingV1) *
                    layout.binding_count);
-        if (target->mip_level == 0u) {
+        if (target->mip_level == 0u && target->array_layer == 0u) {
             draw_result = ringl_backend_draw_indexed_v2(context, command_list,
                                                         &draw_v2);
         } else {
             memset(&draw_bindings_mip, 0, sizeof(draw_bindings_mip));
             draw_bindings_mip.base = draw_v2;
             draw_bindings_mip.color_mip_level = target->mip_level;
+            draw_bindings_mip.color_array_layer = target->array_layer;
             draw_result = ringl_backend_draw_indexed_bindings_mip_v3(
                 context, command_list, &draw_bindings_mip);
         }
@@ -2194,13 +2209,14 @@ static void ringl_draw_elements_impl(uint32_t mode, int32_t count,
         draw.index_count = (uint32_t)count;
         draw.vertex_count = vertex_count;
         draw.instance_count = instance_count;
-        if (target->mip_level == 0u) {
+        if (target->mip_level == 0u && target->array_layer == 0u) {
             draw_result = ringl_backend_draw_indexed(context, command_list,
                                                      &draw);
         } else {
             memset(&draw_mip, 0, sizeof(draw_mip));
             draw_mip.base = draw;
             draw_mip.color_mip_level = target->mip_level;
+            draw_mip.color_array_layer = target->array_layer;
             draw_result = ringl_backend_draw_indexed_mip_v3(context,
                                                              command_list,
                                                              &draw_mip);

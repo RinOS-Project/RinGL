@@ -142,6 +142,14 @@ texture_ir_test = executable(
 
 test('texture-ir', texture_ir_test)
 
+cube_map_test = executable(
+  'ringl-cube-map-test',
+  'cube_map_test.c',
+  dependencies: ringl_dep,
+)
+
+test('cube-map', cube_map_test)
+
 program_gpu_test = executable(
   'ringl-program-gpu-test',
   'program_gpu_test.c',

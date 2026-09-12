@@ -33,6 +33,7 @@ typedef enum TokenKind {
     TOK_IVEC3,
     TOK_IVEC4,
     TOK_SAMPLER2D,
+    TOK_SAMPLERCUBE,
     TOK_ATTRIBUTE,
     TOK_UNIFORM,
     TOK_VARYING,
@@ -80,6 +81,7 @@ typedef enum SymbolKind {
     SYMBOL_VALUE = 0,
     SYMBOL_ATTRIBUTE = 1,
     SYMBOL_SAMPLER2D = 2,
+    SYMBOL_SAMPLERCUBE = 19,
     SYMBOL_VARYING = 3,
     SYMBOL_UNIFORM_VEC4 = 4,
     SYMBOL_UNIFORM_FLOAT = 5,
@@ -125,6 +127,8 @@ static RinGLGlslTypeV1 parser_symbol_type(uint32_t kind, uint32_t width)
     switch (kind) {
     case SYMBOL_SAMPLER2D:
         return ringl_glsl_sampler_type(RINGL_GLSL_SAMPLER_2D);
+    case SYMBOL_SAMPLERCUBE:
+        return ringl_glsl_sampler_type(RINGL_GLSL_SAMPLER_CUBE);
     case SYMBOL_UNIFORM_MAT2:
         return ringl_glsl_matrix_type(2u);
     case SYMBOL_UNIFORM_MAT3:
@@ -285,6 +289,8 @@ static TokenKind keyword_kind(const char* begin, size_t length)
         return TOK_IVEC4;
     if (length == 9u && memcmp(begin, "sampler2D", 9u) == 0)
         return TOK_SAMPLER2D;
+    if (length == 11u && memcmp(begin, "samplerCube", 11u) == 0)
+        return TOK_SAMPLERCUBE;
     if (length == 9u && memcmp(begin, "attribute", 9u) == 0)
         return TOK_ATTRIBUTE;
     if (length == 7u && memcmp(begin, "uniform", 7u) == 0)
@@ -749,6 +755,28 @@ static int uniform_array_declaration(Parser* parser, const Token* name,
     return 1;
 }
 
+static int sampler_uniform_declaration(Parser* parser, const Token* name,
+                                       SymbolKind kind, uint32_t target)
+{
+    uint32_t first;
+    uint32_t index;
+
+    if (parser == NULL || parser->result == NULL)
+        return 0;
+    first = parser->result->sampler_uniform_count;
+    if (!uniform_array_declaration(
+            parser, name, kind, 0u,
+            (char*)parser->result->sampler_uniform_names,
+            &parser->result->sampler_uniform_count,
+            RINGL_GLSL_MAX_SAMPLER_UNIFORMS,
+            target == RINGL_GLSL_SAMPLER_CUBE ? "samplerCube" : "sampler2D"))
+        return 0;
+    for (index = first; index < parser->result->sampler_uniform_count;
+         ++index)
+        parser->result->sampler_uniform_targets[index] = target;
+    return 1;
+}
+
 static int expression(Parser* parser);
 
 static int constructor(Parser* parser, TokenKind kind)
@@ -1106,6 +1134,47 @@ static int texture2d_call(Parser* parser, int explicit_lod, int projected,
                                : "expected ')' after texture2D arguments");
 }
 
+static int texture_cube_call(Parser* parser)
+{
+    Token sampler_name;
+    Symbol* sampler;
+    uint32_t sampler_index = 0u;
+
+    if (parser->shader_type != RINGL_FRAGMENT_SHADER) {
+        fail(parser, "textureCube is only supported in fragment shaders");
+        return 0;
+    }
+    next_token(parser);
+    if (!expect(parser, TOK_LPAREN, "expected '(' after textureCube"))
+        return 0;
+    if (parser->token.kind != TOK_IDENT) {
+        fail(parser, "textureCube requires a samplerCube uniform");
+        return 0;
+    }
+    sampler_name = parser->token;
+    sampler = find_symbol(parser, &sampler_name);
+    if (sampler == NULL || sampler->kind != SYMBOL_SAMPLERCUBE) {
+        fail(parser, "textureCube first argument must be samplerCube");
+        return 0;
+    }
+    next_token(parser);
+    if (sampler->sampler_array_length > 1u) {
+        if (!uniform_array_constant_index(parser,
+                                          sampler->sampler_array_length,
+                                          &sampler_index))
+            return 0;
+    } else if (parser->token.kind == TOK_LBRACKET) {
+        fail(parser, "textureCube scalar sampler cannot be indexed");
+        return 0;
+    }
+    if (!expect(parser, TOK_COMMA,
+                "expected ',' after textureCube sampler") ||
+        !expression(parser))
+        return 0;
+    return expect(parser, TOK_RPAREN,
+                  "expected ')' after textureCube arguments");
+}
+
 /* The lowering stage owns the exact scalar/vector type checks. Keep parser
  * admission in sync with its fixed builtin arity so malformed calls fail at
  * compile time rather than leaking into a later declaration or assignment. */
@@ -1178,6 +1247,8 @@ static int primary(Parser* parser)
         uint32_t value_width = symbol ? symbol->width : 0u;
         if (token_is_ident(&ident, "texture2D"))
             return texture2d_call(parser, 0, 0, 0);
+        if (token_is_ident(&ident, "textureCube"))
+            return texture_cube_call(parser);
         if (token_is_ident(&ident, "texture2DLodEXT"))
             return texture2d_call(parser, 1, 0, 0);
         if (token_is_ident(&ident, "texture2DProj"))
@@ -1475,7 +1546,8 @@ static int assignment(Parser* parser)
             fail(parser, "assignment to undeclared identifier");
             return 0;
         }
-        if (symbol->kind == SYMBOL_SAMPLER2D ||
+        if ((symbol->kind == SYMBOL_SAMPLER2D ||
+             symbol->kind == SYMBOL_SAMPLERCUBE) ||
             symbol->kind == SYMBOL_UNIFORM_FLOAT ||
             symbol->kind == SYMBOL_UNIFORM_INT ||
             symbol->kind == SYMBOL_UNIFORM_BOOL ||
@@ -2051,6 +2123,7 @@ static int uniform_declaration(Parser* parser)
 
     next_token(parser);
     if (parser->token.kind != TOK_SAMPLER2D &&
+        parser->token.kind != TOK_SAMPLERCUBE &&
         parser->token.kind != TOK_FLOAT && parser->token.kind != TOK_INT &&
         parser->token.kind != TOK_BOOL &&
         parser->token.kind != TOK_VEC2 && parser->token.kind != TOK_IVEC2 &&
@@ -2061,7 +2134,7 @@ static int uniform_declaration(Parser* parser)
         parser->token.kind != TOK_BVEC4 &&
         parser->token.kind != TOK_MAT2 && parser->token.kind != TOK_MAT3 &&
         parser->token.kind != TOK_MAT4) {
-        fail(parser, "only uniform sampler2D, float/int/bool, vec/ivec/bvec2-4, and mat2-4 are supported");
+        fail(parser, "only uniform sampler2D/samplerCube, float/int/bool, vec/ivec/bvec2-4, and mat2-4 are supported");
         return 0;
     }
     {
@@ -2073,11 +2146,12 @@ static int uniform_declaration(Parser* parser)
         return 0;
     }
     name = parser->token;
-    if (type == TOK_SAMPLER2D)
-        return uniform_array_declaration(parser, &name, SYMBOL_SAMPLER2D, 0u,
-                                         (char*)parser->result->sampler_uniform_names,
-                                         &parser->result->sampler_uniform_count,
-                                         RINGL_GLSL_MAX_SAMPLER_UNIFORMS, "sampler2D");
+    if (type == TOK_SAMPLER2D || type == TOK_SAMPLERCUBE)
+        return sampler_uniform_declaration(
+            parser, &name,
+            type == TOK_SAMPLERCUBE ? SYMBOL_SAMPLERCUBE : SYMBOL_SAMPLER2D,
+            type == TOK_SAMPLERCUBE ? RINGL_GLSL_SAMPLER_CUBE
+                                    : RINGL_GLSL_SAMPLER_2D);
     if (type == TOK_FLOAT)
         return uniform_array_declaration(parser, &name, SYMBOL_UNIFORM_FLOAT, 1u,
                                          (char*)parser->result->float_uniform_names,
@@ -2443,7 +2517,8 @@ static int precision_declaration(Parser* parser)
     }
     next_token(parser);
     if (parser->token.kind != TOK_FLOAT && parser->token.kind != TOK_INT &&
-        parser->token.kind != TOK_SAMPLER2D) {
+        parser->token.kind != TOK_SAMPLER2D &&
+        parser->token.kind != TOK_SAMPLERCUBE) {
         fail(parser, "precision declaration type is not supported");
         return 0;
     }

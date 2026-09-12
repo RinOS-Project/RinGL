@@ -37,6 +37,7 @@ typedef enum Tok {
     T_IVEC3,
     T_IVEC4,
     T_SAMPLER2D,
+    T_SAMPLERCUBE,
     T_ATTRIBUTE,
     T_UNIFORM,
     T_VARYING,
@@ -117,6 +118,7 @@ typedef struct Symbol {
     uint8_t is_i32;
     uint8_t is_bool;
     uint8_t sampler;
+    uint8_t sampler_target;
     RinGLGlslTypeV1 type;
     uint16_t sampler_index;
     /* Source declarations retain their aggregate length. Samplers and the
@@ -132,7 +134,9 @@ static void refresh_symbol_type(Symbol* symbol)
     if (symbol == NULL)
         return;
     if (symbol->sampler != 0u) {
-        symbol->type = ringl_glsl_sampler_type(RINGL_GLSL_SAMPLER_2D);
+        symbol->type = ringl_glsl_sampler_type(
+            symbol->sampler_target == RINGL_GLSL_SAMPLER_CUBE
+                ? RINGL_GLSL_SAMPLER_CUBE : RINGL_GLSL_SAMPLER_2D);
     } else if (symbol->matrix != 0u) {
         symbol->type = ringl_glsl_matrix_type(symbol->matrix);
     } else {
@@ -412,6 +416,8 @@ static Tok keyword(const char* begin, size_t length)
         return T_IVEC4;
     if (length == 9u && memcmp(begin, "sampler2D", 9u) == 0)
         return T_SAMPLER2D;
+    if (length == 11u && memcmp(begin, "samplerCube", 11u) == 0)
+        return T_SAMPLERCUBE;
     if (length == 9u && memcmp(begin, "attribute", 9u) == 0)
         return T_ATTRIBUTE;
     if (length == 7u && memcmp(begin, "uniform", 7u) == 0)
@@ -844,7 +850,7 @@ static int uniform_array_constant_index(Lower* lower, uint32_t array_length,
 }
 
 static Symbol* add_sampler_symbol(Lower* lower, const Token* token,
-                                  uint32_t array_length)
+                                  uint32_t array_length, uint32_t target)
 {
     Symbol* symbol;
 
@@ -860,6 +866,7 @@ static Symbol* add_sampler_symbol(Lower* lower, const Token* token,
         return NULL;
     symbol->uniform = 1u;
     symbol->sampler = 1u;
+    symbol->sampler_target = (uint8_t)target;
     refresh_symbol_type(symbol);
     symbol->sampler_index = (uint16_t)lower->sampler_declaration_count;
     symbol->sampler_array_length = (uint16_t)array_length;
@@ -3080,8 +3087,9 @@ static Value frag_coord_value(Lower* lower)
  * sampler. Deduplicate calls by source declaration, and publish the original
  * declaration index for the normal RinGL program binding path. An inactive
  * declared sampler consumes no GPU resource. */
-static uint16_t active_sampler_resource(Lower* lower, Symbol* sampler,
-                                        uint32_t sampler_array_index)
+static uint16_t active_sampler_resource_for_target(
+    Lower* lower, Symbol* sampler, uint32_t sampler_array_index,
+    uint32_t target)
 {
     uint32_t index;
     uint32_t sampler_index;
@@ -3090,10 +3098,12 @@ static uint16_t active_sampler_resource(Lower* lower, Symbol* sampler,
     sampler_type = lower_symbol_type(sampler);
     if (lower == NULL || sampler == NULL ||
         sampler_type.kind != RINGL_GLSL_TYPE_SAMPLER ||
-        sampler_type.sampler_target != RINGL_GLSL_SAMPLER_2D ||
+        sampler_type.sampler_target != target ||
         sampler_array_index >= sampler->sampler_array_length) {
         if (lower != NULL)
-            fail(lower, "texture2D requires a sampler2D uniform");
+            fail(lower, target == RINGL_GLSL_SAMPLER_CUBE
+                          ? "textureCube requires a samplerCube uniform"
+                          : "texture2D requires a sampler2D uniform");
         return RINGL_RSH1_UNUSED;
     }
     sampler_index = sampler->sampler_index + sampler_array_index;
@@ -3108,6 +3118,34 @@ static uint16_t active_sampler_resource(Lower* lower, Symbol* sampler,
     index = lower->sampler_binding_count++;
     lower->sampler_binding_indices[index] = sampler_index;
     return (uint16_t)(index * 2u);
+}
+
+static uint16_t active_sampler_resource(Lower* lower, Symbol* sampler,
+                                        uint32_t sampler_array_index)
+{
+    return active_sampler_resource_for_target(
+        lower, sampler, sampler_array_index, RINGL_GLSL_SAMPLER_2D);
+}
+
+static int emit_texture_cube_sample(Lower* lower, uint16_t destination,
+                                    uint16_t coordinate_x,
+                                    uint16_t coordinate_y,
+                                    uint16_t coordinate_z,
+                                    uint16_t component, uint16_t resource)
+{
+    RinGLRsh1InstructionV1* instruction;
+
+    if (lower == NULL || component >= 4u ||
+        resource >= RINGL_RSH1_SAMPLE_CUBE_BINDING_MASK ||
+        resource + 1u > RINGL_RSH1_SAMPLE_CUBE_BINDING_MASK ||
+        !emit(lower, RINGL_RSH1_OP_SAMPLE_IMAGE_CUBE_F32, destination,
+              coordinate_x, coordinate_y, coordinate_z))
+        return 0;
+    instruction = &lower->ins[lower->ins_count - 1u];
+    instruction->flags = component;
+    instruction->resource = RINGL_RSH1_SAMPLE_CUBE_PACK_BINDINGS(
+        resource, (uint16_t)(resource + 1u));
+    return 1;
 }
 
 /* Lower a GLSL ES texture lookup to four scalar RinGPU samples. Coordinates
@@ -3310,6 +3348,79 @@ static Value texture2d_value(Lower* lower, int explicit_lod, int projected,
     return apply_swizzle(lower, result);
 }
 
+/* Cube lookups use a three-component direction. The RSH1 opcode keeps the
+ * image/sampler pair in the same packed resource ABI as 2D sampling and names
+ * the Z direction in immediate, leaving source0/source1 as X/Y. */
+static Value texture_cube_value(Lower* lower)
+{
+    Value result = invalid_value();
+    Value coordinates;
+    Token name;
+    Symbol* sampler;
+    RinGLGlslTypeV1 sampler_type;
+    uint16_t resource;
+    uint32_t component;
+    uint32_t sampler_array_index = 0u;
+
+    if (lower->shader_type != RINGL_FRAGMENT_SHADER) {
+        fail(lower, "textureCube is only supported in fragment shaders");
+        return result;
+    }
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after textureCube") ||
+        lower->token.kind != T_IDENT) {
+        if (lower->result->diagnostic[0] == '\0')
+            fail(lower, "textureCube requires a samplerCube uniform");
+        return result;
+    }
+    name = lower->token;
+    sampler = find_symbol(lower, &name);
+    sampler_type = lower_symbol_type(sampler);
+    if (sampler == NULL || sampler_type.kind != RINGL_GLSL_TYPE_SAMPLER ||
+        sampler_type.sampler_target != RINGL_GLSL_SAMPLER_CUBE) {
+        fail(lower, "textureCube first argument must be samplerCube");
+        return result;
+    }
+    next(lower);
+    if (sampler->sampler_array_length > 1u) {
+        if (!uniform_array_constant_index(lower,
+                                          sampler->sampler_array_length,
+                                          &sampler_array_index))
+            return result;
+    } else if (lower->token.kind == T_LBRACKET) {
+        fail(lower, "textureCube scalar sampler cannot be indexed");
+        return result;
+    }
+    if (!need(lower, T_COMMA, "expected ',' after textureCube sampler"))
+        return result;
+    coordinates = expression(lower);
+    if (coordinates.matrix || coordinates.is_i32 || coordinates.is_bool ||
+        coordinates.width != 3u) {
+        if (lower->result->diagnostic[0] == '\0')
+            fail(lower, "textureCube coordinates must be floating-point vec3");
+        return result;
+    }
+    if (!need(lower, T_RPAREN, "expected ')' after textureCube coordinates"))
+        return result;
+    resource = active_sampler_resource_for_target(
+        lower, sampler, sampler_array_index, RINGL_GLSL_SAMPLER_CUBE);
+    if (resource == RINGL_RSH1_UNUSED)
+        return result;
+    for (component = 0u; component < 4u; ++component) {
+        uint16_t register_index = new_reg(lower);
+
+        if (register_index == RINGL_RSH1_UNUSED ||
+            !emit_texture_cube_sample(
+                lower, register_index, coordinates.regs[0],
+                coordinates.regs[1], coordinates.regs[2],
+                (uint16_t)component, resource))
+            return invalid_value();
+        result.regs[component] = register_index;
+    }
+    result.width = 4u;
+    return apply_swizzle(lower, result);
+}
+
 static Value primary(Lower* lower)
 {
     Value value;
@@ -3447,6 +3558,9 @@ static Value primary(Lower* lower)
         return smoothstep_value(lower);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "texture2D"))
         return texture2d_value(lower, 0, 0, 0);
+    if (lower->token.kind == T_IDENT &&
+        text_is(&lower->token, "textureCube"))
+        return texture_cube_value(lower);
     if (lower->token.kind == T_IDENT &&
         text_is(&lower->token, "texture2DLodEXT"))
         return texture2d_value(lower, 1, 0, 0);
@@ -4995,8 +5109,11 @@ static int parse_all(Lower* lower)
             Symbol* symbol;
 
             next(lower);
-            if (lower->token.kind == T_SAMPLER2D) {
+            if (lower->token.kind == T_SAMPLER2D ||
+                lower->token.kind == T_SAMPLERCUBE) {
                 uint32_t sampler_array_length = 1u;
+                uint32_t sampler_target = lower->token.kind == T_SAMPLERCUBE
+                    ? RINGL_GLSL_SAMPLER_CUBE : RINGL_GLSL_SAMPLER_2D;
 
                 next(lower);
                 if (lower->token.kind != T_IDENT) {
@@ -5018,7 +5135,8 @@ static int parse_all(Lower* lower)
                     }
                 }
                 if (find_symbol(lower, &name) != NULL ||
-                    add_sampler_symbol(lower, &name, sampler_array_length) == NULL) {
+                    add_sampler_symbol(lower, &name, sampler_array_length,
+                                       sampler_target) == NULL) {
                     return 0;
                 }
                 if (!need(lower, T_SEMI, "expected ';' after sampler uniform"))
@@ -5466,6 +5584,7 @@ static int cfg_known_opcode(uint16_t opcode)
     case RINGL_RSH1_OP_SAMPLE_IMAGE_2D_LOD_F32:
     case RINGL_RSH1_OP_SAMPLE_IMAGE_2D_BIAS_F32:
     case RINGL_RSH1_OP_SAMPLE_IMAGE_2D_GRAD_F32:
+    case RINGL_RSH1_OP_SAMPLE_IMAGE_CUBE_F32:
         return 1;
     default:
         return 0;

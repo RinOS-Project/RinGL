@@ -127,6 +127,41 @@ int ringl_backend_upload_image_2d_mip_v2(
                      context->ringpu.session, image, upload, data, size_bytes));
 }
 
+int ringl_backend_create_image_array_v1(
+    RinGLContext* context, const RinGLRinGpuImageArrayV1* desc,
+    uint64_t* image_out)
+{
+    if (context == NULL || desc == NULL || image_out == NULL ||
+        desc->width == 0u || desc->height == 0u ||
+        desc->array_layers == 0u || desc->mip_levels == 0u ||
+        desc->format == 0u || desc->usage == 0u || desc->reserved0 != 0u ||
+        desc->reserved1 != 0u || !context->has_ringpu_ops ||
+        context->ringpu_ops.create_image_array_v1 == NULL) {
+        return -1;
+    }
+    *image_out = 0u;
+    return ringl_backend_result(
+        context, context->ringpu_ops.create_image_array_v1(
+                     context->ringpu.session, desc, image_out));
+}
+
+int ringl_backend_upload_image_array_v1(
+    RinGLContext* context, uint64_t image,
+    const RinGLRinGpuImageUploadArrayV1* upload,
+    const void* data, uint64_t size_bytes)
+{
+    if (context == NULL || image == 0u || upload == NULL || data == NULL ||
+        upload->width == 0u || upload->height == 0u ||
+        upload->reserved0 != 0u || upload->reserved1 != 0u ||
+        size_bytes == 0u || !context->has_ringpu_ops ||
+        context->ringpu_ops.upload_image_array_v1 == NULL) {
+        return -1;
+    }
+    return ringl_backend_result(
+        context, context->ringpu_ops.upload_image_array_v1(
+                     context->ringpu.session, image, upload, data, size_bytes));
+}
+
 int ringl_backend_create_sampler(RinGLContext* context,
                                  const RinGLRinGpuSamplerV1* desc,
                                  uint64_t* sampler_out)

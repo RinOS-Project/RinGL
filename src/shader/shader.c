@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #include "ringl_internal.h"
 #include "glsl_parser.h"
+#include "glsl_type.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -136,6 +137,8 @@ static void ringl_shader_reset_compile_state(RinGLContext* context,
     object->uses_webgl_draw_buffers = 0u;
     memset(object->sampler_uniform_names, 0,
            sizeof(object->sampler_uniform_names));
+    memset(object->sampler_uniform_targets, 0,
+           sizeof(object->sampler_uniform_targets));
     memset(object->float_uniform_names, 0,
            sizeof(object->float_uniform_names));
     memset(object->int_uniform_names, 0, sizeof(object->int_uniform_names));
@@ -385,6 +388,12 @@ void ringl_compile_shader(uint32_t shader)
     object->sampler_uniform_count = result->sampler_uniform_count;
     memcpy(object->sampler_uniform_names, result->sampler_uniform_names,
            sizeof(object->sampler_uniform_names));
+    memcpy(object->sampler_uniform_targets, result->sampler_uniform_targets,
+           sizeof(object->sampler_uniform_targets));
+    for (uint32_t index = 0u; index < object->sampler_uniform_count; ++index)
+        object->sampler_uniform_targets[index] =
+            object->sampler_uniform_targets[index] == RINGL_GLSL_SAMPLER_CUBE
+                ? RINGL_SAMPLER_CUBE : RINGL_SAMPLER_2D;
     object->float_uniform_count = result->float_uniform_count;
     memcpy(object->float_uniform_names, result->float_uniform_names,
            sizeof(object->float_uniform_names));

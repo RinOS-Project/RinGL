@@ -174,6 +174,7 @@ static void reset_color_attachment(RinGLFramebufferObject* framebuffer,
         RINGL_FRAMEBUFFER_ATTACHMENT_NONE;
     framebuffer->color_attachment_object[attachment_index] = 0u;
     framebuffer->color_attachment_level[attachment_index] = 0;
+    framebuffer->color_attachment_array_layer[attachment_index] = 0u;
 }
 
 static void reset_depth_attachment(RinGLFramebufferObject* framebuffer)
@@ -196,14 +197,39 @@ static void reset_stencil_attachment(RinGLFramebufferObject* framebuffer)
     framebuffer->stencil_attachment_level = 0;
 }
 
-static int texture_attachment_dimensions(const RinGLTextureObject* texture,
-                                         int32_t level, uint32_t* width_out,
-                                         uint32_t* height_out)
+static int texture_attachment_dimensions_layer(
+    const RinGLTextureObject* texture, int32_t level, uint32_t array_layer,
+    uint32_t* width_out, uint32_t* height_out)
 {
     const RinGLTextureMipStorage* storage;
 
     if (texture == NULL || width_out == NULL || height_out == NULL ||
         level < 0 || (uint32_t)level >= RINGL_MAX_TEXTURE_MIP_LEVELS)
+        return -1;
+    if (texture->target == RINGL_TEXTURE_CUBE_MAP) {
+        const RinGLTextureCubeFaceStorage* face;
+
+        if (array_layer >= RINGL_CUBE_FACE_COUNT)
+            return -1;
+        face = &texture->cube_faces[array_layer];
+        if (level == 0) {
+            if (!face->defined || face->width == 0u || face->height == 0u ||
+                face->shadow_bytes == NULL || face->shadow_size == 0u)
+                return -1;
+            *width_out = face->width;
+            *height_out = face->height;
+            return 0;
+        }
+        storage = &face->mip_storage[(uint32_t)level - 1u];
+        if (!storage->defined || storage->width == 0u ||
+            storage->height == 0u || storage->shadow_bytes == NULL ||
+            storage->shadow_size == 0u)
+            return -1;
+        *width_out = storage->width;
+        *height_out = storage->height;
+        return 0;
+    }
+    if (array_layer != 0u)
         return -1;
     if (level == 0) {
         if (!texture->defined || texture->width == 0u || texture->height == 0u ||
@@ -220,6 +246,14 @@ static int texture_attachment_dimensions(const RinGLTextureObject* texture,
     *width_out = storage->width;
     *height_out = storage->height;
     return 0;
+}
+
+static int texture_attachment_dimensions(const RinGLTextureObject* texture,
+                                         int32_t level, uint32_t* width_out,
+                                         uint32_t* height_out)
+{
+    return texture_attachment_dimensions_layer(texture, level, 0u, width_out,
+                                               height_out);
 }
 
 static int nonzero_color_mip_backend_supported(const RinGLContext* context)
@@ -293,10 +327,10 @@ static int color_attachment_dimensions(RinGLContext* context,
              texture->color_component_type != RINGL_HALF_FLOAT_OES &&
              texture->srgb_encoding == 0u &&
              !color_attachment_format_valid(texture->format)) ||
-            texture_attachment_dimensions(texture,
-                                          framebuffer->color_attachment_level[
-                                              attachment_index],
-                                          width_out, height_out) != 0)
+            texture_attachment_dimensions_layer(
+                texture, framebuffer->color_attachment_level[attachment_index],
+                framebuffer->color_attachment_array_layer[attachment_index],
+                width_out, height_out) != 0)
             return -1;
         return 0;
     }
@@ -735,7 +769,11 @@ void ringl_framebuffer_texture_2d(uint32_t target, uint32_t attachment,
                         0);
     if (!framebuffer_target_valid(target) ||
         (!color_attachment_valid(attachment) && !depth_attachment_valid(attachment)) ||
-        textarget != RINGL_TEXTURE_2D) {
+        (color_attachment_valid(attachment)
+             ? (textarget != RINGL_TEXTURE_2D &&
+                (textarget < RINGL_TEXTURE_CUBE_MAP_POSITIVE_X ||
+                 textarget > RINGL_TEXTURE_CUBE_MAP_NEGATIVE_Z))
+             : textarget != RINGL_TEXTURE_2D)) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
     }
@@ -770,14 +808,31 @@ void ringl_framebuffer_texture_2d(uint32_t target, uint32_t attachment,
         reset_depth_attachment(framebuffer);
         reset_stencil_attachment(framebuffer);
     } else if (color_attachment_valid(attachment)) {
+        uint32_t texture_index = ringl_object_slot_index(texture);
+        uint32_t face_index = 0u;
+
         if (ringl_texture_require_color_target(context, texture) != 0) {
             ringl_context_record_error(context, RINGL_INVALID_OPERATION);
             return;
         }
+        if (texture_index >= RINGL_OBJECT_SLOT_COUNT ||
+            ((textarget == RINGL_TEXTURE_2D &&
+              context->textures[texture_index].target != RINGL_TEXTURE_2D) ||
+             (textarget != RINGL_TEXTURE_2D &&
+              (context->textures[texture_index].target !=
+                   RINGL_TEXTURE_CUBE_MAP ||
+               textarget < RINGL_TEXTURE_CUBE_MAP_POSITIVE_X ||
+               textarget > RINGL_TEXTURE_CUBE_MAP_NEGATIVE_Z)))) {
+            ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+            return;
+        }
+        if (textarget != RINGL_TEXTURE_2D)
+            face_index = textarget - RINGL_TEXTURE_CUBE_MAP_POSITIVE_X;
         framebuffer->color_attachment_kind[attachment_index] =
             RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D;
         framebuffer->color_attachment_object[attachment_index] = texture;
         framebuffer->color_attachment_level[attachment_index] = level;
+        framebuffer->color_attachment_array_layer[attachment_index] = face_index;
     } else {
         uint32_t texture_index = ringl_object_slot_index(texture);
         uint32_t has_depth = attachment != RINGL_STENCIL_ATTACHMENT;
@@ -1121,10 +1176,23 @@ int ringl_get_framebuffer_attachment_parameteriv_bounded(
     } else if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL) {
         result = info.level;
     } else if (pname == RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE) {
-        /* RinGL's framebuffer attachments are always TEXTURE_2D or
-         * renderbuffers; the cube-map-face query therefore has the GLES
-         * non-cube sentinel value. */
-        result = 0;
+        if (!color_attachment_valid(attachment) ||
+            info.kind != RINGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_2D) {
+            result = 0;
+        } else {
+            RinGLFramebufferObject* framebuffer = bound_framebuffer(context);
+            uint32_t attachment_index = color_attachment_index(attachment);
+            uint32_t texture_index = ringl_object_slot_index(info.object);
+
+            if (framebuffer == NULL || texture_index >= RINGL_OBJECT_SLOT_COUNT ||
+                context->textures[texture_index].target !=
+                    RINGL_TEXTURE_CUBE_MAP) {
+                result = 0;
+            } else {
+                result = (int32_t)(RINGL_TEXTURE_CUBE_MAP_POSITIVE_X +
+                    framebuffer->color_attachment_array_layer[attachment_index]);
+            }
+        }
     } else {
         if (info.kind == RINGL_FRAMEBUFFER_ATTACHMENT_NONE) {
             /* An unattached slot has no component type or storage width. Keep
@@ -1650,7 +1718,9 @@ uint32_t ringl_check_framebuffer_status(uint32_t target)
                 framebuffer->color_attachment_object[previous] ==
                     framebuffer->color_attachment_object[attachment] &&
                 framebuffer->color_attachment_level[previous] ==
-                    framebuffer->color_attachment_level[attachment]) {
+                    framebuffer->color_attachment_level[attachment] &&
+                framebuffer->color_attachment_array_layer[previous] ==
+                    framebuffer->color_attachment_array_layer[attachment]) {
                 return RINGL_FRAMEBUFFER_UNSUPPORTED;
             }
         }

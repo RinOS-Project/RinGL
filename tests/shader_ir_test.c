@@ -804,6 +804,14 @@ int main(void)
     assert(ringl_lower_shader_rsh1(vertex) != 0);
     assert(ringl_get_shader_rsh1_size(vertex) == 0u);
 
+    /* GLES/WebGL does not permit recursive user functions. The bounded
+     * profile has no user-function call frame, so it rejects the function
+     * declaration before any recursive call can reach RSH1. */
+    expect_shader_rejected(
+        vertex,
+        "void recurse() { recurse(); } void main() { "
+        "gl_Position = vec4(0.0, 0.0, 0.0, 1.0); }");
+
     header = lower_and_read_header(vertex, exponential_builtin_source,
                                    blob, sizeof(blob));
     assert(header.stage == 1u);

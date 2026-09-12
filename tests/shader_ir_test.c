@@ -44,6 +44,10 @@ typedef struct __attribute__((packed)) Instruction {
 #define RSH1_OP_SUB_F32 UINT16_C(21)
 #define RSH1_OP_MUL_F32 UINT16_C(22)
 #define RSH1_OP_DIV_F32 UINT16_C(23)
+#define RSH1_OP_ADD_I32 UINT16_C(3)
+#define RSH1_OP_SUB_I32 UINT16_C(17)
+#define RSH1_OP_MUL_I32 UINT16_C(4)
+#define RSH1_OP_DIV_I32 UINT16_C(18)
 #define RSH1_OP_MIN_F32 UINT16_C(24)
 #define RSH1_OP_MAX_F32 UINT16_C(25)
 #define RSH1_OP_JUMP UINT16_C(11)
@@ -379,6 +383,11 @@ int main(void)
         "  ivec4 integer_packed = ivec4(1.0, position.x, 2, 3);\n"
         "  gl_Position = vec4(float(integer_packed.x), packed.y, "
         "packed.z, packed.w);\n"
+        "}\n";
+    const char* constant_fold_source =
+        "void main() {\n"
+        "  gl_Position = vec4(1.0 + 2.0 * 4.0, 3.0 - 1.0, "
+        "float(9 - 4), 2.0 / 2.0);\n"
         "}\n";
     const char* conditional_vertex_source =
         "attribute vec2 position;\n"
@@ -882,6 +891,20 @@ int main(void)
     assert(header.output_count == 9u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_I32_TO_F32));
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_F32_TO_I32));
+
+    /* Literal arithmetic is folded to typed constants; the module still
+     * contains no host-side evaluation or arithmetic side channel. */
+    header = lower_and_read_header(vertex, constant_fold_source, blob,
+                                   sizeof(blob));
+    assert(header.stage == 1u);
+    assert(!rsh1_has_opcode(blob, &header, RSH1_OP_ADD_F32));
+    assert(!rsh1_has_opcode(blob, &header, RSH1_OP_SUB_F32));
+    assert(!rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
+    assert(!rsh1_has_opcode(blob, &header, RSH1_OP_DIV_F32));
+    assert(!rsh1_has_opcode(blob, &header, RSH1_OP_ADD_I32));
+    assert(!rsh1_has_opcode(blob, &header, RSH1_OP_SUB_I32));
+    assert(!rsh1_has_opcode(blob, &header, RSH1_OP_MUL_I32));
+    assert(!rsh1_has_opcode(blob, &header, RSH1_OP_DIV_I32));
 
     /* Bounded scalar if/else emits a true scalar comparison, a zero test,
      * and forward branch instructions. This must remain native RSH1 control

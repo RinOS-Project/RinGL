@@ -58,6 +58,8 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     destruction.
 - [x] Implement a bounded GLSL ES lexer/parser with initial semantic validation.
 - [x] Lower the current scalar GLSL ES subset directly to RinShader RSH1.
+- [x] Fold finite literal Float/i32 arithmetic into typed RSH1 constants while
+  preserving dynamic arithmetic and rejecting invalid constant division.
 - [x] Lower bounded GLSL numeric `vec2`/`vec3`/`vec4` and
   `ivec2`/`ivec3`/`ivec4` constructors as RSH1 register operations. A single
   Float or i32 source register initializes every target component; mixed

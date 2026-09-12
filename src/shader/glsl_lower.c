@@ -6,6 +6,7 @@
 
 #include <ctype.h>
 #include <limits.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -87,6 +88,8 @@ typedef struct Token {
 typedef struct Value {
     uint16_t regs[16];
     uint16_t known_zero_components;
+    uint16_t constant_components;
+    uint32_t constant_bits[16];
     uint8_t width;
     uint8_t matrix;
     uint8_t is_i32;
@@ -179,6 +182,90 @@ static int finite_f32(float number)
 
     memcpy(&bits, &number, sizeof(bits));
     return (bits & UINT32_C(0x7f800000)) != UINT32_C(0x7f800000);
+}
+
+static int convert_numeric_constant(uint32_t source_bits, int source_is_i32,
+                                    int target_is_i32,
+                                    uint32_t* target_bits_out)
+{
+    if (!target_bits_out) return 0;
+    if (source_is_i32 == target_is_i32) {
+        *target_bits_out = source_bits;
+        return 1;
+    }
+    if (source_is_i32) {
+        int32_t integer;
+        float number;
+        memcpy(&integer, &source_bits, sizeof(integer));
+        number = (float)integer;
+        if (!finite_f32(number)) return 0;
+        memcpy(target_bits_out, &number, sizeof(number));
+        return 1;
+    }
+    {
+        float number;
+        int32_t integer;
+        memcpy(&number, &source_bits, sizeof(number));
+        if (!finite_f32(number) || number < -2147483648.0f ||
+            number >= 2147483648.0f)
+            return 0;
+        integer = (int32_t)number;
+        memcpy(target_bits_out, &integer, sizeof(integer));
+    }
+    return 1;
+}
+
+static int fold_binary_constant(uint16_t opcode, uint32_t left_bits,
+                                uint32_t right_bits, uint32_t* result_bits)
+{
+    if (!result_bits) return 0;
+    if (opcode == RINGL_RSH1_OP_ADD_I32 ||
+        opcode == RINGL_RSH1_OP_SUB_I32 ||
+        opcode == RINGL_RSH1_OP_MUL_I32) {
+        uint32_t result;
+        if (opcode == RINGL_RSH1_OP_ADD_I32)
+            result = left_bits + right_bits;
+        else if (opcode == RINGL_RSH1_OP_SUB_I32)
+            result = left_bits - right_bits;
+        else
+            result = left_bits * right_bits;
+        *result_bits = result;
+        return 1;
+    }
+    if (opcode == RINGL_RSH1_OP_DIV_I32) {
+        int32_t left;
+        int32_t right;
+        int32_t result;
+        memcpy(&left, &left_bits, sizeof(left));
+        memcpy(&right, &right_bits, sizeof(right));
+        if (right == 0 || (left == INT32_MIN && right == -1)) return 0;
+        result = left / right;
+        memcpy(result_bits, &result, sizeof(result));
+        return 1;
+    }
+    if (opcode == RINGL_RSH1_OP_ADD_F32 ||
+        opcode == RINGL_RSH1_OP_SUB_F32 ||
+        opcode == RINGL_RSH1_OP_MUL_F32 ||
+        opcode == RINGL_RSH1_OP_DIV_F32) {
+        float left;
+        float right;
+        float result;
+        memcpy(&left, &left_bits, sizeof(left));
+        memcpy(&right, &right_bits, sizeof(right));
+        if (opcode == RINGL_RSH1_OP_DIV_F32 && right == 0.0f) return 0;
+        if (opcode == RINGL_RSH1_OP_ADD_F32)
+            result = left + right;
+        else if (opcode == RINGL_RSH1_OP_SUB_F32)
+            result = left - right;
+        else if (opcode == RINGL_RSH1_OP_MUL_F32)
+            result = left * right;
+        else
+            result = left / right;
+        if (!finite_f32(result)) return 0;
+        memcpy(result_bits, &result, sizeof(result));
+        return 1;
+    }
+    return 0;
 }
 
 static void fail(Lower* lower, const char* message)
@@ -1055,6 +1142,8 @@ static Value number_value(Lower* lower)
     value.regs[0] = reg;
     value.width = 1u;
     value.is_i32 = (uint8_t)integer;
+    value.constant_components = 1u;
+    value.constant_bits[0] = bits;
     if (bits == 0u)
         value.known_zero_components = 1u;
     return value;
@@ -1075,6 +1164,8 @@ static Value bool_constant_value(Lower* lower, int boolean)
     value.width = 1u;
     value.is_i32 = 1u;
     value.is_bool = 1u;
+    value.constant_components = 1u;
+    value.constant_bits[0] = boolean ? 1u : 0u;
     return value;
 }
 
@@ -1084,6 +1175,8 @@ static Value apply_swizzle(Lower* lower, Value value)
         Token swizzle = lower->token;
         uint16_t selected[4];
         uint16_t selected_zero_components = 0u;
+        uint16_t selected_constant_components = 0u;
+        uint32_t selected_constant_bits[4] = { 0u, 0u, 0u, 0u };
         uint8_t family = 0u;
         uint32_t index;
 
@@ -1131,10 +1224,20 @@ static Value apply_swizzle(Lower* lower, Value value)
                  (UINT32_C(1) << component_index)) != 0u) {
                 selected_zero_components |= (uint16_t)(UINT32_C(1) << index);
             }
+            if ((value.constant_components &
+                 (UINT32_C(1) << component_index)) != 0u) {
+                selected_constant_components |=
+                    (uint16_t)(UINT32_C(1) << index);
+                selected_constant_bits[index] =
+                    value.constant_bits[component_index];
+            }
         }
         for (index = 0u; index < swizzle.length; ++index)
             value.regs[index] = selected[index];
         value.known_zero_components = selected_zero_components;
+        value.constant_components = selected_constant_components;
+        memcpy(value.constant_bits, selected_constant_bits,
+               sizeof(selected_constant_bits));
         value.width = (uint8_t)swizzle.length;
         next(lower);
     }
@@ -1213,6 +1316,17 @@ static int constructor_convert_numeric(Lower* lower, Value* value,
             return 0;
         }
         value->regs[index] = converted;
+        if ((value->constant_components & (UINT32_C(1) << index)) != 0u) {
+            uint32_t converted_bits;
+            if (convert_numeric_constant(
+                    value->constant_bits[index], value->is_i32,
+                    target_is_i32, &converted_bits)) {
+                value->constant_bits[index] = converted_bits;
+            } else {
+                value->constant_components &=
+                    (uint16_t)~(UINT32_C(1) << index);
+            }
+        }
     }
     value->is_i32 = (uint8_t)target_is_i32;
     return 1;
@@ -1250,6 +1364,12 @@ static Value constructor_value(Lower* lower, uint8_t target_width,
         }
         for (index = 0u; index < argument.width; ++index) {
             result.regs[width] = argument.regs[index];
+            if ((argument.constant_components &
+                 (UINT32_C(1) << index)) != 0u) {
+                result.constant_components |=
+                    (uint16_t)(UINT32_C(1) << width);
+                result.constant_bits[width] = argument.constant_bits[index];
+            }
             if ((argument.known_zero_components & (UINT32_C(1) << index)) != 0u)
                 result.known_zero_components |= (uint16_t)(UINT32_C(1) << width);
             ++width;
@@ -1260,7 +1380,7 @@ static Value constructor_value(Lower* lower, uint8_t target_width,
     }
     if (!need(lower, T_RPAREN, "expected ')' after vector constructor"))
         return invalid_value();
-    /* GLSL permits one same-basic-type scalar to initialize every vector
+    /* GLSL permits one scalar to initialize every vector
      * component. Keep it as a register alias: the scalar RSH1 ABI has no
      * vector instruction, and no browser/Aquamarine-side broadcast is needed.
      * Multiple arguments still require the exact component count below. */
@@ -1269,6 +1389,12 @@ static Value constructor_value(Lower* lower, uint8_t target_width,
 
         for (index = 1u; index < target_width; ++index)
             result.regs[index] = result.regs[0];
+        if ((result.constant_components & 1u) != 0u) {
+            result.constant_components =
+                (uint16_t)((UINT32_C(1) << target_width) - UINT32_C(1));
+            for (index = 1u; index < target_width; ++index)
+                result.constant_bits[index] = result.constant_bits[0];
+        }
         if (result.known_zero_components != 0u) {
             result.known_zero_components =
                 (uint16_t)((UINT32_C(1) << target_width) - UINT32_C(1));
@@ -1646,6 +1772,8 @@ static Value float_constant_value(Lower* lower, float number)
     }
     value.regs[0] = reg;
     value.width = 1u;
+    value.constant_components = 1u;
+    value.constant_bits[0] = bits;
     if (bits == 0u)
         value.known_zero_components = 1u;
     return value;
@@ -3419,16 +3547,40 @@ static Value componentwise_binary(Lower* lower, const Value* left,
                             (UINT32_C(1) << left_component)) != 0u;
         int right_is_zero = (right->known_zero_components &
                              (UINT32_C(1) << right_component)) != 0u;
+        int left_is_constant =
+            (left->constant_components & (UINT32_C(1) << left_component)) != 0u;
+        int right_is_constant =
+            (right->constant_components &
+             (UINT32_C(1) << right_component)) != 0u;
+        uint32_t folded_bits = 0u;
+        int folded = left_is_constant && right_is_constant &&
+                     fold_binary_constant(
+                         opcode, left->constant_bits[left_component],
+                         right->constant_bits[right_component],
+                         &folded_bits);
 
         if (division && right_is_zero) {
             fail(lower, "division by a zero literal is not supported");
             return invalid_value();
         }
         if (destination == RINGL_RSH1_UNUSED ||
-            !emit(lower, opcode, destination, left_reg, right_reg, 0u)) {
+            !emit(lower,
+                  folded ? (left->is_i32 ? RINGL_RSH1_OP_CONST_I32
+                                         : RINGL_RSH1_OP_CONST_F32)
+                         : opcode,
+                  destination, folded ? RINGL_RSH1_UNUSED : left_reg,
+                  folded ? RINGL_RSH1_UNUSED : right_reg,
+                  folded ? folded_bits : 0u)) {
             return invalid_value();
         }
         result.regs[index] = destination;
+        if (folded) {
+            result.constant_components |= (uint16_t)(UINT32_C(1) << index);
+            result.constant_bits[index] = folded_bits;
+            if (folded_bits == 0u)
+                result.known_zero_components |=
+                    (uint16_t)(UINT32_C(1) << index);
+        }
         if ((opcode == RINGL_RSH1_OP_ADD_F32 || opcode == RINGL_RSH1_OP_ADD_I32 ||
              opcode == RINGL_RSH1_OP_SUB_F32 || opcode == RINGL_RSH1_OP_SUB_I32) &&
             left_is_zero && right_is_zero) {

@@ -71,6 +71,8 @@ int main(void)
                   "OES_standard_derivatives") != NULL);
     assert(strstr(ringl_get_string(RINGL_EXTENSIONS),
                   "WEBGL_draw_buffers") != NULL);
+    assert(strstr(ringl_get_string(RINGL_EXTENSIONS),
+                  "ANGLE_instanced_arrays") != NULL);
     assert(ringl_get_string(0xdeadbeefu) == NULL);
     assert(ringl_get_error() == RINGL_INVALID_ENUM);
 

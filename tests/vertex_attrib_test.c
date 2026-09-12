@@ -29,6 +29,9 @@ int main(void)
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
+    ringl_vertex_attrib_divisor(0u, 1u);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    assert(ringl_enable_webgl_instanced_arrays() == 0);
 
     ringl_gen_buffers(1, &buffer);
     assert(buffer != 0u);

@@ -15,7 +15,8 @@ static const char* ringl_implemented_extensions(void)
            "EXT_texture_filter_anisotropic WEBGL_color_buffer_float "
            "EXT_color_buffer_half_float EXT_blend_minmax "
            "OES_standard_derivatives EXT_shader_texture_lod EXT_frag_depth "
-           "WEBGL_draw_buffers OES_vertex_array_object WEBGL_depth_texture "
+           "WEBGL_draw_buffers ANGLE_instanced_arrays OES_vertex_array_object "
+           "WEBGL_depth_texture "
            "WEBGL_compressed_texture_etc1 WEBGL_compressed_texture_s3tc";
 }
 
@@ -825,6 +826,16 @@ int ringl_enable_webgl_draw_buffers(void)
         return -1;
     }
     context->webgl_draw_buffers_enabled = RINGL_TRUE;
+    return 0;
+}
+
+int ringl_enable_webgl_instanced_arrays(void)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL || context->lost != RINGL_FALSE)
+        return -1;
+    context->webgl_instanced_arrays_enabled = RINGL_TRUE;
     return 0;
 }
 

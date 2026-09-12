@@ -1636,6 +1636,9 @@ int ringl_enable_webgl_frag_depth(void);
 /* Enables WEBGL_draw_buffers only after the embedding exposes the V9 MRT
  * adapter callback.  The extension remains unavailable on older bindings. */
 int ringl_enable_webgl_draw_buffers(void);
+/* Enables ANGLE_instanced_arrays for the current WebGL context. Instanced
+ * draw and divisor entry points reject use until the extension is acquired. */
+int ringl_enable_webgl_instanced_arrays(void);
 void ringl_tex_image_2d(uint32_t target, int32_t level,
                         uint32_t internal_format, int32_t width, int32_t height,
                         int32_t border, uint32_t format, uint32_t type,

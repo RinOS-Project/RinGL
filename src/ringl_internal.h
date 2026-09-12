@@ -490,6 +490,7 @@ struct RinGLContext {
     uint32_t webgl_shader_texture_lod_enabled;
     uint32_t webgl_frag_depth_enabled;
     uint32_t webgl_draw_buffers_enabled;
+    uint32_t webgl_instanced_arrays_enabled;
     uint64_t graphics_command_list;
     uint64_t graphics_bind_group;
     uint64_t finish_fence;

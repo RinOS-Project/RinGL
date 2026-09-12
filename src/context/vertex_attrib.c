@@ -137,6 +137,10 @@ void ringl_vertex_attrib_divisor(uint32_t index, uint32_t divisor)
 
     if (context == NULL)
         return;
+    if (context->webgl_instanced_arrays_enabled == RINGL_FALSE) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
     attrib = ringl_vertex_attrib(context, index);
     if (attrib == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);

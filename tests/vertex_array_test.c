@@ -29,6 +29,7 @@ int main(void)
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
+    assert(ringl_enable_webgl_instanced_arrays() == 0);
 
     /* The default VAO is valid state but has no object name. */
     info = vertex_attrib_info();

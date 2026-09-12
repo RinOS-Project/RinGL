@@ -1939,6 +1939,10 @@ void ringl_draw_arrays_instanced(uint32_t mode, int32_t first, int32_t count,
 
     if (context == NULL)
         return;
+    if (context->webgl_instanced_arrays_enabled == RINGL_FALSE) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
     ringl_context_trace(context, RINGL_TRACE_DRAW, mode,
                         ((uint64_t)(uint32_t)first << 32u) |
                             (uint32_t)count,
@@ -2224,6 +2228,10 @@ void ringl_draw_elements_instanced(uint32_t mode, int32_t count,
 
     if (context == NULL)
         return;
+    if (context->webgl_instanced_arrays_enabled == RINGL_FALSE) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
     ringl_context_trace(context, RINGL_TRACE_DRAW, mode,
                         ((uint64_t)type << 32u) | (uint32_t)count,
                         (int32_t)offset);

@@ -268,6 +268,18 @@ int main(void)
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(ringl_get_uniform_1i(program, location, &uniform_value) == 0);
     assert(uniform_value == 3);
+    {
+        const int32_t invalid_sampler_units[] = {
+            -1, (int32_t)RINGL_MAX_TEXTURE_UNITS,
+        };
+
+        ringl_uniform_1iv(location, 1u, &invalid_sampler_units[0]);
+        assert(ringl_get_error() == RINGL_INVALID_VALUE);
+        ringl_uniform_1iv(location, 1u, &invalid_sampler_units[1]);
+        assert(ringl_get_error() == RINGL_INVALID_VALUE);
+        assert(ringl_get_uniform_1i(program, location, &uniform_value) == 0);
+        assert(uniform_value == 3);
+    }
 
     {
         uint32_t array_vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
@@ -310,11 +322,23 @@ int main(void)
         assert(ringl_get_uniform_1i(array_program, array_second_location,
                                     &uniform_value) == 0);
         assert(uniform_value == 3);
+        /* Both active samplers have the same sampler2D type, so aliasing one
+         * texture unit is valid and must not be mistaken for a type conflict. */
+        array_units[0] = 2;
+        array_units[1] = 2;
+        ringl_uniform_1iv(array_base_location, 2u, array_units);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_get_uniform_1i(array_program, array_base_location,
+                                    &uniform_value) == 0);
+        assert(uniform_value == 2);
+        assert(ringl_get_uniform_1i(array_program, array_second_location,
+                                    &uniform_value) == 0);
+        assert(uniform_value == 2);
         ringl_uniform_1iv(array_second_location, 2u, array_units);
         assert(ringl_get_error() == RINGL_INVALID_OPERATION);
         assert(ringl_get_uniform_1i(array_program, array_second_location,
                                     &uniform_value) == 0);
-        assert(uniform_value == 3);
+        assert(uniform_value == 2);
         ringl_delete_program(array_program);
         ringl_delete_shader(array_vertex);
         ringl_delete_shader(array_fragment);

@@ -260,11 +260,35 @@ static int texture_color_component_is_float(uint32_t type)
     return type == RINGL_FLOAT || type == RINGL_HALF_FLOAT_OES;
 }
 
+static int texture_dimension_is_power_of_two(uint32_t dimension)
+{
+    return dimension != 0u && (dimension & (dimension - 1u)) == 0u;
+}
+
+static int texture_is_npot(const RinGLTextureObject* texture)
+{
+    return texture != NULL &&
+           (!texture_dimension_is_power_of_two(texture->width) ||
+            !texture_dimension_is_power_of_two(texture->height));
+}
+
 static int texture_level0_complete(const RinGLContext* context,
                                    const RinGLTextureObject* texture)
 {
     if (!context || !texture_level0_storage_defined(texture))
         return 0;
+
+    /* WebGL 1 retains the GLES2 NPOT restrictions: an NPOT image may use
+     * only clamp-to-edge addressing and a non-mipmapped minification filter.
+     * Keep this in sampler completeness rather than silently rewriting the
+     * requested state into a POT-compatible sampler. */
+    if (texture_is_npot(texture) &&
+        (texture->wrap_s != RINGL_CLAMP_TO_EDGE ||
+         texture->wrap_t != RINGL_CLAMP_TO_EDGE ||
+         (texture->min_filter != RINGL_NEAREST &&
+          texture->min_filter != RINGL_LINEAR))) {
+        return 0;
+    }
 
     /* OES_texture_float and OES_texture_half_float guarantee nearest
      * filters only. The WebGL bridge flips the matching context-local bit
@@ -2099,6 +2123,10 @@ void ringl_generate_mipmap(uint32_t target)
     if (texture == NULL || !texture_level0_storage_defined(texture) ||
         !texture_color_format(texture->format) ||
         texture->compressed_format != 0u || texture->srgb_encoding != 0u) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return;
+    }
+    if (texture_is_npot(texture)) {
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;
     }

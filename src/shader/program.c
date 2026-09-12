@@ -3405,6 +3405,13 @@ void ringl_uniform_1iv(int32_t location, uint32_t count,
         }
         return;
     }
+    for (sampler_index = 0u; sampler_index < count; ++sampler_index) {
+        if (values[sampler_index] < 0 ||
+            (uint32_t)values[sampler_index] >= RINGL_MAX_TEXTURE_UNITS) {
+            ringl_context_record_error(context, RINGL_INVALID_VALUE);
+            return;
+        }
+    }
     if (!ringl_uniform_array_range_is_valid(
             object->sampler_uniforms, sizeof(object->sampler_uniforms[0]),
             object->sampler_uniform_count, (uint32_t)location, count)) {

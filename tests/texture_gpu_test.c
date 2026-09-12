@@ -62,7 +62,8 @@ static int fake_create_image(void* session,
 {
     FakeBackend* backend = session;
     assert(desc != NULL && image_out != NULL);
-    assert(desc->width == 2u && desc->height == 2u);
+    assert((desc->width == 2u && desc->height == 2u) ||
+           (desc->width == 3u && desc->height == 5u));
     assert(desc->format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM ||
            desc->format == RINGL_RIN_GPU_FORMAT_RGBA16_FLOAT ||
            desc->format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT ||
@@ -111,7 +112,8 @@ static int fake_upload_image(void* session, uint64_t image,
     FakeBackend* backend = session;
     assert(image != 0u && upload != NULL && data != NULL);
     assert(upload->x == 0u && upload->y == 0u);
-    assert(upload->width == 2u && upload->height == 2u);
+    assert((upload->width == 2u && upload->height == 2u) ||
+           (upload->width == 3u && upload->height == 5u));
     uint32_t texel_bytes = backend->last_format ==
             RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT
         ? 16u
@@ -120,8 +122,10 @@ static int fake_upload_image(void* session, uint64_t image,
         : backend->last_format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM
             ? 4u : 2u;
 
-    assert(upload->source_row_pitch_bytes == 2u * texel_bytes);
-    assert(size_bytes == 4u * texel_bytes);
+    assert(upload->source_row_pitch_bytes ==
+           (uint64_t)upload->width * texel_bytes);
+    assert(size_bytes == (uint64_t)upload->width * upload->height *
+                             texel_bytes);
     memcpy(backend->last_upload, data, (size_t)size_bytes);
     backend->last_upload_size = size_bytes;
     backend->image_uploads++;
@@ -135,7 +139,7 @@ static int fake_create_mip_image(void* session,
     FakeBackend* backend = session;
 
     assert(desc != NULL && image_out != NULL);
-    assert((desc->width == 3u && desc->height == 2u &&
+    assert((desc->width == 2u && desc->height == 2u &&
             desc->format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM) ||
            (desc->width == 2u && desc->height == 2u &&
             desc->format == RINGL_RIN_GPU_FORMAT_RGBA32_FLOAT) ||
@@ -202,7 +206,8 @@ static int fake_create_sampler(void* session,
            desc->mip_filter == RINGL_RIN_GPU_SAMPLER_LINEAR);
     assert(desc->address_u == RINGL_RIN_GPU_ADDRESS_REPEAT ||
            desc->address_u == RINGL_RIN_GPU_ADDRESS_CLAMP);
-    assert(desc->address_v == RINGL_RIN_GPU_ADDRESS_REPEAT);
+    assert(desc->address_v == RINGL_RIN_GPU_ADDRESS_REPEAT ||
+           desc->address_v == RINGL_RIN_GPU_ADDRESS_CLAMP);
     assert(desc->reserved0 == 0u);
     assert(desc->max_anisotropy >= 1u &&
            desc->max_anisotropy <= RINGL_MAX_TEXTURE_ANISOTROPY);
@@ -314,12 +319,11 @@ int main(void)
         UINT16_C(0xf801), UINT16_C(0x07c0), UINT16_C(0x003f), UINT16_C(0xffff),
     };
     const uint16_t packed_patch = UINT16_C(0x07e0);
-    const uint8_t mip_pixels[24] = {
+    const uint8_t mip_pixels[16] = {
         0u, 10u, 20u, 30u, 40u, 50u, 60u, 70u,
         80u, 90u, 100u, 110u, 120u, 130u, 140u, 150u,
-        160u, 170u, 180u, 190u, 200u, 210u, 220u, 230u,
     };
-    const uint8_t expected_mip_level1[4] = {80u, 90u, 100u, 110u};
+    const uint8_t expected_mip_level1[4] = {60u, 70u, 80u, 90u};
     const uint8_t manual_mip_level1[4] = {31u, 41u, 51u, 61u};
     const uint16_t packed_mip_pixels[16] = {
         UINT16_C(0xf800), UINT16_C(0xf800), UINT16_C(0x07e0), UINT16_C(0x07e0),
@@ -833,7 +837,7 @@ int main(void)
     ringl_bind_texture(RINGL_TEXTURE_2D, mip_texture);
     ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MIN_FILTER,
                          RINGL_LINEAR_MIPMAP_NEAREST);
-    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 3, 2, 0,
+    ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 2, 2, 0,
                        RINGL_RGBA, RINGL_UNSIGNED_BYTE, mip_pixels);
     ringl_generate_mipmap(RINGL_TEXTURE_2D);
     assert(ringl_get_error() == RINGL_NO_ERROR);
@@ -841,7 +845,7 @@ int main(void)
     assert(backend.mip_image_creates == 1u && backend.mip_level_count == 2u);
     assert(backend.mip_uploads == 2u);
     assert(backend.mip_upload_level[0] == 0u &&
-           backend.mip_upload_width[0] == 3u &&
+           backend.mip_upload_width[0] == 2u &&
            backend.mip_upload_height[0] == 2u &&
            backend.mip_upload_size[0] == sizeof(mip_pixels));
     assert(memcmp(backend.mip_upload[0], mip_pixels, sizeof(mip_pixels)) == 0);
@@ -965,6 +969,35 @@ int main(void)
                                   expected_rgb5_a1_mip_level1,
                                   sizeof(expected_rgb5_a1_mip_level1));
     assert(ringl_get_error() == RINGL_NO_ERROR);
+
+    /* WebGL 1 NPOT completeness is explicit: the requested sampler state is
+     * not rewritten behind the caller's back. Repeat addressing and mip
+     * filters remain incomplete, while clamp plus a non-mip filter realizes
+     * the actual image. generateMipmap is rejected for the same image. */
+    {
+        uint32_t npot_name = 0u;
+
+        ringl_gen_textures(1, &npot_name);
+        ringl_bind_texture(RINGL_TEXTURE_2D, npot_name);
+        ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MIN_FILTER,
+                             RINGL_LINEAR);
+        ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 3, 5, 0,
+                           RINGL_RGBA, RINGL_UNSIGNED_BYTE, NULL);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) != 0);
+        ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_WRAP_S,
+                             RINGL_CLAMP_TO_EDGE);
+        ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_WRAP_T,
+                             RINGL_CLAMP_TO_EDGE);
+        assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) == 0);
+        ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MIN_FILTER,
+                             RINGL_NEAREST_MIPMAP_NEAREST);
+        assert(ringl_texture_realize_unit(context, 1u, &image, &sampler) != 0);
+        ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MIN_FILTER,
+                             RINGL_LINEAR);
+        ringl_generate_mipmap(RINGL_TEXTURE_2D);
+        assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    }
 
     /* A base sub-image mutation drops generated levels only. Explicit level
      * one data remains valid and is uploaded with the updated base level. */

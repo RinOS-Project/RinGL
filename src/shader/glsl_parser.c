@@ -58,6 +58,10 @@ typedef enum TokenKind {
     TOK_RBRACKET,
     TOK_IF,
     TOK_ELSE,
+    TOK_FOR,
+    TOK_BREAK,
+    TOK_CONTINUE,
+    TOK_INC,
     TOK_EQ,
     TOK_NE,
     TOK_LT,
@@ -110,6 +114,7 @@ typedef struct Symbol {
     /* This bounded profile accepts a const int initialized by an integer
      * literal as an array constant-index-expression. */
     uint8_t constant_i32;
+    uint8_t immutable;
     int32_t constant_i32_value;
 } Symbol;
 
@@ -124,6 +129,9 @@ typedef struct Parser {
     int unterminated_comment;
     Symbol symbols[RINGL_GLSL_MAX_SYMBOLS];
     uint32_t symbol_count;
+    uint32_t scope_base[16];
+    uint32_t scope_depth;
+    uint32_t loop_depth;
     RinGLGlslParseResult* result;
 } Parser;
 
@@ -252,6 +260,12 @@ static TokenKind keyword_kind(const char* begin, size_t length)
         return TOK_IF;
     if (length == 4u && memcmp(begin, "else", 4u) == 0)
         return TOK_ELSE;
+    if (length == 3u && memcmp(begin, "for", 3u) == 0)
+        return TOK_FOR;
+    if (length == 5u && memcmp(begin, "break", 5u) == 0)
+        return TOK_BREAK;
+    if (length == 8u && memcmp(begin, "continue", 8u) == 0)
+        return TOK_CONTINUE;
     return TOK_IDENT;
 }
 
@@ -419,7 +433,16 @@ static void next_token(Parser* parser)
             token.kind = TOK_GT;
         }
         break;
-    case '+': token.kind = TOK_PLUS; break;
+    case '+':
+        if (parser->offset < parser->length &&
+            parser->source[parser->offset] == '+') {
+            parser->offset++;
+            token.length = 2u;
+            token.kind = TOK_INC;
+        } else {
+            token.kind = TOK_PLUS;
+        }
+        break;
     case '-': token.kind = TOK_MINUS; break;
     case '*': token.kind = TOK_STAR; break;
     case '/': token.kind = TOK_SLASH; break;
@@ -452,8 +475,9 @@ static int expect(Parser* parser, TokenKind kind, const char* message)
 
 static Symbol* find_symbol(Parser* parser, const Token* token)
 {
-    uint32_t i;
-    for (i = 0; i < parser->symbol_count; ++i) {
+    uint32_t i = parser->symbol_count;
+    while (i != 0u) {
+        --i;
         size_t length = strlen(parser->symbols[i].name);
         if (length == token->length &&
             memcmp(parser->symbols[i].name, token->begin, length) == 0)
@@ -464,7 +488,35 @@ static Symbol* find_symbol(Parser* parser, const Token* token)
 
 static int symbol_exists(Parser* parser, const Token* token)
 {
-    return find_symbol(parser, token) != NULL;
+    uint32_t i;
+    uint32_t base = parser->scope_depth == 0u
+        ? 0u : parser->scope_base[parser->scope_depth - 1u];
+    for (i = parser->symbol_count; i != base;) {
+        --i;
+        if (strlen(parser->symbols[i].name) == token->length &&
+            memcmp(parser->symbols[i].name, token->begin, token->length) == 0)
+            return 1;
+    }
+    return 0;
+}
+
+static void enter_scope(Parser* parser)
+{
+    if (parser->scope_depth >= sizeof(parser->scope_base) /
+                                  sizeof(parser->scope_base[0])) {
+        fail(parser, "lexical scope limit exceeded");
+        return;
+    }
+    parser->scope_base[parser->scope_depth++] = parser->symbol_count;
+}
+
+static void leave_scope(Parser* parser)
+{
+    if (parser->scope_depth <= 1u) {
+        fail(parser, "unbalanced lexical scope");
+        return;
+    }
+    parser->symbol_count = parser->scope_base[--parser->scope_depth];
 }
 
 static int add_symbol(Parser* parser, const Token* token,
@@ -1170,7 +1222,7 @@ static int primary(Parser* parser)
             !token_is_ident(&ident, "gl_PointSize") &&
             !token_is_ident(&ident, "gl_PointCoord") &&
             !token_is_ident(&ident, "gl_FragCoord") &&
-            !symbol_exists(parser, &ident)) {
+            !find_symbol(parser, &ident)) {
             fail(parser, "use of undeclared identifier");
             return 0;
         }
@@ -1393,8 +1445,8 @@ static int assignment(Parser* parser)
             fail(parser, "uniforms are read-only");
             return 0;
         }
-        if (symbol->constant_i32 != 0u) {
-            fail(parser, "const int is read-only");
+        if (symbol->immutable != 0u) {
+            fail(parser, "const value is read-only");
             return 0;
         }
         if (symbol->kind == SYMBOL_VARYING &&
@@ -1444,22 +1496,11 @@ static int assignment(Parser* parser)
 }
 
 /* The lowerer makes the type and full-output checks. Keep this admission
- * grammar deliberately aligned with its executable control-flow slice: scalar
- * comparisons and scalar Boolean `!`, `&&`, `^^`, or `||`, one complete stage
- * output assignment per branch, or a fragment discard on exactly one branch,
- * and a mandatory else. General statements and nested branches remain
- * unsupported. */
-static int conditional_output_assignment(Parser* parser)
-{
-    if (parser->token.kind != TOK_IDENT ||
-        (parser->shader_type == RINGL_VERTEX_SHADER
-             ? !token_is_ident(&parser->token, "gl_Position")
-             : !token_is_ident(&parser->token, "gl_FragColor"))) {
-        fail(parser, "if branches must assign the stage output");
-        return 0;
-    }
-    return assignment(parser);
-}
+ * grammar aligned with its executable control-flow slice: scalar comparisons
+ * and scalar Boolean `!`, `&&`, `^^`, or `||`, complete stage-output paths (or
+ * one fragment discard path), and a mandatory else. Nested blocks are parsed
+ * with lexical scope so unsupported constructs fail at the lowerer boundary. */
+static int statement(Parser* parser);
 
 /* Conditional discard is intentionally narrower than a general statement
  * block. The opposite branch must still write the complete fragment output,
@@ -1469,19 +1510,24 @@ static int conditional_branch(Parser* parser, int* discard_out)
     if (discard_out == NULL)
         return 0;
     *discard_out = 0;
-    if (parser->token.kind == TOK_IDENT &&
-        token_is_ident(&parser->token, "discard")) {
-        if (parser->shader_type != RINGL_FRAGMENT_SHADER) {
-            fail(parser, "discard is only available in fragment shaders");
+    enter_scope(parser);
+    while (parser->token.kind != TOK_RBRACE &&
+           parser->token.kind != TOK_EOF) {
+        if (parser->token.kind == TOK_IDENT &&
+            token_is_ident(&parser->token, "discard"))
+            *discard_out = 1;
+        if (!statement(parser)) {
+            leave_scope(parser);
             return 0;
         }
-        next_token(parser);
-        if (!expect(parser, TOK_SEMI, "expected ';' after discard"))
-            return 0;
-        *discard_out = 1;
-        return 1;
     }
-    return conditional_output_assignment(parser);
+    if (parser->token.kind != TOK_RBRACE) {
+        fail(parser, "unterminated conditional block");
+        leave_scope(parser);
+        return 0;
+    }
+    leave_scope(parser);
+    return 1;
 }
 
 static int is_comparison_operator(TokenKind operator)
@@ -1685,9 +1731,169 @@ static int constant_int_declaration(Parser* parser)
         return 0;
     }
     symbol->constant_i32 = 1u;
+    symbol->immutable = 1u;
     symbol->constant_i32_value = value;
     parser->result->declaration_count++;
     return 1;
+}
+
+static int local_type_token(TokenKind kind)
+{
+    return kind == TOK_FLOAT || kind == TOK_INT || kind == TOK_BOOL ||
+           kind == TOK_VEC2 || kind == TOK_VEC3 || kind == TOK_VEC4 ||
+           kind == TOK_IVEC2 || kind == TOK_IVEC3 || kind == TOK_IVEC4 ||
+           kind == TOK_BVEC2 || kind == TOK_BVEC3 || kind == TOK_BVEC4 ||
+           kind == TOK_MAT2 || kind == TOK_MAT3 || kind == TOK_MAT4;
+}
+
+static int static_integer(Parser* parser, int32_t* value_out)
+{
+    Symbol* symbol;
+    if (parser->token.kind == TOK_NUMBER)
+        return constant_i32_literal(parser, value_out);
+    if (parser->token.kind != TOK_IDENT) {
+        fail(parser, "for bound must be a compile-time integer");
+        return 0;
+    }
+    symbol = find_symbol(parser, &parser->token);
+    if (symbol == NULL || symbol->constant_i32 == 0u) {
+        fail(parser, "for bound must name a const int");
+        return 0;
+    }
+    *value_out = symbol->constant_i32_value;
+    next_token(parser);
+    return 1;
+}
+
+static int token_matches(const Token* token, const Token* name)
+{
+    return token && name && token->kind == TOK_IDENT &&
+           token->length == name->length &&
+           memcmp(token->begin, name->begin, name->length) == 0;
+}
+
+/* The RSH1 ABI deliberately admits forward control-flow only.  A statically
+ * bounded integer loop is therefore expanded at the source boundary; every
+ * emitted instruction remains ordinary validated RSH1 and an unbounded loop
+ * can never reach a backend. */
+static int for_statement(Parser* parser)
+{
+    Token loop_name;
+    Symbol* loop_symbol;
+    int32_t start;
+    int32_t limit;
+    int64_t trip_count;
+    TokenKind relation;
+
+    next_token(parser);
+    if (!expect(parser, TOK_LPAREN, "expected '(' after for"))
+        return 0;
+    enter_scope(parser);
+    if (!expect(parser, TOK_INT, "bounded for requires an int iterator") ||
+        parser->token.kind != TOK_IDENT) {
+        fail(parser, "bounded for requires an int iterator declaration");
+        leave_scope(parser);
+        return 0;
+    }
+    loop_name = parser->token;
+    next_token(parser);
+    if (!expect(parser, TOK_ASSIGN, "for iterator requires an initializer") ||
+        !constant_i32_literal(parser, &start) ||
+        !expect(parser, TOK_SEMI, "expected ';' after for initializer") ||
+        !token_matches(&parser->token, &loop_name)) {
+        fail(parser, "for condition must use its iterator");
+        leave_scope(parser);
+        return 0;
+    }
+    loop_symbol = NULL;
+    if (!add_symbol(parser, &loop_name, SYMBOL_VALUE, 1u)) {
+        leave_scope(parser);
+        return 0;
+    }
+    loop_symbol = find_symbol(parser, &loop_name);
+    if (loop_symbol == NULL) {
+        fail(parser, "failed to record for iterator");
+        leave_scope(parser);
+        return 0;
+    }
+    loop_symbol->constant_i32 = 1u;
+    loop_symbol->immutable = 1u;
+    loop_symbol->constant_i32_value = start;
+    next_token(parser);
+    relation = parser->token.kind;
+    if (relation != TOK_LT && relation != TOK_LE) {
+        fail(parser, "bounded for requires '<' or '<='");
+        leave_scope(parser);
+        return 0;
+    }
+    next_token(parser);
+    if (!static_integer(parser, &limit) ||
+        !expect(parser, TOK_SEMI, "expected ';' after for condition") ||
+        !token_matches(&parser->token, &loop_name)) {
+        fail(parser, "for increment must use its iterator");
+        leave_scope(parser);
+        return 0;
+    }
+    next_token(parser);
+    if (!expect(parser, TOK_INC, "bounded for requires iterator++") ||
+        !expect(parser, TOK_RPAREN, "expected ')' after for header") ||
+        !expect(parser, TOK_LBRACE, "expected '{' after for header")) {
+        leave_scope(parser);
+        return 0;
+    }
+    trip_count = (int64_t)limit - (int64_t)start +
+                 (relation == TOK_LE ? 1 : 0);
+    if (trip_count < 0 || trip_count > 16) {
+        fail(parser, "for loop trip count exceeds the bounded profile");
+        leave_scope(parser);
+        return 0;
+    }
+    enter_scope(parser);
+    parser->loop_depth++;
+    while (parser->token.kind != TOK_RBRACE &&
+           parser->token.kind != TOK_EOF) {
+        if (!statement(parser)) {
+            parser->loop_depth--;
+            leave_scope(parser);
+            leave_scope(parser);
+            return 0;
+        }
+    }
+    parser->loop_depth--;
+    if (!expect(parser, TOK_RBRACE, "expected '}' after for body")) {
+        leave_scope(parser);
+        leave_scope(parser);
+        return 0;
+    }
+    leave_scope(parser);
+    leave_scope(parser);
+    (void)loop_symbol;
+    return 1;
+}
+
+static int statement(Parser* parser)
+{
+    if (parser->token.kind == TOK_CONST)
+        return constant_int_declaration(parser);
+    if (local_type_token(parser->token.kind))
+        return local_declaration(parser);
+    if (parser->token.kind == TOK_IF)
+        return conditional_statement(parser);
+    if (parser->token.kind == TOK_FOR)
+        return for_statement(parser);
+    if (parser->token.kind == TOK_BREAK ||
+        parser->token.kind == TOK_CONTINUE) {
+        if (parser->loop_depth == 0u) {
+            fail(parser, "break or continue is only valid inside a loop");
+            return 0;
+        }
+        next_token(parser);
+        return expect(parser, TOK_SEMI, "expected ';' after loop control");
+    }
+    if (parser->token.kind == TOK_IDENT &&
+        token_is_ident(&parser->token, "discard"))
+        return discard_statement(parser);
+    return assignment(parser);
 }
 
 static int main_function(Parser* parser)
@@ -1708,39 +1914,19 @@ static int main_function(Parser* parser)
         !expect(parser, TOK_LBRACE, "expected '{' for main body"))
         return 0;
 
+    enter_scope(parser);
     while (parser->token.kind != TOK_RBRACE && parser->token.kind != TOK_EOF) {
-        if (parser->token.kind == TOK_CONST) {
-            if (!constant_int_declaration(parser))
-                return 0;
-        } else if (parser->token.kind == TOK_FLOAT ||
-            parser->token.kind == TOK_INT ||
-            parser->token.kind == TOK_BOOL ||
-            parser->token.kind == TOK_VEC2 ||
-            parser->token.kind == TOK_IVEC2 ||
-             parser->token.kind == TOK_BVEC2 ||
-             parser->token.kind == TOK_VEC3 ||
-             parser->token.kind == TOK_IVEC3 ||
-             parser->token.kind == TOK_BVEC3 ||
-             parser->token.kind == TOK_VEC4 ||
-             parser->token.kind == TOK_IVEC4 ||
-             parser->token.kind == TOK_BVEC4 ||
-             parser->token.kind == TOK_MAT2 ||
-             parser->token.kind == TOK_MAT3 ||
-             parser->token.kind == TOK_MAT4) {
-            if (!local_declaration(parser))
-                return 0;
-        } else if (parser->token.kind == TOK_IF) {
-            if (!conditional_statement(parser))
-                return 0;
-        } else if (parser->token.kind == TOK_IDENT &&
-                   token_is_ident(&parser->token, "discard")) {
-            if (!discard_statement(parser))
-                return 0;
-        } else if (!assignment(parser)) {
+        if (!statement(parser)) {
+            leave_scope(parser);
             return 0;
         }
     }
-    return expect(parser, TOK_RBRACE, "expected '}' after main body");
+    if (!expect(parser, TOK_RBRACE, "expected '}' after main body")) {
+        leave_scope(parser);
+        return 0;
+    }
+    leave_scope(parser);
+    return 1;
 }
 
 static int attribute_declaration(Parser* parser)
@@ -2269,6 +2455,8 @@ int ringl_glsl_parse(uint32_t shader_type,
     parser.line = 1u;
     parser.shader_type = shader_type;
     parser.result = result;
+    parser.scope_depth = 1u;
+    parser.scope_base[0] = 0u;
     next_token(&parser);
 
     while (parser.token.kind != TOK_EOF && result->diagnostic[0] == '\0') {

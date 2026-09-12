@@ -374,6 +374,39 @@ int main(void)
         "    gl_Position = vec4(position, 0.0, 1.0);\n"
         "  }\n"
         "}\n";
+    const char* multi_statement_nested_vertex_source =
+        "attribute vec2 position;\n"
+        "void main() {\n"
+        "  if (position.x < 0.0) {\n"
+        "    gl_Position = vec4(position, 0.0, 1.0);\n"
+        "    if (position.y < 0.0) {\n"
+        "      gl_Position = vec4(position.x, position.y, 0.0, 1.0);\n"
+        "    } else {\n"
+        "      gl_Position = vec4(-position.x, position.y, 0.0, 1.0);\n"
+        "    }\n"
+        "  } else {\n"
+        "    gl_Position = vec4(position, 0.0, 1.0);\n"
+        "  }\n"
+        "}\n";
+    const char* bounded_for_vertex_source =
+        "attribute vec2 position;\n"
+        "const int iterations = 2;\n"
+        "void main() {\n"
+        "  for (int i = 0; i < iterations; i++) {\n"
+        "    float offset = float(i);\n"
+        "    gl_Position = vec4(position.x + offset, position.y, 0.0, 1.0);\n"
+        "  }\n"
+        "}\n";
+    const char* scoped_for_vertex_source =
+        "attribute vec2 position;\n"
+        "void main() {\n"
+        "  float value = 1.0;\n"
+        "  for (int i = 0; i < 2; i++) {\n"
+        "    float value = float(i);\n"
+        "    gl_Position = vec4(position.x + value, position.y, 0.0, 1.0);\n"
+        "  }\n"
+        "  gl_Position = vec4(position.x + value, position.y, 0.0, 1.0);\n"
+        "}\n";
     const char* conditional_i32_fragment_source =
         "uniform int selector;\n"
         "void main() {\n"
@@ -804,6 +837,32 @@ int main(void)
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_CMP_EQ_I32));
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP_IF));
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP));
+
+    /* Branch blocks may contain several output assignments and nested
+     * conditionals. Lexical shadowing is confined to the child scope, while
+     * nested RSH1 targets remain forward-only and path-complete. */
+    header = lower_and_read_header(vertex,
+                                   multi_statement_nested_vertex_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 2u);
+    assert(header.output_count == 9u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP_IF));
+
+    header = lower_and_read_header(vertex, bounded_for_vertex_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 2u);
+    assert(header.output_count == 9u);
+    assert(header.instruction_count > 20u);
+
+    /* The iterator/body scopes may shadow an outer local, while the outer
+     * binding remains visible after the loop has been left. */
+    header = lower_and_read_header(vertex, scoped_for_vertex_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 2u);
+    assert(header.output_count == 9u);
 
     header = lower_and_read_header(fragment, discard_fragment_source,
                                    blob, sizeof(blob));
@@ -1418,6 +1477,33 @@ int main(void)
     assert(ringl_get_shader_rsh1_size(vertex) == 0u);
     assert(ringl_get_shader_module(vertex) == 0u);
 
+    /* Lexical const bindings are immutable, and loop bounds must be static
+     * and small enough for the forward-only unrolled profile. */
+    expect_shader_rejected(
+        vertex,
+        "attribute vec2 position; const int n = 2; void main() { "
+        "n = 3; gl_Position = vec4(position, 0.0, 1.0); }");
+    expect_shader_rejected(
+        vertex,
+        "attribute vec2 position; void main() { "
+        "for (int i = 0; i < position.x; i++) { "
+        "gl_Position = vec4(position, 0.0, 1.0); } }");
+    expect_shader_rejected(
+        vertex,
+        "attribute vec2 position; void main() { "
+        "for (int i = 0; i < 17; i++) { "
+        "gl_Position = vec4(position, 0.0, 1.0); } }");
+    expect_shader_rejected(
+        vertex,
+        "attribute vec2 position; void main() { "
+        "for (int i = 0; i < 2; i++) { break; } "
+        "gl_Position = vec4(position, 0.0, 1.0); }");
+    expect_shader_rejected(
+        vertex,
+        "attribute vec2 position; void main() { "
+        "for (int i = 0; i < 2; i++) { continue; } "
+        "gl_Position = vec4(position, 0.0, 1.0); }");
+
     ringl_shader_source(fragment,
                         "void main() { float size = gl_PointSize; "
                         "gl_FragColor = vec4(size); }", -1);
@@ -1438,9 +1524,9 @@ int main(void)
         "void main() { for (int i = 0; i < 2; i++) { } "
         "gl_FragColor = vec4(1.0); }", -1);
     ringl_compile_shader(fragment);
-    if (ringl_get_shader_compile_status(fragment) == RINGL_TRUE)
-        assert(ringl_lower_shader_rsh1(fragment) != 0);
-    assert(ringl_get_shader_rsh1_size(fragment) == 0u);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(fragment) == 0);
+    assert(ringl_get_shader_rsh1_size(fragment) != 0u);
     assert(ringl_get_shader_module(fragment) == 0u);
 
     /* Do not silently consume an incomplete precision declaration. The

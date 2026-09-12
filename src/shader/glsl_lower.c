@@ -61,6 +61,10 @@ typedef enum Tok {
     T_RBRACKET,
     T_IF,
     T_ELSE,
+    T_FOR,
+    T_BREAK,
+    T_CONTINUE,
+    T_INC,
     T_EQ,
     T_NE,
     T_LT,
@@ -114,6 +118,7 @@ typedef struct Symbol {
      * bounded numeric array profile use the same constant-index mechanism. */
     uint16_t sampler_array_length;
     uint8_t constant_i32;
+    uint8_t immutable;
     int32_t constant_i32_value;
 } Symbol;
 
@@ -125,6 +130,9 @@ typedef struct Lower {
     uint32_t shader_type;
     Symbol symbols[64];
     uint32_t symbol_count;
+    uint32_t scope_base[16];
+    uint32_t scope_depth;
+    uint32_t loop_depth;
     uint16_t next_reg;
     uint16_t next_input;
     uint16_t next_varying_output;
@@ -284,6 +292,12 @@ static Tok keyword(const char* begin, size_t length)
         return T_IF;
     if (length == 4u && memcmp(begin, "else", 4u) == 0)
         return T_ELSE;
+    if (length == 3u && memcmp(begin, "for", 3u) == 0)
+        return T_FOR;
+    if (length == 5u && memcmp(begin, "break", 5u) == 0)
+        return T_BREAK;
+    if (length == 8u && memcmp(begin, "continue", 8u) == 0)
+        return T_CONTINUE;
     return T_IDENT;
 }
 
@@ -437,7 +451,16 @@ static void next(Lower* lower)
             token.kind = T_GT;
         }
         break;
-    case '+': token.kind = T_PLUS; break;
+    case '+':
+        if (lower->offset < lower->length &&
+            lower->source[lower->offset] == '+') {
+            lower->offset++;
+            token.length = 2u;
+            token.kind = T_INC;
+        } else {
+            token.kind = T_PLUS;
+        }
+        break;
     case '-': token.kind = T_MINUS; break;
     case '*': token.kind = T_STAR; break;
     case '/': token.kind = T_SLASH; break;
@@ -470,8 +493,9 @@ static int need(Lower* lower, Tok kind, const char* message)
 
 static Symbol* find_symbol(Lower* lower, const Token* token)
 {
-    uint32_t index;
-    for (index = 0u; index < lower->symbol_count; ++index) {
+    uint32_t index = lower->symbol_count;
+    while (index != 0u) {
+        --index;
         size_t length = strlen(lower->symbols[index].name);
         if (length == token->length &&
             memcmp(lower->symbols[index].name, token->begin, length) == 0) {
@@ -479,6 +503,41 @@ static Symbol* find_symbol(Lower* lower, const Token* token)
         }
     }
     return NULL;
+}
+
+static void enter_scope(Lower* lower)
+{
+    if (lower->scope_depth >= sizeof(lower->scope_base) /
+                               sizeof(lower->scope_base[0])) {
+        fail(lower, "lexical scope limit exceeded");
+        return;
+    }
+    lower->scope_base[lower->scope_depth++] = lower->symbol_count;
+}
+
+static void leave_scope(Lower* lower)
+{
+    if (lower->scope_depth <= 1u) {
+        fail(lower, "unbalanced lexical scope");
+        return;
+    }
+    lower->symbol_count = lower->scope_base[--lower->scope_depth];
+}
+
+static int symbol_in_current_scope(Lower* lower, const Token* token)
+{
+    uint32_t index;
+    uint32_t base = lower->scope_depth == 0u
+        ? 0u : lower->scope_base[lower->scope_depth - 1u];
+
+    for (index = lower->symbol_count; index != base;) {
+        --index;
+        if (strlen(lower->symbols[index].name) == token->length &&
+            memcmp(lower->symbols[index].name, token->begin,
+                   token->length) == 0)
+            return 1;
+    }
+    return 0;
 }
 
 static uint16_t symbol_all_component_mask(const Symbol* symbol)
@@ -527,6 +586,10 @@ static Symbol* add_symbol(Lower* lower, const Token* token,
         matrix_dimension > 4u || matrix_dimension == 1u ||
         (matrix_dimension != 0u && width != matrix_dimension)) {
         fail(lower, "symbol limit exceeded");
+        return NULL;
+    }
+    if (symbol_in_current_scope(lower, token)) {
+        fail(lower, "duplicate declaration in lexical scope");
         return NULL;
     }
     if (attribute && (uint32_t)lower->next_input + width > UINT16_MAX) {
@@ -3402,10 +3465,6 @@ static int local_decl(Lower* lower, uint8_t width, int is_i32, int is_bool,
         return 0;
     }
     name = lower->token;
-    if (find_symbol(lower, &name) != NULL) {
-        fail(lower, "duplicate local");
-        return 0;
-    }
     symbol = add_symbol(lower, &name, 0, width, matrix_dimension);
     if (symbol == NULL)
         return 0;
@@ -3451,7 +3510,7 @@ static int constant_int_declaration(Lower* lower)
         !need(lower, T_SEMI, "expected ';' after const int")) {
         return 0;
     }
-    if (find_symbol(lower, &name) != NULL ||
+    if (symbol_in_current_scope(lower, &name) ||
         (symbol = add_symbol(lower, &name, 0, 1u, 0u)) == NULL) {
         return 0;
     }
@@ -3464,6 +3523,7 @@ static int constant_int_declaration(Lower* lower)
     }
     symbol->is_i32 = 1u;
     symbol->constant_i32 = 1u;
+    symbol->immutable = 1u;
     symbol->constant_i32_value = value;
     symbol->regs[0] = reg;
     symbol_mark_all_initialized(symbol);
@@ -3834,7 +3894,8 @@ static int assignment(Lower* lower)
         symbol_mark_all_initialized(symbol);
         return 1;
     }
-    if (symbol->attribute || symbol->uniform || symbol->constant_i32 != 0u) {
+    if (symbol->attribute || symbol->uniform || symbol->constant_i32 != 0u ||
+        symbol->immutable != 0u) {
         fail(lower, "attribute, uniform, or const int is read-only");
         return 0;
     }
@@ -4081,68 +4142,77 @@ static Value conditional_or_value(Lower* lower)
     return left;
 }
 
-/* A scalar RSH1 branch can only guarantee stage output on both paths when
- * each path stores the complete fixed RGBA/clip vector. A fragment may instead
- * discard on exactly one branch: DISCARD terminates execution before output
- * publication. Keep this deliberately narrower than general GLSL statements:
- * no local mutation, nested branch, or partial output can reach a later RETURN
- * with an uninitialized component. */
-static int conditional_output_assignment(Lower* lower)
-{
-    uint32_t first_instruction = lower->ins_count;
-    uint32_t component;
-    uint32_t component_mask = 0u;
+static int discard_statement(Lower* lower);
+static int conditional_output(Lower* lower);
 
+static int stage_output_assignment(Lower* lower)
+{
     if (lower->token.kind != T_IDENT ||
         (lower->shader_type == RINGL_VERTEX_SHADER
              ? !text_is(&lower->token, "gl_Position")
              : !text_is(&lower->token, "gl_FragColor"))) {
-        fail(lower, "if branches must assign the stage output");
+        fail(lower, "conditional branches may only assign the complete stage output");
         return 0;
     }
-    if (!assignment(lower))
-        return 0;
-    if (lower->ins_count < first_instruction + 4u) {
-        fail(lower, "if branch must write all four output components");
-        return 0;
-    }
-    for (component = 0u; component < 4u; ++component) {
-        const RinGLRsh1InstructionV1* instruction =
-            &lower->ins[lower->ins_count - 4u + component];
-
-        if (instruction->opcode != RINGL_RSH1_OP_STORE_OUTPUT_F32 ||
-            instruction->immediate >= 4u ||
-            (component_mask & (UINT32_C(1) << instruction->immediate)) != 0u) {
-            fail(lower, "if branch must write all four output components");
-            return 0;
-        }
-        component_mask |= UINT32_C(1) << instruction->immediate;
-    }
-    if (component_mask != UINT32_C(0x0f)) {
-        fail(lower, "if branch must write all four output components");
-        return 0;
-    }
-    return 1;
+    return assignment(lower);
 }
-
-static int discard_statement(Lower* lower);
 
 static int conditional_branch(Lower* lower, int* discard_out)
 {
+    uint32_t first_instruction;
+    uint32_t component_mask = 0u;
+    int saw_discard = 0;
+
     if (discard_out == NULL)
         return 0;
     *discard_out = 0;
-    if (lower->token.kind == T_IDENT && text_is(&lower->token, "discard")) {
-        if (lower->shader_type != RINGL_FRAGMENT_SHADER) {
-            fail(lower, "discard is only available in fragment shaders");
+    first_instruction = lower->ins_count;
+    enter_scope(lower);
+    while (lower->token.kind != T_RBRACE && lower->token.kind != T_EOF) {
+        if (lower->token.kind == T_IF) {
+            if (!conditional_output(lower)) {
+                leave_scope(lower);
+                return 0;
+            }
+        } else if (lower->token.kind == T_IDENT &&
+                   text_is(&lower->token, "discard")) {
+            if (lower->shader_type != RINGL_FRAGMENT_SHADER || saw_discard ||
+                !discard_statement(lower)) {
+                fail(lower, "discard must be the only statement on its path");
+                leave_scope(lower);
+                return 0;
+            }
+            saw_discard = 1;
+        } else if (!stage_output_assignment(lower)) {
+            leave_scope(lower);
             return 0;
         }
-        if (!discard_statement(lower))
-            return 0;
-        *discard_out = 1;
-        return 1;
     }
-    return conditional_output_assignment(lower);
+    if (lower->token.kind != T_RBRACE || lower->ins_count == first_instruction) {
+        fail(lower, "conditional branch is empty or unterminated");
+        leave_scope(lower);
+        return 0;
+    }
+    for (uint32_t index = first_instruction; index < lower->ins_count; ++index) {
+        const RinGLRsh1InstructionV1* instruction = &lower->ins[index];
+        if (instruction->opcode == RINGL_RSH1_OP_STORE_OUTPUT_F32 &&
+            instruction->immediate < 4u)
+            component_mask |= UINT32_C(1) << instruction->immediate;
+    }
+    if (saw_discard) {
+        if (component_mask != 0u || lower->ins_count != first_instruction + 1u) {
+            fail(lower, "discard branch cannot contain output statements");
+            leave_scope(lower);
+            return 0;
+        }
+        *discard_out = 1;
+    } else if (component_mask != UINT32_C(0x0f)) {
+        fail(lower, "if branch must write all four output components");
+        leave_scope(lower);
+        return 0;
+    }
+    leave_scope(lower);
+    return 1;
 }
 
 static int conditional_output(Lower* lower)
@@ -4283,6 +4353,236 @@ static int extension_decl(Lower* lower)
     }
     next(lower);
     return 1;
+}
+
+static int local_type_info(Tok kind, uint8_t* width_out,
+                           int* is_i32_out, int* is_bool_out,
+                           uint8_t* matrix_out)
+{
+    uint8_t width;
+    int is_i32;
+    int is_bool;
+    uint8_t matrix;
+
+    if (!width_out || !is_i32_out || !is_bool_out || !matrix_out)
+        return 0;
+    width = kind == T_FLOAT || kind == T_INT || kind == T_BOOL ? 1u
+        : kind == T_VEC2 || kind == T_IVEC2 || kind == T_BVEC2 || kind == T_MAT2 ? 2u
+        : kind == T_VEC3 || kind == T_IVEC3 || kind == T_BVEC3 || kind == T_MAT3 ? 3u
+        : kind == T_VEC4 || kind == T_IVEC4 || kind == T_BVEC4 || kind == T_MAT4 ? 4u
+        : 0u;
+    if (width == 0u)
+        return 0;
+    is_i32 = kind == T_INT || kind == T_BOOL ||
+             kind == T_BVEC2 || kind == T_BVEC3 || kind == T_BVEC4 ||
+             kind == T_IVEC2 || kind == T_IVEC3 || kind == T_IVEC4;
+    is_bool = kind == T_BOOL || kind == T_BVEC2 || kind == T_BVEC3 ||
+              kind == T_BVEC4;
+    matrix = kind == T_MAT2 ? 2u : kind == T_MAT3 ? 3u :
+             kind == T_MAT4 ? 4u : 0u;
+    *width_out = width;
+    *is_i32_out = is_i32;
+    *is_bool_out = is_bool;
+    *matrix_out = matrix;
+    return 1;
+}
+
+static int static_integer(Lower* lower, int32_t* value_out)
+{
+    Symbol* symbol;
+
+    if (lower->token.kind == T_NUMBER)
+        return constant_i32_literal(lower, value_out);
+    if (lower->token.kind != T_IDENT) {
+        fail(lower, "for bound must be a compile-time integer");
+        return 0;
+    }
+    symbol = find_symbol(lower, &lower->token);
+    if (!symbol || symbol->constant_i32 == 0u) {
+        fail(lower, "for bound must name a const int");
+        return 0;
+    }
+    *value_out = symbol->constant_i32_value;
+    next(lower);
+    return 1;
+}
+
+static int token_matches(const Token* token, const Token* name)
+{
+    return token && name && token->kind == T_IDENT &&
+           token->length == name->length &&
+           memcmp(token->begin, name->begin, name->length) == 0;
+}
+
+static int locate_block_end(Lower* lower, size_t body_start,
+                            size_t* after_end_out)
+{
+    Lower probe;
+    uint32_t depth = 1u;
+
+    if (!lower || !after_end_out || body_start > lower->length)
+        return 0;
+    probe = *lower;
+    probe.offset = body_start;
+    next(&probe);
+    while (probe.token.kind != T_EOF) {
+        if (probe.token.kind == T_LBRACE) {
+            if (depth == UINT32_MAX)
+                return 0;
+            ++depth;
+        } else if (probe.token.kind == T_RBRACE) {
+            --depth;
+            if (depth == 0u) {
+                *after_end_out = probe.offset;
+                return 1;
+            }
+        }
+        next(&probe);
+    }
+    return 0;
+}
+
+static int statement(Lower* lower);
+
+/* RSH1 verifier control flow is forward-only.  Unrolling a const-initialized,
+ * const-bounded iterator keeps the loop finite at compile time and produces
+ * a module that every existing backend can execute without a hidden loop
+ * watchdog or an unvalidated back edge. */
+static int for_statement(Lower* lower)
+{
+    Token loop_name;
+    Symbol* loop_symbol;
+    int32_t start;
+    int32_t limit;
+    int64_t trip_count;
+    Tok relation;
+    size_t body_start;
+    size_t after_body;
+
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after for"))
+        return 0;
+    enter_scope(lower);
+    if (!need(lower, T_INT, "bounded for requires an int iterator") ||
+        lower->token.kind != T_IDENT) {
+        fail(lower, "bounded for requires an int iterator declaration");
+        leave_scope(lower);
+        return 0;
+    }
+    loop_name = lower->token;
+    next(lower);
+    if (!need(lower, T_ASSIGN, "for iterator requires an initializer") ||
+        !constant_i32_literal(lower, &start) ||
+        !need(lower, T_SEMI, "expected ';' after for initializer") ||
+        !token_matches(&lower->token, &loop_name)) {
+        fail(lower, "for condition must use its iterator");
+        leave_scope(lower);
+        return 0;
+    }
+    loop_symbol = add_symbol(lower, &loop_name, 0, 1u, 0u);
+    if (!loop_symbol) {
+        leave_scope(lower);
+        return 0;
+    }
+    loop_symbol->is_i32 = 1u;
+    loop_symbol->constant_i32 = 1u;
+    loop_symbol->immutable = 1u;
+    loop_symbol->constant_i32_value = start;
+    next(lower);
+    relation = lower->token.kind;
+    if (relation != T_LT && relation != T_LE) {
+        fail(lower, "bounded for requires '<' or '<='");
+        leave_scope(lower);
+        return 0;
+    }
+    next(lower);
+    if (!static_integer(lower, &limit) ||
+        !need(lower, T_SEMI, "expected ';' after for condition") ||
+        !token_matches(&lower->token, &loop_name)) {
+        fail(lower, "for increment must use its iterator");
+        leave_scope(lower);
+        return 0;
+    }
+    next(lower);
+    if (!need(lower, T_INC, "bounded for requires iterator++") ||
+        !need(lower, T_RPAREN, "expected ')' after for header") ||
+        !need(lower, T_LBRACE, "expected '{' after for header")) {
+        leave_scope(lower);
+        return 0;
+    }
+    trip_count = (int64_t)limit - (int64_t)start +
+                 (relation == T_LE ? 1 : 0);
+    if (trip_count < 0 || trip_count > 16 ||
+        !locate_block_end(lower,
+                          (size_t)(lower->token.begin - lower->source),
+                          &after_body)) {
+        fail(lower, "for loop is outside the bounded profile");
+        leave_scope(lower);
+        return 0;
+    }
+    body_start = (size_t)(lower->token.begin - lower->source);
+    for (int64_t iteration = 0; iteration < trip_count; ++iteration) {
+        uint16_t reg;
+        enter_scope(lower);
+        reg = new_reg(lower);
+        if (reg == RINGL_RSH1_UNUSED ||
+            !emit(lower, RINGL_RSH1_OP_CONST_I32, reg,
+                  RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED,
+                  (uint32_t)((int64_t)start + iteration))) {
+            leave_scope(lower);
+            leave_scope(lower);
+            return 0;
+        }
+        loop_symbol->regs[0] = reg;
+        loop_symbol->initialized = 1u;
+        loop_symbol->initialized_components = 1u;
+        lower->offset = body_start;
+        next(lower);
+        while (lower->token.kind != T_RBRACE &&
+               lower->token.kind != T_EOF) {
+            if (!statement(lower)) {
+                leave_scope(lower);
+                leave_scope(lower);
+                return 0;
+            }
+        }
+        if (lower->token.kind != T_RBRACE) {
+            fail(lower, "unterminated for body");
+            leave_scope(lower);
+            leave_scope(lower);
+            return 0;
+        }
+        leave_scope(lower);
+    }
+    lower->offset = after_body;
+    next(lower);
+    leave_scope(lower);
+    return 1;
+}
+
+static int statement(Lower* lower)
+{
+    uint8_t width;
+    int is_i32;
+    int is_bool;
+    uint8_t matrix;
+
+    if (lower->token.kind == T_CONST)
+        return constant_int_declaration(lower);
+    if (local_type_info(lower->token.kind, &width, &is_i32, &is_bool,
+                        &matrix))
+        return local_decl(lower, width, is_i32, is_bool, matrix);
+    if (lower->token.kind == T_IF)
+        return conditional_output(lower);
+    if (lower->token.kind == T_FOR)
+        return for_statement(lower);
+    if (lower->token.kind == T_BREAK || lower->token.kind == T_CONTINUE) {
+        fail(lower, "break and continue are not representable in the bounded unrolled profile");
+        return 0;
+    }
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "discard"))
+        return discard_statement(lower);
+    return assignment(lower);
 }
 
 static int parse_all(Lower* lower)
@@ -4520,65 +4820,19 @@ static int parse_all(Lower* lower)
                 !need(lower, T_LBRACE, "expected '{'")) {
                 return 0;
             }
+            enter_scope(lower);
             while (lower->token.kind != T_RBRACE &&
                    lower->token.kind != T_EOF) {
-                if (lower->token.kind == T_CONST) {
-                    if (!constant_int_declaration(lower))
-                        return 0;
-                } else if (lower->token.kind == T_FLOAT ||
-                    lower->token.kind == T_VEC2 ||
-                    lower->token.kind == T_VEC3 ||
-                    lower->token.kind == T_VEC4 ||
-                    lower->token.kind == T_INT ||
-                    lower->token.kind == T_BOOL ||
-                    lower->token.kind == T_BVEC2 ||
-                    lower->token.kind == T_BVEC3 ||
-                    lower->token.kind == T_BVEC4 ||
-                    lower->token.kind == T_IVEC2 ||
-                    lower->token.kind == T_IVEC3 ||
-                    lower->token.kind == T_IVEC4 ||
-                    lower->token.kind == T_MAT2 ||
-                    lower->token.kind == T_MAT3 ||
-                    lower->token.kind == T_MAT4) {
-                    uint8_t width = lower->token.kind == T_FLOAT ||
-                                     lower->token.kind == T_INT || lower->token.kind == T_BOOL ? 1u
-                        : lower->token.kind == T_VEC2 || lower->token.kind == T_IVEC2 ||
-                          lower->token.kind == T_BVEC2 ||
-                          lower->token.kind == T_MAT2 ? 2u
-                        : lower->token.kind == T_VEC3 || lower->token.kind == T_IVEC3 ||
-                          lower->token.kind == T_BVEC3 ||
-                          lower->token.kind == T_MAT3 ? 3u : 4u;
-                    int is_i32 = lower->token.kind == T_INT ||
-                                 lower->token.kind == T_BOOL ||
-                                 lower->token.kind == T_BVEC2 ||
-                                 lower->token.kind == T_BVEC3 ||
-                                 lower->token.kind == T_BVEC4 ||
-                                 lower->token.kind == T_IVEC2 ||
-                                 lower->token.kind == T_IVEC3 ||
-                                 lower->token.kind == T_IVEC4;
-                    uint8_t matrix_dimension = lower->token.kind == T_MAT2 ? 2u
-                        : lower->token.kind == T_MAT3 ? 3u
-                        : lower->token.kind == T_MAT4 ? 4u : 0u;
-                    if (!local_decl(lower, width, is_i32,
-                                    lower->token.kind == T_BOOL ||
-                                    lower->token.kind == T_BVEC2 ||
-                                    lower->token.kind == T_BVEC3 ||
-                                    lower->token.kind == T_BVEC4,
-                                    matrix_dimension))
-                        return 0;
-                } else if (lower->token.kind == T_IF) {
-                    if (!conditional_output(lower))
-                        return 0;
-                } else if (lower->token.kind == T_IDENT &&
-                           text_is(&lower->token, "discard")) {
-                    if (!discard_statement(lower))
-                        return 0;
-                } else if (!assignment(lower)) {
+                if (!statement(lower)) {
+                    leave_scope(lower);
                     return 0;
                 }
             }
-            if (!need(lower, T_RBRACE, "expected '}'"))
+            if (!need(lower, T_RBRACE, "expected '}'")) {
+                leave_scope(lower);
                 return 0;
+            }
+            leave_scope(lower);
             continue;
         }
         fail(lower, "unsupported lowering syntax");
@@ -4802,6 +5056,8 @@ int ringl_glsl_lower_rsh1_with_uniforms(
     lower.source = source;
     lower.length = source_length;
     lower.shader_type = shader_type;
+    lower.scope_depth = 1u;
+    lower.scope_base[0] = 0u;
     lower.next_varying_output = 4u;
     lower.uniforms = uniforms;
     lower.uniform_count = uniform_count;

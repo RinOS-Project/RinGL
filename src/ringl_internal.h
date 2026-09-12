@@ -463,6 +463,7 @@ struct RinGLContext {
     uint32_t lost;
     uint32_t loss_reported;
     uint32_t dirty_bits;
+    RinGLTraceRuntimeV1* trace;
     RinGLRinGpuBindingV1 ringpu;
     RinGLRinGpuOpsV1 ringpu_ops;
     RinGLRinGpuSyncOpsV1 sync_ops;
@@ -583,6 +584,8 @@ struct RinGLContext {
 
 void ringl_context_record_error(RinGLContext* context, uint32_t error);
 void ringl_context_mark_lost(RinGLContext* context);
+void ringl_context_trace(RinGLContext* context, uint32_t type,
+                         uint64_t value0, uint64_t value1, int32_t status);
 void ringl_context_mark_dirty(RinGLContext* context, uint32_t bits);
 void ringl_context_clear_dirty(RinGLContext* context, uint32_t bits);
 int ringl_context_reserve_shadow_bytes(RinGLContext* context,

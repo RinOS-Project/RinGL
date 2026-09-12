@@ -555,6 +555,8 @@ void ringl_bind_framebuffer(uint32_t target, uint32_t framebuffer)
 
     if (context == NULL)
         return;
+    ringl_context_trace(context, RINGL_TRACE_FBO_TRANSITION, target,
+                        framebuffer, 0);
     if (!framebuffer_target_valid(target)) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
@@ -728,6 +730,9 @@ void ringl_framebuffer_texture_2d(uint32_t target, uint32_t attachment,
 
     if (context == NULL)
         return;
+    ringl_context_trace(context, RINGL_TRACE_FBO_TRANSITION,
+                        ((uint64_t)target << 32u) | attachment, texture,
+                        0);
     if (!framebuffer_target_valid(target) ||
         (!color_attachment_valid(attachment) && !depth_attachment_valid(attachment)) ||
         textarget != RINGL_TEXTURE_2D) {
@@ -2113,6 +2118,9 @@ void ringl_framebuffer_renderbuffer(uint32_t target, uint32_t attachment,
 
     if (context == NULL)
         return;
+    ringl_context_trace(context, RINGL_TRACE_FBO_TRANSITION,
+                        ((uint64_t)target << 32u) | attachment, renderbuffer,
+                        0);
     if (!framebuffer_target_valid(target) ||
         (!color_attachment_valid(attachment) && !depth_attachment_valid(attachment)) ||
         !renderbuffer_target_valid(renderbuffer_target)) {

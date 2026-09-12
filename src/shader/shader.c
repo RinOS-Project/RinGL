@@ -317,6 +317,7 @@ void ringl_compile_shader(uint32_t shader)
 
     if (context == NULL)
         return;
+    ringl_context_trace(context, RINGL_TRACE_SHADER_COMPILE, shader, 0u, 0);
     object = ringl_shader_object_for_api(context, shader);
     if (object == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);

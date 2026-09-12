@@ -1846,6 +1846,7 @@ void ringl_link_program(uint32_t program)
     uint32_t old_linked_fragment;
     if (context == NULL)
         return;
+    ringl_context_trace(context, RINGL_TRACE_PROGRAM_LINK, program, 0u, 0);
     object = ringl_program_object(context, program);
     if (object == NULL) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);

@@ -3,6 +3,10 @@
 
 static int ringl_backend_result(RinGLContext* context, int result)
 {
+    /* This is an attempted RinGPU operation, not a success indication. Keep
+     * the exact backend result in the trace so device loss and ordinary
+     * rejection remain distinguishable to the embedding. */
+    ringl_context_trace(context, RINGL_TRACE_CALL_SUMMARY, 0u, 0u, result);
     if (result == RINGL_RIN_GPU_ERROR_DEVICE_LOST)
         ringl_context_mark_lost(context);
     return result;

@@ -2337,6 +2337,13 @@ void ringl_tex_image_2d(uint32_t target, int32_t level,
                         int32_t border, uint32_t format, uint32_t type,
                         const void* pixels)
 {
+    RinGLContext* context = ringl_get_current_context();
+    if (context != NULL)
+        ringl_context_trace(context, RINGL_TRACE_TEXTURE_UPLOAD,
+                            ((uint64_t)target << 32u) | (uint32_t)level,
+                            ((uint64_t)(uint32_t)width << 32u) |
+                                (uint32_t)height,
+                            0);
     ringl_tex_image_2d_impl(target, level, internal_format, width, height,
                             border, format, type, pixels, UINT64_MAX);
 }
@@ -2347,6 +2354,13 @@ void ringl_tex_image_2d_from_bytes(uint32_t target, int32_t level,
                                    uint32_t format, uint32_t type,
                                    const void* pixels, uint64_t pixels_size)
 {
+    RinGLContext* context = ringl_get_current_context();
+    if (context != NULL)
+        ringl_context_trace(context, RINGL_TRACE_TEXTURE_UPLOAD,
+                            ((uint64_t)target << 32u) | (uint32_t)level,
+                            ((uint64_t)(uint32_t)width << 32u) |
+                                (uint32_t)height,
+                            0);
     ringl_tex_image_2d_impl(target, level, internal_format, width, height,
                             border, format, type, pixels, pixels_size);
 }
@@ -2612,6 +2626,13 @@ void ringl_tex_sub_image_2d(uint32_t target, int32_t level,
                             uint32_t format, uint32_t type,
                             const void* pixels)
 {
+    RinGLContext* context = ringl_get_current_context();
+    if (context != NULL)
+        ringl_context_trace(context, RINGL_TRACE_TEXTURE_UPLOAD,
+                            ((uint64_t)target << 32u) | (uint32_t)level,
+                            ((uint64_t)(uint32_t)width << 32u) |
+                                (uint32_t)height,
+                            0);
     ringl_tex_sub_image_2d_impl(target, level, xoffset, yoffset, width,
                                 height, format, type, pixels, UINT64_MAX);
 }
@@ -2619,10 +2640,17 @@ void ringl_tex_sub_image_2d(uint32_t target, int32_t level,
 void ringl_tex_sub_image_2d_from_bytes(uint32_t target, int32_t level,
                                        int32_t xoffset, int32_t yoffset,
                                        int32_t width, int32_t height,
-                                       uint32_t format, uint32_t type,
-                                       const void* pixels,
-                                       uint64_t pixels_size)
+                                        uint32_t format, uint32_t type,
+                                        const void* pixels,
+                                        uint64_t pixels_size)
 {
+    RinGLContext* context = ringl_get_current_context();
+    if (context != NULL)
+        ringl_context_trace(context, RINGL_TRACE_TEXTURE_UPLOAD,
+                            ((uint64_t)target << 32u) | (uint32_t)level,
+                            ((uint64_t)(uint32_t)width << 32u) |
+                                (uint32_t)height,
+                            0);
     ringl_tex_sub_image_2d_impl(target, level, xoffset, yoffset, width,
                                 height, format, type, pixels, pixels_size);
 }

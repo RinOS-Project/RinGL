@@ -1923,6 +1923,12 @@ static void ringl_draw_arrays_impl(uint32_t mode, int32_t first, int32_t count,
 
 void ringl_draw_arrays(uint32_t mode, int32_t first, int32_t count)
 {
+    RinGLContext* context = ringl_get_current_context();
+    if (context != NULL)
+        ringl_context_trace(context, RINGL_TRACE_DRAW, mode,
+                            ((uint64_t)(uint32_t)first << 32u) |
+                                (uint32_t)count,
+                            0);
     ringl_draw_arrays_impl(mode, first, count, 1u);
 }
 
@@ -1933,6 +1939,10 @@ void ringl_draw_arrays_instanced(uint32_t mode, int32_t first, int32_t count,
 
     if (context == NULL)
         return;
+    ringl_context_trace(context, RINGL_TRACE_DRAW, mode,
+                        ((uint64_t)(uint32_t)first << 32u) |
+                            (uint32_t)count,
+                        0);
     if (instance_count < 0) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;
@@ -2198,6 +2208,11 @@ static void ringl_draw_elements_impl(uint32_t mode, int32_t count,
 void ringl_draw_elements(uint32_t mode, int32_t count, uint32_t type,
                          uint64_t offset)
 {
+    RinGLContext* context = ringl_get_current_context();
+    if (context != NULL)
+        ringl_context_trace(context, RINGL_TRACE_DRAW, mode,
+                            ((uint64_t)type << 32u) | (uint32_t)count,
+                            (int32_t)offset);
     ringl_draw_elements_impl(mode, count, type, offset, 1u);
 }
 
@@ -2209,6 +2224,9 @@ void ringl_draw_elements_instanced(uint32_t mode, int32_t count,
 
     if (context == NULL)
         return;
+    ringl_context_trace(context, RINGL_TRACE_DRAW, mode,
+                        ((uint64_t)type << 32u) | (uint32_t)count,
+                        (int32_t)offset);
     if (instance_count < 0) {
         ringl_context_record_error(context, RINGL_INVALID_VALUE);
         return;

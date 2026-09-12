@@ -7,6 +7,151 @@
 
 static _Thread_local RinGLContext* ringl_current_context;
 
+#define RINGL_TRACE_MAGIC UINT64_C(0x52494e4c54524331)
+
+typedef struct RinGLTraceState {
+    uint64_t magic;
+    uint64_t next_sequence;
+    uint64_t dropped_count;
+    uint32_t event_count;
+    uint32_t reserved0;
+    uint64_t event_counts[RINGL_TRACE_EVENT_TYPE_COUNT];
+    RinGLTraceEventV1 events[RINGL_TRACE_MAX_EVENTS];
+} RinGLTraceState;
+
+static RinGLTraceState* ringl_trace_state(RinGLTraceRuntimeV1* runtime)
+{
+    return runtime != NULL ? (RinGLTraceState*)runtime->opaque : NULL;
+}
+
+static const RinGLTraceState* ringl_trace_state_const(
+    const RinGLTraceRuntimeV1* runtime)
+{
+    return runtime != NULL ? (const RinGLTraceState*)runtime->opaque : NULL;
+}
+
+static int ringl_trace_overlaps_runtime(const RinGLTraceRuntimeV1* runtime,
+                                        const void* pointer, size_t size)
+{
+    uintptr_t first;
+    uintptr_t candidate;
+
+    if (runtime == NULL || pointer == NULL || size == 0u)
+        return 0;
+    first = (uintptr_t)runtime;
+    candidate = (uintptr_t)pointer;
+    if (size > UINTPTR_MAX - first || size > UINTPTR_MAX - candidate)
+        return 1;
+    return candidate < first + sizeof(*runtime) &&
+           first < candidate + size;
+}
+
+int ringl_trace_runtime_init(RinGLTraceRuntimeV1* runtime)
+{
+    RinGLTraceState* state;
+
+    if (runtime == NULL)
+        return -1;
+    memset(runtime, 0, sizeof(*runtime));
+    state = ringl_trace_state(runtime);
+    state->magic = RINGL_TRACE_MAGIC;
+    state->next_sequence = 1u;
+    return 0;
+}
+
+int ringl_trace_runtime_is_initialized(const RinGLTraceRuntimeV1* runtime)
+{
+    const RinGLTraceState* state = ringl_trace_state_const(runtime);
+    return state != NULL && state->magic == RINGL_TRACE_MAGIC &&
+           state->next_sequence != 0u;
+}
+
+int ringl_trace_runtime_record(RinGLTraceRuntimeV1* runtime, uint32_t type,
+                               int32_t status, uint64_t value0,
+                               uint64_t value1)
+{
+    RinGLTraceState* state = ringl_trace_state(runtime);
+    RinGLTraceEventV1* event;
+    uint32_t index;
+
+    if (!ringl_trace_runtime_is_initialized(runtime) ||
+        type < RINGL_TRACE_CALL_SUMMARY ||
+        type > RINGL_TRACE_CONTEXT_LOSS)
+        return -1;
+    if (state->next_sequence == UINT64_MAX)
+        return -2;
+
+    index = (uint32_t)((state->next_sequence - 1u) %
+                       RINGL_TRACE_MAX_EVENTS);
+    if (state->event_count == RINGL_TRACE_MAX_EVENTS)
+        ++state->dropped_count;
+    else
+        ++state->event_count;
+
+    event = &state->events[index];
+    memset(event, 0, sizeof(*event));
+    event->struct_size = sizeof(*event);
+    event->version = RINGL_TRACE_VERSION;
+    event->type = type;
+    event->status = status;
+    event->sequence = state->next_sequence++;
+    event->value0 = value0;
+    event->value1 = value1;
+    ++state->event_counts[type - 1u];
+    return 0;
+}
+
+int ringl_trace_runtime_read(RinGLTraceRuntimeV1* runtime, uint64_t cursor,
+                             uint32_t capacity, RinGLTraceEventV1* events_out,
+                             uint32_t* event_count_out,
+                             uint64_t* next_cursor_out)
+{
+    RinGLTraceState* state = ringl_trace_state(runtime);
+    uint64_t oldest;
+    uint64_t available;
+    uint32_t count;
+
+    if (event_count_out != NULL)
+        *event_count_out = 0u;
+    if (next_cursor_out != NULL)
+        *next_cursor_out = cursor;
+    if (!ringl_trace_runtime_is_initialized(runtime) ||
+        event_count_out == NULL || next_cursor_out == NULL ||
+        (capacity != 0u && events_out == NULL) ||
+#if UINTPTR_MAX <= UINT32_MAX
+        capacity > SIZE_MAX / sizeof(*events_out) ||
+#endif
+        ringl_trace_overlaps_runtime(runtime, events_out,
+                                     sizeof(*events_out) * (size_t)capacity))
+        return -1;
+
+    oldest = state->next_sequence - state->event_count;
+    if (cursor == 0u)
+        cursor = oldest;
+    if (cursor < oldest || cursor > state->next_sequence) {
+        *next_cursor_out = oldest;
+        return -2;
+    }
+
+    available = state->next_sequence - cursor;
+    if (available == 0u) {
+        *next_cursor_out = cursor;
+        return 0;
+    }
+    if (capacity == 0u)
+        return -4;
+
+    count = available > capacity ? capacity : (uint32_t)available;
+    for (uint32_t index = 0u; index < count; ++index) {
+        uint64_t sequence = cursor + index;
+        events_out[index] = state->events[(sequence - 1u) %
+                                          RINGL_TRACE_MAX_EVENTS];
+    }
+    *event_count_out = count;
+    *next_cursor_out = cursor + count;
+    return available > capacity ? -3 : 0;
+}
+
 void ringl_copy_c_string(char* destination, size_t capacity,
                          const char* source)
 {
@@ -76,7 +221,9 @@ int ringl_context_create(const RinGLContextDescV1* desc,
             desc->api_version != RINGL_API_VERSION ||
             desc->reserved0 != 0u ||
             desc->flags != 0u ||
-            !ringl_validate_ringpu_binding(desc->ringpu)) {
+            !ringl_validate_ringpu_binding(desc->ringpu) ||
+            (desc->trace != NULL &&
+             !ringl_trace_runtime_is_initialized(desc->trace))) {
             return -1;
         }
     }
@@ -88,6 +235,7 @@ int ringl_context_create(const RinGLContextDescV1* desc,
     context->magic = RINGL_CONTEXT_MAGIC;
     context->pending_error = RINGL_NO_ERROR;
     context->dirty_bits = RINGL_DIRTY_ALL;
+    context->trace = desc != NULL ? desc->trace : NULL;
     context->cull_face_mode = RINGL_BACK;
     /* OpenGL ES 2.0 enables DITHER at context creation. */
     context->dither_enabled = RINGL_TRUE;
@@ -244,11 +392,22 @@ void ringl_context_record_error(RinGLContext* context, uint32_t error)
         context->pending_error = error;
 }
 
+void ringl_context_trace(RinGLContext* context, uint32_t type,
+                         uint64_t value0, uint64_t value1, int32_t status)
+{
+    if (!ringl_context_is_valid(context) || context->trace == NULL)
+        return;
+    (void)ringl_trace_runtime_record(context->trace, type, status, value0,
+                                      value1);
+}
+
 void ringl_context_mark_lost(RinGLContext* context)
 {
     if (!ringl_context_is_valid(context) || context->lost)
         return;
 
+    ringl_context_trace(context, RINGL_TRACE_CONTEXT_LOSS, 0u, 0u,
+                        RINGL_CONTEXT_LOST_WEBGL);
     context->lost = 1u;
     context->loss_reported = 0u;
     context->pending_error = RINGL_NO_ERROR;

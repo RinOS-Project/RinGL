@@ -1157,6 +1157,54 @@ typedef struct RinGLRinGpuBindingV1 {
     uint32_t reserved0;
 } RinGLRinGpuBindingV1;
 
+/* Optional, bounded trace sink for an embedding. The sink owns no pointers
+ * and may be placed in static or caller-owned storage. A trace record is a
+ * summary of an operation that RinGL actually attempted; it never turns a
+ * rejected operation into success and it is not part of GL error delivery. */
+#define RINGL_TRACE_VERSION 1u
+#define RINGL_TRACE_RUNTIME_STATE_QWORDS 4096u
+#define RINGL_TRACE_MAX_EVENTS 256u
+
+typedef enum RinGLTraceEventTypeV1 {
+    RINGL_TRACE_CALL_SUMMARY = 1,
+    RINGL_TRACE_SHADER_COMPILE = 2,
+    RINGL_TRACE_PROGRAM_LINK = 3,
+    RINGL_TRACE_DRAW = 4,
+    RINGL_TRACE_TEXTURE_UPLOAD = 5,
+    RINGL_TRACE_FBO_TRANSITION = 6,
+    RINGL_TRACE_CONTEXT_LOSS = 7,
+    RINGL_TRACE_EVENT_TYPE_COUNT = 7
+} RinGLTraceEventTypeV1;
+
+typedef struct RinGLTraceEventV1 {
+    uint32_t struct_size;
+    uint32_t version;
+    uint32_t type;
+    int32_t status;
+    uint64_t sequence;
+    uint64_t value0;
+    uint64_t value1;
+} RinGLTraceEventV1;
+
+typedef struct RinGLTraceRuntimeV1 {
+    uint64_t opaque[RINGL_TRACE_RUNTIME_STATE_QWORDS];
+} RinGLTraceRuntimeV1;
+
+int ringl_trace_runtime_init(RinGLTraceRuntimeV1* runtime);
+int ringl_trace_runtime_is_initialized(const RinGLTraceRuntimeV1* runtime);
+int ringl_trace_runtime_record(RinGLTraceRuntimeV1* runtime, uint32_t type,
+                               int32_t status, uint64_t value0,
+                               uint64_t value1);
+/* cursor is a sequence number; zero starts at the oldest retained event.
+ * A short output returns -3 and supplies a resumable next cursor. */
+int ringl_trace_runtime_read(RinGLTraceRuntimeV1* runtime, uint64_t cursor,
+                             uint32_t capacity, RinGLTraceEventV1* events_out,
+                             uint32_t* event_count_out,
+                             uint64_t* next_cursor_out);
+
+/* The trace pointer is optional. When present it must have been initialized
+ * with ringl_trace_runtime_init() before context creation. */
+
 typedef struct RinGLContextDescV1 {
     uint32_t struct_size;
     uint32_t api_version;
@@ -1164,6 +1212,7 @@ typedef struct RinGLContextDescV1 {
     /* RINGL_CONTEXT_FLAG_*; unknown bits are rejected. */
     uint32_t flags;
     uint32_t reserved0;
+    RinGLTraceRuntimeV1* trace;
 } RinGLContextDescV1;
 
 typedef struct RinGLVertexAttribInfoV1 {

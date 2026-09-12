@@ -268,6 +268,7 @@ int ringl_validate_vertex_fetch_instanced(const RinGLContext* context,
         ++mutable_context->vertex_validation_cache_hits;
         return 0;
     }
+    ++mutable_context->vertex_validation_cache_misses;
     if (ringl_resolve_vertex_layout(context, layout) != 0)
         return -1;
     if (instance_count == 0u || vertex_count == 0u ||

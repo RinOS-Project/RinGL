@@ -487,6 +487,7 @@ struct RinGLContext {
     uint32_t vertex_validation_cache_next;
     uint64_t vertex_validation_generation;
     uint64_t vertex_validation_cache_hits;
+    uint64_t vertex_validation_cache_misses;
     RinGLTraceRuntimeV1* trace;
     RinGLRinGpuBindingV1 ringpu;
     RinGLRinGpuOpsV1 ringpu_ops;

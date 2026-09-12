@@ -1193,6 +1193,31 @@ static Value symbol_value(Lower* lower)
     return apply_swizzle(lower, value);
 }
 
+static int constructor_convert_numeric(Lower* lower, Value* value,
+                                       int target_is_i32)
+{
+    uint32_t index;
+
+    if (value == NULL || value->width == 0u || value->matrix ||
+        value->is_bool || value->is_i32 == (uint8_t)target_is_i32) {
+        return value != NULL && value->width != 0u && !value->matrix &&
+               !value->is_bool;
+    }
+    for (index = 0u; index < value->width; ++index) {
+        uint16_t converted = new_reg(lower);
+        if (converted == RINGL_RSH1_UNUSED ||
+            !emit(lower,
+                  target_is_i32 ? RINGL_RSH1_OP_F32_TO_I32
+                                : RINGL_RSH1_OP_I32_TO_F32,
+                  converted, value->regs[index], RINGL_RSH1_UNUSED, 0u)) {
+            return 0;
+        }
+        value->regs[index] = converted;
+    }
+    value->is_i32 = (uint8_t)target_is_i32;
+    return 1;
+}
+
 static Value constructor_value(Lower* lower, uint8_t target_width,
                                int target_is_i32, int target_is_bool)
 {
@@ -1212,8 +1237,10 @@ static Value constructor_value(Lower* lower, uint8_t target_width,
         uint32_t index;
         if (argument.width == 0u || argument.matrix)
             return result;
-        if (argument.is_i32 != (uint8_t)target_is_i32 ||
-            argument.is_bool != (uint8_t)target_is_bool) {
+        if (argument.is_bool != (uint8_t)target_is_bool ||
+            (argument.is_bool && target_is_bool == 0) ||
+            (!target_is_bool && !constructor_convert_numeric(
+                                   lower, &argument, target_is_i32))) {
             fail(lower, "vector constructor component type mismatch");
             return result;
         }

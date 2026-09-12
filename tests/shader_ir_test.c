@@ -49,6 +49,7 @@ typedef struct __attribute__((packed)) Instruction {
 #define RSH1_OP_JUMP UINT16_C(11)
 #define RSH1_OP_JUMP_IF UINT16_C(12)
 #define RSH1_OP_CMP_EQ_I32 UINT16_C(31)
+#define RSH1_OP_F32_TO_I32 UINT16_C(44)
 #define RSH1_OP_CMP_NE_I32 UINT16_C(32)
 #define RSH1_OP_CMP_LT_F32 UINT16_C(39)
 #define RSH1_OP_DISCARD UINT16_C(53)
@@ -370,6 +371,14 @@ int main(void)
         "void main() {\n"
         "  vec4 packed = vec4(position, vec2(1.0, 0.0));\n"
         "  gl_Position = packed;\n"
+        "}\n";
+    const char* mixed_numeric_constructor_source =
+        "attribute vec2 position;\n"
+        "void main() {\n"
+        "  vec4 packed = vec4(position, 1, 0.5);\n"
+        "  ivec4 integer_packed = ivec4(1.0, position.x, 2, 3);\n"
+        "  gl_Position = vec4(float(integer_packed.x), packed.y, "
+        "packed.z, packed.w);\n"
         "}\n";
     const char* conditional_vertex_source =
         "attribute vec2 position;\n"
@@ -864,6 +873,16 @@ int main(void)
     assert(header.input_count == 2u);
     assert(header.output_count == 9u);
 
+    /* Numeric constructor conversion is component-wise and explicit in the
+     * RSH1 stream: float<-int and int<-float each use their typed opcode. */
+    header = lower_and_read_header(vertex, mixed_numeric_constructor_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 2u);
+    assert(header.output_count == 9u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_I32_TO_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_F32_TO_I32));
+
     /* Bounded scalar if/else emits a true scalar comparison, a zero test,
      * and forward branch instructions. This must remain native RSH1 control
      * flow rather than an embedding-side choice. */
@@ -978,11 +997,11 @@ int main(void)
     ringl_compile_shader(fragment);
     assert(ringl_get_shader_compile_status(fragment) == RINGL_FALSE);
 
-    /* GLES vector constructors require matching basic types. Preserve that
-     * boundary while adding same-type scalar splats above. */
+    /* Numeric vector constructors convert their components exactly once, but
+     * Boolean-to-numeric construction remains invalid. */
     ringl_shader_source(vertex,
                         "attribute vec2 position; void main() { "
-                        "vec2 invalid = vec2(1); "
+                        "vec2 invalid = vec2(true); "
                         "gl_Position = vec4(position + invalid, 0.0, 1.0); }", -1);
     ringl_compile_shader(vertex);
     assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);

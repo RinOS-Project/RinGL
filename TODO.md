@@ -58,16 +58,14 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     destruction.
 - [x] Implement a bounded GLSL ES lexer/parser with initial semantic validation.
 - [x] Lower the current scalar GLSL ES subset directly to RinShader RSH1.
-- [x] Lower same-basic-type GLSL `vec2`/`vec3`/`vec4` and
-  `ivec2`/`ivec3`/`ivec4` scalar constructors as RSH1 register splats. A
-  single Float or i32 source register now initializes every target component;
-  normal vector component lists remain exact-width and typed, and an explicit
-  scalar `float(...)`/`int(...)` conversion remains the only Float/i32 bridge.
-  The strict IR regression verifies Float and i32 splats plus emitted
-  `I32_TO_F32`, rejects `vec2(int)` as a mixed-basic-type construction, and
-  the real Ladybird→RinGL→RinGPU→private-Aquamarine regression reads back
-  `(64, 64, 64, 255)` from both constructor paths. No browser or direct-surface
-  vector expansion is introduced.
+- [x] Lower bounded GLSL numeric `vec2`/`vec3`/`vec4` and
+  `ivec2`/`ivec3`/`ivec4` constructors as RSH1 register operations. A single
+  Float or i32 source register initializes every target component; mixed
+  numeric arguments convert component-wise with `I32_TO_F32` or
+  `F32_TO_I32`, while Boolean-to-numeric construction is rejected. Normal
+  vector component lists remain exact-width and typed, and no browser or
+  direct-surface vector expansion is introduced. The strict IR regression
+  verifies both conversion opcodes and the Boolean rejection path.
 - [x] Lower the common Float GLSL expression builtins `min`, `max`, `clamp`,
   `mix`, and `dot` through RinGL rather than a browser-side calculation or a
   direct surface backend. `min`/`max`/`clamp` emit RinShader's scalar F32

@@ -133,6 +133,10 @@ typedef struct Lower {
     uint32_t scope_base[16];
     uint32_t scope_depth;
     uint32_t loop_depth;
+    uint32_t loop_break_count[16];
+    uint32_t loop_break_jumps[16][RINGL_RSH1_MAX_INSTRUCTIONS];
+    uint32_t loop_continue_count[16];
+    uint32_t loop_continue_jumps[16][RINGL_RSH1_MAX_INSTRUCTIONS];
     uint16_t next_reg;
     uint16_t next_input;
     uint16_t next_varying_output;
@@ -4444,6 +4448,38 @@ static int locate_block_end(Lower* lower, size_t body_start,
 
 static int statement(Lower* lower);
 
+static int loop_control_statement(Lower* lower, int is_continue)
+{
+    uint32_t frame;
+    uint32_t jump;
+    uint32_t* count;
+    uint32_t* jumps;
+
+    if (lower->loop_depth == 0u) {
+        fail(lower, "break or continue is only valid inside a loop");
+        return 0;
+    }
+    frame = lower->loop_depth - 1u;
+    count = is_continue ? &lower->loop_continue_count[frame]
+                        : &lower->loop_break_count[frame];
+    jumps = is_continue ? lower->loop_continue_jumps[frame]
+                        : lower->loop_break_jumps[frame];
+    if (*count >= RINGL_RSH1_MAX_INSTRUCTIONS) {
+        fail(lower, "loop control jump limit exceeded");
+        return 0;
+    }
+    jump = lower->ins_count;
+    if (!emit(lower, RINGL_RSH1_OP_JUMP, RINGL_RSH1_UNUSED,
+              RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED, 0u)) {
+        return 0;
+    }
+    jumps[(*count)++] = jump;
+    next(lower);
+    return need(lower, T_SEMI,
+                is_continue ? "expected ';' after continue"
+                            : "expected ';' after break");
+}
+
 /* RSH1 verifier control flow is forward-only.  Unrolling a const-initialized,
  * const-bounded iterator keeps the loop finite at compile time and produces
  * a module that every existing backend can execute without a hidden loop
@@ -4458,6 +4494,7 @@ static int for_statement(Lower* lower)
     Tok relation;
     size_t body_start;
     size_t after_body;
+    uint32_t frame;
 
     next(lower);
     if (!need(lower, T_LPAREN, "expected '(' after for"))
@@ -4520,15 +4557,26 @@ static int for_statement(Lower* lower)
         leave_scope(lower);
         return 0;
     }
+    if (lower->loop_depth >= sizeof(lower->loop_break_count) /
+                              sizeof(lower->loop_break_count[0])) {
+        fail(lower, "loop nesting limit exceeded");
+        leave_scope(lower);
+        return 0;
+    }
     body_start = (size_t)(lower->token.begin - lower->source);
+    frame = lower->loop_depth++;
     for (int64_t iteration = 0; iteration < trip_count; ++iteration) {
         uint16_t reg;
+        uint32_t jump_index;
+
+        lower->loop_continue_count[frame] = 0u;
         enter_scope(lower);
         reg = new_reg(lower);
         if (reg == RINGL_RSH1_UNUSED ||
             !emit(lower, RINGL_RSH1_OP_CONST_I32, reg,
                   RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED,
                   (uint32_t)((int64_t)start + iteration))) {
+            lower->loop_depth--;
             leave_scope(lower);
             leave_scope(lower);
             return 0;
@@ -4541,6 +4589,7 @@ static int for_statement(Lower* lower)
         while (lower->token.kind != T_RBRACE &&
                lower->token.kind != T_EOF) {
             if (!statement(lower)) {
+                lower->loop_depth--;
                 leave_scope(lower);
                 leave_scope(lower);
                 return 0;
@@ -4548,14 +4597,24 @@ static int for_statement(Lower* lower)
         }
         if (lower->token.kind != T_RBRACE) {
             fail(lower, "unterminated for body");
+            lower->loop_depth--;
             leave_scope(lower);
             leave_scope(lower);
             return 0;
         }
+        jump_index = lower->ins_count;
+        for (uint32_t jump = 0u; jump < lower->loop_continue_count[frame];
+             ++jump)
+            lower->ins[lower->loop_continue_jumps[frame][jump]].immediate =
+                jump_index;
         leave_scope(lower);
     }
     lower->offset = after_body;
     next(lower);
+    for (uint32_t jump = 0u; jump < lower->loop_break_count[frame]; ++jump)
+        lower->ins[lower->loop_break_jumps[frame][jump]].immediate =
+            lower->ins_count;
+    lower->loop_depth--;
     leave_scope(lower);
     return 1;
 }
@@ -4576,10 +4635,10 @@ static int statement(Lower* lower)
         return conditional_output(lower);
     if (lower->token.kind == T_FOR)
         return for_statement(lower);
-    if (lower->token.kind == T_BREAK || lower->token.kind == T_CONTINUE) {
-        fail(lower, "break and continue are not representable in the bounded unrolled profile");
-        return 0;
-    }
+    if (lower->token.kind == T_BREAK)
+        return loop_control_statement(lower, 0);
+    if (lower->token.kind == T_CONTINUE)
+        return loop_control_statement(lower, 1);
     if (lower->token.kind == T_IDENT && text_is(&lower->token, "discard"))
         return discard_statement(lower);
     return assignment(lower);

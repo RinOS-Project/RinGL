@@ -407,6 +407,23 @@ int main(void)
         "  }\n"
         "  gl_Position = vec4(position.x + value, position.y, 0.0, 1.0);\n"
         "}\n";
+    const char* break_for_vertex_source =
+        "attribute vec2 position;\n"
+        "void main() {\n"
+        "  for (int i = 0; i < 2; i++) {\n"
+        "    break;\n"
+        "  }\n"
+        "  gl_Position = vec4(position, 0.0, 1.0);\n"
+        "}\n";
+    const char* continue_for_vertex_source =
+        "attribute vec2 position;\n"
+        "void main() {\n"
+        "  for (int i = 0; i < 2; i++) {\n"
+        "    continue;\n"
+        "    gl_Position = vec4(position, 0.0, 1.0);\n"
+        "  }\n"
+        "  gl_Position = vec4(position, 0.0, 1.0);\n"
+        "}\n";
     const char* conditional_i32_fragment_source =
         "uniform int selector;\n"
         "void main() {\n"
@@ -1493,16 +1510,18 @@ int main(void)
         "attribute vec2 position; void main() { "
         "for (int i = 0; i < 17; i++) { "
         "gl_Position = vec4(position, 0.0, 1.0); } }");
-    expect_shader_rejected(
-        vertex,
-        "attribute vec2 position; void main() { "
-        "for (int i = 0; i < 2; i++) { break; } "
-        "gl_Position = vec4(position, 0.0, 1.0); }");
-    expect_shader_rejected(
-        vertex,
-        "attribute vec2 position; void main() { "
-        "for (int i = 0; i < 2; i++) { continue; } "
-        "gl_Position = vec4(position, 0.0, 1.0); }");
+    header = lower_and_read_header(vertex, break_for_vertex_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 2u);
+    assert(header.output_count == 9u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP));
+    header = lower_and_read_header(vertex, continue_for_vertex_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 2u);
+    assert(header.output_count == 9u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP));
 
     ringl_shader_source(fragment,
                         "void main() { float size = gl_PointSize; "

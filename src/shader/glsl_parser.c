@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "glsl_parser.h"
+#include "glsl_type.h"
 
 #include <ctype.h>
 #include <math.h>
@@ -108,6 +109,7 @@ typedef struct Symbol {
     char name[64];
     uint32_t kind;
     uint32_t width;
+    RinGLGlslTypeV1 type;
     /* A declaration remains one source symbol. Array elements are expanded
      * only for linked WebGL reflection and location state. */
     uint32_t sampler_array_length;
@@ -117,6 +119,49 @@ typedef struct Symbol {
     uint8_t immutable;
     int32_t constant_i32_value;
 } Symbol;
+
+static RinGLGlslTypeV1 parser_symbol_type(uint32_t kind, uint32_t width)
+{
+    switch (kind) {
+    case SYMBOL_SAMPLER2D:
+        return ringl_glsl_sampler_type(RINGL_GLSL_SAMPLER_2D);
+    case SYMBOL_UNIFORM_MAT2:
+        return ringl_glsl_matrix_type(2u);
+    case SYMBOL_UNIFORM_MAT3:
+        return ringl_glsl_matrix_type(3u);
+    case SYMBOL_UNIFORM_MAT4:
+        return ringl_glsl_matrix_type(4u);
+    case SYMBOL_UNIFORM_INT:
+        return ringl_glsl_scalar_type(RINGL_GLSL_BASE_I32);
+    case SYMBOL_UNIFORM_IVEC2:
+        return ringl_glsl_vector_type(RINGL_GLSL_BASE_I32, 2u);
+    case SYMBOL_UNIFORM_IVEC3:
+        return ringl_glsl_vector_type(RINGL_GLSL_BASE_I32, 3u);
+    case SYMBOL_UNIFORM_IVEC4:
+        return ringl_glsl_vector_type(RINGL_GLSL_BASE_I32, 4u);
+    case SYMBOL_UNIFORM_BOOL:
+        return ringl_glsl_scalar_type(RINGL_GLSL_BASE_BOOL);
+    case SYMBOL_UNIFORM_BVEC2:
+        return ringl_glsl_vector_type(RINGL_GLSL_BASE_BOOL, 2u);
+    case SYMBOL_UNIFORM_BVEC3:
+        return ringl_glsl_vector_type(RINGL_GLSL_BASE_BOOL, 3u);
+    case SYMBOL_UNIFORM_BVEC4:
+        return ringl_glsl_vector_type(RINGL_GLSL_BASE_BOOL, 4u);
+    case SYMBOL_ATTRIBUTE:
+    case SYMBOL_VARYING:
+    case SYMBOL_UNIFORM_FLOAT:
+    case SYMBOL_UNIFORM_VEC2:
+    case SYMBOL_UNIFORM_VEC3:
+    case SYMBOL_UNIFORM_VEC4:
+    case SYMBOL_VALUE:
+    default:
+        return width == 1u ? ringl_glsl_scalar_type(RINGL_GLSL_BASE_F32)
+                           : width >= 2u && width <= 4u
+                               ? ringl_glsl_vector_type(
+                                     RINGL_GLSL_BASE_F32, (uint8_t)width)
+                               : ringl_glsl_invalid_type();
+    }
+}
 
 typedef struct Parser {
     const char* source;
@@ -540,6 +585,7 @@ static int add_symbol(Parser* parser, const Token* token,
     symbol->name[token->length] = '\0';
     symbol->kind = kind;
     symbol->width = width;
+    symbol->type = parser_symbol_type(kind, width);
     symbol->sampler_array_length = 1u;
     symbol->constant_i32 = 0u;
     symbol->constant_i32_value = 0;
@@ -1656,6 +1702,8 @@ static int discard_statement(Parser* parser)
 static int local_declaration(Parser* parser)
 {
     Token name;
+    TokenKind type_kind = parser->token.kind;
+    Symbol* symbol;
     uint32_t width;
 
     if (parser->token.kind == TOK_FLOAT)
@@ -1693,6 +1741,25 @@ static int local_declaration(Parser* parser)
     name = parser->token;
     if (!add_symbol(parser, &name, SYMBOL_VALUE, width))
         return 0;
+    symbol = find_symbol(parser, &name);
+    if (symbol == NULL) {
+        fail(parser, "failed to record local declaration");
+        return 0;
+    }
+    if (type_kind == TOK_INT || type_kind == TOK_IVEC2 ||
+        type_kind == TOK_IVEC3 || type_kind == TOK_IVEC4) {
+        symbol->type = width == 1u
+            ? ringl_glsl_scalar_type(RINGL_GLSL_BASE_I32)
+            : ringl_glsl_vector_type(RINGL_GLSL_BASE_I32, (uint8_t)width);
+    } else if (type_kind == TOK_BOOL || type_kind == TOK_BVEC2 ||
+               type_kind == TOK_BVEC3 || type_kind == TOK_BVEC4) {
+        symbol->type = width == 1u
+            ? ringl_glsl_scalar_type(RINGL_GLSL_BASE_BOOL)
+            : ringl_glsl_vector_type(RINGL_GLSL_BASE_BOOL, (uint8_t)width);
+    } else if (type_kind == TOK_MAT2 || type_kind == TOK_MAT3 ||
+               type_kind == TOK_MAT4) {
+        symbol->type = ringl_glsl_matrix_type((uint8_t)width);
+    }
     next_token(parser);
     if (accept(parser, TOK_ASSIGN) && !expression(parser))
         return 0;
@@ -1732,6 +1799,7 @@ static int constant_int_declaration(Parser* parser)
     }
     symbol->constant_i32 = 1u;
     symbol->immutable = 1u;
+    symbol->type = ringl_glsl_scalar_type(RINGL_GLSL_BASE_I32);
     symbol->constant_i32_value = value;
     parser->result->declaration_count++;
     return 1;
@@ -1818,6 +1886,7 @@ static int for_statement(Parser* parser)
     }
     loop_symbol->constant_i32 = 1u;
     loop_symbol->immutable = 1u;
+    loop_symbol->type = ringl_glsl_scalar_type(RINGL_GLSL_BASE_I32);
     loop_symbol->constant_i32_value = start;
     next_token(parser);
     relation = parser->token.kind;

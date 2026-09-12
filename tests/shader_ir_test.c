@@ -6,6 +6,7 @@
 #include <ringl/ringl.h>
 #include "../src/ringl_internal.h"
 #include "../src/shader/glsl_lower.h"
+#include "../src/shader/glsl_type.h"
 #include "../src/shader/varying_lower.h"
 
 #define RSH1_MAGIC UINT32_C(0x31485352)
@@ -664,6 +665,40 @@ int main(void)
 
     assert(ringl_context_create(&desc, &context) == 0);
     assert(ringl_make_current(context) == 0);
+    {
+        RinGLGlslTypeV1 scalar =
+            ringl_glsl_scalar_type(RINGL_GLSL_BASE_F32);
+        RinGLGlslTypeV1 integer =
+            ringl_glsl_scalar_type(RINGL_GLSL_BASE_I32);
+        RinGLGlslTypeV1 boolean =
+            ringl_glsl_scalar_type(RINGL_GLSL_BASE_BOOL);
+        RinGLGlslTypeV1 vector =
+            ringl_glsl_vector_type(RINGL_GLSL_BASE_F32, 4u);
+        RinGLGlslTypeV1 integer_vector =
+            ringl_glsl_vector_type(RINGL_GLSL_BASE_I32, 4u);
+        RinGLGlslTypeV1 matrix = ringl_glsl_matrix_type(4u);
+        RinGLGlslTypeV1 sampler =
+            ringl_glsl_sampler_type(RINGL_GLSL_SAMPLER_2D);
+        RinGLGlslTypeV1 inferred;
+
+        assert(ringl_glsl_type_valid(scalar));
+        assert(ringl_glsl_type_valid(vector));
+        assert(ringl_glsl_type_valid(matrix));
+        assert(ringl_glsl_type_valid(sampler));
+        assert(ringl_glsl_infer_componentwise(
+                   scalar, vector, RINGL_GLSL_BINARY_MUL, 1, &inferred));
+        assert(ringl_glsl_type_equal(inferred, vector));
+        assert(ringl_glsl_infer_matrix_vector(matrix, vector, &inferred));
+        assert(ringl_glsl_type_equal(inferred, vector));
+        assert(ringl_glsl_constructor_accepts(
+            vector, integer, 1));
+        assert(ringl_glsl_constructor_accepts(
+            vector, integer_vector, 1));
+        assert(!ringl_glsl_constructor_accepts(
+            vector, boolean, 1));
+        assert(sampler.kind == RINGL_GLSL_TYPE_SAMPLER &&
+               sampler.sampler_target == RINGL_GLSL_SAMPLER_2D);
+    }
     {
         RinGLGlslLowerResult workspace_result;
         const uint64_t available_shadow_budget =

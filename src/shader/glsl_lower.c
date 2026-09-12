@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "glsl_lower.h"
+#include "glsl_type.h"
 #include "rsh1_abi.h"
 
 #include "../ringl_internal.h"
@@ -116,6 +117,7 @@ typedef struct Symbol {
     uint8_t is_i32;
     uint8_t is_bool;
     uint8_t sampler;
+    RinGLGlslTypeV1 type;
     uint16_t sampler_index;
     /* Source declarations retain their aggregate length. Samplers and the
      * bounded numeric array profile use the same constant-index mechanism. */
@@ -124,6 +126,33 @@ typedef struct Symbol {
     uint8_t immutable;
     int32_t constant_i32_value;
 } Symbol;
+
+static void refresh_symbol_type(Symbol* symbol)
+{
+    if (symbol == NULL)
+        return;
+    if (symbol->sampler != 0u) {
+        symbol->type = ringl_glsl_sampler_type(RINGL_GLSL_SAMPLER_2D);
+    } else if (symbol->matrix != 0u) {
+        symbol->type = ringl_glsl_matrix_type(symbol->matrix);
+    } else {
+        uint8_t base = symbol->is_bool != 0u
+            ? RINGL_GLSL_BASE_BOOL
+            : symbol->is_i32 != 0u ? RINGL_GLSL_BASE_I32
+                                   : RINGL_GLSL_BASE_F32;
+        symbol->type = symbol->width == 1u
+            ? ringl_glsl_scalar_type(base)
+            : ringl_glsl_vector_type(base, symbol->width);
+    }
+}
+
+static RinGLGlslTypeV1 lower_symbol_type(Symbol* symbol)
+{
+    if (symbol == NULL)
+        return ringl_glsl_invalid_type();
+    refresh_symbol_type(symbol);
+    return symbol->type;
+}
 
 typedef struct Lower {
     const char* source;
@@ -171,6 +200,26 @@ static Value invalid_value(void)
     Value value;
     memset(&value, 0, sizeof(value));
     return value;
+}
+
+static RinGLGlslTypeV1 lower_value_type(const Value* value)
+{
+    if (value == NULL || value->width == 0u)
+        return ringl_glsl_invalid_type();
+    if (value->matrix != 0u)
+        return ringl_glsl_matrix_type(value->matrix);
+    return value->width == 1u
+        ? ringl_glsl_scalar_type(value->is_bool
+                                     ? RINGL_GLSL_BASE_BOOL
+                                     : value->is_i32
+                                         ? RINGL_GLSL_BASE_I32
+                                         : RINGL_GLSL_BASE_F32)
+        : ringl_glsl_vector_type(value->is_bool
+                                     ? RINGL_GLSL_BASE_BOOL
+                                     : value->is_i32
+                                         ? RINGL_GLSL_BASE_I32
+                                         : RINGL_GLSL_BASE_F32,
+                                 value->width);
 }
 
 /* RSH1 is a finite binary32 execution contract. Keep an overflowing source
@@ -694,6 +743,7 @@ static Symbol* add_symbol(Lower* lower, const Token* token,
     symbol->attribute = (uint8_t)attribute;
     symbol->width = width;
     symbol->matrix = matrix_dimension;
+    refresh_symbol_type(symbol);
     symbol->sampler_array_length = 1u;
     symbol->input = attribute ? lower->next_input : RINGL_RSH1_UNUSED;
     symbol->output = RINGL_RSH1_UNUSED;
@@ -810,6 +860,7 @@ static Symbol* add_sampler_symbol(Lower* lower, const Token* token,
         return NULL;
     symbol->uniform = 1u;
     symbol->sampler = 1u;
+    refresh_symbol_type(symbol);
     symbol->sampler_index = (uint16_t)lower->sampler_declaration_count;
     symbol->sampler_array_length = (uint16_t)array_length;
     lower->sampler_declaration_count += array_length;
@@ -1249,11 +1300,13 @@ static Value symbol_value(Lower* lower)
     Value value = invalid_value();
     Token name = lower->token;
     Symbol* symbol = find_symbol(lower, &name);
+    RinGLGlslTypeV1 symbol_type = lower_symbol_type(symbol);
     uint32_t array_index = 0u;
     uint32_t component_count;
     uint32_t index;
 
-    if (symbol == NULL || !symbol->initialized || symbol->sampler) {
+    if (symbol == NULL || !ringl_glsl_type_valid(symbol_type) ||
+        !symbol->initialized || symbol->sampler) {
         if (symbol != NULL && symbol->sampler)
             fail(lower, "sampler2D values are only valid as texture2D arguments");
         else
@@ -1336,6 +1389,18 @@ static Value constructor_value(Lower* lower, uint8_t target_width,
                                int target_is_i32, int target_is_bool)
 {
     Value result = invalid_value();
+    RinGLGlslTypeV1 target_type = target_width == 1u
+        ? ringl_glsl_scalar_type(target_is_bool
+                                     ? RINGL_GLSL_BASE_BOOL
+                                     : target_is_i32
+                                         ? RINGL_GLSL_BASE_I32
+                                         : RINGL_GLSL_BASE_F32)
+        : ringl_glsl_vector_type(target_is_bool
+                                     ? RINGL_GLSL_BASE_BOOL
+                                     : target_is_i32
+                                         ? RINGL_GLSL_BASE_I32
+                                         : RINGL_GLSL_BASE_F32,
+                                 target_width);
     uint32_t argument_count = 0u;
     uint32_t width = 0u;
 
@@ -1351,8 +1416,9 @@ static Value constructor_value(Lower* lower, uint8_t target_width,
         uint32_t index;
         if (argument.width == 0u || argument.matrix)
             return result;
-        if (argument.is_bool != (uint8_t)target_is_bool ||
-            (argument.is_bool && target_is_bool == 0) ||
+        if (!ringl_glsl_constructor_accepts(
+                target_type, lower_value_type(&argument), 1) ||
+            (argument.is_bool != (uint8_t)target_is_bool) ||
             (!target_is_bool && !constructor_convert_numeric(
                                    lower, &argument, target_is_i32))) {
             fail(lower, "vector constructor component type mismatch");
@@ -1405,9 +1471,9 @@ static Value constructor_value(Lower* lower, uint8_t target_width,
         fail(lower, "vector constructor component count mismatch");
         return invalid_value();
     }
-    result.width = target_width;
-    result.is_i32 = (uint8_t)target_is_i32;
-    result.is_bool = (uint8_t)target_is_bool;
+    result.width = target_type.width;
+    result.is_i32 = target_type.base == RINGL_GLSL_BASE_I32;
+    result.is_bool = target_type.base == RINGL_GLSL_BASE_BOOL;
     return result;
 }
 
@@ -1645,6 +1711,8 @@ static Value matrix_component_multiply_value(Lower* lower)
     Value left;
     Value right;
     Value result = invalid_value();
+    RinGLGlslTypeV1 left_type;
+    RinGLGlslTypeV1 right_type;
     uint32_t index;
     uint32_t component_count;
 
@@ -1660,8 +1728,10 @@ static Value matrix_component_multiply_value(Lower* lower)
         !need(lower, T_RPAREN, "expected ')' after matrixCompMult")) {
         return result;
     }
-    if (!left.matrix || !right.matrix || left.matrix != right.matrix ||
-        left.is_i32 || right.is_i32) {
+    left_type = lower_value_type(&left);
+    right_type = lower_value_type(&right);
+    if (!ringl_glsl_type_equal(left_type, right_type) ||
+        left_type.kind != RINGL_GLSL_TYPE_MATRIX) {
         fail(lower, "matrixCompMult requires matching floating-point matrices");
         return result;
     }
@@ -3010,13 +3080,17 @@ static Value frag_coord_value(Lower* lower)
  * sampler. Deduplicate calls by source declaration, and publish the original
  * declaration index for the normal RinGL program binding path. An inactive
  * declared sampler consumes no GPU resource. */
-static uint16_t active_sampler_resource(Lower* lower, const Symbol* sampler,
+static uint16_t active_sampler_resource(Lower* lower, Symbol* sampler,
                                         uint32_t sampler_array_index)
 {
     uint32_t index;
     uint32_t sampler_index;
+    RinGLGlslTypeV1 sampler_type;
 
-    if (lower == NULL || sampler == NULL || !sampler->sampler ||
+    sampler_type = lower_symbol_type(sampler);
+    if (lower == NULL || sampler == NULL ||
+        sampler_type.kind != RINGL_GLSL_TYPE_SAMPLER ||
+        sampler_type.sampler_target != RINGL_GLSL_SAMPLER_2D ||
         sampler_array_index >= sampler->sampler_array_length) {
         if (lower != NULL)
             fail(lower, "texture2D requires a sampler2D uniform");
@@ -3050,6 +3124,7 @@ static Value texture2d_value(Lower* lower, int explicit_lod, int projected,
     Value gradient_y;
     Token name;
     Symbol* sampler;
+    RinGLGlslTypeV1 sampler_type;
     uint16_t resource;
     uint32_t component;
     uint32_t sampler_array_index = 0u;
@@ -3077,7 +3152,9 @@ static Value texture2d_value(Lower* lower, int explicit_lod, int projected,
     }
     name = lower->token;
     sampler = find_symbol(lower, &name);
-    if (sampler == NULL || !sampler->sampler) {
+    sampler_type = lower_symbol_type(sampler);
+    if (sampler == NULL || sampler_type.kind != RINGL_GLSL_TYPE_SAMPLER ||
+        sampler_type.sampler_target != RINGL_GLSL_SAMPLER_2D) {
         fail(lower, "texture2D first argument must be sampler2D");
         return result;
     }
@@ -3444,11 +3521,14 @@ static Value matrix_times_vector(Lower* lower, const Value* matrix,
                                  const Value* vector)
 {
     Value result = invalid_value();
+    RinGLGlslTypeV1 inferred_type;
     uint32_t row;
     uint32_t dimension;
 
-    if (matrix == NULL || vector == NULL || !matrix->matrix ||
-        vector->matrix || vector->width != matrix->matrix)
+    if (matrix == NULL || vector == NULL ||
+        !ringl_glsl_infer_matrix_vector(
+            lower_value_type(matrix), lower_value_type(vector),
+            &inferred_type))
         return result;
     if (matrix->is_i32 || vector->is_i32) {
         fail(lower, "matrix multiplication requires floating-point values");
@@ -3482,7 +3562,7 @@ static Value matrix_times_vector(Lower* lower, const Value* matrix,
         }
         result.regs[row] = sum;
     }
-    result.width = (uint8_t)dimension;
+    result.width = inferred_type.width;
     return result;
 }
 
@@ -3497,6 +3577,7 @@ static Value componentwise_binary(Lower* lower, const Value* left,
                                   int allow_scalar_broadcast)
 {
     Value result = invalid_value();
+    RinGLGlslTypeV1 inferred_type;
     uint8_t width;
     uint32_t index;
     int division = opcode == RINGL_RSH1_OP_DIV_F32 ||
@@ -3513,6 +3594,21 @@ static Value componentwise_binary(Lower* lower, const Value* left,
     }
     if (left->is_bool || right->is_bool) {
         fail(lower, "boolean arithmetic is not supported");
+        return result;
+    }
+    if (!ringl_glsl_infer_componentwise(
+            lower_value_type(left), lower_value_type(right),
+            opcode == RINGL_RSH1_OP_ADD_F32 || opcode == RINGL_RSH1_OP_ADD_I32
+                ? RINGL_GLSL_BINARY_ADD
+                : opcode == RINGL_RSH1_OP_SUB_F32 ||
+                      opcode == RINGL_RSH1_OP_SUB_I32
+                    ? RINGL_GLSL_BINARY_SUB
+                    : opcode == RINGL_RSH1_OP_MUL_F32 ||
+                          opcode == RINGL_RSH1_OP_MUL_I32
+                        ? RINGL_GLSL_BINARY_MUL
+                        : RINGL_GLSL_BINARY_DIV,
+            allow_scalar_broadcast, &inferred_type)) {
+        fail(lower, "expression type inference rejected arithmetic operands");
         return result;
     }
     if (left->is_i32) {
@@ -3592,8 +3688,9 @@ static Value componentwise_binary(Lower* lower, const Value* left,
             result.known_zero_components |= (uint16_t)(UINT32_C(1) << index);
         }
     }
-    result.width = width;
-    result.is_i32 = left->is_i32;
+    result.width = inferred_type.width;
+    result.is_i32 = inferred_type.base == RINGL_GLSL_BASE_I32;
+    result.is_bool = inferred_type.base == RINGL_GLSL_BASE_BOOL;
     return result;
 }
 

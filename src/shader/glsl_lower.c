@@ -1479,8 +1479,8 @@ static Value constructor_value(Lower* lower, uint8_t target_width,
         return invalid_value();
     }
     result.width = target_type.width;
-    result.is_i32 = target_type.base == RINGL_GLSL_BASE_I32;
-    result.is_bool = target_type.base == RINGL_GLSL_BASE_BOOL;
+    result.is_i32 = (uint8_t)target_is_i32;
+    result.is_bool = (uint8_t)target_is_bool;
     return result;
 }
 
@@ -3615,6 +3615,11 @@ static Value unary(Lower* lower)
     for (index = 0u; index < value.width; ++index) {
         uint16_t zero = new_reg(lower);
         uint16_t result = new_reg(lower);
+        uint32_t component_bit = UINT32_C(1) << index;
+        int was_known_zero =
+            (value.known_zero_components & component_bit) != 0u;
+        int was_constant =
+            (value.constant_components & component_bit) != 0u;
         if (zero == RINGL_RSH1_UNUSED || result == RINGL_RSH1_UNUSED ||
             !emit(lower, value.is_i32 ? RINGL_RSH1_OP_CONST_I32
                                       : RINGL_RSH1_OP_CONST_F32,
@@ -3627,6 +3632,24 @@ static Value unary(Lower* lower)
             return invalid_value();
         }
         value.regs[index] = result;
+        if (was_constant) {
+            uint32_t bits = value.constant_bits[index];
+
+            if (value.is_i32)
+                bits = 0u - bits;
+            else
+                bits ^= UINT32_C(0x80000000);
+            value.constant_bits[index] = bits;
+            if (value.is_i32 ? bits == 0u
+                             : (bits & UINT32_C(0x7fffffff)) == 0u)
+                value.known_zero_components |= (uint16_t)component_bit;
+            else
+                value.known_zero_components &= (uint16_t)~component_bit;
+        } else if (was_known_zero) {
+            value.known_zero_components |= (uint16_t)component_bit;
+        } else {
+            value.known_zero_components &= (uint16_t)~component_bit;
+        }
     }
     return value;
 }

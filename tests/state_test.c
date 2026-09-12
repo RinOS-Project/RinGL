@@ -73,6 +73,9 @@ int main(void)
                   "WEBGL_draw_buffers") != NULL);
     assert(strstr(ringl_get_string(RINGL_EXTENSIONS),
                   "ANGLE_instanced_arrays") != NULL);
+    assert(strstr(ringl_get_string(RINGL_EXTENSIONS), "EXT_sRGB") != NULL);
+    assert(strstr(ringl_get_string(RINGL_EXTENSIONS),
+                  "WEBGL_compressed_texture_s3tc_srgb") != NULL);
     assert(ringl_get_string(0xdeadbeefu) == NULL);
     assert(ringl_get_error() == RINGL_INVALID_ENUM);
 

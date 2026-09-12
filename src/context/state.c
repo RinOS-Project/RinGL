@@ -16,8 +16,9 @@ static const char* ringl_implemented_extensions(void)
            "EXT_color_buffer_half_float EXT_blend_minmax "
            "OES_standard_derivatives EXT_shader_texture_lod EXT_frag_depth "
            "WEBGL_draw_buffers ANGLE_instanced_arrays OES_vertex_array_object "
-           "WEBGL_depth_texture "
-           "WEBGL_compressed_texture_etc1 WEBGL_compressed_texture_s3tc";
+           "WEBGL_depth_texture EXT_sRGB "
+           "WEBGL_compressed_texture_etc1 WEBGL_compressed_texture_s3tc "
+           "WEBGL_compressed_texture_s3tc_srgb";
 }
 
 static uint32_t* capability_field(RinGLContext* context, uint32_t capability)

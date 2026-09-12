@@ -50,4 +50,22 @@ int ringl_glsl_lower_rsh1_with_uniforms(
     const RinGLGlslUniformValue* uniforms, uint32_t uniform_count,
     RinGLGlslLowerResult* result);
 
+/* RSH1 is a structured, forward-only instruction stream.  This validator
+ * materializes its basic blocks and edge relation before a module is exposed
+ * to RinGPU.  The result is diagnostic metadata for tests and diagnostics;
+ * callers must still use RinGPU's full verifier at the backend boundary. */
+typedef struct RinGLGlslCfgInfoV1 {
+    uint32_t instruction_count;
+    uint32_t block_count;
+    uint32_t edge_count;
+    uint32_t branch_count;
+    uint32_t merge_count;
+    uint32_t max_dominator_count;
+} RinGLGlslCfgInfoV1;
+
+int ringl_glsl_validate_rsh1_cfg(const void* module, size_t module_size,
+                                 RinGLGlslCfgInfoV1* info,
+                                 char* diagnostic,
+                                 size_t diagnostic_capacity);
+
 #endif

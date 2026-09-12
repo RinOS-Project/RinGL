@@ -5,6 +5,7 @@
 
 #include <ringl/ringl.h>
 #include "../src/ringl_internal.h"
+#include "../src/shader/glsl_lower.h"
 #include "../src/shader/varying_lower.h"
 
 #define RSH1_MAGIC UINT32_C(0x31485352)
@@ -441,11 +442,10 @@ int main(void)
         "}\n";
     const char* continue_for_vertex_source =
         "attribute vec2 position;\n"
-        "void main() {\n"
-        "  for (int i = 0; i < 2; i++) {\n"
-        "    continue;\n"
-        "    gl_Position = vec4(position, 0.0, 1.0);\n"
-        "  }\n"
+          "void main() {\n"
+          "  for (int i = 0; i < 2; i++) {\n"
+          "    continue;\n"
+          "  }\n"
         "  gl_Position = vec4(position, 0.0, 1.0);\n"
         "}\n";
     const char* conditional_i32_fragment_source =
@@ -916,8 +916,22 @@ int main(void)
     assert(header.output_count == 9u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_CMP_LT_F32));
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_CMP_EQ_I32));
-    assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP_IF));
-    assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP));
+      assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP_IF));
+      assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP));
+      {
+          RinGLGlslCfgInfoV1 cfg;
+          char diagnostic[160];
+
+          assert(ringl_glsl_validate_rsh1_cfg(
+                     blob, header.total_size, &cfg, diagnostic,
+                     sizeof(diagnostic)) == 0);
+          assert(cfg.instruction_count == header.instruction_count);
+          assert(cfg.block_count >= 4u);
+          assert(cfg.edge_count >= 4u);
+          assert(cfg.branch_count >= 2u);
+          assert(cfg.merge_count >= 1u);
+          assert(cfg.max_dominator_count >= 2u);
+      }
 
     /* Branch blocks may contain several output assignments and nested
      * conditionals. Lexical shadowing is confined to the child scope, while
@@ -1580,12 +1594,37 @@ int main(void)
     assert(header.input_count == 2u);
     assert(header.output_count == 9u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP));
-    header = lower_and_read_header(vertex, continue_for_vertex_source,
-                                   blob, sizeof(blob));
+      header = lower_and_read_header(vertex, continue_for_vertex_source,
+                                     blob, sizeof(blob));
     assert(header.stage == 1u);
     assert(header.input_count == 2u);
     assert(header.output_count == 9u);
-    assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP));
+      assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP));
+
+      /* CFG validation is also a public boundary check: a backward target is
+       * rejected before the RSH1 bytes can be treated as an executable module.
+       */
+      {
+          uint8_t malformed[sizeof(blob)];
+          Instruction* instructions;
+          uint32_t index;
+          RinGLGlslCfgInfoV1 cfg;
+          char diagnostic[160];
+
+          memcpy(malformed, blob, header.total_size);
+          instructions = (Instruction*)(malformed + header.header_size);
+          for (index = 0u; index < header.instruction_count; ++index) {
+              if (instructions[index].opcode == RSH1_OP_JUMP) {
+                  instructions[index].immediate = index;
+                  break;
+              }
+          }
+          assert(index < header.instruction_count);
+          assert(ringl_glsl_validate_rsh1_cfg(
+                     malformed, header.total_size, &cfg, diagnostic,
+                     sizeof(diagnostic)) != 0);
+          assert(diagnostic[0] != '\0');
+      }
 
     ringl_shader_source(fragment,
                         "void main() { float size = gl_PointSize; "

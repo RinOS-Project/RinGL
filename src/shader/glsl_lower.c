@@ -4674,6 +4674,7 @@ static int for_statement(Lower* lower)
     size_t body_start;
     size_t after_body;
     uint32_t frame;
+    int broke = 0;
 
     next(lower);
     if (!need(lower, T_LPAREN, "expected '(' after for"))
@@ -4744,7 +4745,9 @@ static int for_statement(Lower* lower)
     }
     body_start = (size_t)(lower->token.begin - lower->source);
     frame = lower->loop_depth++;
-    for (int64_t iteration = 0; iteration < trip_count; ++iteration) {
+    lower->loop_break_count[frame] = 0u;
+    for (int64_t iteration = 0;
+         iteration < trip_count && !broke; ++iteration) {
         uint16_t reg;
         uint32_t jump_index;
 
@@ -4773,6 +4776,16 @@ static int for_statement(Lower* lower)
                 leave_scope(lower);
                 return 0;
             }
+            if ((lower->loop_break_count[frame] != 0u ||
+                 lower->loop_continue_count[frame] != 0u) &&
+                lower->token.kind != T_RBRACE) {
+                fail(lower,
+                     "break or continue must terminate its bounded loop body");
+                lower->loop_depth--;
+                leave_scope(lower);
+                leave_scope(lower);
+                return 0;
+            }
         }
         if (lower->token.kind != T_RBRACE) {
             fail(lower, "unterminated for body");
@@ -4784,8 +4797,10 @@ static int for_statement(Lower* lower)
         jump_index = lower->ins_count;
         for (uint32_t jump = 0u; jump < lower->loop_continue_count[frame];
              ++jump)
-            lower->ins[lower->loop_continue_jumps[frame][jump]].immediate =
-                jump_index;
+                lower->ins[lower->loop_continue_jumps[frame][jump]].immediate =
+                    jump_index;
+        if (lower->loop_break_count[frame] != 0u)
+            broke = 1;
         leave_scope(lower);
     }
     lower->offset = after_body;
@@ -5276,6 +5291,369 @@ static int append_fragment_interpolant_inputs(Lower* lower)
     return 1;
 }
 
+static void cfg_write_diagnostic(char* diagnostic, size_t capacity,
+                                 const char* message)
+{
+    size_t length;
+
+    if (diagnostic == NULL || capacity == 0u)
+        return;
+    if (message == NULL)
+        message = "invalid RSH1 CFG";
+    length = strlen(message);
+    if (length >= capacity)
+        length = capacity - 1u;
+    memcpy(diagnostic, message, length);
+    diagnostic[length] = '\0';
+}
+
+static int cfg_error(char* diagnostic, size_t capacity, const char* message)
+{
+    cfg_write_diagnostic(diagnostic, capacity, message);
+    return -1;
+}
+
+static int cfg_known_opcode(uint16_t opcode)
+{
+    switch (opcode) {
+    case RINGL_RSH1_OP_CONST_I32:
+    case RINGL_RSH1_OP_MOV:
+    case RINGL_RSH1_OP_ADD_I32:
+    case RINGL_RSH1_OP_MUL_I32:
+    case RINGL_RSH1_OP_JUMP:
+    case RINGL_RSH1_OP_JUMP_IF:
+    case RINGL_RSH1_OP_RETURN:
+    case RINGL_RSH1_OP_CONST_F32:
+    case RINGL_RSH1_OP_SUB_I32:
+    case RINGL_RSH1_OP_DIV_I32:
+    case RINGL_RSH1_OP_MOD_I32:
+    case RINGL_RSH1_OP_ADD_F32:
+    case RINGL_RSH1_OP_SUB_F32:
+    case RINGL_RSH1_OP_MUL_F32:
+    case RINGL_RSH1_OP_DIV_F32:
+    case RINGL_RSH1_OP_MIN_F32:
+    case RINGL_RSH1_OP_MAX_F32:
+    case RINGL_RSH1_OP_CMP_EQ_I32:
+    case RINGL_RSH1_OP_CMP_NE_I32:
+    case RINGL_RSH1_OP_CMP_LT_I32:
+    case RINGL_RSH1_OP_CMP_LE_I32:
+    case RINGL_RSH1_OP_CMP_GT_I32:
+    case RINGL_RSH1_OP_CMP_GE_I32:
+    case RINGL_RSH1_OP_CMP_EQ_F32:
+    case RINGL_RSH1_OP_CMP_NE_F32:
+    case RINGL_RSH1_OP_CMP_LT_F32:
+    case RINGL_RSH1_OP_CMP_LE_F32:
+    case RINGL_RSH1_OP_CMP_GT_F32:
+    case RINGL_RSH1_OP_CMP_GE_F32:
+    case RINGL_RSH1_OP_I32_TO_F32:
+    case RINGL_RSH1_OP_F32_TO_I32:
+    case RINGL_RSH1_OP_LOAD_INPUT_F32:
+    case RINGL_RSH1_OP_STORE_OUTPUT_F32:
+    case RINGL_RSH1_OP_LOAD_BUILTIN_F32:
+    case RINGL_RSH1_OP_DISCARD:
+    case RINGL_RSH1_OP_SAMPLE_IMAGE_2D_F32:
+    case RINGL_RSH1_OP_DFDX_F32:
+    case RINGL_RSH1_OP_DFDY_F32:
+    case RINGL_RSH1_OP_FWIDTH_F32:
+    case RINGL_RSH1_OP_FLOOR_F32:
+    case RINGL_RSH1_OP_SQRT_F32:
+    case RINGL_RSH1_OP_SIN_F32:
+    case RINGL_RSH1_OP_COS_F32:
+    case RINGL_RSH1_OP_ATAN_F32:
+    case RINGL_RSH1_OP_ATAN2_F32:
+    case RINGL_RSH1_OP_ASIN_F32:
+    case RINGL_RSH1_OP_ACOS_F32:
+    case RINGL_RSH1_OP_EXP2_F32:
+    case RINGL_RSH1_OP_LOG2_F32:
+    case RINGL_RSH1_OP_POW_F32:
+    case RINGL_RSH1_OP_SAMPLE_IMAGE_2D_LOD_F32:
+    case RINGL_RSH1_OP_SAMPLE_IMAGE_2D_BIAS_F32:
+    case RINGL_RSH1_OP_SAMPLE_IMAGE_2D_GRAD_F32:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+static uint32_t cfg_popcount(uint64_t value)
+{
+    uint32_t count = 0u;
+
+    while (value != 0u) {
+        value &= value - 1u;
+        ++count;
+    }
+    return count;
+}
+
+static int cfg_add_edge(uint32_t from, uint32_t to, uint32_t block_count,
+                        uint32_t successors[128][2],
+                        uint32_t successor_counts[128],
+                        uint64_t predecessors[128][2],
+                        uint32_t* edge_count)
+{
+    uint32_t index;
+    uint64_t bit;
+
+    if (from >= block_count || to >= block_count || edge_count == NULL)
+        return 0;
+    for (index = 0u; index < successor_counts[from]; ++index)
+        if (successors[from][index] == to)
+            return 1;
+    if (successor_counts[from] >= 2u)
+        return 0;
+    successors[from][successor_counts[from]++] = to;
+    bit = UINT64_C(1) << (from % 64u);
+    predecessors[to][from / 64u] |= bit;
+    ++*edge_count;
+    return 1;
+}
+
+int ringl_glsl_validate_rsh1_cfg(const void* module, size_t module_size,
+                                 RinGLGlslCfgInfoV1* info,
+                                 char* diagnostic,
+                                 size_t diagnostic_capacity)
+{
+    RinGLRsh1HeaderV1 header;
+    const RinGLRsh1InstructionV1* instructions;
+    uint8_t leaders[RINGL_RSH1_MAX_INSTRUCTIONS] = { 0u };
+    uint32_t block_starts[RINGL_RSH1_MAX_INSTRUCTIONS];
+    uint32_t block_ends[RINGL_RSH1_MAX_INSTRUCTIONS];
+    uint32_t block_for_instruction[RINGL_RSH1_MAX_INSTRUCTIONS];
+    uint32_t successors[RINGL_RSH1_MAX_INSTRUCTIONS][2] = { { 0u } };
+    uint32_t successor_counts[RINGL_RSH1_MAX_INSTRUCTIONS] = { 0u };
+    uint64_t predecessors[RINGL_RSH1_MAX_INSTRUCTIONS][2] = { { 0u } };
+    uint64_t dominators[RINGL_RSH1_MAX_INSTRUCTIONS][2] = { { 0u } };
+    uint32_t queue[RINGL_RSH1_MAX_INSTRUCTIONS];
+    uint8_t reachable[RINGL_RSH1_MAX_INSTRUCTIONS] = { 0u };
+    uint32_t instruction_count;
+    uint32_t block_count = 0u;
+    uint32_t edge_count = 0u;
+    uint32_t branch_count = 0u;
+    uint32_t queue_head = 0u;
+    uint32_t queue_tail = 0u;
+    uint32_t index;
+    uint32_t block;
+    int changed;
+    uint64_t all_dominator_words[2];
+
+    if (diagnostic != NULL && diagnostic_capacity != 0u)
+        diagnostic[0] = '\0';
+    if (info != NULL)
+        memset(info, 0, sizeof(*info));
+    if (module == NULL || module_size < sizeof(header))
+        return cfg_error(diagnostic, diagnostic_capacity,
+                         "RSH1 module is smaller than its header");
+
+    memcpy(&header, module, sizeof(header));
+    if (header.magic != RINGL_RSH1_MAGIC ||
+        header.version != RINGL_RSH1_VERSION ||
+        header.header_size != sizeof(header) || header.flags != 0u ||
+        header.reserved0 != 0u || header.reserved1 != 0u ||
+        header.entry_instruction != 0u ||
+        (header.stage != RINGL_RSH1_STAGE_VERTEX &&
+         header.stage != RINGL_RSH1_STAGE_FRAGMENT) ||
+        header.instruction_count == 0u ||
+        header.instruction_count > RINGL_RSH1_MAX_INSTRUCTIONS ||
+        header.register_count == 0u ||
+        header.register_count > RINGL_RSH1_MAX_REGISTERS) {
+        return cfg_error(diagnostic, diagnostic_capacity,
+                         "RSH1 module header is outside the CFG profile");
+    }
+    instruction_count = header.instruction_count;
+    if ((uint64_t)sizeof(header) +
+            (uint64_t)instruction_count * sizeof(RinGLRsh1InstructionV1) !=
+        header.total_size || header.total_size != module_size) {
+        return cfg_error(diagnostic, diagnostic_capacity,
+                         "RSH1 module size does not match its instruction stream");
+    }
+    instructions = (const RinGLRsh1InstructionV1*)
+        ((const uint8_t*)module + sizeof(header));
+    if (instructions[instruction_count - 1u].opcode !=
+        RINGL_RSH1_OP_RETURN) {
+        return cfg_error(diagnostic, diagnostic_capacity,
+                         "RSH1 CFG must terminate at RETURN");
+    }
+
+    leaders[0] = 1u;
+    for (index = 0u; index < instruction_count; ++index) {
+        const RinGLRsh1InstructionV1* instruction = &instructions[index];
+
+        if (!cfg_known_opcode(instruction->opcode))
+            return cfg_error(diagnostic, diagnostic_capacity,
+                             "RSH1 CFG contains an unknown opcode");
+        if (instruction->opcode == RINGL_RSH1_OP_JUMP ||
+            instruction->opcode == RINGL_RSH1_OP_JUMP_IF) {
+            uint32_t target = instruction->immediate;
+
+            ++branch_count;
+            if (target <= index || target >= instruction_count)
+                return cfg_error(diagnostic, diagnostic_capacity,
+                                 "RSH1 branch target is not a forward instruction");
+            if (instruction->opcode == RINGL_RSH1_OP_JUMP) {
+                if (instruction->flags != 0u ||
+                    instruction->destination != RINGL_RSH1_UNUSED ||
+                    instruction->source0 != RINGL_RSH1_UNUSED ||
+                    instruction->source1 != RINGL_RSH1_UNUSED ||
+                    instruction->resource != RINGL_RSH1_UNUSED)
+                    return cfg_error(diagnostic, diagnostic_capacity,
+                                     "RSH1 JUMP carries non-control operands");
+            } else if (instruction->flags != 0u ||
+                       instruction->destination != RINGL_RSH1_UNUSED ||
+                       instruction->source0 == RINGL_RSH1_UNUSED ||
+                       instruction->source0 >= header.register_count ||
+                       instruction->source1 != RINGL_RSH1_UNUSED ||
+                       instruction->resource != RINGL_RSH1_UNUSED) {
+                return cfg_error(diagnostic, diagnostic_capacity,
+                                 "RSH1 JUMP_IF carries invalid control operands");
+            }
+            leaders[target] = 1u;
+            if (index + 1u < instruction_count)
+                leaders[index + 1u] = 1u;
+        } else if (instruction->opcode == RINGL_RSH1_OP_RETURN &&
+                   index + 1u < instruction_count) {
+            leaders[index + 1u] = 1u;
+        }
+    }
+
+    for (index = 0u; index < instruction_count; ++index) {
+        if (leaders[index] == 0u)
+            continue;
+        if (block_count != 0u)
+            block_ends[block_count - 1u] = index;
+        if (block_count >= instruction_count)
+            return cfg_error(diagnostic, diagnostic_capacity,
+                             "RSH1 basic-block count exceeds instruction bound");
+        block_starts[block_count++] = index;
+    }
+    block_ends[block_count - 1u] = instruction_count;
+    for (block = 0u; block < block_count; ++block)
+        for (index = block_starts[block]; index < block_ends[block]; ++index)
+            block_for_instruction[index] = block;
+
+    for (block = 0u; block < block_count; ++block) {
+        uint32_t last = block_ends[block] - 1u;
+        const RinGLRsh1InstructionV1* instruction = &instructions[last];
+        uint32_t successor_instruction[2];
+        uint32_t successor_instruction_count = 0u;
+        uint32_t successor_index;
+
+        if (instruction->opcode == RINGL_RSH1_OP_JUMP) {
+            successor_instruction[successor_instruction_count++] =
+                instruction->immediate;
+        } else if (instruction->opcode == RINGL_RSH1_OP_JUMP_IF) {
+            successor_instruction[successor_instruction_count++] =
+                instruction->immediate;
+            if (last + 1u < instruction_count)
+                successor_instruction[successor_instruction_count++] = last + 1u;
+        } else if (instruction->opcode != RINGL_RSH1_OP_RETURN) {
+            if (last + 1u >= instruction_count)
+                return cfg_error(diagnostic, diagnostic_capacity,
+                                 "RSH1 fallthrough reaches the end without RETURN");
+            successor_instruction[successor_instruction_count++] = last + 1u;
+        }
+        for (successor_index = 0u;
+             successor_index < successor_instruction_count; ++successor_index) {
+            uint32_t target_block =
+                block_for_instruction[successor_instruction[successor_index]];
+            if (target_block <= block ||
+                !cfg_add_edge(block, target_block, block_count, successors,
+                              successor_counts, predecessors, &edge_count))
+                return cfg_error(diagnostic, diagnostic_capacity,
+                                 "RSH1 CFG edge is cyclic or exceeds its bound");
+        }
+    }
+
+    queue[queue_tail++] = block_for_instruction[header.entry_instruction];
+    reachable[queue[0]] = 1u;
+    while (queue_head < queue_tail) {
+        uint32_t current = queue[queue_head++];
+        uint32_t successor_index;
+
+        for (successor_index = 0u;
+             successor_index < successor_counts[current]; ++successor_index) {
+            uint32_t target = successors[current][successor_index];
+            if (reachable[target] == 0u) {
+                reachable[target] = 1u;
+                queue[queue_tail++] = target;
+            }
+        }
+    }
+    for (block = 0u; block < block_count; ++block) {
+        if (reachable[block] == 0u ||
+            (block != block_for_instruction[header.entry_instruction] &&
+             (predecessors[block][0] | predecessors[block][1]) == 0u))
+            return cfg_error(diagnostic, diagnostic_capacity,
+                             "RSH1 CFG contains an unreachable basic block");
+    }
+
+    all_dominator_words[0] = block_count >= 64u
+        ? UINT64_MAX : (UINT64_C(1) << block_count) - UINT64_C(1);
+    all_dominator_words[1] = block_count <= 64u
+        ? 0u
+        : block_count >= 128u
+            ? UINT64_MAX
+            : (UINT64_C(1) << (block_count - 64u)) - UINT64_C(1);
+    dominators[0][0] = UINT64_C(1);
+    for (block = 1u; block < block_count; ++block) {
+        dominators[block][0] = all_dominator_words[0];
+        dominators[block][1] = all_dominator_words[1];
+    }
+    do {
+        changed = 0;
+        for (block = 1u; block < block_count; ++block) {
+            uint64_t next0 = all_dominator_words[0];
+            uint64_t next1 = all_dominator_words[1];
+            uint32_t predecessor_word;
+
+            for (predecessor_word = 0u; predecessor_word < 2u;
+                 ++predecessor_word) {
+                uint64_t bits = predecessors[block][predecessor_word];
+                while (bits != 0u) {
+                    uint32_t predecessor = predecessor_word * 64u +
+                        cfg_popcount(bits ^ (bits - 1u)) - 1u;
+                    next0 &= dominators[predecessor][0];
+                    next1 &= dominators[predecessor][1];
+                    bits &= bits - 1u;
+                }
+            }
+            if (block < 64u)
+                next0 |= UINT64_C(1) << block;
+            else
+                next1 |= UINT64_C(1) << (block - 64u);
+            if (next0 != dominators[block][0] ||
+                next1 != dominators[block][1]) {
+                dominators[block][0] = next0;
+                dominators[block][1] = next1;
+                changed = 1;
+            }
+        }
+    } while (changed != 0);
+
+    if (info != NULL) {
+        uint32_t max_dominator_count = 0u;
+
+        info->instruction_count = instruction_count;
+        info->block_count = block_count;
+        info->edge_count = edge_count;
+        info->branch_count = branch_count;
+        for (block = 0u; block < block_count; ++block) {
+            uint32_t predecessor_count =
+                cfg_popcount(predecessors[block][0]) +
+                cfg_popcount(predecessors[block][1]);
+            if (predecessor_count >= 2u)
+                ++info->merge_count;
+            if (cfg_popcount(dominators[block][0]) +
+                    cfg_popcount(dominators[block][1]) > max_dominator_count)
+                max_dominator_count =
+                    cfg_popcount(dominators[block][0]) +
+                    cfg_popcount(dominators[block][1]);
+        }
+        info->max_dominator_count = max_dominator_count;
+    }
+    return 0;
+}
+
 int ringl_glsl_lower_rsh1_with_uniforms(
     uint32_t shader_type, const char* source, size_t source_length,
     const RinGLGlslUniformValue* uniforms, uint32_t uniform_count,
@@ -5337,6 +5715,19 @@ int ringl_glsl_lower_rsh1_with_uniforms(
     memcpy(result->bytes, &header, sizeof(header));
     memcpy(result->bytes + sizeof(header), lower.ins,
            (size_t)lower.ins_count * sizeof(lower.ins[0]));
+    {
+        RinGLGlslCfgInfoV1 cfg_info;
+        char cfg_diagnostic[sizeof(result->diagnostic)];
+
+        if (ringl_glsl_validate_rsh1_cfg(
+                result->bytes, total, &cfg_info, cfg_diagnostic,
+                sizeof(cfg_diagnostic)) != 0) {
+            memcpy(result->diagnostic, cfg_diagnostic,
+                   sizeof(result->diagnostic));
+            result->diagnostic[sizeof(result->diagnostic) - 1u] = '\0';
+            return 1;
+        }
+    }
     result->ok = 1u;
     result->instruction_count = lower.ins_count;
     result->register_count = lower.next_reg;

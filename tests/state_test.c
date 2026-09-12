@@ -67,6 +67,10 @@ int main(void)
                   "RinGL v1 bounded profile") == 0);
     assert(strcmp(ringl_get_string(RINGL_SHADING_LANGUAGE_VERSION),
                   "RinGL RSH1 (GLSL ES 1.00 subset)") == 0);
+    assert(strstr(ringl_get_string(RINGL_EXTENSIONS),
+                  "OES_standard_derivatives") != NULL);
+    assert(strstr(ringl_get_string(RINGL_EXTENSIONS),
+                  "WEBGL_draw_buffers") != NULL);
     assert(ringl_get_string(0xdeadbeefu) == NULL);
     assert(ringl_get_error() == RINGL_INVALID_ENUM);
 

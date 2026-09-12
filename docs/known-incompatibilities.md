@@ -103,10 +103,14 @@ operation fail before mutation; RinGL must not emulate it by changing
 unrelated state or falling back to an older direct renderer. The authoritative
 ABI and ownership rules are in [`ringpu-integration.md`](ringpu-integration.md).
 
-Context loss/restoration, final Ladybird product linking, browser JavaScript
-execution, compositing/front-buffer contracts, and ISO/QEMU evidence remain
-separate unfinished work. A green RinGL host test does not elevate any of
-these limits into a product compatibility claim.
+The RinGL/WebGL context-loss and replacement-restore state machine is defined
+by the RinOS embedding contract in
+[`ringl-context-loss-restore-v1.md`](../../../docs/architecture/ringl-context-loss-restore-v1.md).
+It is host-tested, but physical reset-to-browser notification, final Ladybird
+product linking, browser JavaScript execution, compositing/front-buffer
+contracts, and ISO/QEMU evidence remain separate unfinished work. A green
+RinGL host test does not elevate any of these limits into a product
+compatibility claim.
 
 ## Change rule
 

@@ -5,6 +5,20 @@
 #include <stddef.h>
 #include <string.h>
 
+static const char* ringl_implemented_extensions(void)
+{
+    /* Keep this list beside the actual extension gates. Every name here has
+     * a public implementation path; an embedding still decides whether to
+     * expose the corresponding WebGL extension object. */
+    return "OES_texture_float OES_texture_half_float "
+           "OES_texture_float_linear OES_texture_half_float_linear "
+           "EXT_texture_filter_anisotropic WEBGL_color_buffer_float "
+           "EXT_color_buffer_half_float EXT_blend_minmax "
+           "OES_standard_derivatives EXT_shader_texture_lod EXT_frag_depth "
+           "WEBGL_draw_buffers OES_vertex_array_object WEBGL_depth_texture "
+           "WEBGL_compressed_texture_etc1 WEBGL_compressed_texture_s3tc";
+}
+
 static uint32_t* capability_field(RinGLContext* context, uint32_t capability)
 {
     if (context == NULL)
@@ -46,6 +60,8 @@ const char* ringl_get_string(uint32_t pname)
         return "RinGL";
     case RINGL_VERSION:
         return "RinGL v1 bounded profile";
+    case RINGL_EXTENSIONS:
+        return ringl_implemented_extensions();
     case RINGL_SHADING_LANGUAGE_VERSION:
         return "RinGL RSH1 (GLSL ES 1.00 subset)";
     default:

@@ -160,6 +160,7 @@ extern "C" {
 #define RINGL_VENDOR                        0x1f00u
 #define RINGL_RENDERER                      0x1f01u
 #define RINGL_VERSION                       0x1f02u
+#define RINGL_EXTENSIONS                    0x1f03u
 #define RINGL_RED_BITS                      0x0d52u
 #define RINGL_GREEN_BITS                    0x0d53u
 #define RINGL_BLUE_BITS                     0x0d54u

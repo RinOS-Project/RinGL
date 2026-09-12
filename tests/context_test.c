@@ -24,6 +24,7 @@ int main(void)
         .struct_size = sizeof(desc),
         .api_version = RINGL_API_VERSION,
         .trace = &trace,
+        .device_generation = 7u,
     };
 
     assert(ringl_trace_runtime_init(&trace) == 0);
@@ -61,6 +62,9 @@ int main(void)
     ringl_draw_arrays(RINGL_TRIANGLES, 0, 0);
     assert(ringl_trace_runtime_record(&trace, RINGL_TRACE_CALL_SUMMARY,
                                       -7, 42u, 84u) == 0);
+    assert(ringl_context_observe_device_generation(first, 7u) == 0);
+    assert(ringl_context_observe_device_generation(first, 8u) == -2);
+    assert(ringl_context_is_lost(first) == RINGL_TRUE);
     ringl_context_mark_lost(first);
 
     assert(ringl_trace_runtime_read(&trace, 0u, 8u, trace_events,

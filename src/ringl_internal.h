@@ -462,6 +462,7 @@ struct RinGLContext {
     uint32_t pending_error;
     uint32_t lost;
     uint32_t loss_reported;
+    uint64_t device_generation;
     uint32_t dirty_bits;
     RinGLTraceRuntimeV1* trace;
     RinGLRinGpuBindingV1 ringpu;

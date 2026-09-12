@@ -217,7 +217,7 @@ int ringl_context_create(const RinGLContextDescV1* desc,
     *context_out = NULL;
 
     if (desc != NULL) {
-        if (desc->struct_size < sizeof(*desc) ||
+        if (desc->struct_size < offsetof(RinGLContextDescV1, device_generation) ||
             desc->api_version != RINGL_API_VERSION ||
             desc->reserved0 != 0u ||
             desc->flags != 0u ||
@@ -234,6 +234,10 @@ int ringl_context_create(const RinGLContextDescV1* desc,
 
     context->magic = RINGL_CONTEXT_MAGIC;
     context->pending_error = RINGL_NO_ERROR;
+    context->device_generation =
+        desc != NULL && desc->struct_size >= sizeof(*desc)
+            ? desc->device_generation
+            : 0u;
     context->dirty_bits = RINGL_DIRTY_ALL;
     context->trace = desc != NULL ? desc->trace : NULL;
     context->cull_face_mode = RINGL_BACK;
@@ -380,6 +384,24 @@ uint32_t ringl_context_dirty_bits(const RinGLContext* context)
     if (!ringl_context_is_valid(context))
         return 0u;
     return context->dirty_bits;
+}
+
+int ringl_context_observe_device_generation(RinGLContext* context,
+                                            uint64_t device_generation)
+{
+    if (!ringl_context_is_valid(context) || device_generation == 0u)
+        return -1;
+    if (context->lost)
+        return -2;
+    if (context->device_generation == 0u) {
+        context->device_generation = device_generation;
+        return 0;
+    }
+    if (context->device_generation == device_generation)
+        return 0;
+
+    ringl_context_mark_lost(context);
+    return -2;
 }
 
 void ringl_context_record_error(RinGLContext* context, uint32_t error)

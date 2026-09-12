@@ -1214,6 +1214,10 @@ typedef struct RinGLContextDescV1 {
     uint32_t flags;
     uint32_t reserved0;
     RinGLTraceRuntimeV1* trace;
+    /* Optional initial RinGPU device generation. A zero value leaves the
+     * context unbound until ringl_context_observe_device_generation() is
+     * called by the embedding. */
+    uint64_t device_generation;
 } RinGLContextDescV1;
 
 typedef struct RinGLVertexAttribInfoV1 {
@@ -1397,6 +1401,11 @@ RinGLContext* ringl_get_current_context(void);
 uint32_t ringl_get_error(void);
 uint32_t ringl_context_is_lost(const RinGLContext* context);
 uint32_t ringl_context_dirty_bits(const RinGLContext* context);
+/* Binds or verifies the generation observed by the embedding. The first
+ * nonzero observation binds an unbound context; a different generation
+ * transitions it to the sticky WebGL context-lost state and returns -2. */
+int ringl_context_observe_device_generation(RinGLContext* context,
+                                            uint64_t device_generation);
 /* Returns a static, NUL-terminated description of the actual RinGL bounded
  * profile. The result is valid until process exit and must not be freed.
  * Unsupported pnames return NULL and record INVALID_ENUM. */

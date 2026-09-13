@@ -51,7 +51,7 @@ typedef struct RinGLAquamarineSurfaceTargetV1 {
 typedef struct RinGLAquamarineSurfaceNativeV1 {
     uint32_t struct_size;
     uint32_t version;
-    void* ringpu_core;
+    void* ringpu_runtime;
     uint64_t graphics_queue;
     uint64_t color_image;
     uint32_t queue_capabilities;
@@ -86,8 +86,8 @@ int ringl_aquamarine_surface_sync_external_framebuffer_states(
     RinGLAquamarineSurfaceContext* context, uint32_t color_state,
     uint32_t depth_state);
 
-/* Private RinGL embedding view. The returned core/image/queue remain owned by
- * the surface and are valid only while the surface lives. */
+/* RinGL embedding view. The returned opaque runtime/image/queue remain owned
+ * by the surface and are valid only while the surface lives. */
 int ringl_aquamarine_surface_get_native(
     RinGLAquamarineSurfaceContext* context,
     RinGLAquamarineSurfaceNativeV1* native_out);

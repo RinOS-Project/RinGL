@@ -507,7 +507,7 @@ int ringl_aquamarine_surface_get_native(
         native_out->reserved0 != 0u) {
         return RINGL_AQUAMARINE_SURFACE_INVALID_ARGUMENT;
     }
-    native_out->ringpu_core = context->runtime;
+    native_out->ringpu_runtime = context->runtime;
     native_out->graphics_queue = context->queue;
     native_out->color_image = context->color_image;
     native_out->queue_capabilities = RIN_GPU_QUEUE_GRAPHICS;

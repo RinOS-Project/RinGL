@@ -147,6 +147,8 @@ int main(void)
     assert(ringl_make_current(context) == 0);
 
     memset(&copy, 0xff, sizeof(copy));
+    copy.struct_size = sizeof(copy);
+    copy.api_version = RINGL_API_VERSION;
     assert(ringl_get_default_framebuffer(&copy) == 1);
     assert(copy.color_target == 0u);
     assert(ringl_get_default_framebuffer_state(&framebuffer_state) == 1);
@@ -307,6 +309,7 @@ int main(void)
     ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER,
                                    RINGL_DEPTH_ATTACHMENT,
                                    RINGL_RENDERBUFFER, renderbuffers[1]);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
     assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
            RINGL_FRAMEBUFFER_COMPLETE);
     ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER,

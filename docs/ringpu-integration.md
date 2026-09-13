@@ -75,29 +75,33 @@ The callback boundary remains useful because RinGL is a standalone repository an
 
 ## OS-Core adapter
 
-OS-Core now contains `src/webengine/rin_ringl_ringpu_adapter.{h,c}`. The adapter owns no RinGPU objects itself. It borrows a `RinGpuCore*` and maps the RinGL v1 operation table directly onto the public RinGPU API.
+OS-Core now contains `src/webengine/rin_ringl_ringpu_adapter.{h,c}`. The adapter owns no RinGPU objects itself. It borrows an opaque `RinGpuRuntime*` and maps the RinGL v1 operation table through the public runtime forwarding API.
 
 The first-slice mappings are:
 
-- buffer creation/upload/destruction -> `ringpu_create_buffer()`, `ringpu_upload_buffer()`, `ringpu_destroy()`;
-- shader modules -> `ringpu_create_shader_module()`;
-- vertex graphics pipelines -> `ringpu_create_graphics_pipeline_vertex()` or
-  `ringpu_create_graphics_pipeline_vertex_bindings()`;
-- command lists -> `ringpu_create_command_list()` and `ringpu_command_list_reset()`;
-- image transitions -> `ringpu_command_transition_image()`;
-- render passes -> `ringpu_command_begin_render_pass()` / `ringpu_command_end_render_pass()`;
-- vertex drawing -> `ringpu_command_draw_vertices()` or
-  `ringpu_command_draw_vertices_v2()`;
-- indexed vertex drawing -> `ringpu_command_draw_indexed()` or
-  `ringpu_command_draw_indexed_v2()`;
-- presentation -> `ringpu_command_present()`;
-- submission -> `ringpu_command_list_close()` and `ringpu_queue_submit()`.
+- buffer creation/upload/destruction -> `ringpu_runtime_create_buffer()`,
+  `ringpu_runtime_upload_buffer()`, `ringpu_runtime_destroy_object()`;
+- shader modules -> `ringpu_runtime_create_shader_module()`;
+- vertex graphics pipelines -> `ringpu_runtime_create_graphics_pipeline_vertex()`
+  or `ringpu_runtime_create_graphics_pipeline_vertex_bindings()`;
+- command lists -> `ringpu_runtime_create_command_list()` and
+  `ringpu_runtime_command_list_reset()`;
+- image transitions -> `ringpu_runtime_command_transition_image()`;
+- render passes -> `ringpu_runtime_command_begin_render_pass()` /
+  `ringpu_runtime_command_end_render_pass()`;
+- vertex drawing -> `ringpu_runtime_command_draw_vertices()` or
+  `ringpu_runtime_command_draw_vertices_v2()`;
+- indexed vertex drawing -> `ringpu_runtime_command_draw_indexed()` or
+  `ringpu_runtime_command_draw_indexed_v2()`;
+- presentation -> `ringpu_runtime_command_present()`;
+- submission -> `ringpu_runtime_command_list_close()` and
+  `ringpu_runtime_queue_submit()`.
 
 The WebEngine CMake integration is opt-in through `RIN_LADYBIRD_ENABLE_RINGL`.
 Its default `RIN_RINGL_SOURCE_ROOT` is the checked-out `libs/RinGL` tree and
 can be overridden only for an explicitly selected external checkout.
 
-The opt-in `ringl_aquamarine_surface` embedding owns a caller-provided BGRA/D32/S8 target and exposes a private native view of its RinGPU core, graphics queue, and default images. OS-Core's `rin_webgl_ringl_bridge.{h,c}` creates a RinGL context using that view and binds the images as RinGL's default framebuffer. The embedding remains the owner of the core, queue, images, and caller-provided pixel backing store.
+The opt-in `ringl_aquamarine_surface` embedding owns a caller-provided BGRA/D32/S8 target and exposes a private native view containing an opaque RinGPU runtime, graphics queue, and default images. OS-Core's `rin_webgl_ringl_bridge.{h,c}` creates a RinGL context using that view and binds the images as RinGL's default framebuffer. The embedding remains the owner of the runtime, queue, images, and caller-provided pixel backing store.
 
 `RinGLDefaultFramebufferV1.flags` provides the browser-facing logical
 depth/stencil contract. A zero flag word retains the original native

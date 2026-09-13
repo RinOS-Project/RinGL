@@ -12,8 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <ringpu/core.h>
-#include <ringpu/software_backend.h>
+#include <ringpu/runtime.h>
 
 #define RINGL_AQUAMARINE_SURFACE_MAX_RESOURCE_BYTES \
     ((uint64_t)RINGL_AQUAMARINE_SURFACE_MAX_DIMENSION * \
@@ -22,9 +21,7 @@
     (RINGL_AQUAMARINE_SURFACE_MAX_RESOURCE_BYTES * UINT64_C(4))
 
 struct RinGLAquamarineSurfaceContext {
-    RinGpuCore core;
-    RinGpuDiagnosticsRuntime diagnostics;
-    RinGpuSoftwareBackend* software_backend;
+    RinGpuRuntime* runtime;
     RinGpuDisplayInfoV1 display;
     RinGLAquamarineSurfaceTargetV1 target;
     RinGpuHandle queue;
@@ -227,7 +224,7 @@ static int context_status(const RinGLAquamarineSurfaceContext* context)
         context->initialized != RINGL_AQUAMARINE_SURFACE_VERSION) {
         return RINGL_AQUAMARINE_SURFACE_STATE;
     }
-    return context->core.device_lost != 0u
+    return ringpu_runtime_device_lost(context->runtime)
         ? RINGL_AQUAMARINE_SURFACE_DEVICE_LOST
         : RINGL_AQUAMARINE_SURFACE_OK;
 }
@@ -251,14 +248,16 @@ static int submit(RinGLAquamarineSurfaceContext* context)
     result = context_status(context);
     if (result != RINGL_AQUAMARINE_SURFACE_OK)
         return result;
-    result = ringpu_command_list_close(&context->core, context->command_list);
+    result = ringpu_runtime_command_list_close(context->runtime,
+                                               context->command_list);
     if (result != RIN_GPU_OK)
         return surface_result_from_ringpu(result);
     memset(&submit_info, 0, sizeof(submit_info));
     submit_info.abi_version = RIN_GPU_ABI_VERSION;
     submit_info.struct_size = sizeof(submit_info);
     submit_info.command_list = context->command_list;
-    result = ringpu_queue_submit(&context->core, context->queue, &submit_info);
+    result = ringpu_runtime_queue_submit(context->runtime, context->queue,
+                                         &submit_info);
     return surface_result_from_ringpu(result);
 }
 
@@ -277,12 +276,10 @@ static void transition_for(RinGpuImageTransitionV1* transition,
 static int initialize_context(RinGLAquamarineSurfaceContext* context,
                               const RinGLAquamarineSurfaceTargetV1* target)
 {
-    RinGpuSoftwareBackendDescV3 software_desc;
-    RinGpuCoreConfigV1 config;
+    RinGpuRuntimeSoftwareSurfaceDescV1 runtime_desc;
     RinGpuImageDescV1 image;
     RinGpuQueueDescV1 queue;
     RinGpuCommandListDescV1 command_list;
-    const RinGpuBackendOpsV1* backend_ops;
     uint64_t device_generation;
     int result;
 
@@ -306,54 +303,31 @@ static int initialize_context(RinGLAquamarineSurfaceContext* context,
     context->display.scale_milli = 1000u;
     memcpy(context->display.name, "RinGL RinGPU surface", 21u);
 
-    memset(&software_desc, 0, sizeof(software_desc));
-    software_desc.base.base.struct_size = sizeof(software_desc);
-    software_desc.base.base.version = RIN_GPU_SOFTWARE_BACKEND_VERSION_3;
-    software_desc.base.base.max_total_bytes =
-        RINGL_AQUAMARINE_SURFACE_MAX_TOTAL_ALLOCATION_BYTES;
-    software_desc.base.present_callback = surface_present;
-    software_desc.base.present_context = context;
-    software_desc.acquire_image = surface_external_image;
-    software_desc.image_context = context;
-    result = ringpu_software_backend_create(&software_desc.base.base,
-                                            &context->software_backend);
-    if (result != RIN_GPU_OK)
-        return result == RIN_GPU_ERROR_NO_MEMORY
-            ? RINGL_AQUAMARINE_SURFACE_NO_MEMORY
-            : RINGL_AQUAMARINE_SURFACE_BACKEND;
-    backend_ops = ringpu_software_backend_ops();
-    if (backend_ops == NULL) {
-        ringpu_software_backend_destroy(context->software_backend);
-        context->software_backend = NULL;
-        return RINGL_AQUAMARINE_SURFACE_BACKEND;
-    }
-
-    memset(&config, 0, sizeof(config));
-    config.abi_version = RIN_GPU_ABI_VERSION;
-    config.struct_size = sizeof(config);
-    config.handle_secret = UINT64_C(0x52494e474c535746);
-    config.max_buffer_size = RINGL_AQUAMARINE_SURFACE_MAX_RESOURCE_BYTES;
-    config.max_image_size =
+    memset(&runtime_desc, 0, sizeof(runtime_desc));
+    runtime_desc.struct_size = sizeof(runtime_desc);
+    runtime_desc.version = RIN_GPU_RUNTIME_VERSION;
+    runtime_desc.device_generation = device_generation;
+    runtime_desc.handle_secret = UINT64_C(0x52494e474c535746);
+    runtime_desc.max_buffer_size = RINGL_AQUAMARINE_SURFACE_MAX_RESOURCE_BYTES;
+    runtime_desc.max_image_size =
         RINGL_AQUAMARINE_SURFACE_MAX_RESOURCE_BYTES * UINT64_C(2);
-    config.max_total_allocation_size =
+    runtime_desc.max_total_allocation_size =
         RINGL_AQUAMARINE_SURFACE_MAX_TOTAL_ALLOCATION_BYTES;
-    config.max_image_dimension = RINGL_AQUAMARINE_SURFACE_MAX_DIMENSION;
-    config.max_image_layers = 1u;
-    config.max_image_mip_levels = 13u;
-    config.max_image_sample_count = 1u;
-    config.adapter.abi_version = RIN_GPU_ABI_VERSION;
-    config.adapter.struct_size = sizeof(config.adapter);
-    config.adapter.queue_capabilities = RIN_GPU_QUEUE_GRAPHICS;
-    memcpy(config.adapter.name, "RinGL RinGPU adapter", 21u);
-    config.backend = *backend_ops;
-    config.backend_family = RIN_GPU_BACKEND_FAMILY_SOFTWARE;
-    config.backend_context = context->software_backend;
-    if (rin_gpu_diagnostics_init(&context->diagnostics, device_generation) != 0)
-        goto fail;
-    config.diagnostics = &context->diagnostics;
-    config.displays = &context->display;
-    config.display_count = 1u;
-    result = ringpu_core_init(&context->core, &config);
+    runtime_desc.max_image_dimension = RINGL_AQUAMARINE_SURFACE_MAX_DIMENSION;
+    runtime_desc.max_image_layers = 1u;
+    runtime_desc.max_image_mip_levels = 13u;
+    runtime_desc.max_image_sample_count = 1u;
+    runtime_desc.adapter.abi_version = RIN_GPU_ABI_VERSION;
+    runtime_desc.adapter.struct_size = sizeof(runtime_desc.adapter);
+    runtime_desc.adapter.queue_capabilities = RIN_GPU_QUEUE_GRAPHICS;
+    memcpy(runtime_desc.adapter.name, "RinGL RinGPU adapter", 21u);
+    runtime_desc.display = context->display;
+    runtime_desc.present_callback = surface_present;
+    runtime_desc.present_context = context;
+    runtime_desc.acquire_image = surface_external_image;
+    runtime_desc.image_context = context;
+    result = ringpu_runtime_software_surface_create(&runtime_desc,
+                                                    &context->runtime);
     if (result != RIN_GPU_OK)
         goto fail;
 
@@ -361,15 +335,16 @@ static int initialize_context(RinGLAquamarineSurfaceContext* context,
     queue.abi_version = RIN_GPU_ABI_VERSION;
     queue.struct_size = sizeof(queue);
     queue.capabilities = RIN_GPU_QUEUE_GRAPHICS;
-    result = ringpu_create_queue(&context->core, &queue, &context->queue);
+    result = ringpu_runtime_create_queue(context->runtime, &queue,
+                                         &context->queue);
     if (result != RIN_GPU_OK)
         goto fail;
     memset(&command_list, 0, sizeof(command_list));
     command_list.abi_version = RIN_GPU_ABI_VERSION;
     command_list.struct_size = sizeof(command_list);
     command_list.capabilities = RIN_GPU_QUEUE_GRAPHICS;
-    result = ringpu_create_command_list(&context->core, &command_list,
-                                        &context->command_list);
+    result = ringpu_runtime_create_command_list(context->runtime, &command_list,
+                                                &context->command_list);
     if (result != RIN_GPU_OK)
         goto fail;
 
@@ -388,7 +363,8 @@ static int initialize_context(RinGLAquamarineSurfaceContext* context,
                   RIN_GPU_IMAGE_COLOR_TARGET | RIN_GPU_IMAGE_PRESENT;
     image.flags = RIN_GPU_IMAGE_CPU_READABLE;
     context->external_binding_role = 1u;
-    result = ringpu_create_image(&context->core, &image, &context->color_image);
+    result = ringpu_runtime_create_image(context->runtime, &image,
+                                         &context->color_image);
     context->external_binding_role = 0u;
     if (result != RIN_GPU_OK)
         goto fail;
@@ -399,8 +375,8 @@ static int initialize_context(RinGLAquamarineSurfaceContext* context,
                       RIN_GPU_IMAGE_DEPTH_STENCIL;
         image.flags = 0u;
         context->external_binding_role = 2u;
-        result = ringpu_create_image(&context->core, &image,
-                                     &context->depth_image);
+        result = ringpu_runtime_create_image(context->runtime, &image,
+                                             &context->depth_image);
         context->external_binding_role = 0u;
         if (result != RIN_GPU_OK)
             goto fail;
@@ -409,8 +385,8 @@ static int initialize_context(RinGLAquamarineSurfaceContext* context,
     return RINGL_AQUAMARINE_SURFACE_OK;
 
 fail:
-    ringpu_core_shutdown(&context->core);
-    ringpu_software_backend_destroy(context->software_backend);
+    ringpu_runtime_destroy(context->runtime);
+    context->runtime = NULL;
     memset(context, 0, sizeof(*context));
     return result == RIN_GPU_ERROR_NO_MEMORY
         ? RINGL_AQUAMARINE_SURFACE_NO_MEMORY
@@ -443,8 +419,7 @@ void ringl_aquamarine_surface_destroy(RinGLAquamarineSurfaceContext* context)
 {
     if (!context)
         return;
-    ringpu_core_shutdown(&context->core);
-    ringpu_software_backend_destroy(context->software_backend);
+    ringpu_runtime_destroy(context->runtime);
     memset(context, 0, sizeof(*context));
     free(context);
 }
@@ -460,15 +435,15 @@ int ringl_aquamarine_surface_begin_content_update(
         return result;
     if (context->color_state == RIN_GPU_IMAGE_STATE_COLOR_TARGET)
         return RINGL_AQUAMARINE_SURFACE_OK;
-    result = ringpu_command_list_reset(&context->core, context->command_list);
+    result = ringpu_runtime_command_list_reset(context->runtime,
+                                               context->command_list);
     if (result != RIN_GPU_OK)
         return surface_result_from_ringpu(result);
     transition_for(&transition, context->color_state,
                    RIN_GPU_IMAGE_STATE_COLOR_TARGET);
-    result = ringpu_command_transition_image(&context->core,
-                                             context->command_list,
-                                             context->color_image,
-                                             &transition);
+    result = ringpu_runtime_command_transition_image(
+        context->runtime, context->command_list, context->color_image,
+        &transition);
     if (result != RIN_GPU_OK)
         return surface_result_from_ringpu(result);
     result = submit(context);
@@ -532,7 +507,7 @@ int ringl_aquamarine_surface_get_native(
         native_out->reserved0 != 0u) {
         return RINGL_AQUAMARINE_SURFACE_INVALID_ARGUMENT;
     }
-    native_out->ringpu_core = &context->core;
+    native_out->ringpu_core = context->runtime;
     native_out->graphics_queue = context->queue;
     native_out->color_image = context->color_image;
     native_out->queue_capabilities = RIN_GPU_QUEUE_GRAPHICS;

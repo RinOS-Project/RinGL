@@ -165,6 +165,13 @@ OpenGL ES application                 Browser / WebGL implementation
 
 RinGL is deliberately above RinGPU. RinGPU remains the Rin-native explicit GPU boundary; it does not expose OpenGL objects or OpenGL's implicit state machine. RinGL owns that compatibility state and resolves it into validated RinGPU objects and commands.
 
+The optional Aquamarine software-surface bridge consumes only the public
+`ringpu/runtime.h` boundary.  CMake enables it with
+`-DRINGL_ENABLE_AQUAMARINE_SURFACE=ON` and builds or finds the public
+`RinGPU::RinGPU` target; Meson enables the same path with
+`-Denable_aquamarine_surface=true` and a `ringpu` dependency.  RinGL does not
+include RinGPU core or software-backend implementation headers.
+
 A typical draw path is expected to look like this:
 
 ```text

@@ -39,9 +39,16 @@ add_library(RinGL STATIC
 option(RINGL_ENABLE_AQUAMARINE_SURFACE
        "Build the caller-owned Aquamarine/RinGPU embedding surface" OFF)
 if (RINGL_ENABLE_AQUAMARINE_SURFACE)
+    set(RINGL_RINGPU_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../RinGPU"
+        CACHE PATH "RinGPU public source directory")
+    if (NOT TARGET RinGPU::RinGPU)
+        add_subdirectory("${RINGL_RINGPU_SOURCE_DIR}"
+                         "${CMAKE_BINARY_DIR}/ringpu-public")
+    endif()
     target_sources(RinGL PRIVATE
         src/platform/aquamarine_ringpu_software_surface.c
     )
+    target_link_libraries(RinGL PRIVATE RinGPU::RinGPU)
 endif()
 
 add_library(RinGL::RinGL ALIAS RinGL)

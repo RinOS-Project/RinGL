@@ -37,10 +37,17 @@ ringl_sources = files(
   'src/translate/vertex_layout.c',
 )
 
+ringl_deps = []
+if get_option('enable_aquamarine_surface')
+  ringl_sources += files('src/platform/aquamarine_ringpu_software_surface.c')
+  ringl_deps += dependency(get_option('ringpu_dependency'), required: true)
+endif
+
 ringl_lib = static_library(
   'ringl',
   ringl_sources,
   include_directories: ringl_inc,
+  dependencies: ringl_deps,
   install: false,
 )
 

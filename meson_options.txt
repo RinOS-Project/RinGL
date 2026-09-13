@@ -1,0 +1,8 @@
+option('enable_aquamarine_surface',
+       type: 'boolean',
+       value: false,
+       description: 'Build the caller-owned bridge against public RinGPU')
+option('ringpu_dependency',
+       type: 'string',
+       value: 'ringpu',
+       description: 'pkg-config name for the public RinGPU dependency')

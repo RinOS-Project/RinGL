@@ -17,3 +17,9 @@ jobs:
         run: ~/.local/bin/meson compile -C build
       - name: Test
         run: ~/.local/bin/meson test -C build --print-errorlogs
+      - name: Configure public RinGPU bridge
+        run: cmake -S . -B build-public -DRINGL_ENABLE_AQUAMARINE_SURFACE=ON
+      - name: Build public RinGPU bridge
+        run: cmake --build build-public --parallel
+      - name: Test public RinGPU bridge dependency
+        run: ctest --test-dir build-public/ringpu-public --output-on-failure

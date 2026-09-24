@@ -1424,3 +1424,19 @@ failure-atomic program-owned module replacement. The generic form has no
 varyings. Dynamic indexing, cross-dimension/general matrix arithmetic, and
 matrix/vector combinations with the specialized varying/texture profiles
 remain unavailable rather than being reported as successful GLES.
+
+## Public API contract
+
+| Requirement | Contract |
+| --- | --- |
+| Purpose | OpenGL/OpenGL ES compatibility and translation layer for RinOS, translating documented GLES/WebGL slices into RinGPU. |
+| Supported API | Public headers: include/ringl/ringl.h, reflection.h, ringl_sync.h, ringl_aquamarine_surface.h. docs/gles2-api-status.md tracks entrypoints. |
+| Unsupported API | Only entrypoints marked implemented by the API matrix are supported; no complete GLES 2.0, desktop GL, shader, or WebGL conformance claim. |
+| ownership | Callers own inputs and buffers. GL object names/storage belong to the current context; reflection views follow each header lifetime. |
+| thread-safety | A context and its mutable objects require external serialization. Backend thread rules may narrow concurrency further. |
+| limits | Shader, object, command, texture, and framebuffer bounds are defined by the public API matrix and headers. |
+| errors | Malformed or absent operations report GL error/status; absent entrypoints must not synthesize success. |
+| ABI stability | Public C entrypoints define the source ABI; src headers are internal and no binary ABI is promised unless versioned. |
+| security | Shaders/resources are validated; device authority remains in RinGPU and OS-Core. |
+| build | Build using the repository CMake or Meson project and exported RinGL/RinGPU targets. |
+| test | Run configured tests/ targets and repository CI. No tests/builds were run for this README update. |

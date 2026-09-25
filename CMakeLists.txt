@@ -41,12 +41,17 @@ option(RINGL_ENABLE_AQUAMARINE_SURFACE
 if (RINGL_ENABLE_AQUAMARINE_SURFACE)
     set(RINGL_RINGPU_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../RinGPU"
         CACHE PATH "RinGPU public source directory")
+    # In this embedding the RinGL archive owns the software executor; the
+    # product still links the public RinGPU API archive alongside it.
+    set(RINGPU_BUILD_SOFTWARE_BACKEND OFF)
+    set(RINGPU_BUILD_TESTS OFF)
     if (NOT TARGET RinGPU::RinGPU)
         add_subdirectory("${RINGL_RINGPU_SOURCE_DIR}"
                          "${CMAKE_BINARY_DIR}/ringpu-public")
     endif()
     target_sources(RinGL PRIVATE
         src/platform/aquamarine_ringpu_software_surface.c
+        "${RINGL_RINGPU_SOURCE_DIR}/src/software/software_backend.c"
     )
     target_link_libraries(RinGL PRIVATE RinGPU::RinGPU)
 endif()

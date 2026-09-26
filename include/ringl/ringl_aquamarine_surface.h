@@ -4,6 +4,8 @@
 
 #include <stdint.h>
 
+#include <ringpu/runtime.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -70,6 +72,12 @@ typedef struct RinGLAquamarineSurfaceContext RinGLAquamarineSurfaceContext;
 
 int ringl_aquamarine_surface_create(
     const RinGLAquamarineSurfaceTargetV1* target,
+    RinGLAquamarineSurfaceContext** context_out);
+/* Uses a caller-owned RinGPU runtime. The surface borrows it and never
+ * destroys or replaces it; a physical backend error is returned directly and
+ * is never converted into a software surface. */
+int ringl_aquamarine_surface_create_with_runtime(
+    RinGpuRuntime* runtime, const RinGLAquamarineSurfaceTargetV1* target,
     RinGLAquamarineSurfaceContext** context_out);
 void ringl_aquamarine_surface_destroy(RinGLAquamarineSurfaceContext* context);
 

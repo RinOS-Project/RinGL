@@ -4,11 +4,11 @@
 
 #include <stdint.h>
 
-#include <ringpu/runtime.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct RinGpuRuntime RinGpuRuntime;
 
 /*
  * RinGL's Aquamarine embedding surface. It owns no window or global device:

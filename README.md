@@ -9,11 +9,14 @@ Its job is to preserve OpenGL-style state and object semantics at the API bounda
 
 ## Building
 
-Meson remains the standalone test build. RinGL also provides a CMake `RinGL::RinGL`
-static target with the identical translation-unit list, warning policy, public
-headers, and transitive C math dependency. This lets the Ladybird `AK_OS_RINOS`
-target embed the tested RinGL implementation instead of depending on an
-unresolved external archive at final link time.
+Meson and the optional CMake `RINGL_BUILD_TESTS` path both register the same 26
+host contract tests. RinGL also provides a CMake `RinGL::RinGL` static target
+with the identical translation-unit list, warning policy, public headers, and
+transitive C math dependency. This lets the Ladybird `AK_OS_RINOS` target
+embed the tested RinGL implementation instead of depending on an unresolved
+external archive at final link time. The CMake test option exercises caller-owned
+state/fake-backend contracts only; it does not claim GPU, QEMU, or real-device
+evidence.
 
 The repository host runner also builds `tests/ringl_webgl_negative_test.c`
 against the complete RinGL software path. That regression keeps WebGL-facing

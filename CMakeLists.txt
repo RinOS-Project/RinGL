@@ -4,6 +4,8 @@ if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
     project(RinGL LANGUAGES C)
 endif()
 
+option(RINGL_BUILD_TESTS "Build RinGL host contract tests" ON)
+
 # This target is intentionally usable both standalone and as a Ladybird
 # subdirectory.  The latter is the RinOS WebGL production path; keeping the
 # source list here prevents the embedded build from silently omitting a RinGL
@@ -77,3 +79,8 @@ target_include_directories(RinGL
 # texture_lower.c uses the C finite-value predicates. Keep this dependency
 # transitive: LibWeb links a static RinGL archive in the embedded build.
 target_link_libraries(RinGL PUBLIC m)
+
+if(RINGL_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()

@@ -256,6 +256,9 @@ static void ringl_buffer_data_impl(uint32_t target,
         if (ringl_backend_create_buffer(context, (uint64_t)size_bytes,
                                         &new_handle) != 0 ||
             new_handle == 0u) {
+            if (new_handle != 0u &&
+                new_handle != object->ringpu_handle)
+                ringl_backend_destroy_object(context, new_handle);
             ringl_context_release_shadow_bytes(context,
                                                 (uint64_t)size_bytes);
             free(new_shadow);
@@ -375,6 +378,9 @@ static void ringl_buffer_sub_data_impl(uint32_t target,
     if (ringl_backend_create_buffer(context, object->size_bytes,
                                     &replacement_handle) != 0 ||
         replacement_handle == 0u) {
+        if (replacement_handle != 0u &&
+            replacement_handle != object->ringpu_handle)
+            ringl_backend_destroy_object(context, replacement_handle);
         ringl_context_release_shadow_bytes(context, object->size_bytes);
         free(replacement_shadow);
         ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);

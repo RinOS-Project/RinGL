@@ -9,7 +9,10 @@ typedef struct FakeBackend {
     int creates;
     int uploads;
     int destroys;
+    int fail_create;
     int fail_upload;
+    uint64_t last_created_handle;
+    uint64_t last_destroyed_handle;
     uint64_t last_upload_offset;
     uint64_t last_upload_size;
     uint8_t last_upload_data[8];
@@ -24,6 +27,11 @@ static int fake_create_buffer(void* session,
     assert(size_bytes > 0u);
     ++backend->creates;
     *buffer_out = ++backend->next_handle;
+    backend->last_created_handle = *buffer_out;
+    if (backend->fail_create) {
+        backend->fail_create = 0;
+        return -1;
+    }
     return 0;
 }
 
@@ -52,6 +60,7 @@ static int fake_destroy_object(void* session, uint64_t object)
 
     assert(object != 0u);
     ++backend->destroys;
+    backend->last_destroyed_handle = object;
     return 0;
 }
 
@@ -91,23 +100,33 @@ int main(void)
     ringl_gen_buffers(1, &buffer);
     ringl_bind_buffer(RINGL_ARRAY_BUFFER, buffer);
 
+    backend.fail_create = 1;
+    ringl_buffer_data_from_bytes(RINGL_ARRAY_BUFFER, 4, initial_data,
+                                 sizeof(initial_data), RINGL_STATIC_DRAW);
+    assert(ringl_get_error() == RINGL_OUT_OF_MEMORY);
+    assert(ringl_get_buffer_size(RINGL_ARRAY_BUFFER) == 0u);
+    assert(backend.creates == 1);
+    assert(backend.uploads == 0);
+    assert(backend.destroys == 1);
+    assert(backend.last_destroyed_handle == backend.last_created_handle);
+
     ringl_buffer_data_from_bytes(RINGL_ARRAY_BUFFER, 4, initial_data,
                                  sizeof(initial_data), RINGL_STATIC_DRAW);
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(ringl_get_buffer_size(RINGL_ARRAY_BUFFER) == 4u);
     assert(ringl_get_buffer_usage(RINGL_ARRAY_BUFFER) == RINGL_STATIC_DRAW);
-    assert(backend.creates == 1);
+    assert(backend.creates == 2);
     assert(backend.uploads == 1);
-    assert(backend.destroys == 0);
+    assert(backend.destroys == 1);
 
     ringl_buffer_sub_data_from_bytes(RINGL_ARRAY_BUFFER, 1, 2, sub_data,
                                      sizeof(sub_data));
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(ringl_get_buffer_size(RINGL_ARRAY_BUFFER) == 4u);
     assert(ringl_get_buffer_usage(RINGL_ARRAY_BUFFER) == RINGL_STATIC_DRAW);
-    assert(backend.creates == 2);
+    assert(backend.creates == 3);
     assert(backend.uploads == 2);
-    assert(backend.destroys == 1);
+    assert(backend.destroys == 2);
     assert(backend.last_upload_offset == 0u);
     assert(backend.last_upload_size == 4u);
     assert(backend.last_upload_data[0] == 1u);
@@ -115,36 +134,46 @@ int main(void)
     assert(backend.last_upload_data[2] == 9u);
     assert(backend.last_upload_data[3] == 4u);
 
+    backend.fail_create = 1;
+    ringl_buffer_sub_data(RINGL_ARRAY_BUFFER, 0, 1, sub_data);
+    assert(ringl_get_error() == RINGL_OUT_OF_MEMORY);
+    assert(ringl_get_buffer_size(RINGL_ARRAY_BUFFER) == 4u);
+    assert(ringl_get_buffer_usage(RINGL_ARRAY_BUFFER) == RINGL_STATIC_DRAW);
+    assert(backend.creates == 4);
+    assert(backend.uploads == 2);
+    assert(backend.destroys == 3);
+    assert(backend.last_destroyed_handle == backend.last_created_handle);
+
     ringl_buffer_data_from_bytes(RINGL_ARRAY_BUFFER, 4, initial_data,
                                  sizeof(initial_data) - 1u,
                                  RINGL_STATIC_DRAW);
     assert(ringl_get_error() == RINGL_INVALID_VALUE);
     assert(ringl_get_buffer_size(RINGL_ARRAY_BUFFER) == 4u);
-    assert(backend.creates == 2);
+    assert(backend.creates == 4);
     assert(backend.uploads == 2);
-    assert(backend.destroys == 1);
+    assert(backend.destroys == 3);
 
     ringl_buffer_sub_data_from_bytes(RINGL_ARRAY_BUFFER, 1, 2, sub_data,
                                      sizeof(sub_data) - 1u);
     assert(ringl_get_error() == RINGL_INVALID_VALUE);
-    assert(backend.creates == 2);
+    assert(backend.creates == 4);
     assert(backend.uploads == 2);
-    assert(backend.destroys == 1);
+    assert(backend.destroys == 3);
 
     ringl_buffer_sub_data(RINGL_ARRAY_BUFFER, 3, 2, sub_data);
     assert(ringl_get_error() == RINGL_INVALID_VALUE);
-    assert(backend.creates == 2);
+    assert(backend.creates == 4);
     assert(backend.uploads == 2);
-    assert(backend.destroys == 1);
+    assert(backend.destroys == 3);
 
     backend.fail_upload = 1;
     ringl_buffer_sub_data(RINGL_ARRAY_BUFFER, 0, 2, sub_data);
     assert(ringl_get_error() == RINGL_OUT_OF_MEMORY);
     assert(ringl_get_buffer_size(RINGL_ARRAY_BUFFER) == 4u);
     assert(ringl_get_buffer_usage(RINGL_ARRAY_BUFFER) == RINGL_STATIC_DRAW);
-    assert(backend.creates == 3);
+    assert(backend.creates == 5);
     assert(backend.uploads == 3);
-    assert(backend.destroys == 2);
+    assert(backend.destroys == 4);
 
     backend.fail_upload = 0;
     ringl_buffer_data(RINGL_ARRAY_BUFFER, 8, replacement_data,
@@ -152,17 +181,17 @@ int main(void)
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(ringl_get_buffer_size(RINGL_ARRAY_BUFFER) == 8u);
     assert(ringl_get_buffer_usage(RINGL_ARRAY_BUFFER) == RINGL_DYNAMIC_DRAW);
-    assert(backend.creates == 4);
+    assert(backend.creates == 6);
     assert(backend.uploads == 4);
-    assert(backend.destroys == 3);
+    assert(backend.destroys == 5);
 
     ringl_buffer_data(RINGL_ARRAY_BUFFER, 0, NULL, RINGL_DYNAMIC_DRAW);
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(ringl_get_buffer_size(RINGL_ARRAY_BUFFER) == 0u);
     assert(ringl_get_buffer_usage(RINGL_ARRAY_BUFFER) == RINGL_DYNAMIC_DRAW);
-    assert(backend.destroys == 4);
+    assert(backend.destroys == 6);
 
     ringl_context_destroy(context);
-    assert(backend.destroys == 4);
+    assert(backend.destroys == 6);
     return 0;
 }

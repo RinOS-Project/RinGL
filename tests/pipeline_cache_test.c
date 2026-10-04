@@ -10,6 +10,8 @@ typedef struct FakeBackend {
     uint32_t pipeline_creates;
     uint32_t shader_module_creates;
     uint32_t destroys;
+    uint32_t fail_next_pipeline;
+    uint32_t empty_success_next_pipeline;
 } FakeBackend;
 
 static int fake_create_buffer(void* session, uint64_t size_bytes,
@@ -54,6 +56,16 @@ static int fake_create_graphics_pipeline(
     if (attribute_count != 0u)
         assert(attributes != NULL);
     ++backend->pipeline_creates;
+    if (backend->fail_next_pipeline != 0u) {
+        --backend->fail_next_pipeline;
+        *pipeline_out = ++backend->next_handle;
+        return -1;
+    }
+    if (backend->empty_success_next_pipeline != 0u) {
+        --backend->empty_success_next_pipeline;
+        *pipeline_out = 0u;
+        return 0;
+    }
     *pipeline_out = ++backend->next_handle;
     return 0;
 }
@@ -165,27 +177,43 @@ int main(void)
         assert(first == 0u && backend.pipeline_creates == 0u);
         ringl_context_release_shadow_bytes(context, available);
     }
+    /* Backend failure after producing a native object must destroy that
+     * partial pipeline, publish no handle, and leave the cache retryable. */
+    backend.fail_next_pipeline = 1u;
+    first = UINT64_MAX;
+    assert(ringl_pipeline_cache_get_or_create(context, &a, &first) != 0);
+    assert(first == 0u);
+    assert(backend.pipeline_creates == 1u && backend.destroys == 1u);
+
+    /* A backend cannot report success without a pipeline object. The empty
+     * result is rejected and must not trigger a destroy of handle zero. */
+    backend.empty_success_next_pipeline = 1u;
+    first = UINT64_MAX;
+    assert(ringl_pipeline_cache_get_or_create(context, &a, &first) != 0);
+    assert(first == 0u);
+    assert(backend.pipeline_creates == 2u && backend.destroys == 1u);
+
     assert(ringl_pipeline_cache_get_or_create(context, &a, &first) == 0);
     assert(first != 0u);
-    assert(backend.pipeline_creates == 1u);
+    assert(backend.pipeline_creates == 3u);
     assert(ringl_pipeline_cache_get_or_create(context, &a, &second) == 0);
     assert(second == first);
-    assert(backend.pipeline_creates == 1u);
+    assert(backend.pipeline_creates == 3u);
 
     b = make_key(3u, 4u);
     assert(ringl_pipeline_cache_get_or_create(context, &b, &second) == 0);
     assert(second != first);
-    assert(backend.pipeline_creates == 2u);
+    assert(backend.pipeline_creates == 4u);
 
     for (index = 0u; index < RINGL_PIPELINE_CACHE_CAPACITY; ++index) {
         RinGLPipelineKey key = make_key(100u + index, 4u);
         assert(ringl_pipeline_cache_get_or_create(context, &key, &second) == 0);
     }
-    assert(backend.pipeline_creates == 2u + RINGL_PIPELINE_CACHE_CAPACITY);
+    assert(backend.pipeline_creates == 4u + RINGL_PIPELINE_CACHE_CAPACITY);
     assert(backend.destroys >= 2u);
 
     ringl_context_destroy(context);
-    assert(backend.destroys == backend.pipeline_creates);
+    assert(backend.destroys == backend.pipeline_creates - 1u);
 
     /* LUMINANCE pipeline realization rewrites a fragment RSH1 module into a
      * short-lived CPU copy. Keep a minimal linked program here so the cache
@@ -262,7 +290,7 @@ int main(void)
                                                   &pipeline) != 0);
         assert(pipeline == 0u);
         assert(backend.shader_module_creates == 0u);
-        assert(backend.pipeline_creates == 2u + RINGL_PIPELINE_CACHE_CAPACITY);
+        assert(backend.pipeline_creates == 4u + RINGL_PIPELINE_CACHE_CAPACITY);
         ringl_context_release_shadow_bytes(luminance_context, held_bytes);
         assert(ringl_pipeline_cache_get_or_create(luminance_context,
                                                   &luminance_key,

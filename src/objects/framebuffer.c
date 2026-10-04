@@ -2095,6 +2095,7 @@ int ringl_renderbuffer_realize_color_target(RinGLContext* context,
                      RINGL_RIN_GPU_IMAGE_USAGE_COPY_SOURCE;
         if (ringl_backend_create_image_2d(context, &desc, &image) != 0 ||
             image == 0u) {
+            ringl_backend_destroy_object(context, image);
             return -1;
         }
         object->ringpu_image = image;
@@ -2149,6 +2150,7 @@ int ringl_renderbuffer_realize_depth_target(RinGLContext* context,
         desc.usage = RINGL_RIN_GPU_IMAGE_USAGE_DEPTH_STENCIL;
         if (ringl_backend_create_image_2d(context, &desc, &image) != 0 ||
             image == 0u) {
+            ringl_backend_destroy_object(context, image);
             return -1;
         }
         object->ringpu_image = image;

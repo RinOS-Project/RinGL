@@ -35,6 +35,10 @@ typedef struct FakeBackend {
     uint32_t lose_next_readback;
     uint32_t nonfinite_float_readback;
     uint32_t lose_next_create_buffer;
+    uint32_t partial_fail_next_command_list;
+    uint32_t empty_success_next_command_list;
+    uint32_t partial_fail_next_fence;
+    uint32_t empty_success_next_fence;
     uint32_t render_passes;
     uint32_t queue_submits;
     uint32_t destroys;
@@ -86,6 +90,16 @@ static int fake_create_command_list(void* session, uint32_t capabilities,
     FakeBackend* backend = session;
     assert(capabilities == RINGL_RIN_GPU_QUEUE_GRAPHICS);
     fake_trace_event(backend, FAKE_TRACE_CREATE_COMMAND_LIST);
+    if (backend->partial_fail_next_command_list != 0u) {
+        --backend->partial_fail_next_command_list;
+        *command_list_out = ++backend->next_handle;
+        return -1;
+    }
+    if (backend->empty_success_next_command_list != 0u) {
+        --backend->empty_success_next_command_list;
+        *command_list_out = 0u;
+        return 0;
+    }
     *command_list_out = ++backend->next_handle;
     return 0;
 }
@@ -195,10 +209,98 @@ static int fake_create_fence(void* session, uint64_t initial_value,
 {
     FakeBackend* backend = session;
     assert(initial_value == 0u);
-    backend->fence = ++backend->next_handle;
     fake_trace_event(backend, FAKE_TRACE_CREATE_FENCE);
+    if (backend->partial_fail_next_fence != 0u) {
+        --backend->partial_fail_next_fence;
+        backend->fence = ++backend->next_handle;
+        *fence_out = backend->fence;
+        return -1;
+    }
+    if (backend->empty_success_next_fence != 0u) {
+        --backend->empty_success_next_fence;
+        backend->fence = 0u;
+        *fence_out = 0u;
+        return 0;
+    }
+    backend->fence = ++backend->next_handle;
     *fence_out = backend->fence;
     return 0;
+}
+
+static int fake_submit_fenced(void* session, uint64_t queue,
+                              uint64_t command_list, uint64_t signal_fence,
+                              uint64_t signal_value);
+static int fake_wait_fence(void* session, uint64_t fence, uint64_t value,
+                           uint64_t timeout_ns);
+static int fake_readback(void* session, uint64_t image,
+                         const RinGLRinGpuImageReadback2DV1* readback,
+                         void* destination, uint64_t destination_size);
+
+static void verify_partial_sync_factory_outputs(void)
+{
+    FakeBackend backend = {0};
+    RinGLRinGpuOpsV1 ops = {
+        .struct_size = sizeof(ops),
+        .api_version = RINGL_API_VERSION,
+        .create_buffer = fake_create_buffer,
+        .upload_buffer = fake_upload_buffer,
+        .destroy_object = fake_destroy,
+        .create_command_list = fake_create_command_list,
+        .reset_command_list = fake_reset_command_list,
+        .close_command_list = fake_close,
+        .queue_submit = fake_queue_submit,
+    };
+    RinGLRinGpuBindingV1 binding = {
+        .struct_size = sizeof(binding),
+        .api_version = RINGL_API_VERSION,
+        .session = &backend,
+        .ops = &ops,
+        .graphics_queue = 900u,
+        .queue_capabilities = RINGL_RIN_GPU_QUEUE_GRAPHICS,
+    };
+    RinGLContextDescV1 desc = {
+        .struct_size = sizeof(desc),
+        .api_version = RINGL_API_VERSION,
+        .ringpu = &binding,
+    };
+    RinGLRinGpuSyncOpsV1 sync_ops = {
+        .struct_size = sizeof(sync_ops),
+        .api_version = RINGL_SYNC_API_VERSION,
+        .create_fence = fake_create_fence,
+        .queue_submit_fenced = fake_submit_fenced,
+        .wait_fence = fake_wait_fence,
+        .readback_image_2d = fake_readback,
+    };
+    RinGLContext* context = NULL;
+
+    assert(ringl_context_create(&desc, &context) == 0);
+    assert(ringl_context_set_sync_ops(context, &sync_ops) == 0);
+    assert(ringl_make_current(context) == 0);
+
+    backend.partial_fail_next_command_list = 1u;
+    ringl_finish();
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    assert(context->graphics_command_list == 0u && backend.destroys == 1u);
+    backend.empty_success_next_command_list = 1u;
+    ringl_finish();
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    assert(context->graphics_command_list == 0u && backend.destroys == 1u);
+
+    backend.partial_fail_next_fence = 1u;
+    ringl_finish();
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    assert(context->graphics_command_list != 0u &&
+           context->finish_fence == 0u && backend.destroys == 2u);
+    backend.empty_success_next_fence = 1u;
+    ringl_finish();
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    assert(context->finish_fence == 0u && backend.destroys == 2u);
+    ringl_finish();
+    assert(ringl_get_error() == RINGL_NO_ERROR);
+    assert(context->finish_fence != 0u);
+    assert(backend.submits == 1u && backend.waits == 1u);
+
+    ringl_context_destroy(context);
 }
 
 static int fake_submit_fenced(void* session, uint64_t queue,
@@ -542,6 +644,7 @@ static void verify_full_submission_ordering(void)
 int main(void)
 {
     verify_full_submission_ordering();
+    verify_partial_sync_factory_outputs();
 
     FakeBackend backend = {0};
     RinGLRinGpuOpsV1 ops = {

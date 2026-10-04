@@ -16,6 +16,9 @@ typedef struct FakeBackend {
     uint32_t shader_creates;
     uint32_t pipeline_creates;
     uint32_t draws;
+    uint32_t destroys;
+    uint32_t partial_fail_next_image;
+    uint32_t empty_success_next_image;
     uint64_t last_pass_target;
     uint32_t last_transition_old_state;
     uint32_t last_transition_new_state;
@@ -69,8 +72,11 @@ static int fake_create_graphics_pipeline(
 
 static int fake_destroy_object(void* session, uint64_t object)
 {
-    (void)session;
-    return object != 0u ? 0 : -1;
+    FakeBackend* backend = session;
+    if (object == 0u)
+        return -1;
+    ++backend->destroys;
+    return 0;
 }
 
 static int fake_create_image_2d(void* session,
@@ -82,6 +88,16 @@ static int fake_create_image_2d(void* session,
     assert(desc != NULL && image_out != NULL);
     assert(desc->width == 2u && desc->height == 2u);
     assert(desc->format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM);
+    if (backend->partial_fail_next_image != 0u) {
+        --backend->partial_fail_next_image;
+        *image_out = ++backend->next_handle;
+        return -1;
+    }
+    if (backend->empty_success_next_image != 0u) {
+        --backend->empty_success_next_image;
+        *image_out = 0u;
+        return 0;
+    }
     assert(backend->image_creates < 2u);
     backend->image_usages[backend->image_creates] = desc->usage;
     *image_out = ++backend->next_handle;
@@ -234,6 +250,7 @@ int main(void)
     uint32_t fragment = 0u;
     uint32_t program = 0u;
     uint8_t pixels[16] = {0u};
+    uint32_t destroys_before_failure;
     const float vertices[6] = {
         -0.5f, -0.5f,
          0.5f, -0.5f,
@@ -295,6 +312,17 @@ int main(void)
     ringl_bind_framebuffer(RINGL_FRAMEBUFFER, renderbuffer_framebuffer);
     ringl_framebuffer_renderbuffer(RINGL_FRAMEBUFFER, RINGL_COLOR_ATTACHMENT0,
                                    RINGL_RENDERBUFFER, renderbuffer);
+    destroys_before_failure = backend.destroys;
+    backend.partial_fail_next_image = 1u;
+    ringl_clear(RINGL_COLOR_BUFFER_BIT);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    assert(backend.image_creates == 1u);
+    assert(backend.destroys == destroys_before_failure + 1u);
+    backend.empty_success_next_image = 1u;
+    ringl_clear(RINGL_COLOR_BUFFER_BIT);
+    assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+    assert(backend.image_creates == 1u);
+    assert(backend.destroys == destroys_before_failure + 1u);
     ringl_clear(RINGL_COLOR_BUFFER_BIT);
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(backend.image_creates == 2u && backend.image_uploads == 1u);

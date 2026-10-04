@@ -596,6 +596,8 @@ static int begin_commands(RinGLContext* context, uint64_t* command_list)
                 context, RINGL_RIN_GPU_QUEUE_GRAPHICS,
                 &context->graphics_command_list) != 0 ||
             context->graphics_command_list == 0u) {
+            ringl_backend_destroy_object(context,
+                                         context->graphics_command_list);
             context->graphics_command_list = 0u;
             return -1;
         }
@@ -1396,8 +1398,12 @@ static int prepare_graphics_resources(RinGLContext* context,
              : ringl_backend_create_graphics_bind_group(
                    context, pipeline, bindings, binding_count,
                    &context->graphics_bind_group)) != 0 ||
-        context->graphics_bind_group == 0u)
+        context->graphics_bind_group == 0u) {
+        ringl_backend_destroy_object(context, context->graphics_bind_group);
+        context->graphics_bind_group = 0u;
+        context->graphics_bind_group_pipeline = 0u;
         return -1;
+    }
     context->graphics_bind_group_pipeline = pipeline;
 
     if (transitioned_out != NULL)

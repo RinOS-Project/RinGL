@@ -56,6 +56,11 @@ typedef struct FakeBackend {
     uint32_t coordinate_uniform_fragment_modules;
     uint32_t pipeline_creates;
     uint32_t bind_group_creates;
+    uint32_t destroys;
+    uint32_t partial_fail_next_bind_group;
+    uint32_t empty_success_next_bind_group;
+    uint32_t partial_fail_next_command_list;
+    uint32_t empty_success_next_command_list;
 } FakeBackend;
 
 static void record(FakeBackend* backend, char command)
@@ -83,8 +88,9 @@ static int fake_upload_buffer(void* session, uint64_t buffer, uint64_t offset,
 
 static int fake_destroy_object(void* session, uint64_t object)
 {
-    (void)session;
+    FakeBackend* backend = session;
     assert(object != 0u);
+    ++backend->destroys;
     return 0;
 }
 
@@ -285,6 +291,16 @@ static int fake_create_command_list(void* session, uint32_t capabilities,
 {
     FakeBackend* backend = session;
     assert(capabilities == RINGL_RIN_GPU_QUEUE_GRAPHICS);
+    if (backend->partial_fail_next_command_list != 0u) {
+        --backend->partial_fail_next_command_list;
+        *command_list_out = ++backend->next_handle;
+        return -1;
+    }
+    if (backend->empty_success_next_command_list != 0u) {
+        --backend->empty_success_next_command_list;
+        *command_list_out = 0u;
+        return 0;
+    }
     *command_list_out = ++backend->next_handle;
     return 0;
 }
@@ -455,6 +471,16 @@ static int fake_create_bind_group(
         assert(0);
     }
     ++backend->bind_group_creates;
+    if (backend->partial_fail_next_bind_group != 0u) {
+        --backend->partial_fail_next_bind_group;
+        *bind_group_out = ++backend->next_handle;
+        return -1;
+    }
+    if (backend->empty_success_next_bind_group != 0u) {
+        --backend->empty_success_next_bind_group;
+        *bind_group_out = 0u;
+        return 0;
+    }
     *bind_group_out = ++backend->next_handle;
     return 0;
 }
@@ -699,6 +725,19 @@ int main(void)
     ringl_depth_range(0.25f, 0.75f);
     ringl_scissor(-5, 3, 20, 30);
     ringl_enable(RINGL_SCISSOR_TEST);
+    {
+        uint32_t destroys_before_failure = backend.destroys;
+
+        backend.partial_fail_next_command_list = 1u;
+        ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);
+        assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+        assert(backend.destroys == destroys_before_failure + 1u);
+
+        backend.empty_success_next_command_list = 1u;
+        ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);
+        assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+        assert(backend.destroys == destroys_before_failure + 1u);
+    }
     ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);
     assert(ringl_get_error() == RINGL_NO_ERROR);
 
@@ -1001,10 +1040,25 @@ int main(void)
                      0.375f, 0.5f);
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(backend.coordinate_uniform_fragment_modules == 1u);
+    {
+        uint32_t destroys_before_failure = backend.destroys;
+
+        backend.partial_fail_next_bind_group = 1u;
+        ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);
+        assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+        assert(backend.bind_group_creates == 5u);
+        assert(backend.destroys == destroys_before_failure + 1u);
+
+        backend.empty_success_next_bind_group = 1u;
+        ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);
+        assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+        assert(backend.bind_group_creates == 6u);
+        assert(backend.destroys == destroys_before_failure + 1u);
+    }
     ringl_draw_arrays(RINGL_TRIANGLES, 0, 3);
     assert(ringl_get_error() == RINGL_NO_ERROR);
     assert(backend.pipeline_creates == 5u);
-    assert(backend.bind_group_creates == 5u);
+    assert(backend.bind_group_creates == 7u);
 
     ringl_context_destroy(context);
     return 0;

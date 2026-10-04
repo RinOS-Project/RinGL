@@ -64,8 +64,10 @@ static int ensure_finish_fence(RinGLContext* context)
     result = context->sync_ops.create_fence(context->ringpu.session, 0u, &fence);
     if (result == RINGL_RIN_GPU_ERROR_DEVICE_LOST)
         ringl_context_mark_lost(context);
-    if (result != 0 || fence == 0u)
+    if (result != 0 || fence == 0u) {
+        ringl_backend_destroy_object(context, fence);
         return -1;
+    }
     context->finish_fence = fence;
     return 0;
 }
@@ -81,8 +83,12 @@ static int prepare_empty_command_list(RinGLContext* context,
         if (ringl_backend_create_command_list(
                 context, RINGL_RIN_GPU_QUEUE_GRAPHICS,
                 &context->graphics_command_list) != 0 ||
-            context->graphics_command_list == 0u)
+            context->graphics_command_list == 0u) {
+            ringl_backend_destroy_object(context,
+                                         context->graphics_command_list);
+            context->graphics_command_list = 0u;
             return -1;
+        }
     } else if (ringl_backend_reset_command_list(
                    context, context->graphics_command_list) != 0) {
         return -1;

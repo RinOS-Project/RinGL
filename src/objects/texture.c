@@ -1960,13 +1960,13 @@ int ringl_texture_realize_unit(RinGLContext* context, uint32_t unit,
     if (slot_index >= RINGL_OBJECT_SLOT_COUNT)
         return -1;
     texture = &context->textures[slot_index];
-    if (texture->target == RINGL_TEXTURE_CUBE_MAP
-            ? (!texture_cube_level0_complete(context, texture) ||
-               !texture_color_format(texture->format))
-            : (!(texture_color_format(texture->format) ||
-                 texture->format == RINGL_DEPTH_COMPONENT32F ||
-                 texture->format == RINGL_DEPTH24_STENCIL8) ||
-               !texture_level0_complete(context, texture)) ||
+    if ((texture->target == RINGL_TEXTURE_CUBE_MAP
+             ? (!texture_cube_level0_complete(context, texture) ||
+                !texture_color_format(texture->format))
+             : (!(texture_color_format(texture->format) ||
+                  texture->format == RINGL_DEPTH_COMPONENT32F ||
+                  texture->format == RINGL_DEPTH24_STENCIL8) ||
+                !texture_level0_complete(context, texture))) ||
         texture_realize_image(context, texture) != 0 ||
         texture_realize_sampler(context, texture) != 0) {
         return -1;

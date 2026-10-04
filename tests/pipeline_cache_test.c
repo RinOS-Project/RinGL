@@ -12,6 +12,9 @@ typedef struct FakeBackend {
     uint32_t destroys;
     uint32_t fail_next_pipeline;
     uint32_t empty_success_next_pipeline;
+    uint32_t native_pipeline_creates;
+    uint32_t fail_next_native_pipeline;
+    uint32_t empty_success_next_native_pipeline;
     uint32_t fail_next_shader_partial;
     uint32_t empty_success_next_shader;
 } FakeBackend;
@@ -65,6 +68,36 @@ static int fake_create_graphics_pipeline(
     }
     if (backend->empty_success_next_pipeline != 0u) {
         --backend->empty_success_next_pipeline;
+        *pipeline_out = 0u;
+        return 0;
+    }
+    *pipeline_out = ++backend->next_handle;
+    return 0;
+}
+
+static int fake_create_graphics_pipeline_native(
+    void* session, const RinGLRinGpuGraphicsPipelineNativeV1* desc,
+    const RinGLRinGpuVertexAttributeV1* attributes,
+    uint32_t attribute_count, const RinGLRinGpuVaryingV1* varyings,
+    uint32_t varying_count, uint64_t* pipeline_out)
+{
+    FakeBackend* backend = (FakeBackend*)session;
+    assert(desc != NULL);
+    assert(pipeline_out != NULL);
+    assert(desc->vertex_shader != 0u);
+    assert(desc->fragment_shader != 0u);
+    assert(desc->cull_mode != 0u);
+    assert(desc->front_face != 0u);
+    assert(attribute_count == 2u && attributes != NULL);
+    assert(varying_count == 0u && varyings == NULL);
+    ++backend->native_pipeline_creates;
+    if (backend->fail_next_native_pipeline != 0u) {
+        --backend->fail_next_native_pipeline;
+        *pipeline_out = ++backend->next_handle;
+        return -1;
+    }
+    if (backend->empty_success_next_native_pipeline != 0u) {
+        --backend->empty_success_next_native_pipeline;
         *pipeline_out = 0u;
         return 0;
     }
@@ -326,6 +359,44 @@ int main(void)
         assert(pipeline != 0u);
         assert(backend.shader_module_creates == 3u);
         ringl_context_destroy(luminance_context);
+    }
+
+    /* The native graphics-pipeline callback is the production path for
+     * Vulkan/D3D backends. Exercise its partial-output and empty-success
+     * contracts independently of the compatibility descriptor callback. */
+    {
+        RinGLContext* native_context = NULL;
+        RinGLPipelineKey native_key = make_key(7u, 4u);
+        uint64_t native_pipeline = UINT64_MAX;
+        uint32_t destroys_before_native = backend.destroys;
+
+        ops.create_graphics_pipeline_native =
+            fake_create_graphics_pipeline_native;
+        assert(ringl_context_create(&desc, &native_context) == 0);
+        backend.fail_next_native_pipeline = 1u;
+        assert(ringl_pipeline_cache_get_or_create(native_context,
+                                                  &native_key,
+                                                  &native_pipeline) != 0);
+        assert(native_pipeline == 0u);
+        assert(backend.native_pipeline_creates == 1u);
+        assert(backend.destroys == destroys_before_native + 1u);
+
+        backend.empty_success_next_native_pipeline = 1u;
+        native_pipeline = UINT64_MAX;
+        assert(ringl_pipeline_cache_get_or_create(native_context,
+                                                  &native_key,
+                                                  &native_pipeline) != 0);
+        assert(native_pipeline == 0u);
+        assert(backend.native_pipeline_creates == 2u);
+        assert(backend.destroys == destroys_before_native + 1u);
+
+        assert(ringl_pipeline_cache_get_or_create(native_context,
+                                                  &native_key,
+                                                  &native_pipeline) == 0);
+        assert(native_pipeline != 0u);
+        assert(backend.native_pipeline_creates == 3u);
+        ringl_context_destroy(native_context);
+        assert(backend.destroys == destroys_before_native + 2u);
     }
     return 0;
 }

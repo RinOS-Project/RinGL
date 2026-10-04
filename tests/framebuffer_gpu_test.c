@@ -3,11 +3,12 @@
 #include <string.h>
 
 #include <ringl/ringl.h>
+#include "../src/ringl_internal.h"
 
 typedef struct FakeBackend {
     uint64_t next_handle;
-    uint64_t created_images[2];
-    uint32_t image_usages[2];
+    uint64_t created_images[4];
+    uint32_t image_usages[4];
     uint32_t image_creates;
     uint32_t image_uploads;
     uint32_t transitions;
@@ -87,6 +88,24 @@ static int fake_create_image_2d(void* session,
 
     assert(desc != NULL && image_out != NULL);
     assert(desc->width == 2u && desc->height == 2u);
+    if (desc->format == RINGL_RIN_GPU_FORMAT_D32_FLOAT) {
+        assert(desc->usage == RINGL_RIN_GPU_IMAGE_USAGE_DEPTH_STENCIL);
+        if (backend->partial_fail_next_image != 0u) {
+            --backend->partial_fail_next_image;
+            *image_out = ++backend->next_handle;
+            return -1;
+        }
+        if (backend->empty_success_next_image != 0u) {
+            --backend->empty_success_next_image;
+            *image_out = 0u;
+            return 0;
+        }
+        assert(backend->image_creates < 4u);
+        backend->image_usages[backend->image_creates] = desc->usage;
+        *image_out = ++backend->next_handle;
+        backend->created_images[backend->image_creates++] = *image_out;
+        return 0;
+    }
     assert(desc->format == RINGL_RIN_GPU_FORMAT_RGBA8_UNORM);
     if (backend->partial_fail_next_image != 0u) {
         --backend->partial_fail_next_image;
@@ -246,6 +265,7 @@ int main(void)
     uint32_t renderbuffer = 0u;
     uint32_t renderbuffer_framebuffer = 0u;
     uint32_t vertex_buffer = 0u;
+    uint32_t depth_renderbuffer = 0u;
     uint32_t vertex = 0u;
     uint32_t fragment = 0u;
     uint32_t program = 0u;
@@ -334,6 +354,39 @@ int main(void)
     assert(backend.last_pass_target == backend.created_images[1]);
     assert(backend.last_transition_old_state == RINGL_RIN_GPU_IMAGE_UNDEFINED);
     assert(backend.last_transition_new_state == RINGL_RIN_GPU_IMAGE_COLOR_TARGET);
+
+    {
+        uint64_t depth_image = UINT64_MAX;
+        uint32_t* depth_state = NULL;
+        uint32_t depth_width = 0u;
+        uint32_t depth_height = 0u;
+        uint32_t destroys_before_depth_failure = backend.destroys;
+
+        ringl_gen_renderbuffers(1, &depth_renderbuffer);
+        ringl_bind_renderbuffer(RINGL_RENDERBUFFER, depth_renderbuffer);
+        ringl_renderbuffer_storage(RINGL_RENDERBUFFER,
+                                   RINGL_DEPTH_COMPONENT32F, 2, 2);
+        backend.partial_fail_next_image = 1u;
+        assert(ringl_renderbuffer_realize_depth_target(
+                   context, depth_renderbuffer, &depth_image, &depth_state,
+                   &depth_width, &depth_height) != 0);
+        assert(backend.image_creates == 2u);
+        assert(backend.destroys == destroys_before_depth_failure + 1u);
+
+        backend.empty_success_next_image = 1u;
+        assert(ringl_renderbuffer_realize_depth_target(
+                   context, depth_renderbuffer, &depth_image, &depth_state,
+                   &depth_width, &depth_height) != 0);
+        assert(backend.image_creates == 2u);
+        assert(backend.destroys == destroys_before_depth_failure + 1u);
+
+        assert(ringl_renderbuffer_realize_depth_target(
+                   context, depth_renderbuffer, &depth_image, &depth_state,
+                   &depth_width, &depth_height) == 0);
+        assert(depth_image != 0u && depth_state != NULL);
+        assert(depth_width == 2u && depth_height == 2u);
+        assert(backend.image_creates == 3u);
+    }
 
     ringl_context_destroy(context);
     return 0;

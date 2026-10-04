@@ -1669,8 +1669,10 @@ static int texture_realize_cube_image(RinGLContext* context,
         desc.usage |= RINGL_RIN_GPU_IMAGE_USAGE_COLOR_TARGET |
                       RINGL_RIN_GPU_IMAGE_USAGE_COPY_SOURCE;
     if (ringl_backend_create_image_array_v1(context, &desc, &image) != 0 ||
-        image == 0u)
+        image == 0u) {
+        ringl_backend_destroy_object(context, image);
         return -1;
+    }
     memset(texture->ringpu_cube_image_state,
            RINGL_RIN_GPU_IMAGE_UNDEFINED,
            sizeof(texture->ringpu_cube_image_state));
@@ -1787,6 +1789,7 @@ static int texture_realize_image(RinGLContext* context,
         if (ringl_backend_create_image_2d_mip_v2(context, &mip_desc,
                                                  &image) != 0 ||
             image == 0u) {
+            ringl_backend_destroy_object(context, image);
             return -1;
         }
     } else if (texture->format == RINGL_DEPTH_COMPONENT32F ||
@@ -1803,6 +1806,7 @@ static int texture_realize_image(RinGLContext* context,
             RINGL_RIN_GPU_IMAGE_USAGE_SAMPLED;
         if (ringl_backend_create_image_2d(context, &color_target_desc,
                                           &image) != 0 || image == 0u) {
+            ringl_backend_destroy_object(context, image);
             return -1;
         }
     } else if (texture_color_format(texture->format) &&
@@ -1818,6 +1822,7 @@ static int texture_realize_image(RinGLContext* context,
                                   RINGL_RIN_GPU_IMAGE_USAGE_COPY_SOURCE;
         if (ringl_backend_create_image_2d(context, &color_target_desc, &image) != 0 ||
             image == 0u) {
+            ringl_backend_destroy_object(context, image);
             return -1;
         }
     } else if (texture_color_format(texture->format)) {
@@ -1828,6 +1833,7 @@ static int texture_realize_image(RinGLContext* context,
                                             texture->color_component_type);
         if (ringl_backend_create_sampled_image_2d(context, &desc, &image) != 0 ||
             image == 0u) {
+            ringl_backend_destroy_object(context, image);
             return -1;
         }
     } else {
@@ -1923,6 +1929,7 @@ static int texture_realize_sampler(RinGLContext* context,
         desc.max_anisotropy = 1u;
     if (ringl_backend_create_sampler(context, &desc, &sampler) != 0 ||
         sampler == 0u) {
+        ringl_backend_destroy_object(context, sampler);
         return -1;
     }
     texture->ringpu_sampler = sampler;

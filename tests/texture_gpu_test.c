@@ -14,6 +14,10 @@ typedef struct FakeBackend {
     uint32_t image_uploads;
     uint32_t sampler_creates;
     uint32_t destroys;
+    uint32_t partial_fail_next_image;
+    uint32_t empty_success_next_image;
+    uint32_t partial_fail_next_sampler;
+    uint32_t empty_success_next_sampler;
     uint32_t last_format;
     uint64_t last_upload_size;
     uint8_t last_upload[64];
@@ -73,6 +77,16 @@ static int fake_create_image(void* session,
     assert(desc->reserved0 == 0u);
     backend->last_format = desc->format;
     backend->image_creates++;
+    if (backend->partial_fail_next_image != 0u) {
+        --backend->partial_fail_next_image;
+        *image_out = ++backend->next_handle;
+        return -1;
+    }
+    if (backend->empty_success_next_image != 0u) {
+        --backend->empty_success_next_image;
+        *image_out = 0u;
+        return 0;
+    }
     *image_out = ++backend->next_handle;
     return 0;
 }
@@ -101,6 +115,16 @@ static int fake_create_color_image(void* session,
                            RINGL_RIN_GPU_IMAGE_USAGE_COPY_SOURCE));
     backend->last_format = desc->format;
     backend->image_creates++;
+    if (backend->partial_fail_next_image != 0u) {
+        --backend->partial_fail_next_image;
+        *image_out = ++backend->next_handle;
+        return -1;
+    }
+    if (backend->empty_success_next_image != 0u) {
+        --backend->empty_success_next_image;
+        *image_out = 0u;
+        return 0;
+    }
     *image_out = ++backend->next_handle;
     return 0;
 }
@@ -156,6 +180,16 @@ static int fake_create_mip_image(void* session,
     backend->mip_image_creates++;
     backend->mip_level_count = desc->mip_levels;
     backend->last_format = desc->format;
+    if (backend->partial_fail_next_image != 0u) {
+        --backend->partial_fail_next_image;
+        *image_out = ++backend->next_handle;
+        return -1;
+    }
+    if (backend->empty_success_next_image != 0u) {
+        --backend->empty_success_next_image;
+        *image_out = 0u;
+        return 0;
+    }
     *image_out = ++backend->next_handle;
     return 0;
 }
@@ -216,6 +250,16 @@ static int fake_create_sampler(void* session,
     backend->last_sampler_mip_filter = desc->mip_filter;
     backend->last_sampler_max_anisotropy = desc->max_anisotropy;
     backend->sampler_creates++;
+    if (backend->partial_fail_next_sampler != 0u) {
+        --backend->partial_fail_next_sampler;
+        *sampler_out = ++backend->next_handle;
+        return -1;
+    }
+    if (backend->empty_success_next_sampler != 0u) {
+        --backend->empty_success_next_sampler;
+        *sampler_out = 0u;
+        return 0;
+    }
     *sampler_out = ++backend->next_handle;
     return 0;
 }
@@ -1012,6 +1056,162 @@ int main(void)
     assert(memcmp(backend.mip_upload[1], patch, sizeof(patch)) == 0);
 
     ringl_context_destroy(context);
+
+    /* Failed backend image/sampler factories may leave a native cookie behind.
+     * RinGL must destroy partial objects, reject empty success, clear public
+     * outputs, and allow the same logical texture to be realized on retry. */
+    {
+        FakeBackend failure_backend = {0};
+        RinGLRinGpuOpsV1 failure_ops = ops;
+        RinGLRinGpuBindingV1 failure_binding = binding;
+        RinGLContextDescV1 failure_desc = desc;
+        RinGLContext* failure_context = NULL;
+        uint32_t failure_texture;
+        uint64_t failure_image = UINT64_MAX;
+        uint64_t failure_sampler = UINT64_MAX;
+
+        failure_binding.session = &failure_backend;
+        failure_binding.ops = &failure_ops;
+        failure_desc.ringpu = &failure_binding;
+        assert(ringl_context_create(&failure_desc, &failure_context) == 0);
+        assert(ringl_make_current(failure_context) == 0);
+        ringl_gen_textures(1, &failure_texture);
+        ringl_bind_texture(RINGL_TEXTURE_2D, failure_texture);
+        ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MIN_FILTER,
+                             RINGL_LINEAR);
+        ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 2, 2, 0,
+                           RINGL_RGBA, RINGL_UNSIGNED_BYTE, pixels);
+
+        failure_backend.partial_fail_next_image = 1u;
+        assert(ringl_texture_realize_unit(failure_context, 0u,
+                                          &failure_image,
+                                          &failure_sampler) != 0);
+        assert(failure_image == 0u && failure_sampler == 0u);
+        assert(failure_backend.image_creates == 1u &&
+               failure_backend.destroys == 1u &&
+               failure_backend.image_uploads == 0u &&
+               failure_backend.sampler_creates == 0u);
+
+        failure_backend.empty_success_next_image = 1u;
+        failure_image = UINT64_MAX;
+        failure_sampler = UINT64_MAX;
+        assert(ringl_texture_realize_unit(failure_context, 0u,
+                                          &failure_image,
+                                          &failure_sampler) != 0);
+        assert(failure_image == 0u && failure_sampler == 0u);
+        assert(failure_backend.image_creates == 2u &&
+               failure_backend.destroys == 1u);
+
+        failure_backend.partial_fail_next_sampler = 1u;
+        failure_image = UINT64_MAX;
+        failure_sampler = UINT64_MAX;
+        assert(ringl_texture_realize_unit(failure_context, 0u,
+                                          &failure_image,
+                                          &failure_sampler) != 0);
+        assert(failure_image == 0u && failure_sampler == 0u);
+        assert(failure_backend.image_creates == 3u &&
+               failure_backend.image_uploads == 1u &&
+               failure_backend.sampler_creates == 1u &&
+               failure_backend.destroys == 2u);
+
+        failure_backend.empty_success_next_sampler = 1u;
+        failure_image = UINT64_MAX;
+        failure_sampler = UINT64_MAX;
+        assert(ringl_texture_realize_unit(failure_context, 0u,
+                                          &failure_image,
+                                          &failure_sampler) != 0);
+        assert(failure_image == 0u && failure_sampler == 0u);
+        assert(failure_backend.sampler_creates == 2u &&
+               failure_backend.destroys == 2u);
+
+        assert(ringl_texture_realize_unit(failure_context, 0u,
+                                          &failure_image,
+                                          &failure_sampler) == 0);
+        assert(failure_image != 0u && failure_sampler != 0u);
+        assert(failure_backend.image_creates == 3u &&
+               failure_backend.sampler_creates == 3u);
+
+        ringl_generate_mipmap(RINGL_TEXTURE_2D);
+        assert(ringl_get_error() == RINGL_NO_ERROR);
+        {
+            const uint32_t destroys_before_mip_failure =
+                failure_backend.destroys;
+
+            failure_backend.partial_fail_next_image = 1u;
+            failure_image = UINT64_MAX;
+            failure_sampler = UINT64_MAX;
+            assert(ringl_texture_realize_unit(failure_context, 0u,
+                                              &failure_image,
+                                              &failure_sampler) != 0);
+            assert(failure_image == 0u && failure_sampler == 0u);
+            assert(failure_backend.mip_image_creates == 1u &&
+                   failure_backend.mip_uploads == 0u &&
+                   failure_backend.destroys == destroys_before_mip_failure + 1u);
+
+            failure_backend.empty_success_next_image = 1u;
+            assert(ringl_texture_realize_unit(failure_context, 0u,
+                                              &failure_image,
+                                              &failure_sampler) != 0);
+            assert(failure_image == 0u && failure_sampler == 0u);
+            assert(failure_backend.destroys == destroys_before_mip_failure + 1u);
+
+            assert(ringl_texture_realize_unit(failure_context, 0u,
+                                              &failure_image,
+                                              &failure_sampler) == 0);
+            assert(failure_image != 0u && failure_sampler != 0u);
+            assert(failure_backend.mip_image_creates == 3u &&
+                   failure_backend.mip_uploads == 2u);
+        }
+
+        /* Color-target images use a distinct factory callback and must receive
+         * the same partial-output cleanup and retry treatment. */
+        {
+            uint32_t color_texture;
+            uint32_t framebuffer;
+
+            ringl_gen_textures(1, &color_texture);
+            ringl_bind_texture(RINGL_TEXTURE_2D, color_texture);
+            ringl_tex_parameteri(RINGL_TEXTURE_2D, RINGL_TEXTURE_MIN_FILTER,
+                                 RINGL_LINEAR);
+            ringl_tex_image_2d(RINGL_TEXTURE_2D, 0, RINGL_RGBA, 2, 2, 0,
+                               RINGL_RGBA, RINGL_UNSIGNED_BYTE, pixels);
+            ringl_gen_framebuffers(1, &framebuffer);
+            ringl_bind_framebuffer(RINGL_FRAMEBUFFER, framebuffer);
+            ringl_framebuffer_texture_2d(RINGL_FRAMEBUFFER,
+                                         RINGL_COLOR_ATTACHMENT0,
+                                         RINGL_TEXTURE_2D, color_texture, 0);
+            assert(ringl_check_framebuffer_status(RINGL_FRAMEBUFFER) ==
+                   RINGL_FRAMEBUFFER_COMPLETE);
+
+            {
+                const uint32_t destroys_before_color_failure =
+                    failure_backend.destroys;
+
+                failure_backend.partial_fail_next_image = 1u;
+                failure_image = UINT64_MAX;
+                failure_sampler = UINT64_MAX;
+                assert(ringl_texture_realize_unit(failure_context, 0u,
+                                                  &failure_image,
+                                                  &failure_sampler) != 0);
+                assert(failure_image == 0u && failure_sampler == 0u);
+                assert(failure_backend.destroys ==
+                       destroys_before_color_failure + 1u);
+            }
+            assert(ringl_texture_realize_unit(failure_context, 0u,
+                                              &failure_image,
+                                              &failure_sampler) == 0);
+            assert(failure_image != 0u && failure_sampler != 0u);
+        }
+
+        {
+            const uint32_t destroys_before_context_destroy =
+                failure_backend.destroys;
+
+            ringl_context_destroy(failure_context);
+            assert(failure_backend.destroys ==
+                   destroys_before_context_destroy + 4u);
+        }
+    }
 
     /* A V1-prefix backend cannot accidentally accept generated storage that
      * it has no way to allocate or upload. */

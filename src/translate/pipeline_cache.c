@@ -219,6 +219,7 @@ static int create_luminance_fragment_module(RinGLContext* context,
     if (ringl_backend_create_shader_module(context, copy, source_size,
                                            &module) != 0 ||
         module == 0u) {
+        ringl_backend_destroy_object(context, module);
         ringl_context_free_temporary(context, copy, source_size);
         return -1;
     }

@@ -1585,6 +1585,7 @@ static int ringl_program_lower_uniform_shader(
         (ringl_backend_create_shader_module(context, copy, lowered->byte_size,
                                             &module) != 0 ||
          module == 0u)) {
+        ringl_backend_destroy_object(context, module);
         ringl_context_release_shadow_bytes(context, lowered->byte_size);
         free(copy);
         ringl_context_free_temporary(context, lowered, sizeof(*lowered));

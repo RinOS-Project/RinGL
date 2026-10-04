@@ -12,6 +12,8 @@ typedef struct FakeBackend {
     uint32_t destroys;
     uint32_t fail_next_pipeline;
     uint32_t empty_success_next_pipeline;
+    uint32_t fail_next_shader_partial;
+    uint32_t empty_success_next_shader;
 } FakeBackend;
 
 static int fake_create_buffer(void* session, uint64_t size_bytes,
@@ -79,6 +81,16 @@ static int fake_create_shader_module(void* session, const void* rsh1,
     assert(size_bytes != 0u);
     assert(shader_module_out != NULL);
     ++backend->shader_module_creates;
+    if (backend->fail_next_shader_partial != 0u) {
+        --backend->fail_next_shader_partial;
+        *shader_module_out = ++backend->next_handle;
+        return -1;
+    }
+    if (backend->empty_success_next_shader != 0u) {
+        --backend->empty_success_next_shader;
+        *shader_module_out = 0u;
+        return 0;
+    }
     *shader_module_out = ++backend->next_handle;
     return 0;
 }
@@ -231,6 +243,7 @@ int main(void)
         uint32_t program;
         uint64_t pipeline;
         uint64_t held_bytes;
+        uint32_t destroys_before_partial;
         uint32_t index;
 
         ops.create_shader_module = fake_create_shader_module;
@@ -292,11 +305,26 @@ int main(void)
         assert(backend.shader_module_creates == 0u);
         assert(backend.pipeline_creates == 4u + RINGL_PIPELINE_CACHE_CAPACITY);
         ringl_context_release_shadow_bytes(luminance_context, held_bytes);
+        destroys_before_partial = backend.destroys;
+        backend.fail_next_shader_partial = 1u;
+        assert(ringl_pipeline_cache_get_or_create(luminance_context,
+                                                  &luminance_key,
+                                                  &pipeline) != 0);
+        assert(pipeline == 0u);
+        assert(backend.shader_module_creates == 1u);
+        assert(backend.destroys == destroys_before_partial + 1u);
+        backend.empty_success_next_shader = 1u;
+        assert(ringl_pipeline_cache_get_or_create(luminance_context,
+                                                  &luminance_key,
+                                                  &pipeline) != 0);
+        assert(pipeline == 0u);
+        assert(backend.shader_module_creates == 2u);
+        assert(backend.destroys == destroys_before_partial + 1u);
         assert(ringl_pipeline_cache_get_or_create(luminance_context,
                                                   &luminance_key,
                                                   &pipeline) == 0);
         assert(pipeline != 0u);
-        assert(backend.shader_module_creates == 1u);
+        assert(backend.shader_module_creates == 3u);
         ringl_context_destroy(luminance_context);
     }
     return 0;

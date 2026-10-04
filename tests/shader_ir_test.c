@@ -94,6 +94,8 @@ typedef struct FakeBackend {
     uint64_t next_handle;
     uint32_t shader_creates;
     uint32_t destroys;
+    uint32_t fail_next_shader_partial;
+    uint32_t empty_success_next_shader;
 } FakeBackend;
 
 static int fake_create_buffer(void* session, uint64_t size_bytes,
@@ -137,6 +139,16 @@ static int fake_create_shader_module(void* session, const void* rsh1,
     if (header.magic != RSH1_MAGIC || header.total_size != size_bytes)
         return -1;
     backend->shader_creates++;
+    if (backend->fail_next_shader_partial != 0u) {
+        --backend->fail_next_shader_partial;
+        *shader_module_out = ++backend->next_handle;
+        return -1;
+    }
+    if (backend->empty_success_next_shader != 0u) {
+        --backend->empty_success_next_shader;
+        *shader_module_out = 0u;
+        return 0;
+    }
     *shader_module_out = ++backend->next_handle;
     return 0;
 }
@@ -762,11 +774,28 @@ int main(void)
     assert(first_module != 0u);
     assert(backend.shader_creates == 1u);
 
+    backend.fail_next_shader_partial = 1u;
+    assert(ringl_realize_shader_module(vertex) != 0);
+    assert(ringl_get_shader_module(vertex) == first_module);
+    assert(backend.shader_creates == 2u && backend.destroys == 1u);
+
+    backend.empty_success_next_shader = 1u;
+    assert(ringl_realize_shader_module(vertex) != 0);
+    assert(ringl_get_shader_module(vertex) == first_module);
+    assert(backend.shader_creates == 3u && backend.destroys == 1u);
+
     assert(ringl_realize_shader_module(vertex) == 0);
     assert(ringl_get_shader_module(vertex) != 0u);
     assert(ringl_get_shader_module(vertex) != first_module);
-    assert(backend.shader_creates == 2u);
-    assert(backend.destroys == 1u);
+    assert(backend.shader_creates == 4u);
+    assert(backend.destroys == 2u);
+
+    first_module = ringl_get_shader_module(vertex);
+    assert(ringl_realize_shader_module(vertex) == 0);
+    assert(ringl_get_shader_module(vertex) != 0u);
+    assert(ringl_get_shader_module(vertex) != first_module);
+    assert(backend.shader_creates == 5u);
+    assert(backend.destroys == 3u);
 
     header = lower_and_read_header(vertex, vector_source, blob, sizeof(blob));
     assert(header.stage == 1u);
@@ -774,7 +803,7 @@ int main(void)
     assert(header.output_count == 9u);
     assert(header.instruction_count >= 13u);
     assert(ringl_get_shader_module(vertex) == 0u);
-    assert(backend.destroys == 2u);
+    assert(backend.destroys == 4u);
 
     header = lower_and_read_header(vertex, point_size_source, blob,
                                    sizeof(blob));

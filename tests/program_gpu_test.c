@@ -42,6 +42,8 @@ typedef struct FakeBackend {
     uint32_t tinted_texture_fragment_modules;
     uint32_t transformed_texture_vertex_modules;
     uint32_t integer_fragment_modules;
+    uint32_t partial_shader_failure;
+    uint32_t destroys;
     float expected_transform[16];
     float expected_tint[4];
     uint32_t validate_expected_transform;
@@ -69,7 +71,9 @@ static int fake_upload_buffer(void* session, uint64_t buffer, uint64_t offset,
 
 static int fake_destroy_object(void* session, uint64_t object)
 {
-    (void)session; (void)object;
+    FakeBackend* backend = session;
+    assert(object != 0u);
+    ++backend->destroys;
     return 0;
 }
 
@@ -169,6 +173,11 @@ static int fake_create_shader_module(void* session, const void* rsh1,
         }
     }
     backend->shader_creates++;
+    if (backend->partial_shader_failure != 0u) {
+        --backend->partial_shader_failure;
+        *shader_module_out = ++backend->next_handle;
+        return -1;
+    }
     if (backend->reject_create)
         return -1;
     *shader_module_out = ++backend->next_handle;
@@ -284,22 +293,34 @@ int main(void)
             5.0f, 6.0f, 0.0f, 1.0f,
         };
         float values[16];
+        float transform_before_failure[16];
         int32_t tint_location = ringl_get_uniform_location(matrix_program, "tint");
         int32_t location = ringl_get_uniform_location(matrix_program, "transform");
+        uint32_t destroys_before_partial;
 
         /* `texture` occupies sampler location zero. The transform and tint
          * are independently mutable program-owned executables. */
         assert(tint_location == 1);
         assert(location == 2);
         ringl_use_program(matrix_program);
+        assert(ringl_get_uniform_matrix4f(matrix_program, location,
+                                          transform_before_failure) == 0);
         memcpy(backend.expected_transform, transform, sizeof(transform));
         backend.validate_expected_transform = 1u;
+        destroys_before_partial = backend.destroys;
+        backend.partial_shader_failure = 1u;
+        ringl_uniform_matrix4fv(location, 0u, transform);
+        assert(ringl_get_error() == RINGL_INVALID_OPERATION);
+        assert(backend.shader_creates == 6u);
+        assert(backend.destroys == destroys_before_partial + 1u);
+        assert(ringl_get_uniform_matrix4f(matrix_program, location, values) == 0);
+        assert(memcmp(values, transform_before_failure, sizeof(values)) == 0);
         ringl_uniform_matrix4fv(location, 0u, transform);
         assert(ringl_get_error() == RINGL_NO_ERROR);
-        assert(backend.shader_creates == 6u);
+        assert(backend.shader_creates == 7u);
         assert(backend.texture_fragment_modules == 2u);
         assert(backend.tinted_texture_fragment_modules == 1u);
-        assert(backend.transformed_texture_vertex_modules == 2u);
+        assert(backend.transformed_texture_vertex_modules == 3u);
         backend.expected_tint[0] = 0.5f;
         backend.expected_tint[1] = 1.0f;
         backend.expected_tint[2] = 0.25f;
@@ -310,15 +331,15 @@ int main(void)
                           backend.expected_tint[2],
                           backend.expected_tint[3]);
         assert(ringl_get_error() == RINGL_NO_ERROR);
-        assert(backend.shader_creates == 7u);
+        assert(backend.shader_creates == 8u);
         assert(backend.texture_fragment_modules == 3u);
         assert(backend.tinted_texture_fragment_modules == 2u);
-        assert(backend.transformed_texture_vertex_modules == 2u);
+        assert(backend.transformed_texture_vertex_modules == 3u);
         backend.reject_create = 1u;
         transform[0] = 7.0f;
         ringl_uniform_matrix4fv(location, 0u, transform);
         assert(ringl_get_error() == RINGL_INVALID_OPERATION);
-        assert(backend.shader_creates == 8u);
+        assert(backend.shader_creates == 9u);
         assert(ringl_get_uniform_matrix4f(matrix_program, location, values) == 0);
         assert(values[0] == 2.0f);
         backend.reject_create = 0u;
@@ -346,12 +367,12 @@ int main(void)
     ringl_attach_shader(shared_uniform_program, shared_uniform_fragment);
     ringl_link_program(shared_uniform_program);
     assert(ringl_get_program_link_status(shared_uniform_program) == RINGL_TRUE);
-    assert(backend.shader_creates == 10u);
+    assert(backend.shader_creates == 11u);
     ringl_use_program(shared_uniform_program);
     assert(ringl_get_uniform_location(shared_uniform_program, "gain") == 0);
     ringl_uniform_1f(0, 0.5f);
     assert(ringl_get_error() == RINGL_NO_ERROR);
-    assert(backend.shader_creates == 12u);
+    assert(backend.shader_creates == 13u);
     ringl_delete_program(shared_uniform_program);
 
     ringl_shader_source(fragment,
@@ -360,7 +381,7 @@ int main(void)
     backend.reject_create = 1u;
     ringl_link_program(program);
     assert(ringl_get_program_link_status(program) == RINGL_FALSE);
-    assert(backend.shader_creates == 13u);
+    assert(backend.shader_creates == 14u);
     backend.reject_create = 0u;
 
     /* The native integer path is a program-owned executable as well: changing

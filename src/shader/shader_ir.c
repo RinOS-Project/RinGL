@@ -201,6 +201,7 @@ int ringl_realize_shader_module(uint32_t shader)
     rc = ringl_backend_create_shader_module(context, object->rsh1,
                                             object->rsh1_size, &module);
     if (rc != 0 || module == 0u) {
+        ringl_backend_destroy_object(context, module);
         ringl_copy_c_string(object->info_log, sizeof(object->info_log),
                             "RinGPU rejected shader module");
         return -1;

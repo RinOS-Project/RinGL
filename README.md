@@ -400,10 +400,11 @@ allocation used to supply a stencil-only WebGL drawing buffer therefore reports
 zero depth bits and eight stencil bits; a hidden physical plane never becomes a
 browser-visible capability merely because RinGL owns its storage.
 
-When a custom framebuffer is bound, `DEPTH_BITS` and `STENCIL_BITS` come from
-the corresponding logical attachment metadata. A D24S8 object attached through
-only one aspect reports bits for that aspect alone, while a detached aspect
-reports zero. Query failure leaves the caller's output unchanged.
+When a custom framebuffer is bound, `RED_BITS`, `GREEN_BITS`, `BLUE_BITS`, and
+`ALPHA_BITS` come from `COLOR_ATTACHMENT0` metadata; `DEPTH_BITS` and
+`STENCIL_BITS` come from the corresponding logical attachment metadata. Missing
+attachments report zero. A D24S8 object attached through only one aspect reports
+bits for that aspect alone. Query failure leaves the caller's output unchanged.
 
 ## Fixed WebGL capability query slice
 

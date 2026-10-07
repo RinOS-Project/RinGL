@@ -131,8 +131,9 @@ failure. It accepts these exact pnames:
 - framebuffer component/plane counts: `RED_BITS`, `GREEN_BITS`, `BLUE_BITS`,
   `ALPHA_BITS`, `DEPTH_BITS`, `STENCIL_BITS`. Default-buffer queries follow
   the configured native color format and explicit depth/stencil aspect
-  contract; custom-FBO depth/stencil queries follow the attached logical
-  aspects and report zero for a detached plane;
+  contract; custom-FBO color queries follow `COLOR_ATTACHMENT0`, and its
+  depth/stencil queries follow the attached logical aspects and report zero
+  for a missing component or detached plane;
 - `WEBGL_draw_buffers` (only after its RinGL gate):
   `MAX_DRAW_BUFFERS_WEBGL`, `MAX_COLOR_ATTACHMENTS_WEBGL`, and
   `DRAW_BUFFER0_WEBGL` through `DRAW_BUFFER3_WEBGL`. The returned mapping is

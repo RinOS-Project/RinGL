@@ -1137,6 +1137,36 @@ int ringl_get_integerv_bounded(uint32_t pname, int32_t* values,
     case RINGL_GREEN_BITS:
     case RINGL_BLUE_BITS:
     case RINGL_ALPHA_BITS:
+        if (context->framebuffer_binding != 0u) {
+            int32_t component_bits;
+            uint32_t attachment_pname;
+
+            switch (pname) {
+            case RINGL_RED_BITS:
+                attachment_pname =
+                    RINGL_FRAMEBUFFER_ATTACHMENT_RED_SIZE;
+                break;
+            case RINGL_GREEN_BITS:
+                attachment_pname =
+                    RINGL_FRAMEBUFFER_ATTACHMENT_GREEN_SIZE;
+                break;
+            case RINGL_BLUE_BITS:
+                attachment_pname =
+                    RINGL_FRAMEBUFFER_ATTACHMENT_BLUE_SIZE;
+                break;
+            default:
+                attachment_pname =
+                    RINGL_FRAMEBUFFER_ATTACHMENT_ALPHA_SIZE;
+                break;
+            }
+            if (ringl_get_framebuffer_attachment_parameteriv_bounded(
+                    RINGL_COLOR_ATTACHMENT0, attachment_pname,
+                    &component_bits, 1u) != 0) {
+                return -1;
+            }
+            values[0] = component_bits;
+            return 0;
+        }
         values[0] = default_framebuffer_color_bits(
             context->has_default_framebuffer != 0u
                 ? &context->default_framebuffer

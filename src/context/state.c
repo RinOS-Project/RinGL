@@ -1144,6 +1144,18 @@ int ringl_get_integerv_bounded(uint32_t pname, int32_t* values,
             pname);
         return 0;
     case RINGL_DEPTH_BITS:
+        if (context->framebuffer_binding != 0u) {
+            int32_t depth_bits;
+
+            if (ringl_get_framebuffer_attachment_parameteriv_bounded(
+                    RINGL_DEPTH_ATTACHMENT,
+                    RINGL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE,
+                    &depth_bits, 1u) != 0) {
+                return -1;
+            }
+            values[0] = depth_bits;
+            return 0;
+        }
         values[0] = context->has_default_framebuffer != 0u &&
                 default_framebuffer_has_depth(&context->default_framebuffer) !=
                     0u
@@ -1151,6 +1163,18 @@ int ringl_get_integerv_bounded(uint32_t pname, int32_t* values,
             : 0;
         return 0;
     case RINGL_STENCIL_BITS:
+        if (context->framebuffer_binding != 0u) {
+            int32_t stencil_bits;
+
+            if (ringl_get_framebuffer_attachment_parameteriv_bounded(
+                    RINGL_STENCIL_ATTACHMENT,
+                    RINGL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE,
+                    &stencil_bits, 1u) != 0) {
+                return -1;
+            }
+            values[0] = stencil_bits;
+            return 0;
+        }
         values[0] = context->has_default_framebuffer != 0u &&
                 default_framebuffer_has_stencil(
                     &context->default_framebuffer) != 0u

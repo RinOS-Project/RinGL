@@ -128,10 +128,11 @@ failure. It accepts these exact pnames:
   `PACK_ALIGNMENT`, `UNPACK_ALIGNMENT`, `MAX_TEXTURE_SIZE`,
   `MAX_TEXTURE_IMAGE_UNITS`,
   `MAX_COMBINED_TEXTURE_IMAGE_UNITS`, `MAX_VERTEX_ATTRIBS`;
-- default drawing-buffer component/plane counts: `RED_BITS`, `GREEN_BITS`,
-  `BLUE_BITS`, `ALPHA_BITS`, `DEPTH_BITS`, `STENCIL_BITS`. Component counts
-  come from the configured native color format; depth/stencil counts are zero
-  when the explicit browser-facing aspect contract hides that logical plane;
+- framebuffer component/plane counts: `RED_BITS`, `GREEN_BITS`, `BLUE_BITS`,
+  `ALPHA_BITS`, `DEPTH_BITS`, `STENCIL_BITS`. Default-buffer queries follow
+  the configured native color format and explicit depth/stencil aspect
+  contract; custom-FBO depth/stencil queries follow the attached logical
+  aspects and report zero for a detached plane;
 - `WEBGL_draw_buffers` (only after its RinGL gate):
   `MAX_DRAW_BUFFERS_WEBGL`, `MAX_COLOR_ATTACHMENTS_WEBGL`, and
   `DRAW_BUFFER0_WEBGL` through `DRAW_BUFFER3_WEBGL`. The returned mapping is

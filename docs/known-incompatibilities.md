@@ -47,14 +47,17 @@ paths. In particular:
 
 ## Resources, framebuffer, and rasterization
 
-- Texture support is 2D only. Cube maps, 3D/array/immutable textures, general
-  compressed formats, and unrestricted mip semantics are unavailable. ETC1,
-  the documented S3TC formats, and logical sRGB are dedicated bounded paths;
-  they do not imply general compressed/sRGB texture support.
+- Texture support includes 2D images and a bounded six-face cube-map color
+  path. Cube maps require square, same-size/same-format faces, supported color
+  storage, clamp-to-edge S/T, and every mip required by the selected filter.
+  3D/array/immutable textures, general compressed formats, and unrestricted
+  mip semantics are unavailable. ETC1, the documented S3TC formats, and
+  logical sRGB are dedicated bounded 2D paths; they do not imply general
+  compressed/sRGB texture support.
 - Color, depth, and stencil formats are restricted to the inventory's
-  RGBA/canonical, native packed, D16/D32/D24S8/S8 matrix. Multisample storage,
-  resolve, cube-face attachments, and attachment combinations outside the
-  verified matrix are unavailable.
+  RGBA/canonical, native packed, D16/D32/D24S8/S8 matrix. Represented
+  cube-face color attachments are bounded; multisample storage, resolve, and
+  attachment combinations outside the verified matrix are unavailable.
 - `readPixels`, `copyTexImage2D`, and `copyTexSubImage2D` require the
   documented complete color target. Depth/stencil and multisample copy/read
   semantics are not implemented. Browser callers must use the capacity-aware
@@ -67,9 +70,8 @@ paths. In particular:
   behavior. Attachment metadata queries now report the represented component
   type and logical channel/aspect widths for configured default and custom
   targets; the default drawing buffer's versioned attachment record is exposed
-  as the standard NONE/zero object sentinel. Multisampled, cube, and
-  unverified attachment semantics must not be exposed as working stencil
-  support.
+  as the standard NONE/zero object sentinel. Multisampled and unverified
+  attachment semantics must not be exposed as working stencil support.
 
 ## GLSL ES and shader execution
 

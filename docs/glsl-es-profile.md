@@ -108,8 +108,8 @@ The current first-triangle slice supports:
   dPdx, accepted vec2 dPdy)` and the `texture2DProjGradEXT` `vec3`/`vec4`
   variant. The four gradient components are materialized as consecutive live
   RSH1 Float32 registers in dU/dX, dU/dY, dV/dX, dV/dY order, and each RGBA
-  `SAMPLE_IMAGE_2D_GRAD_F32` uses that explicit real RinGPU footprint. Cube/
-  3D/array/shadow texture forms and unsupported scalar expressions still
+  `SAMPLE_IMAGE_2D_GRAD_F32` uses that explicit real RinGPU footprint. 3D/
+  array/shadow texture forms and unsupported scalar expressions still
   reject before module publication;
 - a canonical `varying vec2` texture-coordinate path with one through eight
   `texture2D()` calls over one through eight `uniform sampler2D` declarations,
@@ -127,8 +127,7 @@ The current first-triangle slice supports:
   every selected element has its own real resource pair. The same bounded
   constant-index rule applies to bounded numeric
   uniform arrays (eight scalar/vector elements per type; four vertex matrices).
-  Dynamic indexing, non-2D sampler forms other than the documented 2D
-  explicit-gradient slice, and over-budget or otherwise unsupported
+  Dynamic indexing, 3D/array/shadow sampler forms, and over-budget or otherwise unsupported
   expressions reject;
 - generic fragment `texture2D(sampler2D, vec2, float bias)` and
   `texture2DProj(sampler2D, vec3|vec4, float bias)` lowering: every component
@@ -144,8 +143,15 @@ The current first-triangle slice supports:
   sampled image/sampler lookup. Accepted projected expressions share the
   generic local/varying/swizzle/arithmetic/uniform path. A literal zero
   denominator rejects while lowering, while a dynamic zero reaches normal
-  RinGPU preflight and leaves the target unpublished; cube/3D/array/shadow
-  and other texture forms remain unsupported;
+  RinGPU preflight and leaves the target unpublished; 3D/array/shadow and
+  other unsupported texture forms remain outside this profile;
+- generic fragment `textureCube(samplerCube, vec3)` lowering: an active cube
+  sampler becomes a typed RinGPU image/sampler pair and each result component
+  executes `SAMPLE_IMAGE_CUBE_F32` with the live direction registers. RinGL
+  accepts six square, same-format faces and validates wrap and required mip
+  completeness before realization. The image-array factory, face metadata,
+  sampler reflection, and RSH1 lowering have source regressions; real draw
+  readback/runtime evidence remains open;
 - a constant-coordinate-only texture profile: one declared `sampler2D` may be
   sampled one through eight times, while a multi-declaration program uses each
   of one through eight declared samplers exactly once; results are added

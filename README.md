@@ -116,8 +116,9 @@ one-element span and the existing attachment record validate. Component type
 and logical channel/aspect sizes are derived from the actual texture or
 renderbuffer storage for normalized, Float32/binary16, D16/D32F, D24S8, and S8
 attachments; a D24S8 object attached to one logical aspect reports only that
-aspect. Unattached slots return zero metadata, while default-FBO, cube,
-multisample, and unsupported-format semantics remain fail-closed. On a
+aspect. Unattached slots return zero metadata, while default-FBO,
+multisample, and unsupported-format component metadata remain fail-closed;
+represented cube-face object identity is available. On a
 configured default framebuffer, the versioned attachment record and object/type
 queries return the standard `NONE`/zero values while component and logical
 aspect widths come from the physical format and explicit depth/stencil flags.
@@ -274,8 +275,8 @@ The same gate enables `texture2DGradEXT` and `texture2DProjGradEXT` with
 accepted `vec2` dPdx/dPdy expressions. RinGL materializes those four live
 Float values in RSH1 order dU/dX, dU/dY, dV/dX, dV/dY, and the generic RinGPU
 backend uses that explicit footprint to select the real mip chain. It does not
-substitute the rasterizer's derivative or an embedding-side lookup. Cube/3D/
-array/shadow texture forms and general GLSL ES texture conformance remain
+substitute the rasterizer's derivative or an embedding-side lookup. 3D/array/
+shadow texture forms and general GLSL ES texture conformance remain
 unsupported and are rejected before an executable module is published.
 
 ## Bounded fragment discard
@@ -485,6 +486,16 @@ normal four-component image/sampler lookup. The divisor may be an accepted
 live Float expression, including a uniform rebuilt atomically with its module;
 a literal zero is rejected while lowering and a dynamic zero uses the existing
 RinGPU preflight failure path rather than inventing a sample value.
+
+The bounded core cube-map path accepts `samplerCube` and generic
+`textureCube(sampler, vec3)` direction expressions. RinGL packs six square,
+same-size/same-format faces into the versioned RinGPU image-array ABI, and
+RinGPU executes four real `SAMPLE_IMAGE_CUBE_F32` component operations. Cube
+sampling checks the selected filter's required mip chain and the GLES cube
+wrap requirements before image realization. The current `cube_map_test.c`
+source contract covers face realization/failure cleanup, face query, sampler
+reflection, and shader opcode lowering; it does not provide an end-to-end draw
+readback or runtime result, which remains open in the implementation status.
 
 The optional GLSL ES `texture2D(sampler2D, vec2, float bias)` and
 `texture2DProj(sampler2D, vec3|vec4, float bias)` overloads also use the

@@ -32,7 +32,10 @@ reflection, and the four RSH1 cube-sample opcodes. The root host regression
 sample draw and reads its result through the RinGL→RinGPU bridge. It uses
 unique colors for every face and mip; the 2×2 draw reads +Z level zero as
 `(17,34,51,255)`, then reads +Z level one as `(19,83,201,255)` after enabling
-nearest-mipmap selection.
+nearest-mipmap selection. The vertex shader emits a constant +Z base as one
+`varying vec3` and the pixel-dependent XY delta as a second; the fragment
+shader adds them before sampling. This verifies the six-scalar native
+perspective-varying route together with cube face and mip selection.
 
 ## Remaining work
 

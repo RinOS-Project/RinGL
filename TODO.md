@@ -273,6 +273,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     and texture-coordinate grammar. End-to-end coverage for arbitrary mixed
     varying expressions, varying-driven texture combinations, and broader
     linkage semantics remains open.
+  - [x] Combine two distinct perspective-interpolated `varying vec3` values in a `textureCube()` direction. The end-to-end host regression carries six scalar inputs through the RinGPU native varying route, adds the two fragment values, and reads distinct +Z face/mip colors; arbitrary varying combinations remain unsupported ([status](docs/implementation-status-sampler-cube-bounded-v1.md)).
   - [x] Combine generic `varying float`/`vec2`/`vec3`/`vec4` interfaces with a
     programmable `gl_PointSize` expression. RSH1 output 4 is reserved for point
     size and every varying store is shifted after it independent of source

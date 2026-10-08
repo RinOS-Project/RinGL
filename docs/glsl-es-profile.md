@@ -177,9 +177,13 @@ or by non-overlapping writable selector assignments. RinGL records the exact
 component initialization map and only links when every declared component has
 an RSH1 store; an unwritten component fails linking instead of reaching native
 pipeline creation with an untyped output slot. Repeated writable components,
-mixed selector alphabets, and out-of-range components fail compilation. This
-does not claim general varying expressions or generic texture-coordinate
-support.
+mixed selector alphabets, and out-of-range components fail compilation. The
+bounded cube-sampling profile additionally accepts a direction formed by
+adding two distinct perspective-interpolated `varying vec3` values in the
+fragment stage; the RinGL→RinGPU draw/readback regression exercises all six
+scalar inputs and the resulting cube face/mip selection. Arbitrary varying
+combinations and generic texture-coordinate expressions remain outside the
+profile.
 
 The fixed `gl_Position` (vertex) and `gl_FragColor` (fragment) outputs accept
 non-overlapping writable `xyzw`/`rgba`/`stpq` selectors. RinGL emits one

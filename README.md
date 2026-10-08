@@ -525,8 +525,10 @@ wrap requirements before image realization. RinGPU resource reflection
 registers the cube instruction's packed image/sampler pair, while the
 Aquamarine software surface delegates ordinary multi-layer images to its
 software backend. `rin_webgl_cube_sampler_product_test.c` draws through the
-RinGL→RinGPU bridge and reads the unique +Z colors from mip levels zero and
-one; the full bridge integration regression also covers the default
+RinGL→RinGPU bridge; its fragment direction adds two distinct
+perspective-interpolated `varying vec3` values, and readback observes the
+unique +Z colors from mip levels zero and one. The full bridge integration
+regression also covers the default
 framebuffer present capability path. Host results and their dirty-workspace
 provenance are recorded in the
 [implementation status](docs/implementation-status-sampler-cube-bounded-v1.md).

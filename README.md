@@ -498,7 +498,8 @@ sampling checks the selected filter's required mip chain and the GLES cube
 wrap requirements before image realization. The current `cube_map_test.c`
 source contract covers face realization/failure cleanup, face query, sampler
 reflection, and shader opcode lowering; it does not provide an end-to-end draw
-readback or runtime result, which remains open in the implementation status.
+readback or runtime result, which remains open in the
+[implementation status](../../../docs/implementation-status-sampler-cube-bounded-v1.md).
 
 The optional GLSL ES `texture2D(sampler2D, vec2, float bias)` and
 `texture2DProj(sampler2D, vec3|vec4, float bias)` overloads also use the

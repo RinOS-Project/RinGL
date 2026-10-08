@@ -521,10 +521,14 @@ The bounded core cube-map path accepts `samplerCube` and generic
 same-size/same-format faces into the versioned RinGPU image-array ABI, and
 RinGPU executes four real `SAMPLE_IMAGE_CUBE_F32` component operations. Cube
 sampling checks the selected filter's required mip chain and the GLES cube
-wrap requirements before image realization. The current `cube_map_test.c`
-source contract covers face realization/failure cleanup, face query, sampler
-reflection, and shader opcode lowering; it does not provide an end-to-end draw
-readback or runtime result, which remains open in the
+wrap requirements before image realization. RinGPU resource reflection
+registers the cube instruction's packed image/sampler pair, while the
+Aquamarine software surface delegates ordinary multi-layer images to its
+software backend. `rin_webgl_cube_sampler_product_test.c` draws through the
+RinGL→RinGPU bridge and reads the unique +Z colors from mip levels zero and
+one; the full bridge integration regression also covers the default
+framebuffer present capability path. Host results and their dirty-workspace
+provenance are recorded in the
 [implementation status](docs/implementation-status-sampler-cube-bounded-v1.md).
 
 The optional GLSL ES `texture2D(sampler2D, vec2, float bias)` and

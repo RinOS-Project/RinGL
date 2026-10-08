@@ -588,12 +588,17 @@ static int draw_is_noop(const RinGLContext* context)
 static int begin_commands(RinGLContext* context, uint64_t* command_list)
 {
     int created = 0;
+    uint32_t command_capabilities = RINGL_RIN_GPU_QUEUE_GRAPHICS;
 
     if (!command_ops_ready(context) || command_list == NULL)
         return -1;
+    if ((context->ringpu.queue_capabilities &
+         RINGL_RIN_GPU_QUEUE_PRESENT) != 0u) {
+        command_capabilities |= RINGL_RIN_GPU_QUEUE_PRESENT;
+    }
     if (context->graphics_command_list == 0u) {
         if (ringl_backend_create_command_list(
-                context, RINGL_RIN_GPU_QUEUE_GRAPHICS,
+                context, command_capabilities,
                 &context->graphics_command_list) != 0 ||
             context->graphics_command_list == 0u) {
             ringl_backend_destroy_object(context,

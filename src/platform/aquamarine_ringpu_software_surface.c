@@ -123,12 +123,17 @@ static int surface_external_image(
         storage->version != RIN_GPU_SOFTWARE_EXTERNAL_IMAGE_VERSION ||
         descriptor->dimension != RIN_GPU_IMAGE_DIMENSION_2D ||
         descriptor->width == 0u || descriptor->height == 0u ||
-        descriptor->depth != 1u || descriptor->array_layers != 1u ||
+        descriptor->depth != 1u || descriptor->array_layers == 0u ||
         descriptor->mip_levels == 0u || descriptor->sample_count != 1u ||
         !multiply_u64(context->target.pitch_bytes, context->target.height,
                       &target_size)) {
         return RIN_GPU_ERROR_INVALID_ARGUMENT;
     }
+
+    /* Ordinary array images belong to the software backend. The surface only
+     * supplies storage for its single-layer presentation and depth images. */
+    if (descriptor->array_layers != 1u)
+        return RIN_GPU_OK;
 
     if (descriptor->format == RIN_GPU_FORMAT_BGRA8_UNORM &&
         (descriptor->usage & RIN_GPU_IMAGE_PRESENT) != 0u &&
@@ -365,12 +370,14 @@ static int initialize_context(RinGLAquamarineSurfaceContext* context,
         runtime_desc.max_total_allocation_size =
             RINGL_AQUAMARINE_SURFACE_MAX_TOTAL_ALLOCATION_BYTES;
         runtime_desc.max_image_dimension = RINGL_AQUAMARINE_SURFACE_MAX_DIMENSION;
-        runtime_desc.max_image_layers = 1u;
+        /* RinGL cube textures are represented as six-layer RinGPU images. */
+        runtime_desc.max_image_layers = 6u;
         runtime_desc.max_image_mip_levels = 13u;
         runtime_desc.max_image_sample_count = 1u;
         runtime_desc.adapter.abi_version = RIN_GPU_ABI_VERSION;
         runtime_desc.adapter.struct_size = sizeof(runtime_desc.adapter);
-        runtime_desc.adapter.queue_capabilities = RIN_GPU_QUEUE_GRAPHICS;
+        runtime_desc.adapter.queue_capabilities = RIN_GPU_QUEUE_GRAPHICS |
+                                                  RIN_GPU_QUEUE_PRESENT;
         memcpy(runtime_desc.adapter.name, "RinGL RinGPU adapter", 21u);
         runtime_desc.display = context->display;
         runtime_desc.present_callback = surface_present;
@@ -386,7 +393,7 @@ static int initialize_context(RinGLAquamarineSurfaceContext* context,
     memset(&queue, 0, sizeof(queue));
     queue.abi_version = RIN_GPU_ABI_VERSION;
     queue.struct_size = sizeof(queue);
-    queue.capabilities = RIN_GPU_QUEUE_GRAPHICS;
+    queue.capabilities = RIN_GPU_QUEUE_GRAPHICS | RIN_GPU_QUEUE_PRESENT;
     result = ringpu_runtime_create_queue(context->runtime, &queue,
                                          &context->queue);
     if (result != RIN_GPU_OK)
@@ -394,7 +401,8 @@ static int initialize_context(RinGLAquamarineSurfaceContext* context,
     memset(&command_list, 0, sizeof(command_list));
     command_list.abi_version = RIN_GPU_ABI_VERSION;
     command_list.struct_size = sizeof(command_list);
-    command_list.capabilities = RIN_GPU_QUEUE_GRAPHICS;
+    command_list.capabilities = RIN_GPU_QUEUE_GRAPHICS |
+                                RIN_GPU_QUEUE_PRESENT;
     result = ringpu_runtime_create_command_list(context->runtime, &command_list,
                                                 &context->command_list);
     if (result != RIN_GPU_OK)
@@ -592,7 +600,8 @@ int ringl_aquamarine_surface_get_native(
     native_out->ringpu_runtime = context->runtime;
     native_out->graphics_queue = context->queue;
     native_out->color_image = context->color_image;
-    native_out->queue_capabilities = RIN_GPU_QUEUE_GRAPHICS;
+    native_out->queue_capabilities = RIN_GPU_QUEUE_GRAPHICS |
+                                     RIN_GPU_QUEUE_PRESENT;
     native_out->color_format = context->display.format;
     native_out->width = context->target.width;
     native_out->height = context->target.height;

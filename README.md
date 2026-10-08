@@ -107,7 +107,10 @@ provide integer and Float32 adapters with complete-span validation. Integer
 current-value queries round each Float32 component to the nearest signed
 integer and reject out-of-range values atomically. The raw pointer query remains
 unavailable: exposing a host pointer would violate the embedding ABI, so
-callers must use the versioned attribute record instead.
+callers must use the versioned attribute record instead. Integer buffer-name
+and divisor queries also fail atomically when their unsigned state exceeds
+`INT32_MAX`; Float32 queries convert those values directly rather than first
+narrowing through a signed integer.
 Texture parameter setters now expose bounded vector forms; their Float32
 variants accept exact enum representations for the four core filter/wrap
 pnames, while anisotropy remains extension-gated. Float queries preserve the

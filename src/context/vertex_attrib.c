@@ -379,9 +379,17 @@ int ringl_get_vertex_attribiv_bounded(uint32_t index, uint32_t pname,
             converted[0] = (int32_t)attrib->normalized;
             break;
         case RINGL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING:
+            if (attrib->buffer > (uint32_t)INT32_MAX) {
+                ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+                return -1;
+            }
             converted[0] = (int32_t)attrib->buffer;
             break;
         case RINGL_VERTEX_ATTRIB_ARRAY_DIVISOR:
+            if (attrib->divisor > (uint32_t)INT32_MAX) {
+                ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+                return -1;
+            }
             converted[0] = (int32_t)attrib->divisor;
             break;
         default:
@@ -413,6 +421,10 @@ int ringl_get_vertex_attribfv_bounded(uint32_t index, uint32_t pname,
         return -1;
     if (pname == RINGL_CURRENT_VERTEX_ATTRIB) {
         memcpy(converted, attrib->current_value, required * sizeof(*converted));
+    } else if (pname == RINGL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING) {
+        converted[0] = (float)attrib->buffer;
+    } else if (pname == RINGL_VERTEX_ATTRIB_ARRAY_DIVISOR) {
+        converted[0] = (float)attrib->divisor;
     } else {
         int32_t integer_value[1] = {0};
 

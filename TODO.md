@@ -803,8 +803,11 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     and releases that reservation on allocation failure and context teardown;
     `tests/pipeline_cache_test.c` fills the budget and verifies a cache miss
     fails before module or pipeline creation, then succeeds after release.
-    Dynamic cache growth, backend-owned resources, and hardware/QEMU
-    accounting remain open.
+  - [x] Grow the pipeline cache from 32 to at most 512 entries under the same
+    context budget. Growth stages and charges the new table before replacing the
+    old one, preserves eviction order, and falls back to bounded eviction if
+    reservation or allocation fails. Backend-owned resources and hardware/QEMU
+    accounting remain open ([status](docs/implementation-status-ringl-pipeline-cache-growth-v1.md)).
 - [x] Add WebGL-oriented negative tests for malformed state and shader input.
   `tests/ringl_webgl_negative_test.c` covers failure-atomic descriptor queries,
   invalid viewport/scissor/depth/blend values, and malformed GLSL compile

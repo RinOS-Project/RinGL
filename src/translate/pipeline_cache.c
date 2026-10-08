@@ -18,10 +18,59 @@ typedef struct RinGLPipelineCacheEntry {
 } RinGLPipelineCacheEntry;
 
 typedef struct RinGLPipelineCache {
-    RinGLPipelineCacheEntry entries[RINGL_PIPELINE_CACHE_CAPACITY];
+    RinGLPipelineCacheEntry* entries;
+    uint32_t capacity;
     uint32_t next_evict;
     uint32_t count;
 } RinGLPipelineCache;
+
+static uint64_t cache_entries_size(uint32_t capacity)
+{
+    return (uint64_t)capacity * (uint64_t)sizeof(RinGLPipelineCacheEntry);
+}
+
+/* On growth, rotate the full ring so the next entry to evict is at index 0.
+ * If the additional temporary allocation cannot be charged or allocated, the
+ * caller keeps the old ring and uses its ordinary bounded eviction path. */
+static int cache_grow(RinGLContext* context, RinGLPipelineCache* cache)
+{
+    RinGLPipelineCacheEntry* entries;
+    uint32_t new_capacity;
+    uint32_t index;
+    uint64_t new_size;
+
+    if (context == NULL || cache == NULL || cache->entries == NULL ||
+        cache->capacity >= RINGL_PIPELINE_CACHE_MAX_CAPACITY ||
+        cache->count != cache->capacity) {
+        return 0;
+    }
+    new_capacity = cache->capacity >
+            RINGL_PIPELINE_CACHE_MAX_CAPACITY / 2u
+        ? RINGL_PIPELINE_CACHE_MAX_CAPACITY
+        : cache->capacity * 2u;
+    if (new_capacity <= cache->capacity)
+        return 0;
+    new_size = cache_entries_size(new_capacity);
+    if (!ringl_context_reserve_shadow_bytes(context, new_size))
+        return 0;
+    entries = (RinGLPipelineCacheEntry*)calloc(
+        (size_t)new_capacity, sizeof(*entries));
+    if (entries == NULL) {
+        ringl_context_release_shadow_bytes(context, new_size);
+        return 0;
+    }
+    for (index = 0u; index < cache->count; ++index) {
+        uint32_t old_index = (cache->next_evict + index) % cache->capacity;
+        entries[index] = cache->entries[old_index];
+    }
+    free(cache->entries);
+    ringl_context_release_shadow_bytes(
+        context, cache_entries_size(cache->capacity));
+    cache->entries = entries;
+    cache->capacity = new_capacity;
+    cache->next_evict = 0u;
+    return 1;
+}
 
 static RinGLProgramObject* current_program(RinGLContext* context)
 {
@@ -231,6 +280,7 @@ static int create_luminance_fragment_module(RinGLContext* context,
 static RinGLPipelineCache* cache_for(RinGLContext* context, int create)
 {
     RinGLPipelineCache* cache;
+    uint64_t entries_size;
 
     if (context == NULL)
         return NULL;
@@ -244,6 +294,21 @@ static RinGLPipelineCache* cache_for(RinGLContext* context, int create)
         ringl_context_release_shadow_bytes(context, sizeof(*cache));
         return NULL;
     }
+    entries_size = cache_entries_size(RINGL_PIPELINE_CACHE_CAPACITY);
+    if (!ringl_context_reserve_shadow_bytes(context, entries_size)) {
+        free(cache);
+        ringl_context_release_shadow_bytes(context, sizeof(*cache));
+        return NULL;
+    }
+    cache->entries = (RinGLPipelineCacheEntry*)calloc(
+        RINGL_PIPELINE_CACHE_CAPACITY, sizeof(*cache->entries));
+    if (cache->entries == NULL) {
+        ringl_context_release_shadow_bytes(context, entries_size);
+        free(cache);
+        ringl_context_release_shadow_bytes(context, sizeof(*cache));
+        return NULL;
+    }
+    cache->capacity = RINGL_PIPELINE_CACHE_CAPACITY;
     context->pipeline_cache = cache;
     return cache;
 }
@@ -852,7 +917,7 @@ int ringl_pipeline_cache_get_or_create(RinGLContext* context,
     if (cache == NULL)
         return -1;
 
-    for (index = 0u; index < RINGL_PIPELINE_CACHE_CAPACITY; ++index) {
+    for (index = 0u; index < cache->capacity; ++index) {
         RinGLPipelineCacheEntry* entry = &cache->entries[index];
         if (entry->valid && entry->hash == hash &&
             ringl_pipeline_key_equal(&entry->key, key)) {
@@ -875,12 +940,13 @@ int ringl_pipeline_cache_get_or_create(RinGLContext* context,
         return -1;
     }
 
-    if (cache->count < RINGL_PIPELINE_CACHE_CAPACITY) {
+    if (cache->count == cache->capacity)
+        (void)cache_grow(context, cache);
+    if (cache->count < cache->capacity) {
         target = cache->count++;
     } else {
         target = cache->next_evict;
-        cache->next_evict = (cache->next_evict + 1u) %
-                            RINGL_PIPELINE_CACHE_CAPACITY;
+        cache->next_evict = (cache->next_evict + 1u) % cache->capacity;
         if (cache->entries[target].valid &&
             cache->entries[target].pipeline != 0u)
             ringl_backend_destroy_object(context, cache->entries[target].pipeline);
@@ -929,7 +995,7 @@ void ringl_pipeline_cache_destroy(RinGLContext* context)
     cache = cache_for(context, 0);
     if (cache == NULL)
         return;
-    for (index = 0u; index < RINGL_PIPELINE_CACHE_CAPACITY; ++index) {
+    for (index = 0u; index < cache->capacity; ++index) {
         if (cache->entries[index].valid && cache->entries[index].pipeline != 0u)
             ringl_backend_destroy_object(context, cache->entries[index].pipeline);
         if (cache->entries[index].valid &&
@@ -938,6 +1004,9 @@ void ringl_pipeline_cache_destroy(RinGLContext* context)
                 context, cache->entries[index].logical_fragment_module);
         }
     }
+    free(cache->entries);
+    ringl_context_release_shadow_bytes(
+        context, cache_entries_size(cache->capacity));
     free(cache);
     ringl_context_release_shadow_bytes(context, sizeof(*cache));
     context->pipeline_cache = NULL;

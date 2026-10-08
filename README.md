@@ -62,8 +62,10 @@ context budget.
 The pipeline cache's fixed entry table is accounted for as well. Cache creation
 reserves the complete metadata table before `calloc`, releases the reservation
 on allocation failure or context teardown, and leaves the backend untouched
-when a full context budget rejects a cache miss. The table is currently fixed;
-dynamic growth and hardware/QEMU resource accounting remain follow-up work.
+when a full context budget rejects a cache miss. The cache grows from 32 to at
+most 512 entries while the context budget permits; failed growth retains the
+current cache and uses bounded eviction. GPU-driver and hardware/QEMU resource
+accounting remain follow-up work ([status](docs/implementation-status-ringl-pipeline-cache-growth-v1.md)).
 
 The built private Aquamarine surface delegates command execution to the generic
 `ringpu_software_backend`, whose bounded compute-pipeline, storage-bind-group,

@@ -1149,9 +1149,12 @@ logical stencil-only format and realizes a native one-byte RinGPU `S8_UINT`
 target with no depth plane. RinGL converts the packed 24/8 texture input into
 RinGPU's F32 depth/S8 stencil storage and executes independent front/back
 stencil tests, reference/read/write masks, all eight stencil operations, and
-stencil clear before the depth test. A stencil-only attachment rejects depth
-comparison/write at the native pipeline boundary; an enabled logical depth
-test therefore cannot access or accidentally manufacture a depth plane. The
+stencil clear before the depth test. The S8 wrap operations use modulo-256
+arithmetic; the bridge regression source covers both 255-to-0 increment and
+0-to-255 decrement through stencil-gated native draws. A stencil-only
+attachment rejects depth comparison/write at the native pipeline boundary; an
+enabled logical depth test therefore cannot access or accidentally
+manufacture a depth plane. The
 common `ringl_stencil_*` calls update both
 faces, while the `*_separate` forms set one face or both explicitly. This is
 tested through the RinOS RinGL-to-RinGPU surface path, including stencil

@@ -84,10 +84,13 @@ The strict shader IR regression also carries a bounded malformed-source corpus:
 unbalanced constructors and overflow literals fail before executable
 publication, and unsupported loop syntax cannot publish an RSH1/module.
 
-Bounded static loops now accept terminal conditionals with nested control-only
-`if` branches whose leaves are `break` or `continue`. Mixed output/control
-branches, body statements after loop control, and conditional breaks that change
-outer local values remain outside the profile.
+Bounded static loops now lower nested conditionals containing supported local,
+varying, and output assignments alongside `break`, `continue`, or fragment
+`discard`. Stable registers preserve mutable values across branches and loop
+exits; a CFG pass checks definite output initialization on every returning
+path. Source after terminal control is checked in a scratch lowerer and omitted
+from RSH1. This source-only change has not been built or tested, and the
+broader GLSL control-flow profile remains incomplete.
 
 The GLSL lexer treats `/* ... */` block comments as bounded lexical
 whitespace in both the generic expression parser and compact texture lowerer.
@@ -924,15 +927,13 @@ comparisons, and general control flow are still outside the profile. A bounded s
 vec4(...); }` is executable: RinGL emits the original Float/i32 comparison,
 tests its i32 result against zero, and uses only forward RSH1 branches. The
 generic RinGPU backend, not Ladybird or Aquamarine, evaluates the branch.
-Bounded constant `for` loops are unrolled into forward-only RSH1. Direct
-`break`/`continue` and a terminal `if` whose branch contains one of those
-statements are supported. Conditional `break` rejects a loop that mutates an
-outer local value because no loop-exit value merge is synthesized. Conditional
-loop-control branches must be the final statement in the loop body; output
-branches still require a complete output write on each non-discard path.
-Partial outputs, local-mutating output branches, dynamic loops, and unsupported
-conditional loop-control shapes remain rejected.
-Implementation status: [`conditional loop control v1`](docs/implementation-status-ringl-glsl-conditional-loop-control-v1.md).
+Bounded constant `for` loops are unrolled into forward-only RSH1. Nested loop
+conditionals can contain the supported ordinary statements and direct
+`break`/`continue`/`discard`; local and varying writes use stable registers,
+with initialization and output paths checked across joins. Source after
+terminal control is checked but not emitted. Partial outputs, dynamic loops,
+and GLSL forms outside the bounded parser/lowerer profile remain unsupported.
+Implementation status: [`nested loop control v1`](docs/implementation-status-ringl-glsl-nested-loop-control-v1.md).
 
 Standalone fragment `discard;` lowers to RSH1 `DISCARD`. The generic RinGPU
 backend terminates that fragment before output validation and depth, stencil, or

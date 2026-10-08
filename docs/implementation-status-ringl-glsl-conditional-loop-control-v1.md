@@ -1,4 +1,10 @@
-# RinGL conditional loop control v1
+# RinGL conditional loop control v1 (historical)
+
+This status records the first bounded conditional-loop-control slice. It is
+superseded by [nested loop control v1](implementation-status-ringl-glsl-nested-loop-control-v1.md),
+which adds mixed supported branch statements and path-state merging. The
+description below is retained as the historical boundary of that earlier
+change.
 
 The bounded GLSL ES lowerer now accepts a terminal `if` in a statically
 unrolled `for` body when its branch contains one `break` or `continue`. An

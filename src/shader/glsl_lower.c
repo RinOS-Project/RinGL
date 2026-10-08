@@ -129,6 +129,11 @@ typedef struct Symbol {
     int32_t constant_i32_value;
 } Symbol;
 
+typedef struct SymbolFlowState {
+    uint16_t initialized_components;
+    uint16_t known_zero_components;
+} SymbolFlowState;
+
 static void refresh_symbol_type(Symbol* symbol)
 {
     if (symbol == NULL)
@@ -173,7 +178,11 @@ typedef struct Lower {
     uint32_t loop_break_jumps[16][RINGL_RSH1_MAX_INSTRUCTIONS];
     uint32_t loop_continue_count[16];
     uint32_t loop_continue_jumps[16][RINGL_RSH1_MAX_INSTRUCTIONS];
-    uint8_t loop_conditional_break[16];
+    uint32_t loop_outer_symbol_count[16];
+    uint8_t loop_break_flow_seen[16];
+    uint8_t loop_continue_flow_seen[16];
+    SymbolFlowState loop_break_flow[16][64];
+    SymbolFlowState loop_continue_flow[16][64];
     uint16_t next_reg;
     uint16_t next_input;
     uint16_t next_varying_output;
@@ -720,6 +729,72 @@ static void symbol_mark_all_initialized(Symbol* symbol)
         return;
     symbol->initialized_components = symbol_all_component_mask(symbol);
     symbol->initialized = symbol->initialized_components != 0u;
+}
+
+static void capture_symbol_flow(const Lower* lower, uint32_t symbol_count,
+                                SymbolFlowState states[64])
+{
+    for (uint32_t index = 0u; index < symbol_count; ++index) {
+        states[index].initialized_components =
+            lower->symbols[index].initialized_components;
+        states[index].known_zero_components =
+            lower->symbols[index].known_zero_components;
+    }
+}
+
+static void restore_symbol_flow(Lower* lower, uint32_t symbol_count,
+                                const SymbolFlowState states[64])
+{
+    for (uint32_t index = 0u; index < symbol_count; ++index) {
+        Symbol* symbol = &lower->symbols[index];
+        symbol->initialized_components = states[index].initialized_components;
+        symbol->initialized = symbol->initialized_components ==
+            symbol_all_component_mask(symbol);
+        symbol->known_zero_components = states[index].known_zero_components;
+    }
+}
+
+static void merge_symbol_flow(Lower* lower, uint32_t symbol_count,
+                              const SymbolFlowState then_states[64],
+                              const SymbolFlowState else_states[64])
+{
+    for (uint32_t index = 0u; index < symbol_count; ++index) {
+        Symbol* symbol = &lower->symbols[index];
+        symbol->initialized_components =
+            then_states[index].initialized_components &
+            else_states[index].initialized_components;
+        symbol->initialized = symbol->initialized_components ==
+            symbol_all_component_mask(symbol);
+        symbol->known_zero_components =
+            then_states[index].known_zero_components &
+            else_states[index].known_zero_components;
+    }
+}
+
+static void record_loop_flow(Lower* lower, uint32_t frame, int is_continue)
+{
+    uint32_t symbol_count;
+    uint8_t* seen;
+    SymbolFlowState* states;
+
+    if (lower == NULL || frame >= 16u)
+        return;
+    symbol_count = lower->loop_outer_symbol_count[frame];
+    seen = is_continue ? &lower->loop_continue_flow_seen[frame]
+                       : &lower->loop_break_flow_seen[frame];
+    states = is_continue ? lower->loop_continue_flow[frame]
+                         : lower->loop_break_flow[frame];
+    if (*seen == 0u) {
+        capture_symbol_flow(lower, symbol_count, states);
+        *seen = 1u;
+        return;
+    }
+    for (uint32_t index = 0u; index < symbol_count; ++index) {
+        states[index].initialized_components &=
+            lower->symbols[index].initialized_components;
+        states[index].known_zero_components &=
+            lower->symbols[index].known_zero_components;
+    }
 }
 
 static Symbol* add_symbol(Lower* lower, const Token* token,
@@ -3892,16 +3967,33 @@ static int local_decl(Lower* lower, uint8_t width, int is_i32, int is_bool,
     next(lower);
     if (take(lower, T_ASSIGN)) {
         Value value = expression(lower);
+        uint32_t component_count = matrix_dimension
+            ? (uint32_t)matrix_dimension * matrix_dimension : width;
+
         if (value.matrix != matrix_dimension || value.width != width ||
             value.is_i32 != (uint8_t)is_i32 || value.is_bool != (uint8_t)is_bool) {
             fail(lower, "local initializer component count mismatch");
             return 0;
         }
-        memcpy(symbol->regs, value.regs,
-               (size_t)(matrix_dimension ? (uint32_t)matrix_dimension * matrix_dimension
-                                         : width) * sizeof(value.regs[0]));
+        for (uint32_t component = 0u; component < component_count; ++component) {
+            symbol->regs[component] = new_reg(lower);
+            if (symbol->regs[component] == RINGL_RSH1_UNUSED ||
+                !emit(lower, RINGL_RSH1_OP_MOV, symbol->regs[component],
+                      value.regs[component], RINGL_RSH1_UNUSED, 0u)) {
+                return 0;
+            }
+        }
         symbol->known_zero_components = value.known_zero_components;
         symbol_mark_all_initialized(symbol);
+    } else {
+        uint32_t component_count = matrix_dimension
+            ? (uint32_t)matrix_dimension * matrix_dimension : width;
+
+        for (uint32_t component = 0u; component < component_count; ++component) {
+            symbol->regs[component] = new_reg(lower);
+            if (symbol->regs[component] == RINGL_RSH1_UNUSED)
+                return 0;
+        }
     }
     return need(lower, T_SEMI, "expected ';' after local");
 }
@@ -4086,12 +4178,58 @@ static int store_fragment_data_components(Lower* lower, const Value* value,
     return 1;
 }
 
+static int snapshot_overlapping_assignment(Lower* lower, const Symbol* symbol,
+                                          const Value* value,
+                                          const uint8_t components[16],
+                                          uint8_t component_count,
+                                          Value* snapshot)
+{
+    int overlaps_prior_write = 0;
+    uint32_t symbol_component_count;
+
+    if (lower == NULL || symbol == NULL || value == NULL ||
+        components == NULL || snapshot == NULL || component_count == 0u ||
+        component_count > 16u) {
+        return 0;
+    }
+    symbol_component_count = symbol->matrix != 0u
+        ? (uint32_t)symbol->matrix * symbol->matrix : symbol->width;
+    *snapshot = *value;
+    for (uint32_t source = 0u; source < component_count; ++source) {
+        for (uint32_t prior = 0u; prior < source; ++prior) {
+            uint8_t destination_component = components[prior];
+
+            if (destination_component < symbol_component_count &&
+                symbol->regs[destination_component] != RINGL_RSH1_UNUSED &&
+                value->regs[source] == symbol->regs[destination_component]) {
+                overlaps_prior_write = 1;
+                break;
+            }
+        }
+    }
+    if (!overlaps_prior_write)
+        return 1;
+    for (uint32_t component = 0u; component < component_count; ++component) {
+        uint16_t temporary = new_reg(lower);
+
+        if (temporary == RINGL_RSH1_UNUSED ||
+            !emit(lower, RINGL_RSH1_OP_MOV, temporary, value->regs[component],
+                  RINGL_RSH1_UNUSED, 0u)) {
+            return 0;
+        }
+        snapshot->regs[component] = temporary;
+    }
+    return 1;
+}
+
 static int store_varying_components(Lower* lower, Symbol* symbol,
                                     const Value* value,
                                     const uint8_t components[4],
                                     uint8_t component_count)
 {
     uint16_t initialized = 0u;
+    uint8_t selected_components[16] = { 0u };
+    Value snapshot;
     uint32_t index;
 
     if (lower == NULL || symbol == NULL || value == NULL ||
@@ -4099,19 +4237,37 @@ static int store_varying_components(Lower* lower, Symbol* symbol,
         component_count > 4u || symbol->output == RINGL_RSH1_UNUSED) {
         return 0;
     }
+    for (index = 0u; index < component_count; ++index)
+        selected_components[index] = components[index];
+    if (!snapshot_overlapping_assignment(lower, symbol, value,
+                                         selected_components,
+                                         component_count, &snapshot)) {
+        return 0;
+    }
     for (index = 0u; index < component_count; ++index) {
+        uint8_t component = components[index];
+        uint16_t destination;
         uint32_t output = (uint32_t)symbol->output + components[index];
 
-        if (components[index] >= symbol->width ||
+        if (component >= symbol->width)
+            return 0;
+        destination = symbol->regs[component];
+        if (destination == RINGL_RSH1_UNUSED) {
+            destination = new_reg(lower);
+            if (destination == RINGL_RSH1_UNUSED)
+                return 0;
+            symbol->regs[component] = destination;
+        }
+        if (!emit(lower, RINGL_RSH1_OP_MOV, destination, snapshot.regs[index],
+                  RINGL_RSH1_UNUSED, 0u) ||
             !emit(lower, RINGL_RSH1_OP_STORE_OUTPUT_F32,
-                  RINGL_RSH1_UNUSED, value->regs[index],
+                  RINGL_RSH1_UNUSED, destination,
                   RINGL_RSH1_UNUSED, output)) {
             return 0;
         }
         if (lower->output_count < output + 1u)
             lower->output_count = (uint16_t)(output + 1u);
-        symbol->regs[components[index]] = value->regs[index];
-        if ((value->known_zero_components & (UINT32_C(1) << index)) != 0u)
+        if ((snapshot.known_zero_components & (UINT32_C(1) << index)) != 0u)
             symbol->known_zero_components |=
                 (uint16_t)(UINT32_C(1) << components[index]);
         else
@@ -4315,13 +4471,11 @@ static int assignment(Lower* lower)
                                             lvalue_components,
                                             lvalue_component_count);
         }
-        if (!store_output(lower, &value, symbol->output))
-            return 0;
-        memcpy(symbol->regs, value.regs,
-               (size_t)value.width * sizeof(value.regs[0]));
-        symbol->known_zero_components = value.known_zero_components;
-        symbol_mark_all_initialized(symbol);
-        return 1;
+        {
+            uint8_t components[4] = { 0u, 1u, 2u, 3u };
+            return store_varying_components(lower, symbol, &value, components,
+                                            value.width);
+        }
     }
     if (symbol->attribute || symbol->uniform || symbol->constant_i32 != 0u ||
         symbol->immutable != 0u) {
@@ -4337,25 +4491,56 @@ static int assignment(Lower* lower)
     }
     if (has_lvalue_swizzle) {
         uint16_t initialized = 0u;
+        Value snapshot;
         uint32_t index;
 
+        if (!snapshot_overlapping_assignment(lower, symbol, &value,
+                                             lvalue_components,
+                                             lvalue_component_count,
+                                             &snapshot)) {
+            return 0;
+        }
         for (index = 0u; index < lvalue_component_count; ++index) {
-            symbol->regs[lvalue_components[index]] = value.regs[index];
-            if ((value.known_zero_components & (UINT32_C(1) << index)) != 0u)
+            uint8_t component = lvalue_components[index];
+
+            if (symbol->regs[component] == RINGL_RSH1_UNUSED ||
+                !emit(lower, RINGL_RSH1_OP_MOV, symbol->regs[component],
+                      snapshot.regs[index], RINGL_RSH1_UNUSED, 0u)) {
+                return 0;
+            }
+            if ((snapshot.known_zero_components &
+                 (UINT32_C(1) << index)) != 0u)
                 symbol->known_zero_components |=
-                    (uint16_t)(UINT32_C(1) << lvalue_components[index]);
+                    (uint16_t)(UINT32_C(1) << component);
             else
                 symbol->known_zero_components &=
-                    (uint16_t)~(UINT32_C(1) << lvalue_components[index]);
-            initialized |= (uint16_t)(UINT32_C(1) << lvalue_components[index]);
+                    (uint16_t)~(UINT32_C(1) << component);
+            initialized |= (uint16_t)(UINT32_C(1) << component);
         }
         symbol_mark_initialized(symbol, initialized);
         return 1;
     }
-    memcpy(symbol->regs, value.regs,
-           (size_t)(value.matrix ? (uint32_t)value.matrix * value.matrix
-                                 : value.width) * sizeof(value.regs[0]));
-    symbol->known_zero_components = value.known_zero_components;
+    {
+        uint8_t components[16] = { 0u };
+        uint8_t component_count = (uint8_t)(value.matrix
+            ? (uint32_t)value.matrix * value.matrix : value.width);
+        Value snapshot;
+
+        for (uint32_t component = 0u; component < component_count; ++component)
+            components[component] = (uint8_t)component;
+        if (!snapshot_overlapping_assignment(lower, symbol, &value, components,
+                                             component_count, &snapshot)) {
+            return 0;
+        }
+        for (uint32_t component = 0u; component < component_count; ++component) {
+            if (symbol->regs[component] == RINGL_RSH1_UNUSED ||
+                !emit(lower, RINGL_RSH1_OP_MOV, symbol->regs[component],
+                      snapshot.regs[component], RINGL_RSH1_UNUSED, 0u)) {
+                return 0;
+            }
+        }
+        symbol->known_zero_components = snapshot.known_zero_components;
+    }
     symbol_mark_all_initialized(symbol);
     return 1;
 }
@@ -4574,100 +4759,92 @@ static Value conditional_or_value(Lower* lower)
 static int discard_statement(Lower* lower);
 static int conditional_output(Lower* lower);
 static int loop_control_statement(Lower* lower, int is_continue);
-static int conditional_loop_control(Lower* lower);
+static int conditional_loop_statement(Lower* lower, int* falls_through);
+static int statement(Lower* lower, int* falls_through);
 
-static int loop_control_branch_ahead_statement(Lower* probe,
-                                               uint32_t nested_depth)
+/* Type-check a source tail after a terminal statement without publishing its
+ * unreachable instructions into RSH1. Replay it with a private lowerer state
+ * so the same bounded syntax and expression rules apply without adding dead
+ * instructions to the executable module. */
+static int validate_unreachable_tail(Lower* lower, Tok terminator,
+                                     const char* diagnostic)
 {
-    uint32_t depth;
+    Lower probe;
 
-    if (probe->token.kind == T_BREAK || probe->token.kind == T_CONTINUE) {
-        next(probe);
-        if (probe->token.kind != T_SEMI)
+    if (lower == NULL)
+        return 0;
+    probe = *lower;
+    while (probe.token.kind != terminator && probe.token.kind != T_EOF) {
+        int falls_through = 1;
+
+        if (!statement(&probe, &falls_through))
             return 0;
-        next(probe);
-        return 1;
     }
-    if (probe->token.kind != T_IF)
+    if (probe.token.kind != terminator) {
+        fail(lower, diagnostic);
         return 0;
-    if (nested_depth >= 16u)
-        return 0;
-    next(probe);
-    if (probe->token.kind != T_LPAREN)
-        return 0;
-    depth = 0u;
-    do {
-        if (probe->token.kind == T_LPAREN)
-            ++depth;
-        else if (probe->token.kind == T_RPAREN) {
-            if (depth == 0u)
-                return 0;
-            --depth;
-        }
-        next(probe);
-    } while (depth != 0u && probe->token.kind != T_EOF);
-    if (depth != 0u || probe->token.kind != T_LBRACE)
-        return 0;
-    next(probe);
-    if (!loop_control_branch_ahead_statement(probe, nested_depth + 1u) ||
-        probe->token.kind != T_RBRACE)
-        return 0;
-    next(probe);
-    if (probe->token.kind == T_ELSE) {
-        next(probe);
-        if (probe->token.kind != T_LBRACE)
-            return 0;
-        next(probe);
-        if (!loop_control_branch_ahead_statement(probe, nested_depth + 1u) ||
-            probe->token.kind != T_RBRACE)
-            return 0;
-        next(probe);
     }
+    lower->offset = probe.offset;
+    lower->token = probe.token;
     return 1;
 }
 
-static int loop_control_branch_ahead(Lower* lower)
+static int conditional_loop_branch(Lower* lower, int* falls_through)
 {
-    Token saved_token;
-    size_t start;
-    size_t saved_offset;
-    int result;
-
-    if (lower == NULL || lower->token.kind != T_IF)
+    if (lower == NULL || falls_through == NULL ||
+        !need(lower, T_LBRACE, "expected '{' after if condition")) {
         return 0;
-    start = (size_t)(lower->token.begin - lower->source);
-    saved_offset = lower->offset;
-    saved_token = lower->token;
-    lower->offset = start;
-    next(lower);
-    result = loop_control_branch_ahead_statement(lower, 0u);
-    lower->offset = saved_offset;
-    lower->token = saved_token;
-    return result;
+    }
+    enter_scope(lower);
+    *falls_through = 1;
+    while (lower->token.kind != T_RBRACE && lower->token.kind != T_EOF) {
+        int statement_falls_through = 1;
+
+        if (!statement(lower, &statement_falls_through)) {
+            leave_scope(lower);
+            return 0;
+        }
+        *falls_through = statement_falls_through;
+        if (!statement_falls_through && lower->token.kind != T_RBRACE) {
+            if (!validate_unreachable_tail(
+                    lower, T_RBRACE,
+                    "expected '}' after unreachable conditional statements")) {
+                leave_scope(lower);
+                return 0;
+            }
+            break;
+        }
+    }
+    if (!need(lower, T_RBRACE, "expected '}' after conditional branch")) {
+        leave_scope(lower);
+        return 0;
+    }
+    leave_scope(lower);
+    return 1;
 }
 
-static int loop_control_branch(Lower* lower)
+/* Bounded loops are expanded into forward-only RSH1 control flow. Local and
+ * varying registers are stable mutable cells, so assignments made on either
+ * path keep their runtime value at the join and at an early loop exit. */
+static int conditional_loop_statement(Lower* lower, int* falls_through)
 {
-    if (lower->token.kind == T_BREAK || lower->token.kind == T_CONTINUE)
-        return loop_control_statement(lower,
-                                      lower->token.kind == T_CONTINUE);
-    if (lower->token.kind == T_IF)
-        return conditional_loop_control(lower);
-    fail(lower,
-         "loop-control branches may contain only break, continue, or nested if");
-    return 0;
-}
-
-/* Nested control-only conditionals stay forward-only. Each arm contains one
- * break/continue or another control-only if; ordinary assignments and stage
- * outputs remain on the existing output-branch path. */
-static int conditional_loop_control(Lower* lower)
-{
+    SymbolFlowState before[64];
+    SymbolFlowState then_states[64];
+    SymbolFlowState else_states[64];
     Value condition;
     uint16_t zero;
     uint16_t false_result;
     uint32_t jump_to_else;
-    uint32_t jump_to_end;
+    uint32_t jump_to_end = UINT32_MAX;
+    uint32_t symbol_count;
+    int then_falls_through;
+    int else_falls_through = 1;
+    int has_else;
+
+    if (lower == NULL || falls_through == NULL || lower->loop_depth == 0u)
+        return 0;
+    symbol_count = lower->symbol_count;
+    capture_symbol_flow(lower, symbol_count, before);
 
     next(lower);
     if (!need(lower, T_LPAREN, "expected '(' after if"))
@@ -4684,29 +4861,46 @@ static int conditional_loop_control(Lower* lower)
         !emit(lower, RINGL_RSH1_OP_CONST_I32, zero, RINGL_RSH1_UNUSED,
               RINGL_RSH1_UNUSED, 0u) ||
         !emit(lower, RINGL_RSH1_OP_CMP_EQ_I32, false_result,
-              condition.regs[0], zero, 0u) ||
-        !need(lower, T_LBRACE, "expected '{' after if condition"))
+              condition.regs[0], zero, 0u)) {
         return 0;
-
+    }
     jump_to_else = lower->ins_count;
     if (!emit(lower, RINGL_RSH1_OP_JUMP_IF, RINGL_RSH1_UNUSED,
               false_result, RINGL_RSH1_UNUSED, 0u) ||
-        !loop_control_branch(lower) ||
-        !need(lower, T_RBRACE, "expected '}' after loop-control branch"))
+        !conditional_loop_branch(lower, &then_falls_through)) {
         return 0;
-    jump_to_end = lower->ins_count;
-    if (!emit(lower, RINGL_RSH1_OP_JUMP, RINGL_RSH1_UNUSED,
-              RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED, 0u))
-        return 0;
-    lower->ins[jump_to_else].immediate = lower->ins_count;
-    if (take(lower, T_ELSE)) {
-        if (!need(lower, T_LBRACE, "expected '{' after loop-control else") ||
-            !loop_control_branch(lower) ||
-            !need(lower, T_RBRACE,
-                  "expected '}' after loop-control else"))
-            return 0;
     }
-    lower->ins[jump_to_end].immediate = lower->ins_count;
+    capture_symbol_flow(lower, symbol_count, then_states);
+    has_else = take(lower, T_ELSE);
+    if (has_else && then_falls_through) {
+        jump_to_end = lower->ins_count;
+        if (!emit(lower, RINGL_RSH1_OP_JUMP, RINGL_RSH1_UNUSED,
+                  RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED, 0u)) {
+            return 0;
+        }
+    }
+    lower->ins[jump_to_else].immediate = lower->ins_count;
+    restore_symbol_flow(lower, symbol_count, before);
+    if (has_else) {
+        if (!conditional_loop_branch(lower, &else_falls_through))
+            return 0;
+        capture_symbol_flow(lower, symbol_count, else_states);
+    } else {
+        memcpy(else_states, before, (size_t)symbol_count * sizeof(before[0]));
+    }
+    if (jump_to_end != UINT32_MAX)
+        lower->ins[jump_to_end].immediate = lower->ins_count;
+    if (then_falls_through && else_falls_through) {
+        merge_symbol_flow(lower, symbol_count, then_states, else_states);
+    } else if (then_falls_through) {
+        restore_symbol_flow(lower, symbol_count, then_states);
+    } else if (else_falls_through) {
+        restore_symbol_flow(lower, symbol_count, else_states);
+    } else {
+        restore_symbol_flow(lower, symbol_count, before);
+    }
+
+    *falls_through = then_falls_through || !has_else || else_falls_through;
     return 1;
 }
 
@@ -4789,10 +4983,6 @@ static int conditional_output(Lower* lower)
     uint32_t jump_to_end;
     int if_discards;
     int else_discards;
-    int if_breaks = 0;
-    int else_breaks = 0;
-    uint32_t break_count_before;
-    uint32_t break_count_after_if;
 
     next(lower);
     if (!need(lower, T_LPAREN, "expected '(' after if"))
@@ -4816,46 +5006,9 @@ static int conditional_output(Lower* lower)
     if (!need(lower, T_LBRACE, "expected '{' after if condition"))
         return 0;
     jump_to_else = lower->ins_count;
-    break_count_before = lower->loop_depth == 0u ? 0u :
-        lower->loop_break_count[lower->loop_depth - 1u];
     if (!emit(lower, RINGL_RSH1_OP_JUMP_IF, RINGL_RSH1_UNUSED,
               false_result, RINGL_RSH1_UNUSED, 0u)) {
         return 0;
-    }
-    if (lower->token.kind == T_BREAK || lower->token.kind == T_CONTINUE ||
-        (lower->token.kind == T_IF && lower->loop_depth != 0u &&
-         loop_control_branch_ahead(lower))) {
-        if (!loop_control_branch(lower)) {
-            return 0;
-        }
-        if (lower->token.kind != T_RBRACE) {
-            fail(lower,
-                 "conditional loop-control branch must contain one control statement");
-            return 0;
-        }
-        if (!need(lower, T_RBRACE, "expected '}' after if branch"))
-            return 0;
-        if_breaks = lower->loop_break_count[lower->loop_depth - 1u] !=
-                    break_count_before;
-        break_count_after_if =
-            lower->loop_break_count[lower->loop_depth - 1u];
-        if (take(lower, T_ELSE)) {
-            lower->ins[jump_to_else].immediate = lower->ins_count;
-            if (!need(lower, T_LBRACE,
-                      "expected '{' after loop-control else") ||
-                !loop_control_branch(lower) ||
-                !need(lower, T_RBRACE,
-                      "expected '}' after loop-control else")) {
-                return 0;
-            }
-            else_breaks = lower->loop_break_count[
-                lower->loop_depth - 1u] != break_count_after_if;
-        } else {
-            lower->ins[jump_to_else].immediate = lower->ins_count;
-        }
-        if (if_breaks || else_breaks)
-            lower->loop_conditional_break[lower->loop_depth - 1u] = 1u;
-        return 1;
     }
     if (!conditional_branch(lower, &if_discards) ||
         !need(lower, T_RBRACE, "expected '}' after if branch")) {
@@ -5050,7 +5203,7 @@ static int locate_block_end(Lower* lower, size_t body_start,
     return 0;
 }
 
-static int statement(Lower* lower);
+static int statement(Lower* lower, int* falls_through);
 
 static int loop_control_statement(Lower* lower, int is_continue)
 {
@@ -5079,9 +5232,13 @@ static int loop_control_statement(Lower* lower, int is_continue)
     }
     jumps[(*count)++] = jump;
     next(lower);
-    return need(lower, T_SEMI,
-                is_continue ? "expected ';' after continue"
-                            : "expected ';' after break");
+    if (!need(lower, T_SEMI,
+              is_continue ? "expected ';' after continue"
+                          : "expected ';' after break")) {
+        return 0;
+    }
+    record_loop_flow(lower, frame, is_continue);
+    return 1;
 }
 
 /* RSH1 verifier control flow is forward-only.  Unrolling a const-initialized,
@@ -5101,7 +5258,9 @@ static int for_statement(Lower* lower)
     uint32_t frame;
     uint32_t outer_symbol_count;
     int broke = 0;
-    Symbol body_entry_symbols[64];
+    int normal_exit_seen = 0;
+    SymbolFlowState before_loop[64];
+    SymbolFlowState normal_exit[64];
 
     next(lower);
     if (!need(lower, T_LPAREN, "expected '(' after for"))
@@ -5172,16 +5331,27 @@ static int for_statement(Lower* lower)
     }
     body_start = (size_t)(lower->token.begin - lower->source);
     frame = lower->loop_depth++;
-    lower->loop_break_count[frame] = 0u;
-    lower->loop_conditional_break[frame] = 0u;
     outer_symbol_count = lower->symbol_count - 1u;
+    lower->loop_outer_symbol_count[frame] = outer_symbol_count;
+    lower->loop_break_count[frame] = 0u;
+    lower->loop_break_flow_seen[frame] = 0u;
+    lower->loop_continue_flow_seen[frame] = 0u;
+    capture_symbol_flow(lower, outer_symbol_count, before_loop);
+    if (trip_count == 0) {
+        capture_symbol_flow(lower, outer_symbol_count, normal_exit);
+        normal_exit_seen = 1;
+    }
     for (int64_t iteration = 0; iteration < trip_count && !broke;
          ++iteration) {
         uint16_t reg;
         uint32_t jump_index;
+        int body_falls_through = 1;
+        SymbolFlowState iteration_entry[64];
+        SymbolFlowState body_fallthrough[64];
 
         lower->loop_continue_count[frame] = 0u;
-        lower->loop_conditional_break[frame] = 0u;
+        lower->loop_continue_flow_seen[frame] = 0u;
+        capture_symbol_flow(lower, outer_symbol_count, iteration_entry);
         enter_scope(lower);
         reg = new_reg(lower);
         if (reg == RINGL_RSH1_UNUSED ||
@@ -5196,27 +5366,30 @@ static int for_statement(Lower* lower)
         loop_symbol->regs[0] = reg;
         loop_symbol->initialized = 1u;
         loop_symbol->initialized_components = 1u;
-        for (uint32_t symbol = 0u; symbol < outer_symbol_count; ++symbol)
-            body_entry_symbols[symbol] = lower->symbols[symbol];
         lower->offset = body_start;
         next(lower);
         while (lower->token.kind != T_RBRACE &&
                lower->token.kind != T_EOF) {
-            if (!statement(lower)) {
+            int statement_falls_through = 1;
+
+            if (!statement(lower, &statement_falls_through)) {
                 lower->loop_depth--;
                 leave_scope(lower);
                 leave_scope(lower);
                 return 0;
             }
-            if ((lower->loop_break_count[frame] != 0u ||
-                 lower->loop_continue_count[frame] != 0u) &&
+            body_falls_through = statement_falls_through;
+            if (!statement_falls_through &&
                 lower->token.kind != T_RBRACE) {
-                fail(lower,
-                     "break or continue must terminate its bounded loop body");
-                lower->loop_depth--;
-                leave_scope(lower);
-                leave_scope(lower);
-                return 0;
+                if (!validate_unreachable_tail(
+                        lower, T_RBRACE,
+                        "expected '}' after unreachable bounded-loop statements")) {
+                    lower->loop_depth--;
+                    leave_scope(lower);
+                    leave_scope(lower);
+                    return 0;
+                }
+                break;
             }
         }
         if (lower->token.kind != T_RBRACE) {
@@ -5231,26 +5404,25 @@ static int for_statement(Lower* lower)
              ++jump)
                 lower->ins[lower->loop_continue_jumps[frame][jump]].immediate =
                     jump_index;
-        leave_scope(lower);
-        if (lower->loop_conditional_break[frame] != 0u) {
-            for (uint32_t symbol = 0u; symbol < outer_symbol_count; ++symbol) {
-                const Symbol* before = &body_entry_symbols[symbol];
-                const Symbol* after = &lower->symbols[symbol];
-                if (memcmp(before->regs, after->regs,
-                           sizeof(before->regs)) != 0 ||
-                    before->initialized != after->initialized ||
-                    before->initialized_components !=
-                        after->initialized_components ||
-                    before->known_zero_components !=
-                        after->known_zero_components) {
-                    fail(lower,
-                         "conditional break cannot change outer local values");
-                    lower->loop_depth--;
-                    leave_scope(lower);
-                    return 0;
-                }
+        capture_symbol_flow(lower, outer_symbol_count, body_fallthrough);
+        if (lower->loop_continue_flow_seen[frame] != 0u) {
+            if (body_falls_through) {
+                merge_symbol_flow(lower, outer_symbol_count, body_fallthrough,
+                                  lower->loop_continue_flow[frame]);
+            } else {
+                restore_symbol_flow(lower, outer_symbol_count,
+                                    lower->loop_continue_flow[frame]);
             }
-        } else if (lower->loop_break_count[frame] != 0u) {
+        } else if (!body_falls_through) {
+            restore_symbol_flow(lower, outer_symbol_count, iteration_entry);
+        }
+        normal_exit_seen = body_falls_through ||
+            lower->loop_continue_flow_seen[frame] != 0u;
+        if (normal_exit_seen)
+            capture_symbol_flow(lower, outer_symbol_count, normal_exit);
+        leave_scope(lower);
+        if (!body_falls_through && lower->loop_break_count[frame] != 0u &&
+            lower->loop_continue_count[frame] == 0u) {
             broke = 1;
         }
     }
@@ -5259,33 +5431,64 @@ static int for_statement(Lower* lower)
     for (uint32_t jump = 0u; jump < lower->loop_break_count[frame]; ++jump)
         lower->ins[lower->loop_break_jumps[frame][jump]].immediate =
             lower->ins_count;
+    if (lower->loop_break_flow_seen[frame] != 0u && normal_exit_seen) {
+        merge_symbol_flow(lower, outer_symbol_count,
+                          lower->loop_break_flow[frame], normal_exit);
+    } else if (lower->loop_break_flow_seen[frame] != 0u) {
+        restore_symbol_flow(lower, outer_symbol_count,
+                            lower->loop_break_flow[frame]);
+    } else if (normal_exit_seen) {
+        restore_symbol_flow(lower, outer_symbol_count, normal_exit);
+    } else {
+        restore_symbol_flow(lower, outer_symbol_count, before_loop);
+    }
     lower->loop_depth--;
     leave_scope(lower);
     return 1;
 }
 
-static int statement(Lower* lower)
+static int statement(Lower* lower, int* falls_through)
 {
     uint8_t width;
     int is_i32;
     int is_bool;
     uint8_t matrix;
 
+    int result;
+
+    if (falls_through == NULL)
+        return 0;
+    *falls_through = 1;
     if (lower->token.kind == T_CONST)
         return constant_int_declaration(lower);
     if (local_type_info(lower->token.kind, &width, &is_i32, &is_bool,
                         &matrix))
         return local_decl(lower, width, is_i32, is_bool, matrix);
-    if (lower->token.kind == T_IF)
+    if (lower->token.kind == T_IF) {
+        if (lower->loop_depth != 0u)
+            return conditional_loop_statement(lower, falls_through);
         return conditional_output(lower);
+    }
     if (lower->token.kind == T_FOR)
         return for_statement(lower);
-    if (lower->token.kind == T_BREAK)
-        return loop_control_statement(lower, 0);
-    if (lower->token.kind == T_CONTINUE)
-        return loop_control_statement(lower, 1);
-    if (lower->token.kind == T_IDENT && text_is(&lower->token, "discard"))
-        return discard_statement(lower);
+    if (lower->token.kind == T_BREAK) {
+        result = loop_control_statement(lower, 0);
+        if (result)
+            *falls_through = 0;
+        return result;
+    }
+    if (lower->token.kind == T_CONTINUE) {
+        result = loop_control_statement(lower, 1);
+        if (result)
+            *falls_through = 0;
+        return result;
+    }
+    if (lower->token.kind == T_IDENT && text_is(&lower->token, "discard")) {
+        result = discard_statement(lower);
+        if (result)
+            *falls_through = 0;
+        return result;
+    }
     return assignment(lower);
 }
 
@@ -5531,7 +5734,17 @@ static int parse_all(Lower* lower)
             enter_scope(lower);
             while (lower->token.kind != T_RBRACE &&
                    lower->token.kind != T_EOF) {
-                if (!statement(lower)) {
+                int statement_falls_through = 1;
+
+                if (!statement(lower, &statement_falls_through)) {
+                    leave_scope(lower);
+                    return 0;
+                }
+                if (!statement_falls_through &&
+                    lower->token.kind != T_RBRACE &&
+                    !validate_unreachable_tail(
+                        lower, T_RBRACE,
+                        "expected '}' after unreachable shader statements")) {
                     leave_scope(lower);
                     return 0;
                 }
@@ -5759,6 +5972,91 @@ static int finalize_point_size_varying_outputs(Lower* lower)
         return 0;
     }
     lower->output_count = (uint16_t)output_count;
+    return 1;
+}
+
+static void merge_output_path_state(uint8_t reached[128],
+                                    uint64_t masks[128], uint32_t target,
+                                    uint64_t mask)
+{
+    if (reached[target] == 0u) {
+        reached[target] = 1u;
+        masks[target] = mask;
+    } else {
+        masks[target] &= mask;
+    }
+}
+
+/* Every output slot explicitly used by the lowered module must be initialized
+ * on each path that returns to the rasterizer. The compiler's union of stores
+ * alone is not sufficient once a loop can exit before a later assignment. */
+static int validate_output_paths(Lower* lower)
+{
+    uint8_t reached[RINGL_RSH1_MAX_INSTRUCTIONS] = { 0u };
+    uint64_t masks[RINGL_RSH1_MAX_INSTRUCTIONS] = { 0u };
+    uint64_t required = 0u;
+
+    if (lower == NULL || lower->ins_count == 0u ||
+        lower->ins_count > RINGL_RSH1_MAX_INSTRUCTIONS ||
+        lower->output_count > 64u) {
+        if (lower != NULL)
+            fail(lower, "output-flow analysis exceeds the bounded module");
+        return 0;
+    }
+    for (uint32_t index = 0u; index < lower->ins_count; ++index) {
+        const RinGLRsh1InstructionV1* instruction = &lower->ins[index];
+
+        if (instruction->opcode == RINGL_RSH1_OP_STORE_OUTPUT_F32 &&
+            instruction->immediate < lower->output_count)
+            required |= UINT64_C(1) << instruction->immediate;
+    }
+    reached[0] = 1u;
+    for (uint32_t index = 0u; index < lower->ins_count; ++index) {
+        const RinGLRsh1InstructionV1* instruction;
+        uint64_t mask;
+        uint32_t target;
+
+        if (reached[index] == 0u)
+            continue;
+        instruction = &lower->ins[index];
+        mask = masks[index];
+        if (instruction->opcode == RINGL_RSH1_OP_STORE_OUTPUT_F32 &&
+            instruction->immediate < lower->output_count)
+            mask |= UINT64_C(1) << instruction->immediate;
+        if (instruction->opcode == RINGL_RSH1_OP_RETURN) {
+            if ((mask & required) != required) {
+                fail(lower,
+                     "a returning shader path leaves an output uninitialized");
+                return 0;
+            }
+            continue;
+        }
+        if (instruction->opcode == RINGL_RSH1_OP_DISCARD)
+            continue;
+        if (instruction->opcode == RINGL_RSH1_OP_JUMP) {
+            target = instruction->immediate;
+            if (target <= index || target >= lower->ins_count) {
+                fail(lower, "output-flow analysis found an invalid jump");
+                return 0;
+            }
+            merge_output_path_state(reached, masks, target, mask);
+            continue;
+        }
+        if (instruction->opcode == RINGL_RSH1_OP_JUMP_IF) {
+            target = instruction->immediate;
+            if (target <= index || target >= lower->ins_count) {
+                fail(lower, "output-flow analysis found an invalid branch");
+                return 0;
+            }
+            merge_output_path_state(reached, masks, target, mask);
+        }
+        if (index + 1u < lower->ins_count) {
+            merge_output_path_state(reached, masks, index + 1u, mask);
+        } else {
+            fail(lower, "output-flow path falls off the module");
+            return 0;
+        }
+    }
     return 1;
 }
 
@@ -6198,6 +6496,8 @@ int ringl_glsl_lower_rsh1_with_uniforms(
               RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED, 0u)) {
         return 1;
     }
+    if (!validate_output_paths(&lower))
+        return 1;
     if (lower.next_reg == 0u)
         lower.next_reg = 1u;
 

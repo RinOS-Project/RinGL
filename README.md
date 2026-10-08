@@ -1082,8 +1082,8 @@ rather than treating every range as the default `[0,1]`.
 `RINGL_POLYGON_OFFSET_FILL` and `ringl_polygon_offset()` carry finite factor
 and units values in the dynamic raster state. The RinGPU V2 descriptor keeps
 the V1 default disabled, while the generic RinGPU software backend applies
-`m * factor + 2^-23 * units` to filled-triangle depth immediately before depth
-comparison and writing. Points and lines are not offset; non-finite inputs
+`m * factor + units / 16777215.0` to filled-triangle depth immediately before
+depth comparison and writing. Points and lines are not offset; non-finite inputs
 leave the existing RinGL state intact and report `INVALID_VALUE`.
 
 `ringl_line_width()` accepts finite aliased widths from one through 64 pixels.
@@ -1094,6 +1094,7 @@ pixel-boundary ties; invalid values leave state unchanged with `INVALID_VALUE`.
 `RinGLLineWidthV1` exposes the current width and fixed `[1, 64]` range through
 a versioned snapshot for WebGL `LINE_WIDTH` and `ALIASED_LINE_WIDTH_RANGE`
 queries.
+
 The root WebGL bridge regression source checks the one- and three-pixel line
 coverage plus polygon-offset depth behavior through the same RinGPU route.
 

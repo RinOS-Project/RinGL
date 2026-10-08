@@ -268,6 +268,15 @@ varying output after it, independent of source assignment order. That profile
 supports up to 27 scalar varyings with point size and 28 without it
 ([implementation status](docs/implementation-status-ringl-point-size-varyings-v1.md)).
 
+The GLSL parser now admits complete `texture2D()` and `texture2DProj()`
+coordinate expressions to the generic RSH1 lowerer, which checks the final
+floating vector width and emits the arithmetic before real RinGPU sampling.
+This includes combinations of varying, local, and uniform values with
+swizzles or constructors. The parser change has source review only; mixed
+varying texture coordinates still need parser/IR and bridge readback coverage
+before this compatibility slice is complete
+([status](docs/implementation-status-ringl-mixed-varying-texture-coordinates-v1.md)).
+
 ## WebGL standard derivatives
 
 `OES_standard_derivatives` is a context-local WebGL capability, not a separate

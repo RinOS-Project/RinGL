@@ -269,10 +269,19 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     The public bridge readback covers swapped position `xy`, explicit `zw`,
     reordered fragment `bgr`, and alpha stores; an incomplete `rgb` output
     fails link instead of receiving a fabricated component. The generic
-    expression lowerer can consume varying values in its bounded arithmetic
-    and texture-coordinate grammar. End-to-end coverage for arbitrary mixed
-    varying expressions, varying-driven texture combinations, and broader
-    linkage semantics remains open.
+    expression lowerer can consume varying values in bounded arithmetic and
+    texture-coordinate expressions. The parser now passes a complete
+    `texture2D()`/`texture2DProj()` coordinate expression to that lowerer
+    instead of restricting ordinary `texture2D()` coordinates to a varying
+    plus one operand. This admits mixed varying/local/uniform arithmetic,
+    swizzles, and constructors, with floating `vec2`/`vec3`/`vec4` validation
+    retained before RSH1 publication. This parser change is source-reviewed
+    only; the parent and this item remain open until parser/IR and real bridge
+    readback regressions cover the new expressions. Broader linkage semantics
+    also remain open.
+  - [ ] Add parser/IR and RinGL→RinGPU bridge readback coverage for complete
+    mixed-varying texture coordinates, including a multi-operand expression
+    and rejection of a wrong-width or non-floating coordinate.
   - [x] Combine two distinct perspective-interpolated `varying vec3` values in a `textureCube()` direction. The end-to-end host regression carries six scalar inputs through the RinGPU native varying route, adds the two fragment values, and reads distinct +Z face/mip colors; arbitrary varying combinations remain unsupported ([status](docs/implementation-status-sampler-cube-bounded-v1.md)).
   - [x] Combine generic `varying float`/`vec2`/`vec3`/`vec4` interfaces with a
     programmable `gl_PointSize` expression. RSH1 output 4 is reserved for point

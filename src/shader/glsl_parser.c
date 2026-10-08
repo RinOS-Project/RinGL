@@ -3,9 +3,7 @@
 #include "glsl_type.h"
 
 #include <ctype.h>
-#include <math.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <ringl/ringl.h>
@@ -808,81 +806,6 @@ static int constructor(Parser* parser, TokenKind kind)
     return expect(parser, TOK_RPAREN, "expected ')' after vector constructor");
 }
 
-static int finite_number(Parser* parser)
-{
-    char text[64];
-    char* parsed_end;
-    float value;
-
-    if (parser->token.kind == TOK_PLUS || parser->token.kind == TOK_MINUS) {
-        text[0] = parser->token.kind == TOK_MINUS ? '-' : '+';
-        next_token(parser);
-        if (parser->token.kind != TOK_NUMBER ||
-            parser->token.length + 1u >= sizeof(text)) {
-            fail(parser, "expected finite numeric literal");
-            return 0;
-        }
-        memcpy(text + 1u, parser->token.begin, parser->token.length);
-        text[parser->token.length + 1u] = '\0';
-    } else {
-        if (parser->token.kind != TOK_NUMBER ||
-            parser->token.length >= sizeof(text)) {
-            fail(parser, "expected finite numeric literal");
-            return 0;
-        }
-        memcpy(text, parser->token.begin, parser->token.length);
-        text[parser->token.length] = '\0';
-    }
-    value = strtof(text, &parsed_end);
-    if (parsed_end == text || *parsed_end != '\0' || !isfinite(value)) {
-        fail(parser, "expected finite numeric literal");
-        return 0;
-    }
-    next_token(parser);
-    return 1;
-}
-
-/* texture2D needs a vec2 after every read selector.  The bounded RSH1
- * lowerer keeps the two selected components as scalar register sources, so
- * accept only selectors that preserve vec2 width here. */
-static int texture2d_coordinate_swizzle(Parser* parser)
-{
-    while (accept(parser, TOK_DOT)) {
-        Token swizzle = parser->token;
-        uint8_t family = 0u;
-        size_t index;
-
-        if (swizzle.kind != TOK_IDENT || swizzle.length != 2u) {
-            fail(parser, "texture2D coordinate selection must be vec2");
-            return 0;
-        }
-        for (index = 0u; index < swizzle.length; ++index) {
-            uint8_t component_family;
-            uint32_t component_index;
-
-            switch (swizzle.begin[index]) {
-            case 'x': component_family = 1u; component_index = 0u; break;
-            case 'y': component_family = 1u; component_index = 1u; break;
-            case 'r': component_family = 2u; component_index = 0u; break;
-            case 'g': component_family = 2u; component_index = 1u; break;
-            case 's': component_family = 3u; component_index = 0u; break;
-            case 't': component_family = 3u; component_index = 1u; break;
-            default:
-                fail(parser, "texture2D coordinate selection is outside vec2");
-                return 0;
-            }
-            if ((family != 0u && family != component_family) ||
-                component_index >= 2u) {
-                fail(parser, "invalid texture2D coordinate selection");
-                return 0;
-            }
-            family = component_family;
-        }
-        next_token(parser);
-    }
-    return 1;
-}
-
 /* The lowerer owns the exact component and type accounting.  The parser
  * admits a bounded matrix argument list so it remains syntactically aligned
  * with matN constructors without pretending that a vector argument is one
@@ -908,47 +831,6 @@ static int matrix_constructor(Parser* parser)
             break;
     }
     return expect(parser, TOK_RPAREN, "expected ')' after matrix constructor");
-}
-
-static int varying_vec2_offset(Parser* parser)
-{
-    if (parser->token.kind != TOK_PLUS && parser->token.kind != TOK_MINUS &&
-        parser->token.kind != TOK_STAR && parser->token.kind != TOK_SLASH)
-        return 1;
-    next_token(parser);
-    if (parser->token.kind == TOK_IDENT) {
-        Symbol* coordinate = find_symbol(parser, &parser->token);
-
-        if (coordinate == NULL || coordinate->width != 2u ||
-            (coordinate->kind != SYMBOL_VARYING &&
-             coordinate->kind != SYMBOL_UNIFORM_VEC2)) {
-            fail(parser,
-                 "texture2D varying operation requires vec2 varying or uniform");
-            return 0;
-        }
-        next_token(parser);
-        if (coordinate->kind == SYMBOL_UNIFORM_VEC2) {
-            return texture2d_coordinate_swizzle(parser);
-        }
-        if (!texture2d_coordinate_swizzle(parser))
-            return 0;
-        return 1;
-    }
-    if (!expect(parser, TOK_VEC2,
-                "texture2D varying offset must use vec2")) {
-        return 0;
-    }
-    if (!expect(parser, TOK_LPAREN,
-                "expected '(' after texture2D varying offset vec2") ||
-        !finite_number(parser) ||
-        !expect(parser, TOK_COMMA,
-                "expected ',' in texture2D varying offset vec2") ||
-        !finite_number(parser) ||
-        !expect(parser, TOK_RPAREN,
-                "expected ')' after texture2D varying offset vec2")) {
-        return 0;
-    }
-    return 1;
 }
 
 static int texture2d_call(Parser* parser, int explicit_lod, int projected,
@@ -999,113 +881,11 @@ static int texture2d_call(Parser* parser, int explicit_lod, int projected,
     if (!expect(parser, TOK_COMMA, "expected ',' after texture2D sampler"))
         return 0;
 
-    /* The generic lowerer owns the projected-coordinate type check and emits
-     * the two real RSH1 divisions before sampling. Unlike the historical
-     * shape-specific texture2D parser, accept its normal expression grammar
-     * here so locals, varyings, swizzles, arithmetic, and uniforms reach that
-     * one executable path. */
-    if (projected) {
-        if (!expression(parser))
-            return 0;
-        if (explicit_grad) {
-            if (!expect(parser, TOK_COMMA,
-                        "expected ',' before texture2DGradEXT dPdx") ||
-                !expression(parser) ||
-                !expect(parser, TOK_COMMA,
-                        "expected ',' before texture2DGradEXT dPdy") ||
-                !expression(parser)) {
-                return 0;
-            }
-        } else if (parser->token.kind == TOK_COMMA) {
-            next_token(parser);
-            if (!expression(parser))
-                return 0;
-        }
-        return expect(parser, TOK_RPAREN,
-                      "expected ')' after texture2DProj arguments");
-    }
-
-    if (parser->token.kind == TOK_VEC2) {
-        if (!constructor(parser, TOK_VEC2))
-            return 0;
-    } else if (parser->token.kind == TOK_IDENT &&
-               token_is_ident(&parser->token, "gl_PointCoord")) {
-        /* This exact point-sprite coordinate form is lowered to RSH1 builtin
-         * loads, not a declared varying. Do not accept swizzles or offsets
-         * here until the bounded texture lowerer can execute those forms. */
-        next_token(parser);
-    } else if (parser->token.kind == TOK_IDENT &&
-               token_is_ident(&parser->token, "gl_FragCoord")) {
-        /* Keep this parser admission exactly aligned with texture_lower.c:
-         * only a finite explicit normalization is useful as a WebGL texture
-         * coordinate, and the lowering owns both builtin loads and divides. */
-        next_token(parser);
-        if (!expect(parser, TOK_DOT,
-                    "texture2D gl_FragCoord coordinate requires '.xy'") ||
-            parser->token.kind != TOK_IDENT || parser->token.length != 2u ||
-            memcmp(parser->token.begin, "xy", 2u) != 0) {
-            fail(parser,
-                 "texture2D gl_FragCoord coordinate requires '.xy'");
-            return 0;
-        }
-        next_token(parser);
-        if (!expect(parser, TOK_SLASH,
-                    "texture2D gl_FragCoord coordinate requires '/ vec2(...)'") ||
-            !expect(parser, TOK_VEC2,
-                    "texture2D gl_FragCoord coordinate requires vec2") ||
-            !expect(parser, TOK_LPAREN,
-                    "expected '(' after gl_FragCoord normalization") ||
-            !finite_number(parser) ||
-            !expect(parser, TOK_COMMA,
-                    "expected ',' in gl_FragCoord normalization") ||
-            !finite_number(parser) ||
-            !expect(parser, TOK_RPAREN,
-                    "expected ')' after gl_FragCoord normalization")) {
-            return 0;
-        }
-    } else if (parser->token.kind == TOK_IDENT) {
-        Symbol* coordinate = find_symbol(parser, &parser->token);
-        if (coordinate == NULL || coordinate->width != 2u ||
-            (coordinate->kind != SYMBOL_VARYING &&
-             coordinate->kind != SYMBOL_VALUE &&
-             coordinate->kind != SYMBOL_UNIFORM_VEC2)) {
-            fail(parser, "texture2D coordinate must be vec2");
-            return 0;
-        }
-        next_token(parser);
-        if (!texture2d_coordinate_swizzle(parser))
-            return 0;
-        if (coordinate->kind == SYMBOL_UNIFORM_VEC2) {
-            Symbol* right_coordinate;
-
-            if (parser->token.kind != TOK_PLUS &&
-                parser->token.kind != TOK_MINUS &&
-                parser->token.kind != TOK_STAR &&
-                parser->token.kind != TOK_SLASH) {
-                fail(parser,
-                     "texture2D uniform coordinate requires +, -, *, or / vec2");
-                return 0;
-            }
-            next_token(parser);
-            if (parser->token.kind != TOK_IDENT) {
-                fail(parser, "texture2D uniform coordinate requires vec2");
-                return 0;
-            }
-            right_coordinate = find_symbol(parser, &parser->token);
-            if (right_coordinate == NULL || right_coordinate->width != 2u ||
-                (right_coordinate->kind != SYMBOL_VARYING &&
-                 right_coordinate->kind != SYMBOL_VALUE)) {
-                fail(parser, "texture2D uniform coordinate requires vec2");
-                return 0;
-            }
-            next_token(parser);
-            if (!texture2d_coordinate_swizzle(parser))
-                return 0;
-        } else if (!varying_vec2_offset(parser)) {
-            return 0;
-        }
-    } else {
-        fail(parser, "texture2D coordinate must be vec2");
+    /* The generic lowerer owns coordinate type validation and emits all
+     * arithmetic before sampling. Keep admission aligned with that executable
+     * grammar so mixed varying, uniform, local, swizzle, and constructor
+     * expressions reach the real RinGPU image/sampler path. */
+    if (!expression(parser)) {
         return 0;
     }
     if (explicit_grad) {

@@ -1892,11 +1892,11 @@ int ringl_get_vertex_attrib(uint32_t index, RinGLVertexAttribInfoV1* info);
 /* Copies the current generic attribute value into exactly four floats. The
  * caller owns the fixed-size output; invalid indices leave it unchanged. */
 int ringl_get_vertex_attrib_current(uint32_t index, float values[4]);
-/* Bounded GLES-style attribute queries.  The integer form accepts scalar
- * descriptor pnames and converts CURRENT_VERTEX_ATTRIB to four integers; the
- * float form accepts CURRENT_VERTEX_ATTRIB and the scalar descriptor pnames.
- * The pointer pname remains unavailable because raw host pointers are not a
- * safe embedding ABI. */
+/* Bounded GLES-style attribute queries. The integer form accepts scalar
+ * descriptor pnames and rounds CURRENT_VERTEX_ATTRIB to four signed integers
+ * when representable; the float form accepts CURRENT_VERTEX_ATTRIB and the
+ * scalar descriptor pnames. The pointer pname remains unavailable because
+ * raw host pointers are not a safe embedding ABI. */
 int ringl_get_vertex_attribiv_bounded(uint32_t index, uint32_t pname,
                                       int32_t* values, size_t value_count);
 int ringl_get_vertex_attribfv_bounded(uint32_t index, uint32_t pname,

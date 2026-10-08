@@ -103,9 +103,11 @@ destination.
 
 Texture filter/wrap and extension-gated anisotropy queries now have the same
 bounded typed treatment, and vertex-attribute descriptor/current-value queries
-provide integer and Float32 adapters with complete-span validation. The raw
-pointer query remains unavailable: exposing a host pointer would violate the
-embedding ABI, so callers must use the versioned attribute record instead.
+provide integer and Float32 adapters with complete-span validation. Integer
+current-value queries round each Float32 component to the nearest signed
+integer and reject out-of-range values atomically. The raw pointer query remains
+unavailable: exposing a host pointer would violate the embedding ABI, so
+callers must use the versioned attribute record instead.
 Texture parameter setters now expose bounded vector forms; their Float32
 variants accept exact enum representations for the four core filter/wrap
 pnames, while anisotropy remains extension-gated. Float queries preserve the

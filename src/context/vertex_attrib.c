@@ -345,13 +345,21 @@ int ringl_get_vertex_attribiv_bounded(uint32_t index, uint32_t pname,
     if (pname == RINGL_CURRENT_VERTEX_ATTRIB) {
         for (size_t component = 0u; component < required; ++component) {
             float current = attrib->current_value[component];
+            float rounded;
 
-            if (!isfinite(current) || current < (float)INT32_MIN ||
-                current > (float)INT32_MAX) {
+            /* Float32 cannot represent INT32_MAX: its nearest value is
+             * 2^31, which is outside the signed conversion range. */
+            if (!isfinite(current) || current < -2147483648.0f ||
+                current >= 2147483648.0f) {
                 ringl_context_record_error(context, RINGL_INVALID_OPERATION);
                 return -1;
             }
-            converted[component] = (int32_t)current;
+            rounded = current < 0.0f ? current - 0.5f : current + 0.5f;
+            if (rounded < -2147483648.0f || rounded >= 2147483648.0f) {
+                ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+                return -1;
+            }
+            converted[component] = (int32_t)rounded;
         }
     } else {
         switch (pname) {

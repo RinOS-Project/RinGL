@@ -173,6 +173,7 @@ typedef struct Lower {
     uint32_t loop_break_jumps[16][RINGL_RSH1_MAX_INSTRUCTIONS];
     uint32_t loop_continue_count[16];
     uint32_t loop_continue_jumps[16][RINGL_RSH1_MAX_INSTRUCTIONS];
+    uint8_t loop_conditional_break[16];
     uint16_t next_reg;
     uint16_t next_input;
     uint16_t next_varying_output;
@@ -4572,6 +4573,7 @@ static Value conditional_or_value(Lower* lower)
 
 static int discard_statement(Lower* lower);
 static int conditional_output(Lower* lower);
+static int loop_control_statement(Lower* lower, int is_continue);
 
 static int stage_output_assignment(Lower* lower)
 {
@@ -4652,6 +4654,10 @@ static int conditional_output(Lower* lower)
     uint32_t jump_to_end;
     int if_discards;
     int else_discards;
+    int if_breaks = 0;
+    int else_breaks = 0;
+    uint32_t break_count_before;
+    uint32_t break_count_after_if;
 
     next(lower);
     if (!need(lower, T_LPAREN, "expected '(' after if"))
@@ -4675,9 +4681,59 @@ static int conditional_output(Lower* lower)
     if (!need(lower, T_LBRACE, "expected '{' after if condition"))
         return 0;
     jump_to_else = lower->ins_count;
+    break_count_before = lower->loop_depth == 0u ? 0u :
+        lower->loop_break_count[lower->loop_depth - 1u];
     if (!emit(lower, RINGL_RSH1_OP_JUMP_IF, RINGL_RSH1_UNUSED,
-              false_result, RINGL_RSH1_UNUSED, 0u) ||
-        !conditional_branch(lower, &if_discards) ||
+              false_result, RINGL_RSH1_UNUSED, 0u)) {
+        return 0;
+    }
+    if (lower->token.kind == T_BREAK || lower->token.kind == T_CONTINUE) {
+        if (!loop_control_statement(lower,
+                                    lower->token.kind == T_CONTINUE)) {
+            return 0;
+        }
+        if (lower->token.kind != T_RBRACE) {
+            fail(lower,
+                 "conditional loop-control branch must contain one control statement");
+            return 0;
+        }
+        if (!need(lower, T_RBRACE, "expected '}' after if branch"))
+            return 0;
+        if_breaks = lower->loop_break_count[lower->loop_depth - 1u] !=
+                    break_count_before;
+        break_count_after_if =
+            lower->loop_break_count[lower->loop_depth - 1u];
+        if (take(lower, T_ELSE)) {
+            lower->ins[jump_to_else].immediate = lower->ins_count;
+            if (!need(lower, T_LBRACE,
+                      "expected '{' after loop-control else") ||
+                (lower->token.kind != T_BREAK &&
+                 lower->token.kind != T_CONTINUE)) {
+                fail(lower,
+                     "conditional loop-control else requires one control statement");
+                return 0;
+            }
+            if (!loop_control_statement(lower,
+                                        lower->token.kind == T_CONTINUE)) {
+                return 0;
+            }
+            if (lower->token.kind != T_RBRACE ||
+                !need(lower, T_RBRACE,
+                      "expected '}' after loop-control else")) {
+                fail(lower,
+                     "conditional loop-control else must contain one control statement");
+                return 0;
+            }
+            else_breaks = lower->loop_break_count[
+                lower->loop_depth - 1u] != break_count_after_if;
+        } else {
+            lower->ins[jump_to_else].immediate = lower->ins_count;
+        }
+        if (if_breaks || else_breaks)
+            lower->loop_conditional_break[lower->loop_depth - 1u] = 1u;
+        return 1;
+    }
+    if (!conditional_branch(lower, &if_discards) ||
         !need(lower, T_RBRACE, "expected '}' after if branch")) {
         return 0;
     }
@@ -4919,7 +4975,9 @@ static int for_statement(Lower* lower)
     size_t body_start;
     size_t after_body;
     uint32_t frame;
+    uint32_t outer_symbol_count;
     int broke = 0;
+    Symbol body_entry_symbols[64];
 
     next(lower);
     if (!need(lower, T_LPAREN, "expected '(' after for"))
@@ -4991,12 +5049,15 @@ static int for_statement(Lower* lower)
     body_start = (size_t)(lower->token.begin - lower->source);
     frame = lower->loop_depth++;
     lower->loop_break_count[frame] = 0u;
-    for (int64_t iteration = 0;
-         iteration < trip_count && !broke; ++iteration) {
+    lower->loop_conditional_break[frame] = 0u;
+    outer_symbol_count = lower->symbol_count - 1u;
+    for (int64_t iteration = 0; iteration < trip_count && !broke;
+         ++iteration) {
         uint16_t reg;
         uint32_t jump_index;
 
         lower->loop_continue_count[frame] = 0u;
+        lower->loop_conditional_break[frame] = 0u;
         enter_scope(lower);
         reg = new_reg(lower);
         if (reg == RINGL_RSH1_UNUSED ||
@@ -5011,6 +5072,8 @@ static int for_statement(Lower* lower)
         loop_symbol->regs[0] = reg;
         loop_symbol->initialized = 1u;
         loop_symbol->initialized_components = 1u;
+        for (uint32_t symbol = 0u; symbol < outer_symbol_count; ++symbol)
+            body_entry_symbols[symbol] = lower->symbols[symbol];
         lower->offset = body_start;
         next(lower);
         while (lower->token.kind != T_RBRACE &&
@@ -5044,9 +5107,28 @@ static int for_statement(Lower* lower)
              ++jump)
                 lower->ins[lower->loop_continue_jumps[frame][jump]].immediate =
                     jump_index;
-        if (lower->loop_break_count[frame] != 0u)
-            broke = 1;
         leave_scope(lower);
+        if (lower->loop_conditional_break[frame] != 0u) {
+            for (uint32_t symbol = 0u; symbol < outer_symbol_count; ++symbol) {
+                const Symbol* before = &body_entry_symbols[symbol];
+                const Symbol* after = &lower->symbols[symbol];
+                if (memcmp(before->regs, after->regs,
+                           sizeof(before->regs)) != 0 ||
+                    before->initialized != after->initialized ||
+                    before->initialized_components !=
+                        after->initialized_components ||
+                    before->known_zero_components !=
+                        after->known_zero_components) {
+                    fail(lower,
+                         "conditional break cannot change outer local values");
+                    lower->loop_depth--;
+                    leave_scope(lower);
+                    return 0;
+                }
+            }
+        } else if (lower->loop_break_count[frame] != 0u) {
+            broke = 1;
+        }
     }
     lower->offset = after_body;
     next(lower);

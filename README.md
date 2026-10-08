@@ -240,7 +240,8 @@ link if any declared component is unwritten; it does not ask Aquamarine or a
 browser embedding to repair a partial interface. When a vertex shader writes
 `gl_PointSize`, RinGL reserves RSH1 output 4 for the size and shifts every
 varying output after it, independent of source assignment order. That profile
-supports up to 27 scalar varyings with point size and 28 without it.
+supports up to 27 scalar varyings with point size and 28 without it
+([implementation status](docs/implementation-status-ringl-point-size-varyings-v1.md)).
 
 ## WebGL standard derivatives
 
@@ -499,7 +500,7 @@ wrap requirements before image realization. The current `cube_map_test.c`
 source contract covers face realization/failure cleanup, face query, sampler
 reflection, and shader opcode lowering; it does not provide an end-to-end draw
 readback or runtime result, which remains open in the
-[implementation status](../../../docs/implementation-status-sampler-cube-bounded-v1.md).
+[implementation status](docs/implementation-status-sampler-cube-bounded-v1.md).
 
 The optional GLSL ES `texture2D(sampler2D, vec2, float bias)` and
 `texture2DProj(sampler2D, vec3|vec4, float bias)` overloads also use the

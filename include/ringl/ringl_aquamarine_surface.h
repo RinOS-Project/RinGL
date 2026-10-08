@@ -4,6 +4,8 @@
 
 #include <stdint.h>
 
+#include <ringpu/ringpu.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -21,6 +23,8 @@ typedef struct RinGpuRuntime RinGpuRuntime;
 #define RINGL_AQUAMARINE_SURFACE_MAX_DIMENSION 4096u
 #define RINGL_AQUAMARINE_SURFACE_MAX_PITCH_BYTES \
     (RINGL_AQUAMARINE_SURFACE_MAX_DIMENSION * 4u)
+#define RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_PIPELINES 32u
+#define RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_BIND_GROUPS 64u
 
 typedef enum RinGLAquamarineSurfaceResult {
     RINGL_AQUAMARINE_SURFACE_OK = 0,
@@ -31,6 +35,7 @@ typedef enum RinGLAquamarineSurfaceResult {
     /* A borrowed RinGPU device stopped accepting commands. The caller must
      * discard this bridge/surface pairing rather than retrying a state error. */
     RINGL_AQUAMARINE_SURFACE_DEVICE_LOST = -5,
+    RINGL_AQUAMARINE_SURFACE_NOT_SUPPORTED = -6,
 } RinGLAquamarineSurfaceResult;
 
 typedef struct RinGLAquamarineSurfaceTargetV1 {
@@ -99,6 +104,26 @@ int ringl_aquamarine_surface_sync_external_framebuffer_states(
 int ringl_aquamarine_surface_get_native(
     RinGLAquamarineSurfaceContext* context,
     RinGLAquamarineSurfaceNativeV1* native_out);
+
+/* Native-only compute resources for callers that already use RinGPU RSH1.
+ * These objects belong to the surface and must be released through these
+ * entry points. Before releasing a resource or destroying the surface, callers
+ * must complete submissions and reset or destroy command lists that reference
+ * it. Bound buffers remain caller-owned and must outlive their bind groups.
+ * The surface does not expose these resources to RinGL/WebGL shader or draw
+ * entry points. A surface whose runtime lacks COMPUTE returns NOT_SUPPORTED. */
+int ringl_aquamarine_surface_create_compute_pipeline(
+    RinGLAquamarineSurfaceContext* context,
+    const RinGpuComputePipelineDescV1* descriptor,
+    RinGpuHandle* pipeline_out);
+int ringl_aquamarine_surface_destroy_compute_pipeline(
+    RinGLAquamarineSurfaceContext* context, RinGpuHandle pipeline);
+int ringl_aquamarine_surface_create_compute_bind_group(
+    RinGLAquamarineSurfaceContext* context, RinGpuHandle pipeline,
+    const RinGpuBufferBindingV1* bindings, uint32_t binding_count,
+    RinGpuHandle* bind_group_out);
+int ringl_aquamarine_surface_destroy_compute_bind_group(
+    RinGLAquamarineSurfaceContext* context, RinGpuHandle bind_group);
 
 #ifdef __cplusplus
 }

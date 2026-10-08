@@ -103,6 +103,17 @@ can be overridden only for an explicitly selected external checkout.
 
 The opt-in `ringl_aquamarine_surface` embedding owns a caller-provided BGRA/D32/S8 target and exposes a private native view containing an opaque RinGPU runtime, graphics queue, and default images. OS-Core's `rin_webgl_ringl_bridge.{h,c}` creates a RinGL context using that view and binds the images as RinGL's default framebuffer. The embedding remains the owner of the runtime, queue, images, and caller-provided pixel backing store.
 
+Native code may opt into the surface's compute resource helpers when the
+runtime advertises `RIN_GPU_QUEUE_COMPUTE`. The helpers create and track up to
+32 compute pipelines and 64 compute bind groups, then release them when the
+surface is destroyed. Shader modules and bound buffers remain runtime-owned;
+the caller must keep modules alive until their pipelines are destroyed and
+buffers alive until their groups are destroyed. Before destroying a resource
+or the surface, callers must complete external submissions and reset or destroy
+command lists that reference the resource. They use the borrowed runtime to
+create a compute queue/command list and record dispatches. These helpers do not
+add compute operations to the RinGL or WebGL API.
+
 `RinGLDefaultFramebufferV1.flags` provides the browser-facing logical
 depth/stencil contract. A zero flag word retains the original native
 format-derived behavior. An embedding that supplies a shared D32/S8 allocation

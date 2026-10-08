@@ -35,7 +35,14 @@ struct RinGLAquamarineSurfaceContext {
     uint32_t depth_state;
     uint32_t external_binding_role;
     uint32_t owns_runtime;
+    uint32_t compute_supported;
     uint32_t initialized;
+    RinGpuHandle compute_pipelines[
+        RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_PIPELINES];
+    RinGpuHandle compute_bind_groups[
+        RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_BIND_GROUPS];
+    RinGpuHandle compute_bind_group_pipelines[
+        RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_BIND_GROUPS];
 };
 
 static volatile uint64_t g_surface_device_generation = 1u;
@@ -249,6 +256,32 @@ static int surface_result_from_ringpu(int result)
     return RINGL_AQUAMARINE_SURFACE_BACKEND;
 }
 
+static uint32_t surface_compute_pipeline_slot(
+    const RinGLAquamarineSurfaceContext* context, RinGpuHandle pipeline)
+{
+    if (context == NULL || pipeline == 0u)
+        return RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_PIPELINES;
+    for (uint32_t index = 0u;
+         index < RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_PIPELINES; ++index) {
+        if (context->compute_pipelines[index] == pipeline)
+            return index;
+    }
+    return RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_PIPELINES;
+}
+
+static uint32_t surface_compute_bind_group_slot(
+    const RinGLAquamarineSurfaceContext* context, RinGpuHandle bind_group)
+{
+    if (context == NULL || bind_group == 0u)
+        return RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_BIND_GROUPS;
+    for (uint32_t index = 0u;
+         index < RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_BIND_GROUPS; ++index) {
+        if (context->compute_bind_groups[index] == bind_group)
+            return index;
+    }
+    return RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_BIND_GROUPS;
+}
+
 static void release_context_objects(RinGLAquamarineSurfaceContext* context)
 {
     int wait_result;
@@ -261,6 +294,23 @@ static void release_context_objects(RinGLAquamarineSurfaceContext* context)
             context->completion_value, UINT64_MAX);
         if (wait_result != RIN_GPU_OK)
             return;
+    }
+    for (uint32_t index = 0u;
+         index < RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_BIND_GROUPS; ++index) {
+        if (context->compute_bind_groups[index] != 0u) {
+            (void)ringpu_runtime_destroy_object(
+                context->runtime, context->compute_bind_groups[index]);
+            context->compute_bind_groups[index] = 0u;
+            context->compute_bind_group_pipelines[index] = 0u;
+        }
+    }
+    for (uint32_t index = 0u;
+         index < RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_PIPELINES; ++index) {
+        if (context->compute_pipelines[index] != 0u) {
+            (void)ringpu_runtime_destroy_object(
+                context->runtime, context->compute_pipelines[index]);
+            context->compute_pipelines[index] = 0u;
+        }
     }
     if (context->command_list != 0u)
         (void)ringpu_runtime_destroy_object(context->runtime,
@@ -332,6 +382,7 @@ static int initialize_context(RinGLAquamarineSurfaceContext* context,
     RinGpuImageDescV1 image;
     RinGpuQueueDescV1 queue;
     RinGpuCommandListDescV1 command_list;
+    RinGpuAdapterCapabilitiesV1 capabilities;
     uint64_t device_generation;
     int result;
 
@@ -377,7 +428,8 @@ static int initialize_context(RinGLAquamarineSurfaceContext* context,
         runtime_desc.adapter.abi_version = RIN_GPU_ABI_VERSION;
         runtime_desc.adapter.struct_size = sizeof(runtime_desc.adapter);
         runtime_desc.adapter.queue_capabilities = RIN_GPU_QUEUE_GRAPHICS |
-                                                  RIN_GPU_QUEUE_PRESENT;
+                                                  RIN_GPU_QUEUE_PRESENT |
+                                                  RIN_GPU_QUEUE_COMPUTE;
         memcpy(runtime_desc.adapter.name, "RinGL RinGPU adapter", 21u);
         runtime_desc.display = context->display;
         runtime_desc.present_callback = surface_present;
@@ -389,6 +441,16 @@ static int initialize_context(RinGLAquamarineSurfaceContext* context,
             goto fail;
         context->owns_runtime = 1u;
     }
+
+    memset(&capabilities, 0, sizeof(capabilities));
+    capabilities.abi_version = RIN_GPU_ABI_VERSION;
+    capabilities.struct_size = sizeof(capabilities);
+    result = ringpu_runtime_get_adapter_capabilities(context->runtime,
+                                                     &capabilities);
+    if (result != RIN_GPU_OK)
+        goto fail;
+    context->compute_supported =
+        (capabilities.queue_capabilities & RIN_GPU_QUEUE_COMPUTE) != 0u;
 
     memset(&queue, 0, sizeof(queue));
     queue.abi_version = RIN_GPU_ABI_VERSION;
@@ -614,5 +676,130 @@ int ringl_aquamarine_surface_get_native(
                : RIN_GPU_FORMAT_D32_FLOAT)
         : 0u;
     native_out->depth_state = context->depth_state;
+    return RINGL_AQUAMARINE_SURFACE_OK;
+}
+
+int ringl_aquamarine_surface_create_compute_pipeline(
+    RinGLAquamarineSurfaceContext* context,
+    const RinGpuComputePipelineDescV1* descriptor,
+    RinGpuHandle* pipeline_out)
+{
+    RinGpuHandle pipeline = 0u;
+    uint32_t free_slot = RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_PIPELINES;
+    int result = context_status(context);
+
+    if (result != RINGL_AQUAMARINE_SURFACE_OK)
+        return result;
+    if (pipeline_out == NULL || descriptor == NULL)
+        return RINGL_AQUAMARINE_SURFACE_INVALID_ARGUMENT;
+    *pipeline_out = 0u;
+    if (context->compute_supported == 0u)
+        return RINGL_AQUAMARINE_SURFACE_NOT_SUPPORTED;
+    for (uint32_t index = 0u;
+         index < RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_PIPELINES; ++index) {
+        if (context->compute_pipelines[index] == 0u) {
+            free_slot = index;
+            break;
+        }
+    }
+    if (free_slot == RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_PIPELINES)
+        return RINGL_AQUAMARINE_SURFACE_NO_MEMORY;
+
+    result = ringpu_runtime_create_compute_pipeline(context->runtime,
+                                                    descriptor, &pipeline);
+    if (result != RIN_GPU_OK)
+        return surface_result_from_ringpu(result);
+    if (pipeline == 0u)
+        return RINGL_AQUAMARINE_SURFACE_BACKEND;
+    context->compute_pipelines[free_slot] = pipeline;
+    *pipeline_out = pipeline;
+    return RINGL_AQUAMARINE_SURFACE_OK;
+}
+
+int ringl_aquamarine_surface_destroy_compute_pipeline(
+    RinGLAquamarineSurfaceContext* context, RinGpuHandle pipeline)
+{
+    uint32_t pipeline_slot;
+    int result = context_status(context);
+
+    if (result != RINGL_AQUAMARINE_SURFACE_OK)
+        return result;
+    pipeline_slot = surface_compute_pipeline_slot(context, pipeline);
+    if (pipeline_slot == RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_PIPELINES)
+        return RINGL_AQUAMARINE_SURFACE_INVALID_ARGUMENT;
+    for (uint32_t index = 0u;
+         index < RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_BIND_GROUPS; ++index) {
+        if (context->compute_bind_groups[index] != 0u &&
+            context->compute_bind_group_pipelines[index] == pipeline) {
+            return RINGL_AQUAMARINE_SURFACE_STATE;
+        }
+    }
+    result = ringpu_runtime_destroy_object(context->runtime, pipeline);
+    if (result != RIN_GPU_OK)
+        return surface_result_from_ringpu(result);
+    context->compute_pipelines[pipeline_slot] = 0u;
+    return RINGL_AQUAMARINE_SURFACE_OK;
+}
+
+int ringl_aquamarine_surface_create_compute_bind_group(
+    RinGLAquamarineSurfaceContext* context, RinGpuHandle pipeline,
+    const RinGpuBufferBindingV1* bindings, uint32_t binding_count,
+    RinGpuHandle* bind_group_out)
+{
+    RinGpuHandle bind_group = 0u;
+    uint32_t free_slot = RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_BIND_GROUPS;
+    int result = context_status(context);
+
+    if (result != RINGL_AQUAMARINE_SURFACE_OK)
+        return result;
+    if (bind_group_out == NULL ||
+        (binding_count != 0u && bindings == NULL)) {
+        return RINGL_AQUAMARINE_SURFACE_INVALID_ARGUMENT;
+    }
+    *bind_group_out = 0u;
+    if (context->compute_supported == 0u)
+        return RINGL_AQUAMARINE_SURFACE_NOT_SUPPORTED;
+    if (surface_compute_pipeline_slot(context, pipeline) ==
+        RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_PIPELINES) {
+        return RINGL_AQUAMARINE_SURFACE_INVALID_ARGUMENT;
+    }
+    for (uint32_t index = 0u;
+         index < RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_BIND_GROUPS; ++index) {
+        if (context->compute_bind_groups[index] == 0u) {
+            free_slot = index;
+            break;
+        }
+    }
+    if (free_slot == RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_BIND_GROUPS)
+        return RINGL_AQUAMARINE_SURFACE_NO_MEMORY;
+
+    result = ringpu_runtime_create_compute_bind_group(
+        context->runtime, pipeline, bindings, binding_count, &bind_group);
+    if (result != RIN_GPU_OK)
+        return surface_result_from_ringpu(result);
+    if (bind_group == 0u)
+        return RINGL_AQUAMARINE_SURFACE_BACKEND;
+    context->compute_bind_groups[free_slot] = bind_group;
+    context->compute_bind_group_pipelines[free_slot] = pipeline;
+    *bind_group_out = bind_group;
+    return RINGL_AQUAMARINE_SURFACE_OK;
+}
+
+int ringl_aquamarine_surface_destroy_compute_bind_group(
+    RinGLAquamarineSurfaceContext* context, RinGpuHandle bind_group)
+{
+    uint32_t bind_group_slot;
+    int result = context_status(context);
+
+    if (result != RINGL_AQUAMARINE_SURFACE_OK)
+        return result;
+    bind_group_slot = surface_compute_bind_group_slot(context, bind_group);
+    if (bind_group_slot == RINGL_AQUAMARINE_SURFACE_MAX_COMPUTE_BIND_GROUPS)
+        return RINGL_AQUAMARINE_SURFACE_INVALID_ARGUMENT;
+    result = ringpu_runtime_destroy_object(context->runtime, bind_group);
+    if (result != RIN_GPU_OK)
+        return surface_result_from_ringpu(result);
+    context->compute_bind_groups[bind_group_slot] = 0u;
+    context->compute_bind_group_pipelines[bind_group_slot] = 0u;
     return RINGL_AQUAMARINE_SURFACE_OK;
 }

@@ -68,8 +68,13 @@ dynamic growth and hardware/QEMU resource accounting remain follow-up work.
 The built private Aquamarine surface delegates command execution to the generic
 `ringpu_software_backend`, whose bounded compute-pipeline, storage-bind-group,
 and synchronous dispatch path is covered by `ringpu_software_backend_test`.
-RinGL's surface API remains graphics-only: exposing compute resources through a
-surface or browser context is still an explicit follow-up API/security item.
+The private surface API now admits native compute pipelines and bind groups
+when the runtime advertises a compute queue. These objects are surface-owned
+and bounded to 32 pipelines and 64 bind groups; callers use the borrowed
+RinGPU runtime for command queues and dispatch. RinGL draw commands and the
+browser-facing WebGL context remain graphics-only. The surface entrypoint and
+runtime-integration limits are recorded in
+[compute surface status](docs/implementation-status-ringl-compute-surface-v1.md).
 
 The same surface now bounds every backend-owned CPU allocation with one
 512 MiB owner budget: resource metadata and byte shadows, shader/sampler and

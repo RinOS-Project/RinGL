@@ -15,6 +15,8 @@ that returns; discard paths are terminal and need not publish outputs.
 
 The lowerer checks source following a terminal statement in a scratch copy and
 omits those unreachable instructions from emitted RSH1. Unsupported GLSL
-constructs remain rejected. This is still an incomplete language profile: the
-change has not been built or tested, and its branch, output, and loop-exit
-behavior must be verified before the parent control-flow TODO can close.
+constructs remain rejected. The statically bounded loop header also produces
+zero iterations when its initial condition is false, consistently in parser
+and lowerer. Neither change has been built or tested, and branch, output, and
+loop-exit behavior must be verified before the parent control-flow TODO can
+close.

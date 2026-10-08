@@ -63,8 +63,9 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   loops, `break`, `continue`, and fragment `discard` with stable mutable
   registers and per-path initialization/output-flow checks. This source-only
   change remains unverified; source after terminal control is checked in a
-  scratch lowerer, while GLSL forms outside the bounded profile still fail
-  closed. Keep this item open until branch shapes and failure paths are
+  scratch lowerer, and a loop whose initial condition is false emits zero
+  iterations. GLSL forms outside the bounded profile still fail closed. Keep
+  this item open until branch shapes and failure paths are
   verified ([status](docs/implementation-status-ringl-glsl-nested-loop-control-v1.md)).
 - [x] Fold finite literal Float/i32 arithmetic into typed RSH1 constants while
   preserving dynamic arithmetic and rejecting invalid constant division.

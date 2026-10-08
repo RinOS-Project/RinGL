@@ -1982,9 +1982,14 @@ static int for_statement(Parser* parser)
         leave_scope(parser);
         return 0;
     }
-    trip_count = (int64_t)limit - (int64_t)start +
-                 (relation == TOK_LE ? 1 : 0);
-    if (trip_count < 0 || trip_count > 16) {
+    if ((relation == TOK_LT && start >= limit) ||
+        (relation == TOK_LE && start > limit)) {
+        trip_count = 0;
+    } else {
+        trip_count = (int64_t)limit - (int64_t)start +
+                     (relation == TOK_LE ? 1 : 0);
+    }
+    if (trip_count > 16) {
         fail(parser, "for loop trip count exceeds the bounded profile");
         leave_scope(parser);
         return 0;

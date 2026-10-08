@@ -84,7 +84,8 @@ The strict shader IR regression also carries a bounded malformed-source corpus:
 unbalanced constructors and overflow literals fail before executable
 publication, and unsupported loop syntax cannot publish an RSH1/module.
 
-Bounded static loops now lower nested conditionals containing supported local,
+Bounded static loops, including a zero-iteration loop when its initial
+condition is false, now lower nested conditionals containing supported local,
 varying, and output assignments alongside `break`, `continue`, or fragment
 `discard`. Stable registers preserve mutable values across branches and loop
 exits; a CFG pass checks definite output initialization on every returning
@@ -927,7 +928,8 @@ comparisons, and general control flow are still outside the profile. A bounded s
 vec4(...); }` is executable: RinGL emits the original Float/i32 comparison,
 tests its i32 result against zero, and uses only forward RSH1 branches. The
 generic RinGPU backend, not Ladybird or Aquamarine, evaluates the branch.
-Bounded constant `for` loops are unrolled into forward-only RSH1. Nested loop
+Bounded constant `for` loops, including statically empty ranges, are unrolled
+into forward-only RSH1. Nested loop
 conditionals can contain the supported ordinary statements and direct
 `break`/`continue`/`discard`; local and varying writes use stable registers,
 with initialization and output paths checked across joins. Source after

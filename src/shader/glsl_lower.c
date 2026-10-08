@@ -5313,9 +5313,14 @@ static int for_statement(Lower* lower)
         leave_scope(lower);
         return 0;
     }
-    trip_count = (int64_t)limit - (int64_t)start +
-                 (relation == T_LE ? 1 : 0);
-    if (trip_count < 0 || trip_count > 16 ||
+    if ((relation == T_LT && start >= limit) ||
+        (relation == T_LE && start > limit)) {
+        trip_count = 0;
+    } else {
+        trip_count = (int64_t)limit - (int64_t)start +
+                     (relation == T_LE ? 1 : 0);
+    }
+    if (trip_count > 16 ||
         !locate_block_end(lower,
                           (size_t)(lower->token.begin - lower->source),
                           &after_body)) {

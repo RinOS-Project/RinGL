@@ -935,7 +935,9 @@ conditionals can contain the supported ordinary statements and direct
 with initialization and output paths checked across joins. Source after
 terminal control is checked but not emitted. Partial outputs, dynamic loops,
 and GLSL forms outside the bounded parser/lowerer profile remain unsupported.
-Implementation status: [`nested loop control v1`](docs/implementation-status-ringl-glsl-nested-loop-control-v1.md).
+The focused `ringl-shader_ir` CTest passes (1/1), including mixed nested loop
+branches, output-path rejection, and unreachable-tail validation. Implementation
+status: [`nested loop control v1`](docs/implementation-status-ringl-glsl-nested-loop-control-v1.md).
 
 Standalone fragment `discard;` lowers to RSH1 `DISCARD`. The generic RinGPU
 backend terminates that fragment before output validation and depth, stencil, or
@@ -1497,4 +1499,4 @@ remain unavailable rather than being reported as successful GLES.
 | ABI stability | Public C entrypoints define the source ABI; src headers are internal and no binary ABI is promised unless versioned. |
 | security | Shaders/resources are validated; device authority remains in RinGPU and OS-Core. |
 | build | Build using the repository CMake or Meson project and exported RinGL/RinGPU targets. |
-| test | Run configured tests/ targets and repository CI. No tests/builds were run for this README update. |
+| test | Run configured tests/targets and repository CI. Bounded nested loop control was built and verified by `ringl-shader_ir` (1/1); the full RinGL suite was not run for this update. |

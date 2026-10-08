@@ -4180,7 +4180,7 @@ static int store_fragment_data_components(Lower* lower, const Value* value,
 
 static int snapshot_overlapping_assignment(Lower* lower, const Symbol* symbol,
                                           const Value* value,
-                                          const uint8_t components[16],
+                                          const uint8_t* components,
                                           uint8_t component_count,
                                           Value* snapshot)
 {

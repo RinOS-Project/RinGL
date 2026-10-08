@@ -58,15 +58,16 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     destruction.
 - [x] Implement a bounded GLSL ES lexer/parser with initial semantic validation.
 - [x] Lower the current scalar GLSL ES subset directly to RinShader RSH1.
-- [ ] Complete bounded GLSL loop-control lowering for mixed nested branch bodies.
+- [x] Complete bounded GLSL loop-control lowering for mixed nested branch bodies.
   The lowerer now handles supported local/varying/output writes, nested bounded
   loops, `break`, `continue`, and fragment `discard` with stable mutable
   registers and per-path initialization/output-flow checks. This source-only
-  change remains unverified; source after terminal control is checked in a
-  scratch lowerer, and a loop whose initial condition is false emits zero
-  iterations. GLSL forms outside the bounded profile still fail closed. Keep
-  this item open until branch shapes and failure paths are
-  verified ([status](docs/implementation-status-ringl-glsl-nested-loop-control-v1.md)).
+  change is verified by `ringl-shader_ir` (1/1): mixed nested branches merge
+  local/varying state across `continue`/`break`, returning fragment paths
+  initialize outputs unless discarded, valid unreachable tails emit no stores,
+  and invalid names in unreachable tails still reject. A statically empty loop
+  emits zero iterations. GLSL forms and control-flow combinations outside the
+  bounded profile remain incomplete and fail closed ([status](docs/implementation-status-ringl-glsl-nested-loop-control-v1.md)).
 - [x] Fold finite literal Float/i32 arithmetic into typed RSH1 constants while
   preserving dynamic arithmetic and rejecting invalid constant division.
 - [x] Lower bounded GLSL numeric `vec2`/`vec3`/`vec4` and

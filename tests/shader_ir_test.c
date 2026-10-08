@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include <assert.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -90,6 +91,21 @@ static int rsh1_has_opcode(const uint8_t* blob, const Header* header,
     return 0;
 }
 
+static uint32_t rsh1_opcode_count(const uint8_t* blob, const Header* header,
+                                  uint16_t opcode)
+{
+    const Instruction* instructions;
+    uint32_t count = 0u;
+
+    assert(blob != NULL && header != NULL);
+    instructions = (const Instruction*)(blob + header->header_size);
+    for (uint32_t index = 0u; index < header->instruction_count; ++index) {
+        if (instructions[index].opcode == opcode)
+            ++count;
+    }
+    return count;
+}
+
 typedef struct FakeBackend {
     uint64_t next_handle;
     uint32_t shader_creates;
@@ -165,11 +181,21 @@ static Header lower_and_read_header(uint32_t shader, const char* source,
 {
     Header header;
     uint32_t size;
+    char info_log[512];
 
     ringl_shader_source(shader, source, -1);
     ringl_compile_shader(shader);
+    if (ringl_get_shader_compile_status(shader) != RINGL_TRUE) {
+        (void)ringl_get_shader_info_log(shader, info_log, sizeof(info_log));
+        fprintf(stderr, "shader compile failed: %s\n%s\n", source, info_log);
+    }
     assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
-    assert(ringl_lower_shader_rsh1(shader) == 0);
+    if (ringl_lower_shader_rsh1(shader) != 0) {
+        (void)ringl_get_shader_info_log(shader, info_log, sizeof(info_log));
+        fprintf(stderr, "shader lowering failed: %s\n%s\n", source,
+                info_log);
+        assert(0);
+    }
     size = ringl_get_shader_rsh1_size(shader);
     assert(size >= sizeof(Header));
     assert(size <= capacity);
@@ -315,7 +341,13 @@ int main(void)
         "  vec3 normal = normalize(position);\n"
         "  vec3 perpendicular = cross(normal, vec3(0.0, 1.0, 0.0));\n"
         "  vec3 reflected = reflect(perpendicular, normal);\n"
-        "  vec3 bent = refract(reflected, normal, 0.5);\n"
+        "  gl_Position = vec4(reflected, 1.0);\n"
+        "}\n";
+    const char* refract_geometric_builtin_source =
+        "attribute vec3 position;\n"
+        "void main() {\n"
+        "  vec3 normal = normalize(position);\n"
+        "  vec3 bent = refract(position, normal, 0.5);\n"
         "  float spacing = distance(normal.xy, bent.xy);\n"
         "  gl_Position = vec4(sqrt(length(bent) + spacing), inversesqrt(4.0), 0.0, 1.0);\n"
         "}\n";
@@ -459,6 +491,79 @@ int main(void)
           "  for (int i = 0; i < 2; i++) {\n"
           "    continue;\n"
           "  }\n"
+        "  gl_Position = vec4(position, 0.0, 1.0);\n"
+        "}\n";
+    const char* mixed_nested_loop_control_vertex_source =
+        "attribute vec2 position;\n"
+        "varying vec2 flow;\n"
+        "void main() {\n"
+        "  float total = 0.0;\n"
+        "  flow = vec2(0.0);\n"
+        "  for (int i = 0; i < 2; i++) {\n"
+        "    if (position.x < 0.0) {\n"
+        "      total = total + 1.0;\n"
+        "      if (position.y < 0.0) {\n"
+        "        continue;\n"
+        "      } else {\n"
+        "      }\n"
+        "      flow = flow + vec2(1.0);\n"
+        "    } else {\n"
+        "      if (position.y < 0.0) {\n"
+        "        total = total + 4.0;\n"
+        "        break;\n"
+        "      } else {\n"
+        "      }\n"
+        "      total = total + 2.0;\n"
+        "    }\n"
+        "  }\n"
+        "  gl_Position = vec4(position.x + total, position.y + flow.x, "
+        "0.0, 1.0);\n"
+        "}\n";
+    const char* loop_output_control_fragment_source =
+        "uniform float selector;\n"
+        "void main() {\n"
+        "  for (int i = 0; i < 2; i++) {\n"
+        "    if (selector < 0.0) {\n"
+        "      discard;\n"
+        "    } else {\n"
+        "      if (selector < 1.0) {\n"
+        "        gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);\n"
+        "        break;\n"
+        "      } else {\n"
+        "        gl_FragColor = vec4(0.0, 0.0, 1.0, 1.0);\n"
+        "        continue;\n"
+        "      }\n"
+        "    }\n"
+        "  }\n"
+        "}\n";
+    const char* loop_missing_output_control_fragment_source =
+        "uniform float selector;\n"
+        "void main() {\n"
+        "  for (int i = 0; i < 2; i++) {\n"
+        "    if (selector < 0.0) {\n"
+        "      gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);\n"
+        "      break;\n"
+        "    } else {\n"
+        "      continue;\n"
+        "    }\n"
+        "  }\n"
+        "}\n";
+    const char* loop_unreachable_valid_tail_vertex_source =
+        "attribute vec2 position;\n"
+        "void main() {\n"
+        "  for (int i = 0; i < 1; i++) {\n"
+        "    break;\n"
+        "    gl_Position = vec4(99.0, 0.0, 0.0, 1.0);\n"
+        "  }\n"
+        "  gl_Position = vec4(position, 0.0, 1.0);\n"
+        "}\n";
+    const char* loop_unreachable_invalid_tail_vertex_source =
+        "attribute vec2 position;\n"
+        "void main() {\n"
+        "  for (int i = 0; i < 1; i++) {\n"
+        "    break;\n"
+        "    float invalid = not_declared;\n"
+        "  }\n"
         "  gl_Position = vec4(position, 0.0, 1.0);\n"
         "}\n";
     const char* conditional_i32_fragment_source =
@@ -1137,10 +1242,20 @@ int main(void)
     assert(header.instruction_count == 20u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_DIV_F32));
 
-    /* Geometric builtins lower through scalar square root, arithmetic, and
-     * comparisons. There is no callback for a browser or Aquamarine backend
-     * to evaluate the original GLSL expression. */
+    /* Normalize, cross, and reflect lower as scalar RSH1 arithmetic. Keep
+     * this source within the public 96-register limit. */
     header = lower_and_read_header(vertex, geometric_builtin_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 3u);
+    assert(header.output_count == 9u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_SUB_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_DIV_F32));
+
+    /* Refraction, distance/length, and scalar roots also lower through the
+     * same executable path, without exceeding the RSH1 register ceiling. */
+    header = lower_and_read_header(vertex, refract_geometric_builtin_source,
                                    blob, sizeof(blob));
     assert(header.stage == 1u);
     assert(header.input_count == 3u);
@@ -1665,6 +1780,41 @@ int main(void)
     assert(header.input_count == 2u);
     assert(header.output_count == 9u);
       assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP));
+
+    /* Nested branches inside an unrolled loop keep local and varying state
+     * live across both continue and break edges, and the post-loop output
+     * reads the merged values. */
+    header = lower_and_read_header(
+        vertex, mixed_nested_loop_control_vertex_source,
+        blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 2u);
+    assert(header.output_count == 6u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP_IF));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_ADD_F32));
+
+    /* Fragment output is initialized on break and continue exits; discard is
+     * the only path that may leave without a color. A continue-only normal
+     * loop exit must still be rejected when it never assigned the output. */
+    header = lower_and_read_header(
+        fragment, loop_output_control_fragment_source,
+        blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_DISCARD));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_JUMP_IF));
+    expect_shader_rejected(
+        fragment, loop_missing_output_control_fragment_source);
+
+    /* Unreachable source is checked using a scratch lowerer but contributes
+     * no stores to the executable. Invalid names in that tail still reject. */
+    header = lower_and_read_header(
+        vertex, loop_unreachable_valid_tail_vertex_source,
+        blob, sizeof(blob));
+    assert(rsh1_opcode_count(blob, &header, RSH1_OP_STORE_OUTPUT_F32) == 9u);
+    expect_shader_rejected(
+        vertex, loop_unreachable_invalid_tail_vertex_source);
 
       /* CFG validation is also a public boundary check: a backward target is
        * rejected before the RSH1 bytes can be treated as an executable module.

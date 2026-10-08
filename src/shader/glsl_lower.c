@@ -4574,6 +4574,141 @@ static Value conditional_or_value(Lower* lower)
 static int discard_statement(Lower* lower);
 static int conditional_output(Lower* lower);
 static int loop_control_statement(Lower* lower, int is_continue);
+static int conditional_loop_control(Lower* lower);
+
+static int loop_control_branch_ahead_statement(Lower* probe,
+                                               uint32_t nested_depth)
+{
+    uint32_t depth;
+
+    if (probe->token.kind == T_BREAK || probe->token.kind == T_CONTINUE) {
+        next(probe);
+        if (probe->token.kind != T_SEMI)
+            return 0;
+        next(probe);
+        return 1;
+    }
+    if (probe->token.kind != T_IF)
+        return 0;
+    if (nested_depth >= 16u)
+        return 0;
+    next(probe);
+    if (probe->token.kind != T_LPAREN)
+        return 0;
+    depth = 0u;
+    do {
+        if (probe->token.kind == T_LPAREN)
+            ++depth;
+        else if (probe->token.kind == T_RPAREN) {
+            if (depth == 0u)
+                return 0;
+            --depth;
+        }
+        next(probe);
+    } while (depth != 0u && probe->token.kind != T_EOF);
+    if (depth != 0u || probe->token.kind != T_LBRACE)
+        return 0;
+    next(probe);
+    if (!loop_control_branch_ahead_statement(probe, nested_depth + 1u) ||
+        probe->token.kind != T_RBRACE)
+        return 0;
+    next(probe);
+    if (probe->token.kind == T_ELSE) {
+        next(probe);
+        if (probe->token.kind != T_LBRACE)
+            return 0;
+        next(probe);
+        if (!loop_control_branch_ahead_statement(probe, nested_depth + 1u) ||
+            probe->token.kind != T_RBRACE)
+            return 0;
+        next(probe);
+    }
+    return 1;
+}
+
+static int loop_control_branch_ahead(Lower* lower)
+{
+    Token saved_token;
+    size_t start;
+    size_t saved_offset;
+    int result;
+
+    if (lower == NULL || lower->token.kind != T_IF)
+        return 0;
+    start = (size_t)(lower->token.begin - lower->source);
+    saved_offset = lower->offset;
+    saved_token = lower->token;
+    lower->offset = start;
+    next(lower);
+    result = loop_control_branch_ahead_statement(lower, 0u);
+    lower->offset = saved_offset;
+    lower->token = saved_token;
+    return result;
+}
+
+static int loop_control_branch(Lower* lower)
+{
+    if (lower->token.kind == T_BREAK || lower->token.kind == T_CONTINUE)
+        return loop_control_statement(lower,
+                                      lower->token.kind == T_CONTINUE);
+    if (lower->token.kind == T_IF)
+        return conditional_loop_control(lower);
+    fail(lower,
+         "loop-control branches may contain only break, continue, or nested if");
+    return 0;
+}
+
+/* Nested control-only conditionals stay forward-only. Each arm contains one
+ * break/continue or another control-only if; ordinary assignments and stage
+ * outputs remain on the existing output-branch path. */
+static int conditional_loop_control(Lower* lower)
+{
+    Value condition;
+    uint16_t zero;
+    uint16_t false_result;
+    uint32_t jump_to_else;
+    uint32_t jump_to_end;
+
+    next(lower);
+    if (!need(lower, T_LPAREN, "expected '(' after if"))
+        return 0;
+    condition = conditional_or_value(lower);
+    if (condition.width == 0u || condition.matrix || condition.width != 1u ||
+        !condition.is_bool)
+        return 0;
+    if (!need(lower, T_RPAREN, "expected ')' after if condition"))
+        return 0;
+    zero = new_reg(lower);
+    false_result = new_reg(lower);
+    if (zero == RINGL_RSH1_UNUSED || false_result == RINGL_RSH1_UNUSED ||
+        !emit(lower, RINGL_RSH1_OP_CONST_I32, zero, RINGL_RSH1_UNUSED,
+              RINGL_RSH1_UNUSED, 0u) ||
+        !emit(lower, RINGL_RSH1_OP_CMP_EQ_I32, false_result,
+              condition.regs[0], zero, 0u) ||
+        !need(lower, T_LBRACE, "expected '{' after if condition"))
+        return 0;
+
+    jump_to_else = lower->ins_count;
+    if (!emit(lower, RINGL_RSH1_OP_JUMP_IF, RINGL_RSH1_UNUSED,
+              false_result, RINGL_RSH1_UNUSED, 0u) ||
+        !loop_control_branch(lower) ||
+        !need(lower, T_RBRACE, "expected '}' after loop-control branch"))
+        return 0;
+    jump_to_end = lower->ins_count;
+    if (!emit(lower, RINGL_RSH1_OP_JUMP, RINGL_RSH1_UNUSED,
+              RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED, 0u))
+        return 0;
+    lower->ins[jump_to_else].immediate = lower->ins_count;
+    if (take(lower, T_ELSE)) {
+        if (!need(lower, T_LBRACE, "expected '{' after loop-control else") ||
+            !loop_control_branch(lower) ||
+            !need(lower, T_RBRACE,
+                  "expected '}' after loop-control else"))
+            return 0;
+    }
+    lower->ins[jump_to_end].immediate = lower->ins_count;
+    return 1;
+}
 
 static int stage_output_assignment(Lower* lower)
 {
@@ -4687,9 +4822,10 @@ static int conditional_output(Lower* lower)
               false_result, RINGL_RSH1_UNUSED, 0u)) {
         return 0;
     }
-    if (lower->token.kind == T_BREAK || lower->token.kind == T_CONTINUE) {
-        if (!loop_control_statement(lower,
-                                    lower->token.kind == T_CONTINUE)) {
+    if (lower->token.kind == T_BREAK || lower->token.kind == T_CONTINUE ||
+        (lower->token.kind == T_IF && lower->loop_depth != 0u &&
+         loop_control_branch_ahead(lower))) {
+        if (!loop_control_branch(lower)) {
             return 0;
         }
         if (lower->token.kind != T_RBRACE) {
@@ -4707,21 +4843,9 @@ static int conditional_output(Lower* lower)
             lower->ins[jump_to_else].immediate = lower->ins_count;
             if (!need(lower, T_LBRACE,
                       "expected '{' after loop-control else") ||
-                (lower->token.kind != T_BREAK &&
-                 lower->token.kind != T_CONTINUE)) {
-                fail(lower,
-                     "conditional loop-control else requires one control statement");
-                return 0;
-            }
-            if (!loop_control_statement(lower,
-                                        lower->token.kind == T_CONTINUE)) {
-                return 0;
-            }
-            if (lower->token.kind != T_RBRACE ||
+                !loop_control_branch(lower) ||
                 !need(lower, T_RBRACE,
                       "expected '}' after loop-control else")) {
-                fail(lower,
-                     "conditional loop-control else must contain one control statement");
                 return 0;
             }
             else_breaks = lower->loop_break_count[

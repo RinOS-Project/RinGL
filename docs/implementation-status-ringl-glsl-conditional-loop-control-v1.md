@@ -12,6 +12,8 @@ writes because both paths reach the same statically expanded next-iteration
 state. Loop control followed by additional body statements and mixed
 control/output branch bodies remain rejected.
 
-The broader `break`/`continue` item remains incomplete: nested conditional
-control shapes and loop-exit value merges are not implemented. No build or
-tests were run for this change.
+The follow-up adds nested control-only conditional branches
+([status](implementation-status-ringl-glsl-nested-loop-control-v1.md)). The
+broader `break`/`continue` item remains incomplete because mixed
+control/output branches and loop-exit value merges are not implemented. No
+build or tests were run for the original change.

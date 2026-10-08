@@ -84,6 +84,11 @@ The strict shader IR regression also carries a bounded malformed-source corpus:
 unbalanced constructors and overflow literals fail before executable
 publication, and unsupported loop syntax cannot publish an RSH1/module.
 
+Bounded static loops now accept terminal conditionals with nested control-only
+`if` branches whose leaves are `break` or `continue`. Mixed output/control
+branches, body statements after loop control, and conditional breaks that change
+outer local values remain outside the profile.
+
 The GLSL lexer treats `/* ... */` block comments as bounded lexical
 whitespace in both the generic expression parser and compact texture lowerer.
 An unterminated comment is a compile error before RSH1 publication, while

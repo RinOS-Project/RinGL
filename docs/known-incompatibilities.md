@@ -78,9 +78,10 @@ paths. In particular:
 RSH1 executes the finite profiles specified in
 [`glsl-es-profile.md`](glsl-es-profile.md); it is not a general GLSL ES
 compiler. Notable exclusions include general declarations/types/arrays,
-arbitrary constructors and swizzles, unrestricted built-ins, arbitrary
-texture-coordinate expressions, general varying combinations, general matrix
-arithmetic, vertex pulling, loops, recursion, and general control flow.
+unrestricted constructors and swizzles, unrestricted built-ins, texture
+expressions outside the accepted finite vector grammar and RSH1 budget,
+unverified arbitrary mixed-varying combinations, general matrix arithmetic,
+vertex pulling, loops, recursion, and general control flow.
 
 `if`/`else`, Boolean operations, `discard`, derivatives, point size,
 matrices, texture samples, and varying interpolation are available only in the

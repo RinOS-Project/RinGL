@@ -121,7 +121,10 @@ The current first-triangle slice supports:
   Float vector built-in results such as `normalize`). Each active sampler is reflected
   as an adjacent RSH1 image/sampler pair and each lookup emits four scalar
   samples; the generic 128-instruction/96-register RSH1 budget is enforced
-  before module publication. `sampler2D name[N]` accepts a positive decimal
+  before module publication. The parser now forwards the complete coordinate
+  expression to this lowerer, which performs the final floating-`vec2` check;
+  the newly admitted mixed multi-varying forms have not yet received parser/IR
+  and bridge readback coverage. `sampler2D name[N]` accepts a positive decimal
   `N` only within the eight-element total cap, and each lookup needs an
   in-range decimal literal or `const int` initialized with an integer literal;
   every selected element has its own real resource pair. The same bounded
@@ -181,9 +184,10 @@ mixed selector alphabets, and out-of-range components fail compilation. The
 bounded cube-sampling profile additionally accepts a direction formed by
 adding two distinct perspective-interpolated `varying vec3` values in the
 fragment stage; the RinGL→RinGPU draw/readback regression exercises all six
-scalar inputs and the resulting cube face/mip selection. Arbitrary varying
-combinations and generic texture-coordinate expressions remain outside the
-profile.
+scalar inputs and the resulting cube face/mip selection. The generic
+expression lowerer also supports bounded arithmetic over varying values and
+complete `texture2D()` coordinate expressions. Arbitrary mixed-interface
+behavior is not claimed until the open parser/IR and bridge regressions pass.
 
 The fixed `gl_Position` (vertex) and `gl_FragColor` (fragment) outputs accept
 non-overlapping writable `xyzw`/`rgba`/`stpq` selectors. RinGL emits one
@@ -245,7 +249,7 @@ pair. RinGL uses the saved active-declaration map to make the matching selective
 typed bind group, so unused declarations need no fabricated resource use. The
 profile has a formulaic maximum of 85 instructions and 80 registers, below
 RinGL's 96-register ceiling and RinGPU's public 256-register limit.
-The varying-coordinate multi-sampler extension accepts one through eight calls
+The structural varying-coordinate multi-sampler lowerer accepts one through eight calls
 over one through eight sampler declarations, one shared `varying vec2`, and an
 exact left-to-right addition. Each call may use `uv`, `uv + vec2(u, v)`, or
 `uv - vec2(u, v)` where both decimal/exponent-form literals are finite. Calls
@@ -253,8 +257,11 @@ may repeat an active sampler and inactive declarations are compacted in
 declaration order into dense image/sampler pairs; the saved map creates
 bindings for only those declarations. The direct-coordinate maximum is 69
 instructions and 64 registers; with an offset on every call it is 101
-instructions and 68 registers. Coordinates derived from locals or different
-varyings, other expressions, and larger chains are not yet accepted.
+instructions and 68 registers. That structural matcher does not recognize
+coordinates derived from locals or different varyings. The generic sampler
+lowerer can accept complete expressions within its scalar type and RSH1 budget;
+mixed-varying end-to-end evidence remains open. Larger or otherwise unsupported
+expressions still fail before module publication.
 Nonconstant coordinates in this profile, general swizzle writes outside the
 documented generic vertex-varying lvalue form, implicit float/integer
 conversion, vector constructors with mixed scalar types,

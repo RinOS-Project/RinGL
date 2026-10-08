@@ -6,9 +6,11 @@ checks the resulting floating vector width and emits arithmetic and sampling
 through the ordinary RinGL→RinGPU path. This removes the parser-only restriction
 that previously admitted a varying plus at most one coordinate operand.
 
-The `RinGL` CMake library target builds with this parser change. Tests were not
-run, so this is not complete evidence for the compatibility slice. The RinGL
-TODO remains open for parser and IR regression coverage, an actual bridge
-draw/readback using a multi-operand mixed-varying coordinate, and
-wrong-width/non-floating rejection coverage. Broader GLSL ES varying linkage
-and expression semantics also remain open.
+Strict IR coverage now checks a two-pair `varying vec2` expression containing
+both multiplication and addition, confirms the sampled resource, and rejects
+wrong-width `vec3` and integer `ivec2` coordinates without publishing RSH1.
+The RinGL→RinGPU bridge draws the expression and reads the blue texel selected
+by the combined coordinate. The focused RinGL IR target and bridge executable
+build, but tests were not executed, so runtime behavior remains unverified.
+
+Broader GLSL ES varying linkage and expression semantics remain open.

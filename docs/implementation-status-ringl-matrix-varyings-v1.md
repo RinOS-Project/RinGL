@@ -9,8 +9,13 @@ The fragment lowerer reconstructs the matrix value from its consecutive scalar
 input loads, so existing bounded matrix-vector operations can consume it.
 Matrix values cannot use vector swizzles.
 
-The RinGL CMake `RinGL` library target builds after this change. No tests were
-run. Parser/IR checks and a real bridge draw/readback for all supported matrix
-dimensions, dimension mismatch, and varying-budget overflow remain open in
-[`TODO.md`](../TODO.md). This does not add varying arrays or general matrix
-arithmetic.
+Parser/IR modules now pin the 4/9/16 scalar stage interfaces for all matrix
+dimensions and execute the corresponding fragment matrix/vector operation.
+The bridge reads matrix-varying results for `mat2`, `mat3`, and `mat4` from
+real RinGPU draws. Program-link regressions accept the exact 28-component
+`mat4 + mat3 + vec3` interface, reject 29 components, and reject cross-stage
+`mat2`/`mat3` mismatch. The focused RinGL IR and program targets and the
+RinOS-side bridge test executable build; none of these tests were executed, so
+runtime behavior remains unverified.
+
+This does not add varying arrays or general matrix arithmetic.

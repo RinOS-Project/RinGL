@@ -872,9 +872,12 @@ negation to scalar RSH1 operations.
 These operators are available for bounded square matrices in the generic
 vertex and fragment routes, including linked matrix varyings; oversized
 expressions still fail the existing instruction/register checks.
-Parser/IR and bridge readback coverage includes all dimensions and both
-resource-budget rejection paths. The focused IR target builds; the tests have
-not been executed. See [bounded matrix arithmetic v1](docs/implementation-status-ringl-matrix-arithmetic-v1.md).
+Parser/IR and bridge readback coverage includes all dimensions, matrix
+varyings, mixed-varying texture coordinates, and both matrix resource-budget
+rejection paths. The focused targets build; the tests have not been executed.
+See [bounded matrix arithmetic v1](docs/implementation-status-ringl-matrix-arithmetic-v1.md),
+[matrix varyings](docs/implementation-status-ringl-matrix-varyings-v1.md), and
+[mixed varying texture coordinates](docs/implementation-status-ringl-mixed-varying-texture-coordinates-v1.md).
 Bounded arrays of up to four `matN` elements use decimal constant indices in
 either stage; their contiguous setters atomically rebuild the owning stage(s).
 Cross-dimension conversion, rectangular matrix types, dynamic indices, and

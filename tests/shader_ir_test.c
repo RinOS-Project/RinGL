@@ -457,6 +457,47 @@ int main(void)
         "mat4 first = operand + values[0]; "
         "mat4 second = first + values[1]; "
         "gl_FragColor = second * vec4(0.1, 0.2, 0.3, 0.4); }";
+    const char* matrix3_varying_vertex_source =
+        "attribute vec2 position; varying mat3 transform; void main() { "
+        "transform = mat3(0.5, 0.25, 0.125, 0.0, 0.5, 0.25, "
+        "0.25, 0.0, 0.5); "
+        "gl_Position = vec4(position, 0.0, 1.0); }";
+    const char* matrix3_varying_fragment_source =
+        "varying mat3 transform; void main() { "
+        "vec3 color = transform * vec3(0.25, 0.5, 0.5); "
+        "gl_FragColor = vec4(color, 1.0); }";
+    const char* matrix2_varying_vertex_source =
+        "attribute vec2 position; varying mat2 transform; void main() { "
+        "transform = mat2(0.5, 0.25, 0.125, 0.75); "
+        "gl_Position = vec4(position, 0.0, 1.0); }";
+    const char* matrix2_varying_fragment_source =
+        "varying mat2 transform; void main() { "
+        "vec2 color = transform * vec2(0.25, 0.5); "
+        "gl_FragColor = vec4(color, 0.0, 1.0); }";
+    const char* matrix4_varying_vertex_source =
+        "attribute vec2 position; varying mat4 transform; void main() { "
+        "transform = mat4(0.5, 0.25, 0.125, 0.0, "
+        "0.125, 0.5, 0.25, 0.125, "
+        "0.25, 0.0, 0.5, 0.25, "
+        "0.0, 0.125, 0.25, 0.5); "
+        "gl_Position = vec4(position, 0.0, 1.0); }";
+    const char* matrix4_varying_fragment_source =
+        "varying mat4 transform; void main() { "
+        "vec4 color = transform * vec4(0.25, 0.5, 0.25, 0.5); "
+        "gl_FragColor = color; }";
+    const char* mixed_varying_texture_fragment_source =
+        "varying vec2 firstUv; varying vec2 secondUv; "
+        "uniform sampler2D colorTexture; void main() { "
+        "vec2 coordinates = firstUv + secondUv * vec2(0.5, 1.0); "
+        "gl_FragColor = texture2D(colorTexture, coordinates); }";
+    const char* wrong_width_texture_coordinate_source =
+        "varying vec3 coordinates; uniform sampler2D colorTexture; "
+        "void main() { gl_FragColor = "
+        "texture2D(colorTexture, coordinates); }";
+    const char* integer_texture_coordinate_source =
+        "uniform ivec2 coordinates; uniform sampler2D colorTexture; "
+        "void main() { gl_FragColor = "
+        "texture2D(colorTexture, coordinates); }";
     const char* vector_scalar_constructor_source =
         "attribute vec2 position;\n"
         "void main() {\n"
@@ -1121,6 +1162,66 @@ int main(void)
     expect_shader_lowering_rejected_for_budget(
         fragment, matrix4_uniform_array_register_budget_fragment_source,
         "RSH1 register limit exceeded");
+
+    /* Matrix varyings retain all column-major scalar slots into fragment
+     * matrix/vector multiplication for mat2, mat3, and mat4. The program
+     * linker owns cross-stage type and aggregate varying-budget validation;
+     * these strict IR modules pin each stage's scalar interface shape. */
+    header = lower_and_read_header(vertex, matrix2_varying_vertex_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 2u);
+    assert(header.output_count == 8u);
+    header = lower_and_read_header(fragment,
+                                   matrix2_varying_fragment_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 4u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_ADD_F32));
+
+    header = lower_and_read_header(vertex, matrix3_varying_vertex_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 2u);
+    assert(header.output_count == 13u);
+    header = lower_and_read_header(fragment,
+                                   matrix3_varying_fragment_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 9u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_ADD_F32));
+
+    header = lower_and_read_header(vertex, matrix4_varying_vertex_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 2u);
+    assert(header.output_count == 20u);
+    header = lower_and_read_header(fragment,
+                                   matrix4_varying_fragment_source,
+                                   blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 16u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_ADD_F32));
+
+    /* The complete texture coordinate expression combines two physical
+     * varying pairs before sampling. Wrong-width and integer coordinates may
+     * not publish a partial RSH1 module. */
+    header = lower_and_read_header(
+        fragment, mixed_varying_texture_fragment_source, blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 4u);
+    assert(header.output_count == 4u);
+    assert(header.resource_count == 2u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_ADD_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
+    expect_shader_rejected(fragment, wrong_width_texture_coordinate_source);
+    expect_shader_rejected(fragment, integer_texture_coordinate_source);
 
     /* A one-scalar vecN/ivecN constructor aliases the source register across
      * all components. The i32 splat is consumed through explicit scalar

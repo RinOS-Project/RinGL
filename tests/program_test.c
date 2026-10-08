@@ -68,6 +68,32 @@ static void ringl_destroy_array_test_program(RinGLArrayTestProgram* program)
     ringl_delete_shader(program->fragment);
 }
 
+static uint32_t ringl_link_varying_test_sources(
+    const char* vertex_source, const char* fragment_source)
+{
+    uint32_t vertex = ringl_create_shader(RINGL_VERTEX_SHADER);
+    uint32_t fragment = ringl_create_shader(RINGL_FRAGMENT_SHADER);
+    uint32_t program = ringl_create_program();
+    uint32_t link_status;
+
+    assert(vertex_source != NULL && fragment_source != NULL && vertex != 0u &&
+           fragment != 0u && program != 0u);
+    ringl_shader_source(vertex, vertex_source, -1);
+    ringl_shader_source(fragment, fragment_source, -1);
+    ringl_compile_shader(vertex);
+    ringl_compile_shader(fragment);
+    assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
+    assert(ringl_get_shader_compile_status(fragment) == RINGL_TRUE);
+    ringl_attach_shader(program, vertex);
+    ringl_attach_shader(program, fragment);
+    ringl_link_program(program);
+    link_status = ringl_get_program_link_status(program);
+    ringl_delete_program(program);
+    ringl_delete_shader(vertex);
+    ringl_delete_shader(fragment);
+    return link_status;
+}
+
 int main(void)
 {
     RinGLContext* context = NULL;
@@ -1292,6 +1318,39 @@ int main(void)
         assert(ringl_get_error() == RINGL_INVALID_VALUE);
     }
     ringl_delete_program(matrix_program);
+
+    /* Matrix varyings consume their scalar component count at link time.
+     * This exact 28-component interface fits; adding one more component or
+     * changing a same-named matrix dimension must fail link rather than
+     * truncate the RinGPU interpolant layout. */
+    assert(ringl_link_varying_test_sources(
+               "attribute vec2 position; varying mat4 transform4; "
+               "varying mat3 transform3; varying vec3 tail; "
+               "void main() { transform4 = mat4(1.0); "
+               "transform3 = mat3(1.0); tail = vec3(1.0); "
+               "gl_Position = vec4(position, 0.0, 1.0); }",
+               "varying mat4 transform4; varying mat3 transform3; "
+               "varying vec3 tail; "
+               "void main() { gl_FragColor = vec4(1.0); }") ==
+           RINGL_TRUE);
+    assert(ringl_link_varying_test_sources(
+               "attribute vec2 position; varying mat4 transform4; "
+               "varying mat3 transform3; varying vec4 overflow; "
+               "void main() { transform4 = mat4(1.0); "
+               "transform3 = mat3(1.0); overflow = vec4(1.0); "
+               "gl_Position = vec4(position, 0.0, 1.0); }",
+               "varying mat4 transform4; varying mat3 transform3; "
+               "varying vec4 overflow; "
+               "void main() { gl_FragColor = vec4(1.0); }") ==
+           RINGL_FALSE);
+    assert(ringl_link_varying_test_sources(
+               "attribute vec2 position; varying mat2 transform; "
+               "void main() { transform = mat2(1.0); "
+               "gl_Position = vec4(position, 0.0, 1.0); }",
+               "varying mat3 transform; "
+               "void main() { gl_FragColor = vec4(1.0); }") ==
+           RINGL_FALSE);
+
     /* A current program is retained after deletion until the binding is
      * explicitly replaced, matching the GLES object lifetime rule. */
     ringl_use_program(0u);

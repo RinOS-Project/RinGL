@@ -259,7 +259,9 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   - [x] Reuse the bounded two-`vec2` perspective interface for texture expressions: `texture2D(first, firstUv) + texture2D(second, secondUv)` assigns each sample to its declared varying pair and executes through RinGPU rather than treating the second coordinate as the first.
   - [x] Extend the RinGPU surface transport without changing its public compact clip-vertex V1 ABI: the private native route carries six finite scalar varyings through six-plane clipping, perspective interpolation, fragment preflight, and submission for the bounded three-`vec2` texture profile. Its matching 10-scalar vertex/6-scalar fragment RSH1 interface executes direct/indexed points, lines, line strips/loops, and triangle lists, strips, and fans; arbitrary scalar widths and general varying expressions remain unsupported on this V2 route.
   - [x] Extend that private native route from six to eight scalar varyings for the bounded direct four-`vec2` texture profile. A validated 12-output vertex/8-input fragment RSH1 pair carries four perspective coordinate pairs through the existing point, line, and triangle paths; mismatched shapes remain rejected before rasterization.
-  - [ ] General multiple-varying combinations and expressions remain unsupported.
+  - [ ] General and unbounded multiple-varying combinations remain unsupported;
+    the bounded matrix-varying and mixed texture-coordinate profiles below now
+    have strict source coverage, with runtime execution still unverified.
     The generic assignment path now links matching `varying float`, `vec2`,
     `vec3`, `vec4`, `mat2`, `mat3`, and `mat4` declarations up to RinGPU's
     real 28-scalar perspective-interpolant budget (the other four of 32 scalar
@@ -292,12 +294,18 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     with this change, but tests have not been run; the parent and this item
     remain open until parser/IR and real bridge readback regressions cover the
     new expressions. Broader linkage semantics also remain open.
-  - [ ] Add parser/IR and RinGL→RinGPU bridge readback coverage for complete
-    mixed-varying texture coordinates, including a multi-operand expression
-    and rejection of a wrong-width or non-floating coordinate.
-  - [ ] Add parser/IR and bridge readback coverage for matrix varying
-    transport, matrix-vector use in the fragment stage, cross-dimension link
-    rejection, and 28-component budget rejection.
+  - [x] Add parser/IR and RinGL→RinGPU bridge readback coverage for complete
+    mixed-varying texture coordinates. IR asserts a two-input-pair `ADD` plus
+    `MUL` expression and rejects wrong-width `vec3` and integer `ivec2`
+    coordinates without publishing a module; the bridge reads the blue texel
+    selected only by the combined expression. Focused targets build; tests
+    were not executed ([status](docs/implementation-status-ringl-mixed-varying-texture-coordinates-v1.md)).
+  - [x] Add parser/IR and bridge readback coverage for matrix varying
+    transport and fragment matrix-vector use in `mat2`, `mat3`, and `mat4`.
+    Program-link coverage accepts exactly 28 scalar components
+    (`mat4 + mat3 + vec3`), rejects 29, and rejects a same-name `mat2`/`mat3`
+    mismatch. Focused targets build; tests were not executed
+    ([status](docs/implementation-status-ringl-matrix-varyings-v1.md)).
   - [x] Combine two distinct perspective-interpolated `varying vec3` values in a `textureCube()` direction. The end-to-end host regression carries six scalar inputs through the RinGPU native varying route, adds the two fragment values, and reads distinct +Z face/mip colors; arbitrary varying combinations remain unsupported ([status](docs/implementation-status-sampler-cube-bounded-v1.md)).
   - [x] Combine generic `varying float`/`vec2`/`vec3`/`vec4` interfaces with a
     programmable `gl_PointSize` expression. RSH1 output 4 is reserved for point

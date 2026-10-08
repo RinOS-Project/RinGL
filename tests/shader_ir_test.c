@@ -1166,19 +1166,20 @@ int main(void)
     assert(header.instruction_count == 21u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
 
-    /* Structural varying lowering accepts the documented finite literal or
-     * scalar-float-uniform/attribute-component point-size forms. A broader
-     * expression must fail before a native module can be published with an
-     * ambiguous output ABI. */
-    ringl_shader_source(vertex,
-                        "attribute vec2 position; attribute vec4 color; "
-                        "varying vec4 vertexColor; void main() { "
-                        "gl_Position = vec4(position, 0.0, 1.0); "
-                        "vertexColor = color; gl_PointSize = color.r * color.g; }", -1);
-    ringl_compile_shader(vertex);
-    assert(ringl_get_shader_compile_status(vertex) == RINGL_TRUE);
-    assert(ringl_lower_shader_rsh1(vertex) != 0);
-    assert(ringl_get_shader_rsh1_size(vertex) == 0u);
+    /* Generic lowering reserves output 4 for point size, then places the
+     * complete varying interface after it even when the point-size expression
+     * is outside the compact color profile. */
+    header = lower_and_read_header(
+        vertex,
+        "attribute vec2 position; attribute vec4 color; "
+        "varying vec4 vertexColor; void main() { "
+        "gl_Position = vec4(position, 0.0, 1.0); "
+        "vertexColor = color; gl_PointSize = color.r * color.g; }",
+        blob, sizeof(blob));
+    assert(header.stage == 1u);
+    assert(header.input_count == 6u);
+    assert(header.output_count == 9u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
 
     ringl_shader_source(vertex,
                         "attribute vec2 position; attribute vec4 color; "

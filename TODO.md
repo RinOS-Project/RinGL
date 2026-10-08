@@ -231,7 +231,7 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   - [ ] Obtain an end-to-end cube sample/readback and mip-selection regression through RinGL→RinGPU, then record the host/runtime result. Do not infer this evidence from shader lowering or fake image callbacks ([status](docs/implementation-status-sampler-cube-bounded-v1.md)).
   - [x] Execute bounded constant-indexed numeric `uniform name[N]` arrays through the same RinGL→RinGPU module path: scalar `int`/`bool` and `vec`/`ivec`/`bvec` have at most eight elements per type, while vertex `mat2`/`mat3`/`mat4` have at most four. Reflection coalesces each declaration as `name[0]` of size `N`; base-name location aliases, complete span setters, Boolean normalization, 64-register matrix-array storage, and replacement rollback are covered by parser/program regressions.
   - [ ] GLSL ES texture semantics outside the generic accepted expression grammar remain unsupported: dynamic uniform indexing, 3D/array/shadow forms, loops/functions, storage side effects, unsupported control flow/types, and modules exceeding the 128-instruction/96-register RSH1 ceiling fail before publication. This does not claim complete GLSL ES/WebGL texture conformance.
-- [ ] Expand varying support beyond the initial `vec2` perspective-interpolated profile.
+- [ ] Complete generic varying semantics and end-to-end mixed-interface coverage beyond the initial `vec2` perspective-interpolated profile.
   - [x] Implement the bounded `attribute vec2 position` + `attribute vec4 color` -> `varying vec4 vertexColor` -> `gl_FragColor = vertexColor` profile: parser/linker reflection, six scalar Float32 vertex inputs, four scalar perspective varyings, RSH1 lowering, and the RinGPU surface output path are covered by strict tests. The fragment value may now use a full-width, read-only `xyzw`/`rgba`/`stpq` selector chain (for example `vertexColor.stpq.bgra`); RinGL composes it into scalar RSH1 source registers for direct color output and the bounded `texture2D(colorTexture, uv) * vertexColor * tint` material, including the optional `uniform vec4` tint, and actual RinGL→RinGPU→Aquamarine draws read back the reordered colors.
   - [x] Implement the bounded `attribute vec2 position` + `attribute vec3 color` -> `varying vec3 vertexColor` -> `gl_FragColor = vec4(vertexColor, 1.0)` profile: the RGB components use three perspective scalar varyings, while the fixed fourth RinGPU slot is explicitly produced as `1.0` and loaded by the fragment RSH1. A full-width read-only selector chain such as `vertexColor.bgr` reorders only the real RGB slots; alpha remains the explicit `1.0` compatibility value.
   - [x] Implement the bounded two-`vec2` profile: independent `vertexRG`/`vertexBA` declarations map to four distinct scalar perspective varyings and `gl_FragColor = vec4(vertexRG, vertexBA)`.
@@ -258,9 +258,18 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     clip/color components are required during RinGL→RinGPU module publication.
     The public bridge readback covers swapped position `xy`, explicit `zw`,
     reordered fragment `bgr`, and alpha stores; an incomplete `rgb` output
-    fails link instead of receiving a fabricated component. General varying
-    expressions, generic texture use, and broader linkage semantics remain
-    unsupported.
+    fails link instead of receiving a fabricated component. The generic
+    expression lowerer can consume varying values in its bounded arithmetic
+    and texture-coordinate grammar. End-to-end coverage for arbitrary mixed
+    varying expressions, varying-driven texture combinations, and broader
+    linkage semantics remains open.
+  - [x] Combine generic `varying float`/`vec2`/`vec3`/`vec4` interfaces with a
+    programmable `gl_PointSize` expression. RSH1 output 4 is reserved for point
+    size and every varying store is shifted after it independent of source
+    assignment order; programs without point size retain all 28 scalar varying
+    slots, while programs with point size are bounded by the remaining 27 slots.
+    Overflow rejects before shader publication. See
+    [implementation status](../../../docs/implementation-status-ringl-point-size-varyings-v1.md).
   - [x] Extend enabled `GL_EXT_draw_buffers` literal `gl_FragData[0..3]` writes
     with non-overlapping writable `xyzw`/`rgba`/`stpq` selectors. Each selector
     emits the selected attachment's real scalar RSH1 stores in source order;

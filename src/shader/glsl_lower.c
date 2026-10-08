@@ -185,6 +185,7 @@ typedef struct Lower {
     uint32_t shader_texture_lod_enabled;
     uint32_t frag_depth_enabled;
     uint32_t uses_frag_depth;
+    uint32_t uses_point_size_output;
     uint32_t draw_buffers_enabled;
     uint32_t uses_draw_buffers;
     uint32_t stage_output_components;
@@ -4228,15 +4229,6 @@ static int assignment(Lower* lower)
     if (!need(lower, T_SEMI, "expected ';' after assignment"))
         return 0;
     if (output) {
-        /* The generic point-size expression route has a five-output raster
-         * ABI. A shader that also carries generic varyings must use one of
-         * the structural profiles, which proves the combined output layout;
-         * do not publish an arbitrary mixed interface merely because scalar
-         * expression lowering happened to succeed. */
-        if (point_size && lower->next_varying_output != 4u) {
-            fail(lower, "generic gl_PointSize cannot be combined with varyings");
-            return 0;
-        }
         if (frag_data && has_lvalue_swizzle) {
             if (value.matrix || value.is_i32 ||
                 value.width != lvalue_component_count) {
@@ -4281,6 +4273,25 @@ static int assignment(Lower* lower)
         if (stage_output) {
             lower->stage_output_components |=
                 value.width == 4u ? UINT32_C(0x0f) : UINT32_C(0x01);
+        }
+        if (point_size) {
+            /* The RSH1 vertex ABI reserves output 4 for programmable point
+             * size. Keep it distinct from generic varying stores while the
+             * source is lowered; finalize_point_size_varying_outputs()
+             * shifts varying stores after parsing, regardless of assignment
+             * order or statically expanded control flow. */
+            if (!store_output(lower, &value, first_output))
+                return 0;
+            if (lower->ins_count == 0u ||
+                lower->ins[lower->ins_count - 1u].opcode !=
+                    RINGL_RSH1_OP_STORE_OUTPUT_F32 ||
+                lower->ins[lower->ins_count - 1u].immediate != first_output) {
+                fail(lower, "gl_PointSize output lowering failed");
+                return 0;
+            }
+            lower->ins[lower->ins_count - 1u].immediate = UINT32_MAX;
+            lower->uses_point_size_output = 1u;
+            return 1;
         }
         return store_output(lower, &value, first_output);
     }
@@ -5498,6 +5509,53 @@ static int validate_stage_output_selectors(Lower* lower)
     return 0;
 }
 
+/* RSH1's native graphics ABI places gl_PointSize at output 4, while RinGL
+ * assigns generic perspective varyings densely from that location when no
+ * point-size output is present. Delay the layout decision until the complete
+ * shader is parsed so gl_PointSize can appear before or after varying
+ * assignments. */
+static int finalize_point_size_varying_outputs(Lower* lower)
+{
+    uint32_t output_count = 0u;
+    int point_size_store_seen = 0;
+
+    if (lower == NULL || lower->uses_point_size_output == 0u)
+        return 1;
+    for (uint32_t index = 0u; index < lower->ins_count; ++index) {
+        RinGLRsh1InstructionV1* instruction = &lower->ins[index];
+        uint32_t output;
+
+        if (instruction->opcode != RINGL_RSH1_OP_STORE_OUTPUT_F32)
+            continue;
+        output = instruction->immediate;
+        if (output == UINT32_MAX) {
+            instruction->immediate = 4u;
+            output = 4u;
+            point_size_store_seen = 1;
+        } else if (output >= 4u) {
+            ++output;
+            if (output >= RINGL_MAX_VARYING_COMPONENTS + 4u) {
+                fail(lower,
+                     "gl_PointSize and varyings exceed the RSH1 output limit");
+                return 0;
+            }
+            instruction->immediate = output;
+        }
+        if (output >= RINGL_MAX_VARYING_COMPONENTS + 4u) {
+            fail(lower, "vertex output exceeds the RSH1 interface limit");
+            return 0;
+        }
+        if (output_count < output + 1u)
+            output_count = output + 1u;
+    }
+    if (!point_size_store_seen) {
+        fail(lower, "gl_PointSize output store is missing");
+        return 0;
+    }
+    lower->output_count = (uint16_t)output_count;
+    return 1;
+}
+
 /* Emit type-bearing loads for the fixed interpolant ABI.  They are unused by
  * constant fragment shaders, but RinGPU validates every declared input when
  * it builds a native graphics pipeline. */
@@ -5919,7 +5977,8 @@ int ringl_glsl_lower_rsh1_with_uniforms(
     lower.result = result;
     if (!parse_all(&lower))
         return 1;
-    if (!validate_stage_output_selectors(&lower))
+    if (!finalize_point_size_varying_outputs(&lower) ||
+        !validate_stage_output_selectors(&lower))
         return 1;
     if (!append_draw_buffer_defaults(&lower))
         return 1;

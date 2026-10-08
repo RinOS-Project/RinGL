@@ -6,11 +6,12 @@ applies those operations to the represented 8-bit stencil value, so increment
 wraps `255` to `0` and decrement wraps `0` to `255`.
 
 `tests/rin_webgl_ringl_bridge_test.c` now contains an end-to-end surface case
-that clears the native S8 plane to 255, draws with `INCR_WRAP`, checks the
-resulting zero value and red color, then gates a second draw with `EQUAL 0`,
-uses `DECR_WRAP`, and checks the resulting 255 value and green color. This
-checks both stencil mutation and the color effect of the stencil comparison
-through RinGL, RinGPU, and the Aquamarine software surface.
+for all eight stencil operations. It verifies `KEEP`, `ZERO`, `REPLACE`,
+`INCR`, `DECR`, and `INVERT` against native S8 values, then clears to 255 and
+checks `INCR_WRAP` produces 0. A second draw gated by `EQUAL 0` uses
+`DECR_WRAP` and checks the resulting 255 value and green color. This checks
+both stencil mutation and the color effect of the stencil comparison through
+RinGL, RinGPU, and the Aquamarine software surface.
 
 The bridge test executable was compiled from the root test manifest while
 adding this case. The executable was not run in this work session. This covers

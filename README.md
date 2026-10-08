@@ -1151,7 +1151,8 @@ RinGPU's F32 depth/S8 stencil storage and executes independent front/back
 stencil tests, reference/read/write masks, all eight stencil operations, and
 stencil clear before the depth test. The S8 wrap operations use modulo-256
 arithmetic; the bridge regression source covers both 255-to-0 increment and
-0-to-255 decrement through stencil-gated native draws. A stencil-only
+0-to-255 decrement through stencil-gated native draws, as well as the six
+remaining operations against S8 values. A stencil-only
 attachment rejects depth comparison/write at the native pipeline boundary; an
 enabled logical depth test therefore cannot access or accidentally
 manufacture a depth plane. The

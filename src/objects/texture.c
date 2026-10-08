@@ -59,6 +59,47 @@ static int wrap_valid(uint32_t value)
            value == RINGL_MIRRORED_REPEAT;
 }
 
+static int texture_parameter_float_enum_value(uint32_t pname, float param,
+                                               int32_t* value_out)
+{
+    uint32_t values[6];
+    size_t count = 0u;
+    size_t index;
+
+    if (value_out == NULL)
+        return 0;
+    switch (pname) {
+    case RINGL_TEXTURE_MIN_FILTER:
+        values[count++] = RINGL_NEAREST;
+        values[count++] = RINGL_LINEAR;
+        values[count++] = RINGL_NEAREST_MIPMAP_NEAREST;
+        values[count++] = RINGL_NEAREST_MIPMAP_LINEAR;
+        values[count++] = RINGL_LINEAR_MIPMAP_NEAREST;
+        values[count++] = RINGL_LINEAR_MIPMAP_LINEAR;
+        break;
+    case RINGL_TEXTURE_MAG_FILTER:
+        values[count++] = RINGL_NEAREST;
+        values[count++] = RINGL_LINEAR;
+        break;
+    case RINGL_TEXTURE_WRAP_S:
+    case RINGL_TEXTURE_WRAP_T:
+        values[count++] = RINGL_CLAMP_TO_EDGE;
+        values[count++] = RINGL_REPEAT;
+        values[count++] = RINGL_MIRRORED_REPEAT;
+        break;
+    default:
+        return 0;
+    }
+
+    for (index = 0u; index < count; ++index) {
+        if (param == (float)values[index]) {
+            *value_out = (int32_t)values[index];
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static void texture_init_defaults(RinGLTextureObject* texture)
 {
     if (texture == NULL)
@@ -2269,11 +2310,21 @@ void ringl_tex_parameterf(uint32_t target, uint32_t pname, float param)
     RinGLContext* context = ringl_get_current_context();
     RinGLTextureObject* texture;
     float clamped;
+    int32_t enum_value;
 
     if (context == NULL)
         return;
+    if (pname != RINGL_TEXTURE_MAX_ANISOTROPY_EXT) {
+        /* GLES defines the core sampler pnames as integer enums. Accept their
+         * exact Float32 representations and route all validation/state changes
+         * through the integer setter. Invalid values use an invalid enum
+         * sentinel without converting an out-of-range or non-finite float. */
+        if (!texture_parameter_float_enum_value(pname, param, &enum_value))
+            enum_value = 0;
+        ringl_tex_parameteri(target, pname, enum_value);
+        return;
+    }
     if (!texture_target_valid(target) ||
-        pname != RINGL_TEXTURE_MAX_ANISOTROPY_EXT ||
         context->webgl_texture_filter_anisotropic_enabled == RINGL_FALSE) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return;
@@ -2354,29 +2405,24 @@ int32_t ringl_get_tex_parameteri(uint32_t target, uint32_t pname)
         return (int32_t)texture->wrap_s;
     if (pname == RINGL_TEXTURE_WRAP_T)
         return (int32_t)texture->wrap_t;
+    if (pname == RINGL_TEXTURE_MAX_ANISOTROPY_EXT) {
+        if (context->webgl_texture_filter_anisotropic_enabled == RINGL_FALSE) {
+            ringl_context_record_error(context, RINGL_INVALID_ENUM);
+            return 0;
+        }
+        /* GLES integer queries round floating state to the nearest integer. */
+        return (int32_t)(texture->max_anisotropy + 0.5f);
+    }
     ringl_context_record_error(context, RINGL_INVALID_ENUM);
     return 0;
 }
 
 float ringl_get_tex_parameterf(uint32_t target, uint32_t pname)
 {
-    RinGLContext* context = ringl_get_current_context();
-    RinGLTextureObject* texture;
+    float value = 0.0f;
 
-    if (context == NULL)
-        return 0.0f;
-    if (!texture_target_valid(target) ||
-        pname != RINGL_TEXTURE_MAX_ANISOTROPY_EXT ||
-        context->webgl_texture_filter_anisotropic_enabled == RINGL_FALSE) {
-        ringl_context_record_error(context, RINGL_INVALID_ENUM);
-        return 0.0f;
-    }
-    texture = bound_texture_for_target(context, target);
-    if (texture == NULL) {
-        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
-        return 0.0f;
-    }
-    return texture->max_anisotropy;
+    (void)ringl_get_tex_parameterfv_bounded(target, pname, &value, 1u);
+    return value;
 }
 
 int ringl_get_tex_parameteriv_bounded(uint32_t target, uint32_t pname,
@@ -2424,7 +2470,7 @@ int ringl_get_tex_parameteriv_bounded(uint32_t target, uint32_t pname,
             ringl_context_record_error(context, RINGL_INVALID_ENUM);
             return -1;
         }
-        result = (int32_t)texture->max_anisotropy;
+        result = (int32_t)(texture->max_anisotropy + 0.5f);
         break;
     default:
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
@@ -2451,9 +2497,20 @@ int ringl_get_tex_parameterfv_bounded(uint32_t target, uint32_t pname,
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return -1;
     }
-    if (!texture_target_valid(target) ||
-        pname != RINGL_TEXTURE_MAX_ANISOTROPY_EXT ||
+    if (!texture_target_valid(target)) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
+    if (pname == RINGL_TEXTURE_MAX_ANISOTROPY_EXT &&
         context->webgl_texture_filter_anisotropic_enabled == RINGL_FALSE) {
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
+    if (pname != RINGL_TEXTURE_MIN_FILTER &&
+        pname != RINGL_TEXTURE_MAG_FILTER &&
+        pname != RINGL_TEXTURE_WRAP_S &&
+        pname != RINGL_TEXTURE_WRAP_T &&
+        pname != RINGL_TEXTURE_MAX_ANISOTROPY_EXT) {
         ringl_context_record_error(context, RINGL_INVALID_ENUM);
         return -1;
     }
@@ -2462,7 +2519,26 @@ int ringl_get_tex_parameterfv_bounded(uint32_t target, uint32_t pname,
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return -1;
     }
-    result = texture->max_anisotropy;
+    switch (pname) {
+    case RINGL_TEXTURE_MIN_FILTER:
+        result = (float)texture->min_filter;
+        break;
+    case RINGL_TEXTURE_MAG_FILTER:
+        result = (float)texture->mag_filter;
+        break;
+    case RINGL_TEXTURE_WRAP_S:
+        result = (float)texture->wrap_s;
+        break;
+    case RINGL_TEXTURE_WRAP_T:
+        result = (float)texture->wrap_t;
+        break;
+    case RINGL_TEXTURE_MAX_ANISOTROPY_EXT:
+        result = texture->max_anisotropy;
+        break;
+    default:
+        ringl_context_record_error(context, RINGL_INVALID_ENUM);
+        return -1;
+    }
     *value = result;
     return 0;
 }

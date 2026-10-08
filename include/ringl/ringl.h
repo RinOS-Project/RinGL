@@ -1641,17 +1641,18 @@ float ringl_get_tex_parameterf(uint32_t target, uint32_t pname);
 /* Bounded setter-vector forms read one scalar value from the caller span.
  * They return -1 for an absent context or invalid caller span; GL target,
  * pname, and value errors are reported through the context error queue. The
- * integer form uses the represented sampler pnames; the float form uses the
- * gated anisotropy pname supported by ringl_tex_parameterf(). */
+ * integer form uses the GLES sampler pnames and gated anisotropy; the float
+ * form accepts exact Float32 enum values for core pnames and gated anisotropy. */
 int ringl_tex_parameteriv_bounded(uint32_t target, uint32_t pname,
                                   const int32_t* value,
                                   size_t value_count);
 int ringl_tex_parameterfv_bounded(uint32_t target, uint32_t pname,
                                   const float* value, size_t value_count);
-/* Bounded texture-parameter adapters.  The integer form accepts the four
- * sampler enum pnames represented by ringl_get_tex_parameteri(); the float
- * form accepts the gated anisotropy pname.  A short/null output records an
- * error and leaves caller storage unchanged. */
+/* Bounded texture-parameter adapters. The integer form returns the four
+ * sampler enum pnames and rounds gated anisotropy to the nearest integer. The
+ * float form converts core enum values to Float32 and returns gated anisotropy
+ * without narrowing. A short/null output records an error and leaves caller
+ * storage unchanged. */
 int ringl_get_tex_parameteriv_bounded(uint32_t target, uint32_t pname,
                                       int32_t* value, size_t value_count);
 int ringl_get_tex_parameterfv_bounded(uint32_t target, uint32_t pname,

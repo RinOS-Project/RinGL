@@ -101,6 +101,11 @@ bounded typed treatment, and vertex-attribute descriptor/current-value queries
 provide integer and Float32 adapters with complete-span validation. The raw
 pointer query remains unavailable: exposing a host pointer would violate the
 embedding ABI, so callers must use the versioned attribute record instead.
+Texture parameter setters now expose bounded vector forms; their Float32
+variants accept exact enum representations for the four core filter/wrap
+pnames, while anisotropy remains extension-gated. Float queries preserve the
+core enum values as Float32 and retain anisotropy precision. Integer anisotropy
+queries round the tracked value to the nearest integer.
 
 `glGetBufferParameteriv` is also available through a bounded adapter for the
 represented `BUFFER_SIZE` and `BUFFER_USAGE` pnames. Target, binding, pname,

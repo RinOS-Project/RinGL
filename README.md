@@ -1094,6 +1094,8 @@ pixel-boundary ties; invalid values leave state unchanged with `INVALID_VALUE`.
 `RinGLLineWidthV1` exposes the current width and fixed `[1, 64]` range through
 a versioned snapshot for WebGL `LINE_WIDTH` and `ALIASED_LINE_WIDTH_RANGE`
 queries.
+The root WebGL bridge regression source checks the one- and three-pixel line
+coverage plus polygon-offset depth behavior through the same RinGPU route.
 
 `RINGL_SAMPLE_COVERAGE` and `ringl_sample_coverage()` keep the finite-clamped
 coverage value and invert flag in explicit dynamic raster state. RinGPU's V4

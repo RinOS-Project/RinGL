@@ -614,6 +614,12 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     different linked program releases the handle. Non-current programs remain
     immediate deletion; `program_test.c` covers pending query and final stale
     rejection.
+  - [x] Add a RinGL→RinGPU→Aquamarine readback regression for aliased line
+    widths 1 and 3 plus positive/negative polygon offset under `LESS` depth
+    testing. It checks exact 5×5 line coverage, preserved green/depth on a
+    positive offset, and red/depth update on a negative offset; the bridge
+    target builds, but was not executed in this work session
+    ([status](docs/implementation-status-raster-state-v1.md)).
 - [x] Expose the executable RSH1 shader precision profile through a versioned
   `ringl_get_shader_precision_format()` query. All accepted float precision
   classes report IEEE-754 binary32; accepted integer classes report the signed

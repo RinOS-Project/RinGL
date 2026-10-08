@@ -275,10 +275,10 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     instead of restricting ordinary `texture2D()` coordinates to a varying
     plus one operand. This admits mixed varying/local/uniform arithmetic,
     swizzles, and constructors, with floating `vec2`/`vec3`/`vec4` validation
-    retained before RSH1 publication. This parser change is source-reviewed
-    only; the parent and this item remain open until parser/IR and real bridge
-    readback regressions cover the new expressions. Broader linkage semantics
-    also remain open.
+    retained before RSH1 publication. The `RinGL` CMake library target builds
+    with this change, but tests have not been run; the parent and this item
+    remain open until parser/IR and real bridge readback regressions cover the
+    new expressions. Broader linkage semantics also remain open.
   - [ ] Add parser/IR and RinGL→RinGPU bridge readback coverage for complete
     mixed-varying texture coordinates, including a multi-operand expression
     and rejection of a wrong-width or non-floating coordinate.

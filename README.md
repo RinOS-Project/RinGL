@@ -272,9 +272,9 @@ The GLSL parser now admits complete `texture2D()` and `texture2DProj()`
 coordinate expressions to the generic RSH1 lowerer, which checks the final
 floating vector width and emits the arithmetic before real RinGPU sampling.
 This includes combinations of varying, local, and uniform values with
-swizzles or constructors. The parser change has source review only; mixed
-varying texture coordinates still need parser/IR and bridge readback coverage
-before this compatibility slice is complete
+swizzles or constructors. The RinGL library target builds with the parser
+change, but mixed varying texture coordinates still need parser/IR and bridge
+readback coverage before this compatibility slice is complete
 ([status](docs/implementation-status-ringl-mixed-varying-texture-coordinates-v1.md)).
 
 ## WebGL standard derivatives

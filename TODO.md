@@ -166,9 +166,17 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     program-owned matrix uniforms; matching `matN * vecN` then executes the
     result on RinGPU. IR coverage includes all three dimensions and invalid
     mixed dimensions, while the real bridge covers uniform mat2/mat3 and local
-    mat4 values. Matrix arrays, cross-dimension conversion, general
-    matrix/matrix arithmetic, and the specialized varying/texture profile stay
-    unsupported.
+    mat4 values. The generic lowerer now also supports matching square matrix
+    addition/subtraction and products, vector/matrix products, scalar/matrix
+    multiplication, matrix/scalar division, and unary negation, with RSH1 budget checks.
+    Matrix arrays, cross-dimension conversion, rectangular matrix types, and
+    matrix/vector operations in the specialized transformed-texture profile
+    stay unsupported.
+  - [ ] Add parser/IR and RinGL→RinGPU readback regression coverage for matrix
+    addition/subtraction, matN×matN, vecN×matN, scalar operations, unary
+    negation, column-major results, and instruction/register-budget rejection.
+    Source and build status:
+    [matrix arithmetic v1](docs/implementation-status-ringl-matrix-arithmetic-v1.md).
   - [x] Lower bounded scalar `if`/`else` whose two branches each assign the
     complete stage output. Matching Float or i32 scalar comparisons emit their
     real RSH1 comparison, an i32 zero test, and forward `JUMP_IF`/`JUMP`; the

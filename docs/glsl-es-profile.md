@@ -23,17 +23,21 @@ The current first-triangle slice supports:
   0.5`), which maps directly to scalar RSH1 output stores;
 - component-wise `+`, `-`, `*`, and `/` with same-width vectors or one scalar
   broadcast across a vector;
-- generic no-varying vertex and fragment `mat2`/`mat3`/`mat4` values:
+- generic vertex and fragment `mat2`/`mat3`/`mat4` values, with or without
+  matching matrix varyings:
   scalar-diagonal,
   scalar/vector-component, and matching-dimension copy constructors; initialized
   local matrices and matrix uniforms; `matrixCompMult(matN, matN)` with
-  matching Float dimensions; and the resulting `matN * vecN`. Up to four
-  matrix-array elements of each type may be selected with an in-range decimal
-  constant in either stage. RinGL retains
-  column-major elements and lowers every component product to scalar RSH1
-  `MUL_F32`, so RinGPU executes the operation rather than an embedding. Matrix
-  dynamic indexing, cross-dimension conversion, arbitrary matrix arithmetic,
-  and the specialized varying/texture profile remain unsupported;
+  matching Float dimensions; same-dimension matrix addition/subtraction and
+  multiplication; `matN * vecN` and `vecN * matN`; matrix/scalar multiplication
+  in either order, matrix/scalar division; and unary matrix negation. Up to
+  four matrix-array elements of each type may be selected with an in-range
+  decimal constant in either stage.
+  RinGL retains column-major elements and lowers every operation to scalar
+  RSH1 instructions, so RinGPU executes the math rather than an embedding.
+  Dynamic indexing, cross-dimension conversion, rectangular matrix types, and
+  matrix/vector operations in the specialized transformed-texture profile
+  remain unsupported;
 - scalar Float or i32 `if` conditions with exactly one comparison and a
   mandatory `else`. Each branch normally writes one complete
   `gl_Position`/`gl_FragColor` `vec4`; in a fragment shader, exactly one branch
@@ -268,10 +272,10 @@ expressions still fail before module publication.
 Nonconstant coordinates in this profile, general swizzle writes outside the
 documented generic vertex-varying lvalue form, implicit float/integer
 conversion, vector constructors with mixed scalar types,
-matrices beyond the documented bounded `matrixCompMult`/matrix-vector
-vertex/fragment forms, dynamic uniform-array indexing (bounded scalar/vector
-integer/Boolean arrays use at most eight elements per type and matrices at
-most four),
+matrices beyond the documented bounded square-matrix operations and
+matrix/vector vertex/fragment forms, dynamic uniform-array indexing (bounded
+scalar/vector integer/Boolean arrays use at most eight elements per type and
+matrices at most four),
 additional varying types, loops, user functions,
 general/nested control flow, precision edge cases, and
 broader GLSL ES built-ins remain incremental work.

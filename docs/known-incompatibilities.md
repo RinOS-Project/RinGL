@@ -89,14 +89,18 @@ exact structural forms documented by that profile. A source program outside
 those forms must fail compilation/linking without publishing partial RSH1 or
 submitting a RinGPU command.
 
-The generic no-varying matrix form permits `mat2`/`mat3`/`mat4` uniforms in
-both vertex and fragment stages, including arrays of at most four elements
-selected by an in-range decimal literal or `const int` initialized with an
-integer literal. These are program-owned scalar RSH1
-constants and `matN * vecN` products; contiguous matrix uploads replace the
-affected linked stage module atomically. Dynamic indexing, cross-dimension or
-matrix/matrix arithmetic, and matrix use in the specialized varying/texture
-profile remain unavailable and must be rejected before RinGPU submission.
+The generic matrix form permits square `mat2`/`mat3`/`mat4` values in either
+stage, including arrays of at most four elements selected by an in-range
+decimal literal or `const int` initialized with an integer literal. The
+lowerer supports same-dimension matrix addition/subtraction and products,
+matrix/vector products, matrix/scalar multiplication and division, unary
+negation, and `matrixCompMult`; it emits scalar RSH1 operations and relies on
+the instruction/register limits before publication. Matrix uniform updates
+replace affected program-owned stage modules atomically. Dynamic indexing,
+cross-dimension conversion, rectangular matrix types, and matrix/vector use in
+the specialized transformed-texture profile remain unavailable and must be
+rejected before RinGPU submission. New matrix arithmetic regression coverage
+is still open.
 
 ## RinGPU and browser integration limits
 

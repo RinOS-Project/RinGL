@@ -853,16 +853,24 @@ their RGBA result by one linked `uniform vec4`; RinGL materializes the finite
 four-component value in the program-owned fragment RSH1 module and retains
 the sampler-resource metadata needed to bind every native image/sampler pair.
 This specialized varying/texture shape deliberately remains vertex-`mat4`
-only. The generic no-varying vertex and fragment profile additionally executes matching Float
+only. The generic lowerer additionally executes matching Float
 `matrixCompMult(matN, matN)` for `mat2`, `mat3`, and `mat4`: scalar-diagonal,
 component-list/vector-column, and matching-copy constructors feed initialized
 local or program-owned uniform matrices, and every column-major component
 becomes an executable scalar RSH1 multiply before a matching `matN * vecN`.
+The generic expression path also lowers same-dimension matrix addition and
+subtraction, matrix/matrix products, vector/matrix products in both orders,
+matrix/scalar multiplication and matrix/scalar division, and unary matrix
+negation to scalar RSH1 operations.
+These operators are available for bounded square matrices in the generic
+vertex and fragment routes, including linked matrix varyings; oversized
+expressions still fail the existing instruction/register checks.
+Build and coverage state: [bounded matrix arithmetic v1](docs/implementation-status-ringl-matrix-arithmetic-v1.md).
 Bounded arrays of up to four `matN` elements use decimal constant indices in
 either stage; their contiguous setters atomically rebuild the owning stage(s).
-Cross-dimension conversion, general matrix arithmetic, dynamic indices, and
-matrix/vector combinations with the specialized varying/texture shape remain
-outside both profiles. Direct texture coordinates
+Cross-dimension conversion, rectangular matrix types, dynamic indices, and
+matrix/vector combinations with the specialized transformed-texture shape
+remain outside both profiles. Direct texture coordinates
 through eight UV pairs fit the RSH1 interface; broader local coordinate
 expressions remain outside it and fail lowering without publishing a truncated
 module.
@@ -942,8 +950,9 @@ This covers common uniform color modulation and matrix-transformed positions
 (`mat2 * vec2`, `mat3 * vec3`, or `mat4 * vec4`) plus a vector offset and the
 matching Float `matrixCompMult(matN, matN)` subset described above, while
 retaining explicit RSH1 resource and register limits; dynamic matrix-array
-indexing, cross-dimension conversion, general matrix arithmetic, vector
-comparisons, and general control flow are still outside the profile. A bounded scalar
+indexing, cross-dimension conversion, rectangular matrix types, matrix/vector
+operations in the specialized transformed-texture profile, vector comparisons,
+and general control flow are still outside the profile. A bounded scalar
 `if (scalar-comparison) { stage-output = vec4(...); } else { stage-output =
 vec4(...); }` is executable: RinGL emits the original Float/i32 comparison,
 tests its i32 result against zero, and uses only forward RSH1 branches. The
@@ -1500,10 +1509,13 @@ generic no-varying forms include `vec4(tint2, 0.0, 1.0)` for a `vec2`,
 `mat4` and `attribute vec2`/`vec3`/`vec4`, and fragment
 `gl_FragColor = matN * vecN` expressions. Each stage accepts up to four
 literal- or literal-`const int`-indexed matrix-array elements per type; updates retain the same
-failure-atomic program-owned module replacement. The generic form has no
-varyings. Dynamic indexing, cross-dimension/general matrix arithmetic, and
-matrix/vector combinations with the specialized varying/texture profiles
-remain unavailable rather than being reported as successful GLES.
+failure-atomic program-owned module replacement. The generic expression path
+also lowers same-dimension matrix addition/subtraction and products,
+vector/matrix products, matrix/scalar multiplication and division, and unary
+negation across the generic varying and no-varying routes. Dynamic indexing,
+cross-dimension conversion, rectangular matrix types, and matrix/vector
+combinations with the specialized transformed-texture profile remain
+unavailable rather than being reported as successful GLES.
 
 ## Public API contract
 

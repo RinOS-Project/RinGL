@@ -3677,13 +3677,14 @@ static Value primary(Lower* lower)
 static Value unary(Lower* lower)
 {
     Value value;
+    uint32_t component_count;
     uint32_t index;
     if (take(lower, T_PLUS)) {
         value = unary(lower);
         if (value.width == 0u)
             return value;
-        if (value.matrix || value.is_bool) {
-            fail(lower, "unary arithmetic does not accept bool or matrix values");
+        if (value.is_bool) {
+            fail(lower, "unary arithmetic does not accept bool values");
             return invalid_value();
         }
         return value;
@@ -3692,11 +3693,13 @@ static Value unary(Lower* lower)
         return primary(lower);
 
     value = unary(lower);
-    if (value.width == 0u || value.matrix || value.is_bool) {
-        fail(lower, "unary arithmetic does not accept bool or matrix values");
+    if (value.width == 0u || value.is_bool) {
+        fail(lower, "unary arithmetic does not accept bool values");
         return invalid_value();
     }
-    for (index = 0u; index < value.width; ++index) {
+    component_count = value.matrix != 0u
+        ? (uint32_t)value.matrix * value.matrix : value.width;
+    for (index = 0u; index < component_count; ++index) {
         uint16_t zero = new_reg(lower);
         uint16_t result = new_reg(lower);
         uint32_t component_bit = UINT32_C(1) << index;
@@ -3915,6 +3918,173 @@ static Value componentwise_binary(Lower* lower, const Value* left,
     return result;
 }
 
+static Value value_component(const Value* value, uint32_t component)
+{
+    Value scalar = invalid_value();
+    uint16_t source_bit;
+
+    if (value == NULL || component >= 16u)
+        return scalar;
+    source_bit = (uint16_t)(UINT32_C(1) << component);
+    scalar.regs[0] = value->regs[component];
+    scalar.width = 1u;
+    scalar.is_i32 = value->is_i32;
+    scalar.is_bool = value->is_bool;
+    if ((value->known_zero_components & source_bit) != 0u)
+        scalar.known_zero_components = 1u;
+    if ((value->constant_components & source_bit) != 0u) {
+        scalar.constant_components = 1u;
+        scalar.constant_bits[0] = value->constant_bits[component];
+    }
+    return scalar;
+}
+
+static Value matrix_componentwise_binary(Lower* lower, const Value* left,
+                                         const Value* right, uint16_t opcode)
+{
+    Value result = invalid_value();
+    uint8_t dimension;
+    uint32_t component_count;
+    uint32_t component;
+
+    if (lower == NULL || left == NULL || right == NULL ||
+        (left->matrix == 0u && right->matrix == 0u))
+        return result;
+    if (left->matrix != 0u && right->matrix != 0u) {
+        if ((opcode != RINGL_RSH1_OP_ADD_F32 &&
+             opcode != RINGL_RSH1_OP_SUB_F32) ||
+            left->matrix != right->matrix) {
+            fail(lower, "matrix operands must have matching dimensions");
+            return result;
+        }
+        dimension = left->matrix;
+    } else if (left->matrix != 0u && right->width == 1u &&
+               (opcode == RINGL_RSH1_OP_MUL_F32 ||
+                opcode == RINGL_RSH1_OP_DIV_F32)) {
+        dimension = left->matrix;
+    } else if (left->width == 1u && right->matrix != 0u &&
+               opcode == RINGL_RSH1_OP_MUL_F32) {
+        dimension = right->matrix;
+    } else {
+        fail(lower, "matrix operation has incompatible operand types");
+        return result;
+    }
+    if (dimension < 2u || dimension > 4u ||
+        left->is_i32 || right->is_i32 || left->is_bool || right->is_bool) {
+        fail(lower, "matrix arithmetic requires floating-point operands");
+        return result;
+    }
+
+    component_count = (uint32_t)dimension * dimension;
+    for (component = 0u; component < component_count; ++component) {
+        Value left_scalar = left->matrix != 0u
+            ? value_component(left, component) : *left;
+        Value right_scalar = right->matrix != 0u
+            ? value_component(right, component) : *right;
+        Value scalar_result = componentwise_binary(
+            lower, &left_scalar, &right_scalar, opcode, 0);
+        uint16_t component_bit = (uint16_t)(UINT32_C(1) << component);
+
+        if (scalar_result.width != 1u)
+            return invalid_value();
+        result.regs[component] = scalar_result.regs[0];
+        if ((scalar_result.known_zero_components & 1u) != 0u)
+            result.known_zero_components |= component_bit;
+        if ((scalar_result.constant_components & 1u) != 0u) {
+            result.constant_components |= component_bit;
+            result.constant_bits[component] = scalar_result.constant_bits[0];
+        }
+    }
+    result.width = dimension;
+    result.matrix = dimension;
+    return result;
+}
+
+static Value matrix_times_matrix(Lower* lower, const Value* left,
+                                 const Value* right)
+{
+    Value result = invalid_value();
+    uint8_t dimension;
+    uint16_t scratch;
+
+    if (left == NULL || right == NULL || left->matrix < 2u ||
+        left->matrix > 4u || left->matrix != right->matrix ||
+        left->is_i32 || right->is_i32 || left->is_bool || right->is_bool) {
+        fail(lower, "matrix multiplication requires matching float matrices");
+        return result;
+    }
+    dimension = left->matrix;
+    scratch = new_reg(lower);
+    if (scratch == RINGL_RSH1_UNUSED)
+        return result;
+
+    for (uint32_t column = 0u; column < dimension; ++column) {
+        for (uint32_t row = 0u; row < dimension; ++row) {
+            uint16_t accumulator = new_reg(lower);
+
+            if (accumulator == RINGL_RSH1_UNUSED ||
+                !emit(lower, RINGL_RSH1_OP_MUL_F32, accumulator,
+                      left->regs[row], right->regs[column * dimension], 0u)) {
+                return invalid_value();
+            }
+            for (uint32_t inner = 1u; inner < dimension; ++inner) {
+                if (!emit(lower, RINGL_RSH1_OP_MUL_F32, scratch,
+                          left->regs[inner * dimension + row],
+                          right->regs[column * dimension + inner], 0u) ||
+                    !emit(lower, RINGL_RSH1_OP_ADD_F32, accumulator,
+                          accumulator, scratch, 0u)) {
+                    return invalid_value();
+                }
+            }
+            result.regs[column * dimension + row] = accumulator;
+        }
+    }
+    result.width = dimension;
+    result.matrix = dimension;
+    return result;
+}
+
+static Value vector_times_matrix(Lower* lower, const Value* vector,
+                                 const Value* matrix)
+{
+    Value result = invalid_value();
+    uint8_t dimension;
+    uint16_t scratch;
+
+    if (vector == NULL || matrix == NULL || vector->matrix != 0u ||
+        matrix->matrix < 2u || matrix->matrix > 4u ||
+        vector->width != matrix->matrix || vector->is_i32 ||
+        matrix->is_i32 || vector->is_bool || matrix->is_bool) {
+        fail(lower, "vector multiplication requires a matching float matrix");
+        return result;
+    }
+    dimension = matrix->matrix;
+    scratch = new_reg(lower);
+    if (scratch == RINGL_RSH1_UNUSED)
+        return result;
+    for (uint32_t column = 0u; column < dimension; ++column) {
+        uint16_t accumulator = new_reg(lower);
+
+        if (accumulator == RINGL_RSH1_UNUSED ||
+            !emit(lower, RINGL_RSH1_OP_MUL_F32, accumulator,
+                  vector->regs[0], matrix->regs[column * dimension], 0u)) {
+            return invalid_value();
+        }
+        for (uint32_t row = 1u; row < dimension; ++row) {
+            if (!emit(lower, RINGL_RSH1_OP_MUL_F32, scratch,
+                      vector->regs[row],
+                      matrix->regs[column * dimension + row], 0u) ||
+                !emit(lower, RINGL_RSH1_OP_ADD_F32, accumulator, accumulator,
+                      scratch, 0u)) {
+                return invalid_value();
+            }
+        }
+        result.regs[column] = accumulator;
+    }
+    result.width = dimension;
+    return result;
+}
+
 static Value multiplicative(Lower* lower)
 {
     Value left = unary(lower);
@@ -3924,10 +4094,24 @@ static Value multiplicative(Lower* lower)
         Value right;
         next(lower);
         right = unary(lower);
-        if (operation == T_STAR && left.matrix) {
-            left = matrix_times_vector(lower, &left, &right);
-            if (left.width == 0u)
-                fail(lower, "matrix multiplication requires a matching vector right operand");
+        if (left.matrix != 0u || right.matrix != 0u) {
+            if (operation == T_STAR && left.matrix != 0u &&
+                right.matrix != 0u) {
+                left = matrix_times_matrix(lower, &left, &right);
+            } else if (operation == T_STAR && left.matrix != 0u &&
+                       right.matrix == 0u && right.width > 1u) {
+                left = matrix_times_vector(lower, &left, &right);
+                if (left.width == 0u)
+                    fail(lower, "matrix multiplication requires a matching vector operand");
+            } else if (operation == T_STAR && left.matrix == 0u &&
+                       right.matrix != 0u && left.width > 1u) {
+                left = vector_times_matrix(lower, &left, &right);
+            } else {
+                left = matrix_componentwise_binary(
+                    lower, &left, &right,
+                    operation == T_STAR ? RINGL_RSH1_OP_MUL_F32
+                                        : RINGL_RSH1_OP_DIV_F32);
+            }
             continue;
         }
         left = componentwise_binary(
@@ -3947,10 +4131,18 @@ static Value expression(Lower* lower)
         Value right;
         next(lower);
         right = multiplicative(lower);
-        left = componentwise_binary(
-            lower, &left, &right,
-            operation == T_PLUS ? RINGL_RSH1_OP_ADD_F32 : RINGL_RSH1_OP_SUB_F32,
-            1);
+        if (left.matrix != 0u || right.matrix != 0u) {
+            left = matrix_componentwise_binary(
+                lower, &left, &right,
+                operation == T_PLUS ? RINGL_RSH1_OP_ADD_F32
+                                    : RINGL_RSH1_OP_SUB_F32);
+        } else {
+            left = componentwise_binary(
+                lower, &left, &right,
+                operation == T_PLUS ? RINGL_RSH1_OP_ADD_F32
+                                    : RINGL_RSH1_OP_SUB_F32,
+                1);
+        }
     }
     return left;
 }

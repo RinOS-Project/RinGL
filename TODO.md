@@ -853,9 +853,19 @@ See `docs/ringpu-gaps.md`. There are currently no known native-contract blockers
   advertises COMPUTE; generic RinGPU command queues remain responsible for
   dispatch, while the RinGL/WebGL graphics entry points do not expose compute
   ([status](docs/implementation-status-ringl-compute-surface-v1.md)).
-- [ ] Evaluate whether `OS-Core/libs/aquamarine` can be evolved into a useful RinGL software backend.
-- [ ] Keep the existing Aquamarine software graphics library distinct from Aquamarine Shader Language.
-- [ ] Do not make the GL frontend depend on software-rasterizer-specific types.
+- [x] Evaluate whether `public-base/libs/aquamarine` can be evolved into a
+  useful RinGL software backend. The current library exposes immediate drawing
+  and surface helpers, while RinGL needs the explicit RinGPU resource, command,
+  shader-module, and synchronization contract. Replacing or bypassing RinGPU
+  would duplicate that contract; adapting the library would require building a
+  complete RinGPU backend, so the current path remains the generic RinGPU
+  software backend ([evaluation](docs/implementation-status-aquamarine-ringl-backend-evaluation.md)).
+- [x] Keep the existing Aquamarine software graphics library distinct from
+  Aquamarine Shader Language. RinGL and Aquamarine Shader Language remain
+  separate source frontends that lower to RinShader IR.
+- [x] Do not make the GL frontend depend on software-rasterizer-specific types.
+  RinGL core consumes the RinGPU contract; the optional surface target owns the
+  generic RinGPU software executor without importing `public-base/libs/aquamarine`.
 - [ ] If implemented, keep hardware and software backends behaviorally aligned through shared GL validation/state tests.
 
 ## First milestone definition of done

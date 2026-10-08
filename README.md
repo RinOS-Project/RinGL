@@ -382,15 +382,15 @@ OpenGL also has no explicit render-pass API. RinGL is expected to open and close
 
 ## Software rendering
 
-RinOS already contains the `libs/aquamarine` 2D/3D software graphics library. It is distinct from Aquamarine Shader Language.
+RinOS contains the `public-base/libs/aquamarine` surface-based 2D/3D drawing library. It remains distinct from Aquamarine Shader Language. The backend review found that its immediate drawing API is not a RinGPU backend: using it directly would bypass RinGPU resource, command, shader-module, and synchronization validation. Evolving it into a useful backend would require implementing the complete RinGPU contract, so RinGL continues to use RinGPU's generic software backend. See the [backend evaluation](docs/implementation-status-aquamarine-ringl-backend-evaluation.md).
 
-A future RinGL software backend may reuse or evolve that library, but the primary RinGL architecture should not depend on the current fixed-function software rasterizer. The hardware path is:
+The RinGL frontend and its primary hardware path remain:
 
 ```text
 RinGL -> RinGPU -> driver backend -> GPU
 ```
 
-A software fallback can remain a separate backend choice rather than leaking software-rasterizer details into the GL API layer.
+A software fallback remains a separate backend choice rather than leaking software-rasterizer details into the GL API layer.
 
 ## Initial target
 

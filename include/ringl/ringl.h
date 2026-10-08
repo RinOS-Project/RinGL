@@ -1638,6 +1638,16 @@ void ringl_tex_parameteri(uint32_t target, uint32_t pname, int32_t param);
 int32_t ringl_get_tex_parameteri(uint32_t target, uint32_t pname);
 void ringl_tex_parameterf(uint32_t target, uint32_t pname, float param);
 float ringl_get_tex_parameterf(uint32_t target, uint32_t pname);
+/* Bounded setter-vector forms read one scalar value from the caller span.
+ * They return -1 for an absent context or invalid caller span; GL target,
+ * pname, and value errors are reported through the context error queue. The
+ * integer form uses the represented sampler pnames; the float form uses the
+ * gated anisotropy pname supported by ringl_tex_parameterf(). */
+int ringl_tex_parameteriv_bounded(uint32_t target, uint32_t pname,
+                                  const int32_t* value,
+                                  size_t value_count);
+int ringl_tex_parameterfv_bounded(uint32_t target, uint32_t pname,
+                                  const float* value, size_t value_count);
 /* Bounded texture-parameter adapters.  The integer form accepts the four
  * sampler enum pnames represented by ringl_get_tex_parameteri(); the float
  * form accepts the gated anisotropy pname.  A short/null output records an
@@ -1867,6 +1877,16 @@ void ringl_vertex_attrib2f(uint32_t index, float x, float y);
 void ringl_vertex_attrib3f(uint32_t index, float x, float y, float z);
 void ringl_vertex_attrib4f(uint32_t index, float x, float y, float z,
                            float w);
+/* Bounded typed-array forms consume exactly the leading one-to-four values;
+ * omitted components follow the scalar forms' 0/0/1 defaults. */
+int ringl_vertex_attrib1fv_bounded(uint32_t index, const float* values,
+                                   size_t value_count);
+int ringl_vertex_attrib2fv_bounded(uint32_t index, const float* values,
+                                   size_t value_count);
+int ringl_vertex_attrib3fv_bounded(uint32_t index, const float* values,
+                                   size_t value_count);
+int ringl_vertex_attrib4fv_bounded(uint32_t index, const float* values,
+                                   size_t value_count);
 int ringl_get_vertex_attrib(uint32_t index, RinGLVertexAttribInfoV1* info);
 /* Copies the current generic attribute value into exactly four floats. The
  * caller owns the fixed-size output; invalid indices leave it unchanged. */

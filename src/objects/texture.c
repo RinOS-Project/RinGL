@@ -2299,6 +2299,36 @@ void ringl_tex_parameterf(uint32_t target, uint32_t pname, float param)
     }
 }
 
+int ringl_tex_parameteriv_bounded(uint32_t target, uint32_t pname,
+                                  const int32_t* value, size_t value_count)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL)
+        return -1;
+    if (value == NULL || value_count < 1u) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    ringl_tex_parameteri(target, pname, value[0]);
+    return 0;
+}
+
+int ringl_tex_parameterfv_bounded(uint32_t target, uint32_t pname,
+                                  const float* value, size_t value_count)
+{
+    RinGLContext* context = ringl_get_current_context();
+
+    if (context == NULL)
+        return -1;
+    if (value == NULL || value_count < 1u) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    ringl_tex_parameterf(target, pname, value[0]);
+    return 0;
+}
+
 int32_t ringl_get_tex_parameteri(uint32_t target, uint32_t pname)
 {
     RinGLContext* context = ringl_get_current_context();

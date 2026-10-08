@@ -957,7 +957,8 @@ active array retains its captured buffer and effective stride; distinct pairs
 are emitted as dense V2 RinGPU bindings for direct and indexed draws. A
 disabled active array instead uses its tracked current value (the WebGL default
 is `(0, 0, 0, 1)`, updated by `ringl_vertex_attrib1f` through
-`ringl_vertex_attrib4f`) as exact Float32 scalar descriptors. The embedding
+`ringl_vertex_attrib4f` or the matching bounded `ringl_vertex_attribNfv_bounded`
+span setters) as exact Float32 scalar descriptors. The embedding
 must explicitly advertise `RINGL_RIN_GPU_VERTEX_INPUT_CONSTANT_FLOAT32` and,
 for more than one stream, `RINGL_RIN_GPU_VERTEX_INPUT_MULTI_BUFFER` with the
 matching V2 callbacks. Otherwise RinGL reports `INVALID_OPERATION` rather than

@@ -193,6 +193,55 @@ void ringl_vertex_attrib4f(uint32_t index, float x, float y, float z,
                                     z, w);
 }
 
+static int ringl_vertex_attribfv_bounded(uint32_t index, const float* values,
+                                         size_t value_count,
+                                         size_t component_count)
+{
+    RinGLContext* context = ringl_get_current_context();
+    float x, y, z, w;
+
+    if (context == NULL)
+        return -1;
+    if (ringl_vertex_attrib(context, index) == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+    if (values == NULL || value_count < component_count) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    x = values[0];
+    y = component_count > 1u ? values[1] : 0.0f;
+    z = component_count > 2u ? values[2] : 0.0f;
+    w = component_count > 3u ? values[3] : 1.0f;
+    ringl_vertex_attrib_set_current(context, index, x, y, z, w);
+    return 0;
+}
+
+int ringl_vertex_attrib1fv_bounded(uint32_t index, const float* values,
+                                   size_t value_count)
+{
+    return ringl_vertex_attribfv_bounded(index, values, value_count, 1u);
+}
+
+int ringl_vertex_attrib2fv_bounded(uint32_t index, const float* values,
+                                   size_t value_count)
+{
+    return ringl_vertex_attribfv_bounded(index, values, value_count, 2u);
+}
+
+int ringl_vertex_attrib3fv_bounded(uint32_t index, const float* values,
+                                   size_t value_count)
+{
+    return ringl_vertex_attribfv_bounded(index, values, value_count, 3u);
+}
+
+int ringl_vertex_attrib4fv_bounded(uint32_t index, const float* values,
+                                   size_t value_count)
+{
+    return ringl_vertex_attribfv_bounded(index, values, value_count, 4u);
+}
+
 int ringl_get_vertex_attrib(uint32_t index, RinGLVertexAttribInfoV1* info)
 {
     RinGLContext* context = ringl_get_current_context();

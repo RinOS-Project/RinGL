@@ -257,15 +257,20 @@ GLSL ES source -> RinGL GLSL frontend + linker
 This keeps RinShader IR as the common validated shader boundary while allowing each source language to preserve its own semantics.
 
 The generic WebGL-facing varying route remains inside that same boundary:
-matching `float`/`vec2`/`vec3`/`vec4` declarations are flattened into scalar
-RSH1 interpolants, and a vertex shader may initialize them as a whole vector
-or through non-overlapping `xyzw`/`rgba`/`stpq` lvalue selectors. RinGL writes
-those selected components directly to the native output slots and refuses to
-link if any declared component is unwritten; it does not ask Aquamarine or a
-browser embedding to repair a partial interface. When a vertex shader writes
-`gl_PointSize`, RinGL reserves RSH1 output 4 for the size and shifts every
-varying output after it, independent of source assignment order. That profile
-supports up to 27 scalar varyings with point size and 28 without it
+matching `float`/`vec2`/`vec3`/`vec4`/`mat2`/`mat3`/`mat4` declarations are
+flattened into scalar RSH1 interpolants. Matrices occupy four, nine, or
+sixteen consecutive perspective slots and must match in both stages. A vertex
+shader may initialize a vector or matrix as a whole, or a vector through
+non-overlapping `xyzw`/`rgba`/`stpq` lvalue selectors. RinGL writes those
+selected components directly to native output slots and refuses to link if
+any declared component is unwritten; it does not ask Aquamarine or a browser
+embedding to repair a partial interface. Matrix varying changes compile, but
+their parser/IR and bridge readback regressions remain open
+([status](docs/implementation-status-ringl-matrix-varyings-v1.md)). When a
+vertex shader writes `gl_PointSize`, RinGL reserves RSH1 output 4 for the size
+and shifts every varying output after it, independent of source assignment
+order. That profile supports up to 27 scalar varyings with point size and 28
+without it
 ([implementation status](docs/implementation-status-ringl-point-size-varyings-v1.md)).
 
 The GLSL parser now admits complete `texture2D()` and `texture2DProj()`

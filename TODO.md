@@ -250,9 +250,11 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   - [x] Extend that private native route from six to eight scalar varyings for the bounded direct four-`vec2` texture profile. A validated 12-output vertex/8-input fragment RSH1 pair carries four perspective coordinate pairs through the existing point, line, and triangle paths; mismatched shapes remain rejected before rasterization.
   - [ ] General multiple-varying combinations and expressions remain unsupported.
     The generic assignment path now links matching `varying float`, `vec2`,
-    `vec3`, and `vec4` declarations up to RinGPU's real 28-scalar
-    perspective-interpolant budget (the other four of 32 scalar outputs are
-    clip `xyzw`). Whole-vector assignments and non-overlapping writable
+    `vec3`, `vec4`, `mat2`, `mat3`, and `mat4` declarations up to RinGPU's
+    real 28-scalar perspective-interpolant budget (the other four of 32 scalar
+    outputs are clip `xyzw`). Square matrices occupy four, nine, or sixteen
+    consecutive slots; cross-stage linking compares matrix dimensions as well
+    as scalar counts. Whole-vector/matrix assignments and non-overlapping writable
     `xyzw`/`rgba`/`stpq` selectors store exact scalar outputs; a component map
     requires every declared slot before link publication. The fragment lowerer
     materializes every declared input, including unused declarations, so the
@@ -282,6 +284,9 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
   - [ ] Add parser/IR and RinGL→RinGPU bridge readback coverage for complete
     mixed-varying texture coordinates, including a multi-operand expression
     and rejection of a wrong-width or non-floating coordinate.
+  - [ ] Add parser/IR and bridge readback coverage for matrix varying
+    transport, matrix-vector use in the fragment stage, cross-dimension link
+    rejection, and 28-component budget rejection.
   - [x] Combine two distinct perspective-interpolated `varying vec3` values in a `textureCube()` direction. The end-to-end host regression carries six scalar inputs through the RinGPU native varying route, adds the two fragment values, and reads distinct +Z face/mip colors; arbitrary varying combinations remain unsupported ([status](docs/implementation-status-sampler-cube-bounded-v1.md)).
   - [x] Combine generic `varying float`/`vec2`/`vec3`/`vec4` interfaces with a
     programmable `gl_PointSize` expression. RSH1 output 4 is reserved for point

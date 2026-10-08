@@ -803,6 +803,8 @@ static Symbol* add_symbol(Lower* lower, const Token* token,
 {
     Symbol* symbol;
     uint32_t index;
+    uint32_t component_count = matrix_dimension != 0u
+        ? (uint32_t)matrix_dimension * matrix_dimension : width;
 
     if (lower->symbol_count >= 64u || token->length == 0u ||
         token->length >= 64u || width == 0u || width > 4u ||
@@ -815,7 +817,7 @@ static Symbol* add_symbol(Lower* lower, const Token* token,
         fail(lower, "duplicate declaration in lexical scope");
         return NULL;
     }
-    if (attribute && (uint32_t)lower->next_input + width > UINT16_MAX) {
+    if (attribute && (uint32_t)lower->next_input + component_count > UINT16_MAX) {
         fail(lower, "input slot limit exceeded");
         return NULL;
     }
@@ -831,7 +833,7 @@ static Symbol* add_symbol(Lower* lower, const Token* token,
     symbol->input = attribute ? lower->next_input : RINGL_RSH1_UNUSED;
     symbol->output = RINGL_RSH1_UNUSED;
     if (attribute)
-        lower->next_input = (uint16_t)(lower->next_input + width);
+        lower->next_input = (uint16_t)(lower->next_input + component_count);
     for (index = 0u; index < (symbol->matrix
                                   ? (uint32_t)symbol->matrix * symbol->matrix
                                   : 4u); ++index)
@@ -952,40 +954,45 @@ static Symbol* add_sampler_symbol(Lower* lower, const Token* token,
 }
 
 /* A vertex varying is a writable RSH1 output after clip position; a fragment
- * varying is a read-only RSH1 input. Keep this distinction in the generic
- * lowerer instead of routing mixed vec2/vec3/vec4 interfaces through the old
- * profile-specific emitters. */
+ * varying is a read-only RSH1 input. Matrices occupy one scalar slot per
+ * element, just like vectors occupy one slot per component. Keep this
+ * distinction in the generic lowerer instead of routing mixed interfaces
+ * through the old profile-specific emitters. */
 static Symbol* add_varying_symbol(Lower* lower, const Token* token,
-                                  uint8_t width)
+                                  uint8_t width, uint8_t matrix_dimension)
 {
     Symbol* symbol;
+    uint32_t component_count = matrix_dimension != 0u
+        ? (uint32_t)matrix_dimension * matrix_dimension : width;
 
     if (lower == NULL || token == NULL ||
-        (width < 1u || width > 4u))
+        (width < 1u || width > 4u) || matrix_dimension > 4u ||
+        matrix_dimension == 1u ||
+        (matrix_dimension != 0u && width != matrix_dimension))
         return NULL;
     symbol = add_symbol(lower, token,
                         lower->shader_type == RINGL_FRAGMENT_SHADER,
-                        width, 0u);
+                        width, matrix_dimension);
     if (symbol == NULL)
         return NULL;
     symbol->varying = 1u;
     if (lower->shader_type == RINGL_VERTEX_SHADER) {
         if (lower->next_varying_output < 4u ||
             lower->next_varying_output > 4u + RINGL_MAX_VARYING_COMPONENTS ||
-            width > 4u + RINGL_MAX_VARYING_COMPONENTS -
-                        lower->next_varying_output) {
+            component_count > 4u + RINGL_MAX_VARYING_COMPONENTS -
+                                  lower->next_varying_output) {
             fail(lower, "varying component limit exceeded");
             return NULL;
         }
         symbol->output = lower->next_varying_output;
         lower->next_varying_output =
-            (uint16_t)(lower->next_varying_output + width);
+            (uint16_t)(lower->next_varying_output + component_count);
     } else {
         /* RSH1 records a dense fragment interface. Materialize every declared
          * component, including a declaration the source never reads, so the
          * native linker can validate its type instead of seeing a header-only
          * input slot. */
-        for (uint32_t index = 0u; index < width; ++index) {
+        for (uint32_t index = 0u; index < component_count; ++index) {
             uint16_t reg = new_reg(lower);
             if (reg == RINGL_RSH1_UNUSED ||
                 !emit(lower, RINGL_RSH1_OP_LOAD_INPUT_F32, reg,
@@ -4224,19 +4231,27 @@ static int snapshot_overlapping_assignment(Lower* lower, const Symbol* symbol,
 
 static int store_varying_components(Lower* lower, Symbol* symbol,
                                     const Value* value,
-                                    const uint8_t components[4],
+                                    const uint8_t components[16],
                                     uint8_t component_count)
 {
     uint16_t initialized = 0u;
     uint8_t selected_components[16] = { 0u };
     Value snapshot;
     uint32_t index;
+    uint32_t symbol_component_count;
+    uint32_t value_component_count;
 
     if (lower == NULL || symbol == NULL || value == NULL ||
         components == NULL || component_count == 0u ||
-        component_count > 4u || symbol->output == RINGL_RSH1_UNUSED) {
+        component_count > 16u || symbol->output == RINGL_RSH1_UNUSED) {
         return 0;
     }
+    symbol_component_count = symbol->matrix != 0u
+        ? (uint32_t)symbol->matrix * symbol->matrix : symbol->width;
+    value_component_count = value->matrix != 0u
+        ? (uint32_t)value->matrix * value->matrix : value->width;
+    if (component_count != value_component_count)
+        return 0;
     for (index = 0u; index < component_count; ++index)
         selected_components[index] = components[index];
     if (!snapshot_overlapping_assignment(lower, symbol, value,
@@ -4249,7 +4264,7 @@ static int store_varying_components(Lower* lower, Symbol* symbol,
         uint16_t destination;
         uint32_t output = (uint32_t)symbol->output + components[index];
 
-        if (component >= symbol->width)
+        if (component >= symbol_component_count)
             return 0;
         destination = symbol->regs[component];
         if (destination == RINGL_RSH1_UNUSED) {
@@ -4284,7 +4299,7 @@ static int assignment(Lower* lower)
     Token target = lower->token;
     Symbol* symbol = NULL;
     Value value;
-    uint8_t lvalue_components[4] = { 0u, 0u, 0u, 0u };
+    uint8_t lvalue_components[16] = { 0u };
     uint8_t lvalue_component_count = 0u;
     int has_lvalue_swizzle = 0;
     int output = 0;
@@ -4345,7 +4360,7 @@ static int assignment(Lower* lower)
         return 0;
     }
     next(lower);
-    if (symbol != NULL)
+    if (symbol != NULL && symbol->matrix == 0u)
         writable_vector_width = symbol->width;
     if (writable_vector_width != 0u && lower->token.kind == T_DOT) {
         has_lvalue_swizzle = 1;
@@ -4472,9 +4487,13 @@ static int assignment(Lower* lower)
                                             lvalue_component_count);
         }
         {
-            uint8_t components[4] = { 0u, 1u, 2u, 3u };
+            uint8_t components[16] = { 0u };
+            uint8_t component_count = (uint8_t)(symbol->matrix != 0u
+                ? (uint32_t)symbol->matrix * symbol->matrix : value.width);
+            for (uint32_t index = 0u; index < component_count; ++index)
+                components[index] = (uint8_t)index;
             return store_varying_components(lower, symbol, &value, components,
-                                            value.width);
+                                            component_count);
         }
     }
     if (symbol->attribute || symbol->uniform || symbol->constant_i32 != 0u ||
@@ -5692,6 +5711,7 @@ static int parse_all(Lower* lower)
             Token name;
             Symbol* symbol;
             uint8_t width;
+            uint8_t matrix_dimension = 0u;
 
             next(lower);
             if (lower->token.kind == T_FLOAT)
@@ -5702,9 +5722,15 @@ static int parse_all(Lower* lower)
                 width = 3u;
             else if (lower->token.kind == T_VEC4)
                 width = 4u;
+            else if (lower->token.kind == T_MAT2)
+                width = matrix_dimension = 2u;
+            else if (lower->token.kind == T_MAT3)
+                width = matrix_dimension = 3u;
+            else if (lower->token.kind == T_MAT4)
+                width = matrix_dimension = 4u;
             else {
                 fail(lower,
-                     "expected varying float, vec2, vec3, or vec4");
+                     "expected varying float, vec2/3/4, or mat2/3/4");
                 return 0;
             }
             next(lower);
@@ -5714,7 +5740,8 @@ static int parse_all(Lower* lower)
             }
             name = lower->token;
             if (find_symbol(lower, &name) != NULL ||
-                (symbol = add_varying_symbol(lower, &name, width)) == NULL) {
+                (symbol = add_varying_symbol(lower, &name, width,
+                                             matrix_dimension)) == NULL) {
                 return 0;
             }
             (void)symbol;

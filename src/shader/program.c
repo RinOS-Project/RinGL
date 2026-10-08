@@ -1232,7 +1232,9 @@ static int ringl_program_collect_varyings(RinGLContext* context,
             if (strcmp(vertex_result->varying_names[vi],
                        fragment_result->varying_names[fi]) == 0) {
                 if (vertex_result->varying_widths[vi] !=
-                    fragment_result->varying_widths[fi]) {
+                        fragment_result->varying_widths[fi] ||
+                    vertex_result->varying_matrix_dimensions[vi] !=
+                        fragment_result->varying_matrix_dimensions[fi]) {
                     ringl_context_free_temporary(context, vertex_result,
                                                  sizeof(*vertex_result));
                     ringl_context_free_temporary(context, fragment_result,

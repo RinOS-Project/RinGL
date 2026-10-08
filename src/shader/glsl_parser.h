@@ -92,6 +92,7 @@ typedef struct RinGLGlslParseResult {
     char mat4_uniform_names[RINGL_GLSL_MAX_MAT4_UNIFORMS][RINGL_GLSL_NAME_MAX];
     char varying_names[RINGL_GLSL_MAX_GENERIC_VARYINGS][RINGL_GLSL_NAME_MAX];
     uint32_t varying_widths[RINGL_GLSL_MAX_GENERIC_VARYINGS];
+    uint32_t varying_matrix_dimensions[RINGL_GLSL_MAX_GENERIC_VARYINGS];
     char diagnostic[RINGL_GLSL_DIAGNOSTIC_MAX];
 } RinGLGlslParseResult;
 

@@ -96,6 +96,9 @@ typedef enum SymbolKind {
     SYMBOL_UNIFORM_BVEC2 = 16,
     SYMBOL_UNIFORM_BVEC3 = 17,
     SYMBOL_UNIFORM_BVEC4 = 18,
+    SYMBOL_VARYING_MAT2 = 20,
+    SYMBOL_VARYING_MAT3 = 21,
+    SYMBOL_VARYING_MAT4 = 22,
 } SymbolKind;
 
 typedef struct Token {
@@ -133,6 +136,12 @@ static RinGLGlslTypeV1 parser_symbol_type(uint32_t kind, uint32_t width)
         return ringl_glsl_matrix_type(3u);
     case SYMBOL_UNIFORM_MAT4:
         return ringl_glsl_matrix_type(4u);
+    case SYMBOL_VARYING_MAT2:
+        return ringl_glsl_matrix_type(2u);
+    case SYMBOL_VARYING_MAT3:
+        return ringl_glsl_matrix_type(3u);
+    case SYMBOL_VARYING_MAT4:
+        return ringl_glsl_matrix_type(4u);
     case SYMBOL_UNIFORM_INT:
         return ringl_glsl_scalar_type(RINGL_GLSL_BASE_I32);
     case SYMBOL_UNIFORM_IVEC2:
@@ -163,6 +172,12 @@ static RinGLGlslTypeV1 parser_symbol_type(uint32_t kind, uint32_t width)
                                      RINGL_GLSL_BASE_F32, (uint8_t)width)
                                : ringl_glsl_invalid_type();
     }
+}
+
+static int symbol_kind_is_varying(uint32_t kind)
+{
+    return kind == SYMBOL_VARYING || kind == SYMBOL_VARYING_MAT2 ||
+           kind == SYMBOL_VARYING_MAT3 || kind == SYMBOL_VARYING_MAT4;
 }
 
 typedef struct Parser {
@@ -1141,6 +1156,12 @@ static int primary(Parser* parser)
             uint8_t family = 0u;
             size_t index;
 
+            if (symbol != NULL &&
+                symbol->type.kind == RINGL_GLSL_TYPE_MATRIX) {
+                fail(parser, "matrix values cannot use vector swizzles");
+                return 0;
+            }
+
             /* Keep compile-time admission aligned with the RSH1 lowerer.
              * Mixed selector families are not legal GLSL, even though their
              * individual letters are valid in another family. */
@@ -1347,14 +1368,14 @@ static int assignment(Parser* parser)
             fail(parser, "const value is read-only");
             return 0;
         }
-        if (symbol->kind == SYMBOL_VARYING &&
+        if (symbol_kind_is_varying(symbol->kind) &&
             parser->shader_type != RINGL_VERTEX_SHADER) {
             fail(parser, "varyings are read-only in fragment shaders");
             return 0;
         }
     }
     next_token(parser);
-    if (symbol != NULL)
+    if (symbol != NULL && symbol->type.kind != RINGL_GLSL_TYPE_MATRIX)
         writable_vector_width = symbol->width;
     if (writable_vector_width != 0u && parser->token.kind == TOK_DOT &&
         !writable_lvalue_swizzle(parser, writable_vector_width)) {
@@ -2248,6 +2269,9 @@ static int varying_declaration(Parser* parser)
     Token name;
     uint32_t index;
     uint32_t width;
+    uint32_t matrix_dimension = 0u;
+    uint32_t component_count;
+    uint32_t symbol_kind = SYMBOL_VARYING;
 
     next_token(parser);
     if (parser->token.kind == TOK_FLOAT) {
@@ -2258,19 +2282,29 @@ static int varying_declaration(Parser* parser)
         width = 3u;
     } else if (parser->token.kind == TOK_VEC4) {
         width = 4u;
+    } else if (parser->token.kind == TOK_MAT2) {
+        width = matrix_dimension = 2u;
+        symbol_kind = SYMBOL_VARYING_MAT2;
+    } else if (parser->token.kind == TOK_MAT3) {
+        width = matrix_dimension = 3u;
+        symbol_kind = SYMBOL_VARYING_MAT3;
+    } else if (parser->token.kind == TOK_MAT4) {
+        width = matrix_dimension = 4u;
+        symbol_kind = SYMBOL_VARYING_MAT4;
     } else {
         fail(parser,
-             "only 'varying float', 'varying vec2', 'varying vec3', or "
-             "'varying vec4' is supported");
+             "varying type must be float, vec2/3/4, or mat2/3/4");
         return 0;
     }
+    component_count = matrix_dimension != 0u
+        ? matrix_dimension * matrix_dimension : width;
     next_token(parser);
     if (parser->token.kind != TOK_IDENT) {
         fail(parser, "expected varying identifier");
         return 0;
     }
     name = parser->token;
-    if (!add_symbol(parser, &name, SYMBOL_VARYING, width))
+    if (!add_symbol(parser, &name, symbol_kind, width))
         return 0;
     if (parser->result->varying_count >= RINGL_GLSL_MAX_GENERIC_VARYINGS) {
         fail(parser, "too many varyings");
@@ -2279,7 +2313,8 @@ static int varying_declaration(Parser* parser)
     index = parser->result->varying_count++;
     memcpy(parser->result->varying_names[index], name.begin, name.length);
     parser->result->varying_names[index][name.length] = '\0';
-    parser->result->varying_widths[index] = width;
+    parser->result->varying_widths[index] = component_count;
+    parser->result->varying_matrix_dimensions[index] = matrix_dimension;
     next_token(parser);
     if (!expect(parser, TOK_SEMI, "expected ';' after varying"))
         return 0;

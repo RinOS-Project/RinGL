@@ -81,7 +81,7 @@ compiler. Notable exclusions include general declarations/types/arrays,
 unrestricted constructors and swizzles, unrestricted built-ins, texture
 expressions outside the accepted finite vector grammar and RSH1 budget,
 unverified arbitrary mixed-varying combinations, general matrix arithmetic,
-vertex pulling, loops, recursion, and general control flow.
+varying arrays, vertex pulling, recursion, and general control flow.
 
 `if`/`else`, Boolean operations, `discard`, derivatives, point size,
 matrices, texture samples, and varying interpolation are available only in the

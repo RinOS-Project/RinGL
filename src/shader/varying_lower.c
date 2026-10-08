@@ -820,6 +820,8 @@ static int parse_varying_texture_local_coordinate(
     const float coordinate_uniform[2])
 {
     char source[64];
+    char right_operand[64];
+    uint32_t uniform_components[4];
 
     if (cursor == NULL || *cursor == NULL || source_coordinate == NULL ||
         coordinate == NULL || coordinate_capacity == 0u ||
@@ -828,14 +830,50 @@ static int parse_varying_texture_local_coordinate(
         !read_identifier(cursor, coordinate, coordinate_capacity) ||
         strcmp(coordinate, source_coordinate) == 0 ||
         !consume_text(cursor, "=") ||
-        !read_identifier(cursor, source, sizeof(source)) ||
-        strcmp(source, source_coordinate) != 0 ||
-        !parse_varying_texture_offset(cursor, coordinate_kind, offset_u,
-                                      offset_v, coordinate_uniform_name,
-                                      coordinate_uniform) ||
+        !read_identifier(cursor, source, sizeof(source))) {
+        return 0;
+    }
+    if (strcmp(source, source_coordinate) == 0) {
+        return parse_varying_texture_offset(
+                   cursor, coordinate_kind, offset_u, offset_v,
+                   coordinate_uniform_name, coordinate_uniform) &&
+               consume_text(cursor, ";");
+    }
+    /* Preserve operand order when a vec2 uniform leads a local expression.
+     * The existing offset emitter already materializes uniform components and
+     * has reverse SUB/DIV forms, so only this explicitly typed pair of
+     * operands is admitted; this is not general local-expression parsing. */
+    if (coordinate_uniform_name == NULL || coordinate_uniform == NULL ||
+        strcmp(source, coordinate_uniform_name) != 0 ||
+        (**cursor != '+' && **cursor != '-' && **cursor != '*' &&
+         **cursor != '/')) {
+        return 0;
+    }
+    switch (**cursor) {
+    case '+':
+        *coordinate_kind = RINGL_VARYING_TEXTURE_COORD_ADD_OFFSET;
+        break;
+    case '-':
+        *coordinate_kind = RINGL_VARYING_TEXTURE_COORD_REVERSE_SUB_OFFSET;
+        break;
+    case '*':
+        *coordinate_kind = RINGL_VARYING_TEXTURE_COORD_MUL_SCALE;
+        break;
+    default:
+        *coordinate_kind = RINGL_VARYING_TEXTURE_COORD_REVERSE_DIV_SCALE;
+        break;
+    }
+    ++*cursor;
+    if (!read_identifier(cursor, right_operand, sizeof(right_operand)) ||
+        strcmp(right_operand, source_coordinate) != 0 ||
+        !parse_optional_read_swizzle(cursor, 2u, 2u, uniform_components) ||
+        !isfinite(coordinate_uniform[uniform_components[0]]) ||
+        !isfinite(coordinate_uniform[uniform_components[1]]) ||
         !consume_text(cursor, ";")) {
         return 0;
     }
+    *offset_u = coordinate_uniform[uniform_components[0]];
+    *offset_v = coordinate_uniform[uniform_components[1]];
     return 1;
 }
 

@@ -616,9 +616,12 @@ as a literal; a public `ringl_uniform_2f()` update stages and publishes a
 replacement fragment module before the next native RinGPU draw. A zero default
 or later zero uniform divisor is rejected by generic RinGPU fragment preflight
 before target publication, while a zero literal divisor is rejected during
-lowering. It never routes the coordinate through an Aquamarine renderer or a
-Ladybird-side texture shortcut. Uniform-led local initializers and general
-vector expressions remain outside this profile.
+lowering. A bounded local may also start with the uniform on the left, for
+example `vec2 localUv = offset.yx / uv;`; subtraction and division preserve
+that operand order in RSH1. Only one declared uniform and the existing
+source-order local-coordinate grammar are accepted, not general vector
+expressions. The new uniform-led local form has compile coverage but its
+RinGPU readback regression remains open in the [implementation status](docs/implementation-status-ringl-coordinate-uniform-led-local-v1.md).
 The same bounded two-UV operation may be named first as
 `vec2 mixedUv = firstUv +/- secondUv;` and then passed to `texture2D()`.
 That result can also feed a direct/finite-affine local chain of up to eight

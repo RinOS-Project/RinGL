@@ -217,6 +217,23 @@ static void expect_shader_rejected(uint32_t shader, const char* source)
     assert(ringl_get_shader_module(shader) == 0u);
 }
 
+static void expect_shader_lowering_rejected_for_budget(
+    uint32_t shader, const char* source, const char* diagnostic)
+{
+    char info_log[512] = { 0 };
+
+    assert(source != NULL && diagnostic != NULL);
+    ringl_shader_source(shader, source, -1);
+    ringl_compile_shader(shader);
+    assert(ringl_get_shader_compile_status(shader) == RINGL_TRUE);
+    assert(ringl_lower_shader_rsh1(shader) != 0);
+    assert(ringl_get_shader_rsh1_size(shader) == 0u);
+    assert(ringl_get_shader_module(shader) == 0u);
+    (void)ringl_get_shader_info_log(shader, info_log, sizeof(info_log));
+    info_log[sizeof(info_log) - 1u] = '\0';
+    assert(strstr(info_log, diagnostic) != NULL);
+}
+
 int main(void)
 {
     FakeBackend backend = {0};
@@ -408,6 +425,38 @@ int main(void)
         "  mat4 result = matrixCompMult(scale, mat4(1.0));\n"
         "  gl_Position = result * position;\n"
         "}\n";
+    const char* matrix2_arithmetic_fragment_source =
+        "varying mat2 operand; uniform mat2 rhs; void main() { "
+        "mat2 sum = operand + rhs; mat2 difference = sum - rhs; "
+        "mat2 product = difference * rhs; "
+        "mat2 left_scaled = 2.0 * product; "
+        "mat2 right_scaled = left_scaled * 0.5; "
+        "mat2 divided = right_scaled / 2.0; mat2 result = -divided; "
+        "vec2 direction = vec2(0.25, 0.5); "
+        "vec2 column_result = result * direction; "
+        "vec2 row_result = direction * result; "
+        "gl_FragColor = vec4(column_result + row_result, 0.0, 1.0); }";
+    const char* matrix3_arithmetic_fragment_source =
+        "varying mat3 operand; uniform mat3 rhs; void main() { "
+        "mat3 sum = operand + rhs; mat3 difference = sum - rhs; "
+        "mat3 product = difference * rhs; "
+        "vec3 direction = vec3(0.1, 0.2, 0.3); "
+        "vec3 column_result = product * direction; "
+        "vec3 row_result = direction * product; "
+        "gl_FragColor = vec4(column_result + row_result, 1.0); }";
+    const char* matrix4_uniform_product_fragment_source =
+        "uniform mat4 lhs; uniform mat4 rhs; void main() { "
+        "mat4 product = lhs * rhs; "
+        "gl_FragColor = product * vec4(0.1, 0.2, 0.3, 0.4); }";
+    const char* matrix4_dynamic_product_over_budget_fragment_source =
+        "varying mat4 operand; uniform mat4 rhs; void main() { "
+        "mat4 product = operand * rhs; "
+        "gl_FragColor = product * vec4(0.1, 0.2, 0.3, 0.4); }";
+    const char* matrix4_uniform_array_register_budget_fragment_source =
+        "uniform mat4 values[4]; varying mat4 operand; void main() { "
+        "mat4 first = operand + values[0]; "
+        "mat4 second = first + values[1]; "
+        "gl_FragColor = second * vec4(0.1, 0.2, 0.3, 0.4); }";
     const char* vector_scalar_constructor_source =
         "attribute vec2 position;\n"
         "void main() {\n"
@@ -1031,6 +1080,47 @@ int main(void)
     assert(header.input_count == 4u);
     assert(header.output_count == 9u);
     assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
+
+    /* Dynamic mat2 arithmetic exercises every bounded matrix operator and
+     * both vector/matrix multiplication orders in executable scalar RSH1. */
+    header = lower_and_read_header(
+        fragment, matrix2_arithmetic_fragment_source, blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 4u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_ADD_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_SUB_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_DIV_F32));
+
+    /* mat3 keeps its cross-stage matrix dynamic and executes matching
+     * addition/subtraction, matrix multiplication, and both vector orders. */
+    header = lower_and_read_header(
+        fragment, matrix3_arithmetic_fragment_source, blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.input_count == 9u);
+    assert(header.output_count == 4u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_ADD_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_SUB_F32));
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
+
+    /* Uniform mat4 products are folded into finite binary32 constants before
+     * RSH1 publication, leaving the matrix/vector execution within the
+     * bounded instruction budget. Dynamic mat4 products remain rejected when
+     * their scalar expansion exceeds either RSH1 resource budget. */
+    header = lower_and_read_header(
+        fragment, matrix4_uniform_product_fragment_source,
+        blob, sizeof(blob));
+    assert(header.stage == 2u);
+    assert(header.output_count == 4u);
+    assert(header.instruction_count <= 128u);
+    assert(rsh1_has_opcode(blob, &header, RSH1_OP_MUL_F32));
+    expect_shader_lowering_rejected_for_budget(
+        fragment, matrix4_dynamic_product_over_budget_fragment_source,
+        "RSH1 instruction limit exceeded");
+    expect_shader_lowering_rejected_for_budget(
+        fragment, matrix4_uniform_array_register_budget_fragment_source,
+        "RSH1 register limit exceeded");
 
     /* A one-scalar vecN/ivecN constructor aliases the source register across
      * all components. The i32 splat is consumed through explicit scalar

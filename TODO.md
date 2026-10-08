@@ -172,10 +172,13 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     Matrix arrays, cross-dimension conversion, rectangular matrix types, and
     matrix/vector operations in the specialized transformed-texture profile
     stay unsupported.
-  - [ ] Add parser/IR and RinGL→RinGPU readback regression coverage for matrix
+  - [x] Add parser/IR and RinGL→RinGPU readback regression coverage for matrix
     addition/subtraction, matN×matN, vecN×matN, scalar operations, unary
-    negation, column-major results, and instruction/register-budget rejection.
-    Source and build status:
+    negation, column-major results, and separate instruction/register-budget
+    rejection. All three dimensions have parser coverage; mat2/mat3 exercise
+    both vector/matrix orders and mat4 verifies uniform matrix products through
+    the bridge. The focused RinGL IR target builds; tests were not executed.
+    Coverage and implementation status:
     [matrix arithmetic v1](docs/implementation-status-ringl-matrix-arithmetic-v1.md).
   - [x] Lower bounded scalar `if`/`else` whose two branches each assign the
     complete stage output. Matching Float or i32 scalar comparisons emit their

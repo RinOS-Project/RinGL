@@ -4006,6 +4006,10 @@ static Value matrix_times_matrix(Lower* lower, const Value* left,
     Value result = invalid_value();
     uint8_t dimension;
     uint16_t scratch;
+    uint32_t folded_results[16];
+    uint32_t component_count;
+    uint32_t constant_mask;
+    int fold_constants;
 
     if (left == NULL || right == NULL || left->matrix < 2u ||
         left->matrix > 4u || left->matrix != right->matrix ||
@@ -4014,6 +4018,74 @@ static Value matrix_times_matrix(Lower* lower, const Value* left,
         return result;
     }
     dimension = left->matrix;
+    component_count = (uint32_t)dimension * dimension;
+    constant_mask = (UINT32_C(1) << component_count) - UINT32_C(1);
+    fold_constants =
+        (left->constant_components & constant_mask) == constant_mask &&
+        (right->constant_components & constant_mask) == constant_mask;
+    if (fold_constants != 0) {
+        for (uint32_t column = 0u; column < dimension; ++column) {
+            for (uint32_t row = 0u; row < dimension; ++row) {
+                uint32_t accumulator_bits;
+                uint32_t component = column * dimension + row;
+
+                if (!fold_binary_constant(
+                        RINGL_RSH1_OP_MUL_F32,
+                        left->constant_bits[row],
+                        right->constant_bits[column * dimension],
+                        &accumulator_bits)) {
+                    fold_constants = 0;
+                    break;
+                }
+                for (uint32_t inner = 1u; inner < dimension; ++inner) {
+                    uint32_t product_bits;
+
+                    if (!fold_binary_constant(
+                            RINGL_RSH1_OP_MUL_F32,
+                            left->constant_bits[inner * dimension + row],
+                            right->constant_bits[column * dimension + inner],
+                            &product_bits) ||
+                        !fold_binary_constant(
+                            RINGL_RSH1_OP_ADD_F32, accumulator_bits,
+                            product_bits, &accumulator_bits)) {
+                        fold_constants = 0;
+                        break;
+                    }
+                }
+                if (fold_constants == 0)
+                    break;
+                folded_results[component] = accumulator_bits;
+            }
+            if (fold_constants == 0)
+                break;
+        }
+        if (fold_constants != 0) {
+            for (uint32_t component = 0u; component < component_count;
+                 ++component) {
+                uint16_t destination = new_reg(lower);
+
+                if (destination == RINGL_RSH1_UNUSED ||
+                    !emit(lower, RINGL_RSH1_OP_CONST_F32, destination,
+                          RINGL_RSH1_UNUSED, RINGL_RSH1_UNUSED,
+                          folded_results[component])) {
+                    return invalid_value();
+                }
+                result.regs[component] = destination;
+                result.constant_components |=
+                    (uint16_t)(UINT32_C(1) << component);
+                result.constant_bits[component] = folded_results[component];
+                if (folded_results[component] == 0u)
+                    result.known_zero_components |=
+                        (uint16_t)(UINT32_C(1) << component);
+            }
+            result.width = dimension;
+            result.matrix = dimension;
+            return result;
+        }
+        /* Preserve runtime finite-value preflight when a constant product
+         * overflows at an intermediate multiply or add. No partial constants
+         * were emitted; the ordinary RSH1 path retains its normal bounds. */
+    }
     scratch = new_reg(lower);
     if (scratch == RINGL_RSH1_UNUSED)
         return result;

@@ -80,8 +80,9 @@ RSH1 executes the finite profiles specified in
 compiler. Notable exclusions include general declarations/types/arrays,
 unrestricted constructors and swizzles, unrestricted built-ins, texture
 expressions outside the accepted finite vector grammar and RSH1 budget,
-unverified arbitrary mixed-varying combinations, general matrix arithmetic,
-varying arrays, vertex pulling, recursion, and general control flow.
+unverified arbitrary mixed-varying combinations, rectangular or
+cross-dimension matrix operations, dynamic matrix indexing, varying arrays,
+vertex pulling, recursion, and general control flow.
 
 `if`/`else`, Boolean operations, `discard`, derivatives, point size,
 matrices, texture samples, and varying interpolation are available only in the
@@ -99,8 +100,9 @@ the instruction/register limits before publication. Matrix uniform updates
 replace affected program-owned stage modules atomically. Dynamic indexing,
 cross-dimension conversion, rectangular matrix types, and matrix/vector use in
 the specialized transformed-texture profile remain unavailable and must be
-rejected before RinGPU submission. New matrix arithmetic regression coverage
-is still open.
+rejected before RinGPU submission. Parser/IR and bridge readback regression
+coverage is present; see the matrix arithmetic status for its build and
+execution state.
 
 ## RinGPU and browser integration limits
 

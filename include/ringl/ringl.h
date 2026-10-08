@@ -1905,6 +1905,9 @@ int ringl_get_vertex_attribfv_bounded(uint32_t index, uint32_t pname,
 uint32_t ringl_create_shader(uint32_t shader_type);
 void ringl_delete_shader(uint32_t shader);
 int ringl_is_shader(uint32_t shader);
+/* The bounded source compiler retains no process-global compiler resources;
+ * this GLES lifecycle call is therefore a deliberate no-op. */
+void ringl_release_shader_compiler(void);
 void ringl_shader_source(uint32_t shader, const char* source, int64_t length);
 void ringl_compile_shader(uint32_t shader);
 uint32_t ringl_get_shader_compile_status(uint32_t shader);

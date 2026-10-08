@@ -222,6 +222,13 @@ int ringl_is_shader(uint32_t shader)
            !context->shaders[ringl_object_slot_index(shader)].delete_pending;
 }
 
+void ringl_release_shader_compiler(void)
+{
+    /* GLSL lowering is bounded, synchronous, and keeps no global cache or
+     * compiler allocation between calls. There is no persistent resource to
+     * release, so the GLES lifecycle operation has no state transition. */
+}
+
 int ringl_shader_is_delete_pending(RinGLContext* context, uint32_t shader)
 {
     RinGLShaderObject* object = ringl_shader_object(context, shader);

@@ -107,6 +107,12 @@ pnames, while anisotropy remains extension-gated. Float queries preserve the
 core enum values as Float32 and retain anisotropy precision. Integer anisotropy
 queries round the tracked value to the nearest integer.
 
+Shader/program integer status queries validate a complete one-element span and
+cover the full GLES 2.0 pname set, including delete-pending state. The bounded
+GLSL compiler keeps no process-global resources, so
+`ringl_release_shader_compiler()` intentionally has no state transition;
+`glShaderBinary` remains unsupported because no binary format is admitted.
+
 `glGetBufferParameteriv` is also available through a bounded adapter for the
 represented `BUFFER_SIZE` and `BUFFER_USAGE` pnames. Target, binding, pname,
 and the one-element output span are validated before publication; unbound

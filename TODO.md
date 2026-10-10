@@ -591,12 +591,16 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     `GLint`. Short/null outputs and unbound buffers leave the destination
     unchanged. Broader buffer-query pnames and conformance semantics remain
     open.
-  - [x] Add a bounded `glGetFramebufferAttachmentParameteriv` adapter for the
-    represented custom-FBO attachments. Object type/name, texture level, the
-    2D-only cube-face sentinel, and logical `EXT_sRGB` color encoding require
-    a complete one-element output span and publish only after the existing
-    versioned attachment record validates. Depth/stencil color-encoding
-    queries, unknown pnames, and unavailable default-FBO semantics remain
+  - [x] Add a bounded `glGetFramebufferAttachmentParameteriv` adapter for
+    represented custom-FBO and configured default-framebuffer attachments.
+    Custom object type/name, texture level, the 2D-only cube-face sentinel,
+    logical `EXT_sRGB` color encoding, component type, and logical channel/
+    aspect sizes require a complete one-element output span and publish only
+    after attachment/storage metadata validates. Default-framebuffer object
+    type/name/level queries return the standard `NONE`/zero identity, while
+    component and logical aspect sizes come from its configured physical
+    format and depth/stencil flags. Depth/stencil color-encoding queries,
+    unknown pnames, multisample, and unsupported-format semantics remain
     rejected rather than synthesized.
   - [x] Add a bounded `glGetRenderbufferParameteriv` adapter for represented
     renderbuffer metadata. Width/height, internal format, component bit sizes,

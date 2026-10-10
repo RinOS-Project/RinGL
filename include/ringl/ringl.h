@@ -1896,12 +1896,18 @@ int ringl_get_vertex_attrib_current(uint32_t index, float values[4]);
 /* Bounded GLES-style attribute queries. The integer form accepts scalar
  * descriptor pnames and rounds CURRENT_VERTEX_ATTRIB to four signed integers
  * when representable; the float form accepts CURRENT_VERTEX_ATTRIB and the
- * scalar descriptor pnames. The pointer pname remains unavailable because
- * raw host pointers are not a safe embedding ABI. */
+ * scalar descriptor pnames. The pointer-shaped query is exposed separately
+ * as a uint64_t VBO byte offset, never as a host pointer. */
 int ringl_get_vertex_attribiv_bounded(uint32_t index, uint32_t pname,
                                       int32_t* values, size_t value_count);
 int ringl_get_vertex_attribfv_bounded(uint32_t index, uint32_t pname,
                                       float* values, size_t value_count);
+/* Returns the captured ARRAY_BUFFER byte offset through one caller-owned
+ * uint64_t slot. This is the safe bounded equivalent of the GLES pointer
+ * query for RinGL's VBO-only vertex input; no host pointer is exposed. */
+int ringl_get_vertex_attrib_pointer_offset_bounded(uint32_t index,
+                                                   uint64_t* offset,
+                                                   size_t offset_count);
 
 uint32_t ringl_create_shader(uint32_t shader_type);
 void ringl_delete_shader(uint32_t shader);

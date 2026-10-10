@@ -31,6 +31,12 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     backing buffer only after its full upload succeeds.
 - [x] Implement array-buffer and element-array-buffer state.
 - [x] Implement the initial vertex attribute state model.
+- [x] Expose the captured vertex-buffer byte offset through the bounded
+  `ringl_get_vertex_attrib_pointer_offset_bounded()` query. It writes one
+  `uint64_t` only after validating the complete output slot and attribute
+  index, so embeddings can recover GLES pointer-offset state without a raw
+  host pointer. The GLES-shaped `glGetVertexAttribPointerv` entry point remains
+  outside the embedding ABI.
 - [x] Translate supported GL vertex formats into RinGPU vertex layouts.
   - [x] Map WebGL 1 `FLOAT`/`BYTE`/`UNSIGNED_BYTE`/`SHORT`/`UNSIGNED_SHORT`
     attributes, including normalized 8/16-bit conversion and byte strides, to

@@ -267,6 +267,29 @@ int ringl_get_vertex_attrib(uint32_t index, RinGLVertexAttribInfoV1* info)
     return 0;
 }
 
+int ringl_get_vertex_attrib_pointer_offset_bounded(uint32_t index,
+                                                   uint64_t* offset,
+                                                   size_t offset_count)
+{
+    RinGLContext* context = ringl_get_current_context();
+    RinGLVertexAttribState* attrib;
+
+    if (context == NULL)
+        return -1;
+    if (offset == NULL || offset_count < 1u) {
+        ringl_context_record_error(context, RINGL_INVALID_OPERATION);
+        return -1;
+    }
+    attrib = ringl_vertex_attrib(context, index);
+    if (attrib == NULL) {
+        ringl_context_record_error(context, RINGL_INVALID_VALUE);
+        return -1;
+    }
+
+    *offset = attrib->offset;
+    return 0;
+}
+
 int ringl_get_vertex_attrib_current(uint32_t index, float values[4])
 {
     RinGLContext* context = ringl_get_current_context();

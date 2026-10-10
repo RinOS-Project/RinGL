@@ -58,6 +58,11 @@
  * the RinGPU binding. */
 #define RINGL_MAX_CPU_SHADOW_BYTES \
     (UINT64_C(512) * UINT64_C(1024) * UINT64_C(1024))
+/* Keep several independent GL contexts from multiplying the per-context
+ * budget without limit. This aggregate includes context records, active CPU
+ * shadows, and retained staging-cache blocks. */
+#define RINGL_MAX_GLOBAL_CPU_ALLOCATION_BYTES \
+    (UINT64_C(2) * RINGL_MAX_CPU_SHADOW_BYTES)
 #define RINGL_STAGING_CACHE_BLOCK_COUNT 4u
 #define RINGL_STAGING_CACHE_MAX_BLOCK_BYTES (UINT64_C(1) * 1024u * 1024u)
 #define RINGL_STAGING_CACHE_MAX_BYTES (UINT64_C(4) * 1024u * 1024u)

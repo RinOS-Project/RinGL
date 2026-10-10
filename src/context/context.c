@@ -6,6 +6,49 @@
 #include <string.h>
 
 static _Thread_local RinGLContext* ringl_current_context;
+static volatile uint32_t ringl_global_cpu_allocation_lock_state;
+static uint64_t ringl_global_cpu_allocation_bytes;
+
+static void ringl_global_cpu_allocation_lock(void)
+{
+    while (__sync_lock_test_and_set(
+               &ringl_global_cpu_allocation_lock_state, 1u) != 0u) {
+    }
+}
+
+static void ringl_global_cpu_allocation_unlock(void)
+{
+    __sync_lock_release(&ringl_global_cpu_allocation_lock_state);
+}
+
+static int ringl_global_cpu_allocation_reserve(uint64_t bytes)
+{
+    int admitted = 0;
+
+    if (bytes == 0u || bytes > RINGL_MAX_GLOBAL_CPU_ALLOCATION_BYTES)
+        return 0;
+    ringl_global_cpu_allocation_lock();
+    if (ringl_global_cpu_allocation_bytes <=
+            RINGL_MAX_GLOBAL_CPU_ALLOCATION_BYTES - bytes) {
+        ringl_global_cpu_allocation_bytes += bytes;
+        admitted = 1;
+    }
+    ringl_global_cpu_allocation_unlock();
+    return admitted;
+}
+
+static void ringl_global_cpu_allocation_release(uint64_t bytes)
+{
+    if (bytes == 0u)
+        return;
+    ringl_global_cpu_allocation_lock();
+    /* An accounting mismatch keeps the charge in place. Releasing another
+     * context's reservation would turn an internal error into an unbounded
+     * allocation bypass. */
+    if (bytes <= ringl_global_cpu_allocation_bytes)
+        ringl_global_cpu_allocation_bytes -= bytes;
+    ringl_global_cpu_allocation_unlock();
+}
 
 #define RINGL_TRACE_MAGIC UINT64_C(0x52494e4c54524331)
 
@@ -228,9 +271,13 @@ int ringl_context_create(const RinGLContextDescV1* desc,
         }
     }
 
-    context = calloc(1, sizeof(*context));
-    if (context == NULL)
+    if (!ringl_global_cpu_allocation_reserve(sizeof(*context)))
         return -2;
+    context = calloc(1, sizeof(*context));
+    if (context == NULL) {
+        ringl_global_cpu_allocation_release(sizeof(*context));
+        return -2;
+    }
 
     context->magic = RINGL_CONTEXT_MAGIC;
     context->pending_error = RINGL_NO_ERROR;
@@ -305,6 +352,8 @@ int ringl_context_create(const RinGLContextDescV1* desc,
 
 void ringl_context_destroy(RinGLContext* context)
 {
+    const uint64_t context_allocation_bytes = sizeof(*context);
+
     if (!ringl_context_is_valid(context))
         return;
 
@@ -331,13 +380,28 @@ void ringl_context_destroy(RinGLContext* context)
     ringl_texture_objects_destroy_all(context);
     ringl_buffer_objects_destroy_all(context);
     for (uint32_t index = 0u; index < RINGL_STAGING_CACHE_BLOCK_COUNT;
-         ++index)
-        free(context->staging_blocks[index].memory);
+         ++index) {
+        RinGLStagingBlock* block = &context->staging_blocks[index];
+        if (block->memory == NULL)
+            continue;
+        if (block->in_use != 0u)
+            ringl_context_release_shadow_bytes(context, block->capacity);
+        else {
+            uint64_t released = block->capacity;
+            if (released > context->staging_cached_bytes)
+                released = context->staging_cached_bytes;
+            context->staging_cached_bytes -= released;
+            ringl_global_cpu_allocation_release(released);
+        }
+        free(block->memory);
+        memset(block, 0, sizeof(*block));
+    }
     context->magic = 0u;
     memset(&context->sync_ops, 0, sizeof(context->sync_ops));
     memset(&context->ringpu_ops, 0, sizeof(context->ringpu_ops));
     memset(&context->ringpu, 0, sizeof(context->ringpu));
     free(context);
+    ringl_global_cpu_allocation_release(context_allocation_bytes);
 }
 
 int ringl_make_current(RinGLContext* context)
@@ -418,11 +482,14 @@ static void ringl_context_trim_staging_cache(RinGLContext* context)
         RinGLStagingBlock* block = &context->staging_blocks[index];
         if (block->memory == NULL || block->in_use)
             continue;
+        {
+            uint64_t released = block->capacity;
+            if (released > context->staging_cached_bytes)
+                released = context->staging_cached_bytes;
+            context->staging_cached_bytes -= released;
+            ringl_global_cpu_allocation_release(released);
+        }
         free(block->memory);
-        if (block->capacity >= context->staging_cached_bytes)
-            context->staging_cached_bytes = 0u;
-        else
-            context->staging_cached_bytes -= block->capacity;
         memset(block, 0, sizeof(*block));
     }
 }
@@ -491,32 +558,52 @@ int ringl_context_reserve_shadow_bytes(RinGLContext* context,
     if (!ringl_context_is_valid(context) ||
         bytes > RINGL_MAX_CPU_SHADOW_BYTES)
         return 0;
-    if (context->staging_cached_bytes <= RINGL_MAX_CPU_SHADOW_BYTES -
-                                            context->cpu_shadow_bytes &&
-        bytes <= RINGL_MAX_CPU_SHADOW_BYTES - context->cpu_shadow_bytes -
-                     context->staging_cached_bytes) {
-        context->cpu_shadow_bytes += bytes;
+    if (bytes == 0u)
         return 1;
+    for (uint32_t attempt = 0u; attempt < 2u; ++attempt) {
+        int local_room = context->cpu_shadow_bytes <=
+                RINGL_MAX_CPU_SHADOW_BYTES &&
+            context->staging_cached_bytes <=
+                RINGL_MAX_CPU_SHADOW_BYTES - context->cpu_shadow_bytes &&
+            bytes <= RINGL_MAX_CPU_SHADOW_BYTES -
+                context->cpu_shadow_bytes - context->staging_cached_bytes;
+        if (local_room && ringl_global_cpu_allocation_reserve(bytes)) {
+            context->cpu_shadow_bytes += bytes;
+            return 1;
+        }
+        if (attempt == 0u)
+            /* Cached readback memory is reclaimable. Release it before
+             * rejecting a real allocation on either budget. */
+            ringl_context_trim_staging_cache(context);
     }
-    /* Cached readback memory is reclaimable. Release it before rejecting a
-     * real persistent allocation so the budget remains a hard total bound. */
-    ringl_context_trim_staging_cache(context);
-    if (context->cpu_shadow_bytes > RINGL_MAX_CPU_SHADOW_BYTES - bytes)
-        return 0;
-    context->cpu_shadow_bytes += bytes;
-    return 1;
+    return 0;
+}
+
+static uint64_t ringl_context_release_shadow_bytes_local(
+    RinGLContext* context, uint64_t bytes)
+{
+    uint64_t released;
+
+    if (bytes >= context->cpu_shadow_bytes) {
+        released = context->cpu_shadow_bytes;
+        context->cpu_shadow_bytes = 0u;
+    } else {
+        released = bytes;
+        context->cpu_shadow_bytes -= bytes;
+    }
+    return released;
 }
 
 void ringl_context_release_shadow_bytes(RinGLContext* context,
                                          uint64_t bytes)
 {
+    uint64_t released;
+
     if (!ringl_context_is_valid(context))
         return;
     /* Never wrap the accounting counter on an internal ownership mismatch. */
-    if (bytes >= context->cpu_shadow_bytes)
-        context->cpu_shadow_bytes = 0u;
-    else
-        context->cpu_shadow_bytes -= bytes;
+    released = ringl_context_release_shadow_bytes_local(context, bytes);
+    ringl_global_cpu_allocation_release(released);
 }
 
 void* ringl_context_alloc_temporary(RinGLContext* context, uint64_t bytes)
@@ -561,11 +648,9 @@ void* ringl_context_alloc_staging(RinGLContext* context, uint64_t bytes)
         const uint64_t capacity = block->capacity;
         context->staging_cached_bytes -= capacity;
         block->in_use = 1u;
-        if (!ringl_context_reserve_shadow_bytes(context, capacity)) {
-            block->in_use = 0u;
-            context->staging_cached_bytes += capacity;
-            return NULL;
-        }
+        /* This allocation is already charged globally while cached; move its
+         * local charge from the cache bucket back to active staging. */
+        context->cpu_shadow_bytes += capacity;
         return block->memory;
     }
 
@@ -610,8 +695,8 @@ void ringl_context_free_staging(RinGLContext* context, void* memory,
                     ringl_context_trim_staging_cache(context);
                 if (context->staging_cached_bytes + block->capacity <=
                     RINGL_STAGING_CACHE_MAX_BYTES) {
-                    ringl_context_release_shadow_bytes(context,
-                                                       block->capacity);
+                    (void)ringl_context_release_shadow_bytes_local(
+                        context, block->capacity);
                     context->staging_cached_bytes += block->capacity;
                     block->in_use = 0u;
                     return;

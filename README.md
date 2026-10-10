@@ -23,13 +23,18 @@ against the complete RinGL software path. That regression keeps WebGL-facing
 descriptor queries failure-atomic and exercises malformed state and shader
 inputs without requiring a GPU.
 
-Browser-facing buffer shadows have a per-context 512 MiB accounting budget.
+Browser-facing buffer shadows have a per-context 512 MiB accounting budget
+and share a 1 GiB aggregate budget across RinGL contexts in one library
+instance. The aggregate charges each context record, active CPU shadow
+reservation, and retained staging-cache block. Cache reuse keeps its existing
+charge; trimming the cache and destroying a context release it.
 `bufferData` and transactional sub-data replacement reserve bytes before
 allocation and release them on every failure or object destruction, so an
 oversized untrusted request cannot reach `malloc` or the backend. Texture,
 shader/program, temporary staging, parser/lowerer workspaces, and the built
-software backend now use the same checked budget; hardware/QEMU accounting
-remains a separate follow-up.
+software backend now use the same per-context checked budget. Driver-owned GPU
+memory and hardware/QEMU accounting remain separate follow-ups
+([aggregate budget status](docs/implementation-status-ringl-global-cpu-budget-v1.md)).
 
 Persistent texture shadows now use the same budget, including explicit mip
 levels and generated mipmaps. Texture replacement, copy-image, deletion, and

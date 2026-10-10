@@ -838,6 +838,12 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     old one, preserves eviction order, and falls back to bounded eviction if
     reservation or allocation fails. Backend-owned resources and hardware/QEMU
     accounting remain open ([status](docs/implementation-status-ringl-pipeline-cache-growth-v1.md)).
+  - [x] Cap aggregate RinGL context records, active CPU shadow reservations,
+    and retained staging-cache memory at 1 GiB per loaded library instance,
+    while preserving the 512 MiB per-context limit. Cache reuse retains its
+    charge; trim and context teardown release it as memory is freed. This source
+    change was not built or tested, and driver-owned GPU plus hardware/QEMU
+    accounting remain open ([status](docs/implementation-status-ringl-global-cpu-budget-v1.md)).
 - [x] Add WebGL-oriented negative tests for malformed state and shader input.
   `tests/ringl_webgl_negative_test.c` covers failure-atomic descriptor queries,
   invalid viewport/scissor/depth/blend values, and malformed GLSL compile

@@ -22,5 +22,12 @@ Aquamarine surface and generic software-backend owner budgets. The broader
 untrusted-allocation audit remains open for those owners and for hardware/QEMU
 evidence.
 
+The built generic RinGPU software backend now has a separate 1 GiB aggregate
+CPU allocation limit across backend instances in one loaded RinGPU library
+image. It retains each backend's descriptor limit and charges backend records,
+resource/execution allocations, and idle memory-pool blocks. This counter does
+not share RinGL's context counter, and it does not account for physical GPU or
+driver allocations.
+
 Source inspection only was performed for these changes. No build or tests were
 run, so compilation and runtime behavior remain unverified in this work session.

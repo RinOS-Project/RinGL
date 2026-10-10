@@ -817,8 +817,11 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     compute writable-buffer shadows. Each exact size is admitted before
     allocation and released on validation, dispatch rollback, destruction, and
     backend teardown paths. The historical direct Aquamarine source is not in
-    the current CMake/source manifest; GPU-driver accounting and hardware/QEMU
-    evidence remain open.
+    the current CMake/source manifest. RinGPU now also enforces a 1 GiB
+    aggregate across all software backend instances in one loaded library
+    image, including backend objects and idle memory-pool blocks; this budget is
+    separate from RinGL's 1 GiB context aggregate. GPU-driver accounting and
+    hardware/QEMU evidence remain open.
   - [x] Charge parser and RSH1 lowerer reflection/instruction workspaces to
     the same per-context budget. Compile, shader lowering, link-time interface
     parsing, and program-owned uniform rebuilds reserve their complete bounded

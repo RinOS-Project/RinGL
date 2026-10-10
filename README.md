@@ -31,9 +31,12 @@ charge; trimming the cache and destroying a context release it.
 `bufferData` and transactional sub-data replacement reserve bytes before
 allocation and release them on every failure or object destruction, so an
 oversized untrusted request cannot reach `malloc` or the backend. Texture,
-shader/program, temporary staging, parser/lowerer workspaces, and the built
-software backend now use the same per-context checked budget. Driver-owned GPU
-memory and hardware/QEMU accounting remain separate follow-ups
+shader/program, temporary staging, and parser/lowerer workspaces use the same
+per-context checked budget. RinGPU's built generic software backend applies
+its own per-instance descriptor limit and a 1 GiB aggregate CPU allocation
+limit across backend instances in one loaded RinGPU library image. The two
+library budgets are separate. Driver-owned GPU memory and hardware/QEMU
+accounting remain separate follow-ups
 ([aggregate budget status](docs/implementation-status-ringl-global-cpu-budget-v1.md)).
 
 Persistent texture shadows now use the same budget, including explicit mip

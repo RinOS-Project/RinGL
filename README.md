@@ -116,9 +116,10 @@ Texture filter/wrap and extension-gated anisotropy queries now have the same
 bounded typed treatment, and vertex-attribute descriptor/current-value queries
 provide integer and Float32 adapters with complete-span validation. Integer
 current-value queries round each Float32 component to the nearest signed
-integer and reject out-of-range values atomically. The raw pointer query remains
-unavailable: exposing a host pointer would violate the embedding ABI, so
-callers must use the versioned attribute record instead. Integer buffer-name
+integer and reject out-of-range values atomically. The GLES-shaped raw pointer
+query remains unavailable, but embeddings can retrieve the captured VBO byte
+offset through `ringl_get_vertex_attrib_pointer_offset_bounded()` or the
+versioned attribute record; neither exposes a host pointer. Integer buffer-name
 and divisor queries also fail atomically when their unsigned state exceeds
 `INT32_MAX`; Float32 queries convert those values directly rather than first
 narrowing through a signed integer.

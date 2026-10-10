@@ -848,6 +848,10 @@ RinGL should grow through small end-to-end slices. The first priority is not bro
     cache uses subtraction-based remaining-capacity checks to avoid overflow.
     These source changes were not built or tested, and driver-owned GPU plus hardware/QEMU
     accounting remain open ([status](docs/implementation-status-ringl-global-cpu-budget-v1.md)).
+  - [x] Keep each RinGL CPU shadow charge active until the corresponding buffer,
+    texture, shader, program, parser workspace, pipeline-cache table, or staging
+    allocation has actually been freed. This prevents concurrent contexts from
+    reusing aggregate headroom while the old allocation is still resident.
 - [x] Add WebGL-oriented negative tests for malformed state and shader input.
   `tests/ringl_webgl_negative_test.c` covers failure-atomic descriptor queries,
   invalid viewport/scissor/depth/blend values, and malformed GLSL compile

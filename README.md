@@ -38,6 +38,8 @@ limit across backend instances in one loaded RinGPU library image. The two
 library budgets are separate. Driver-owned GPU memory and hardware/QEMU
 accounting remain separate follow-ups
 ([aggregate budget status](docs/implementation-status-ringl-global-cpu-budget-v1.md)).
+RinGL keeps each charge until its corresponding dynamic storage has been freed,
+so another context cannot reuse aggregate headroom before memory is returned.
 
 Persistent texture shadows now use the same budget, including explicit mip
 levels and generated mipmaps. Texture replacement, copy-image, deletion, and

@@ -323,10 +323,10 @@ static void texture_release_storage(RinGLContext* context, uint8_t** bytes,
 {
     uint64_t owned_size = size != NULL ? *size : 0u;
 
-    if (context != NULL)
-        ringl_context_release_shadow_bytes(context, owned_size);
     if (bytes != NULL)
         free(*bytes);
+    if (context != NULL)
+        ringl_context_release_shadow_bytes(context, owned_size);
     if (bytes != NULL)
         *bytes = NULL;
     if (size != NULL)
@@ -4533,8 +4533,8 @@ void ringl_copy_tex_image_2d(uint32_t target, int32_t level,
             replacement, snapshot, snapshot_component_type, storage_format,
             storage_component_type, srgb_encoding,
             (uint32_t)width * (uint32_t)height) != 0) {
-        ringl_context_release_shadow_bytes(context, replacement_size);
         free(replacement);
+        ringl_context_release_shadow_bytes(context, replacement_size);
         ringl_context_free_temporary(context, snapshot, snapshot_size);
         ringl_context_record_error(context, RINGL_INVALID_OPERATION);
         return;

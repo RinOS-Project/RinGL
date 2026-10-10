@@ -384,16 +384,18 @@ void ringl_context_destroy(RinGLContext* context)
         RinGLStagingBlock* block = &context->staging_blocks[index];
         if (block->memory == NULL)
             continue;
-        if (block->in_use != 0u)
-            ringl_context_release_shadow_bytes(context, block->capacity);
-        else {
+        if (block->in_use == 0u) {
             uint64_t released = block->capacity;
             if (released > context->staging_cached_bytes)
                 released = context->staging_cached_bytes;
+            free(block->memory);
             context->staging_cached_bytes -= released;
             ringl_global_cpu_allocation_release(released);
+        } else {
+            uint64_t capacity = block->capacity;
+            free(block->memory);
+            ringl_context_release_shadow_bytes(context, capacity);
         }
-        free(block->memory);
         memset(block, 0, sizeof(*block));
     }
     context->magic = 0u;
@@ -486,10 +488,10 @@ static void ringl_context_trim_staging_cache(RinGLContext* context)
             uint64_t released = block->capacity;
             if (released > context->staging_cached_bytes)
                 released = context->staging_cached_bytes;
+            free(block->memory);
             context->staging_cached_bytes -= released;
             ringl_global_cpu_allocation_release(released);
         }
-        free(block->memory);
         memset(block, 0, sizeof(*block));
     }
 }
@@ -624,8 +626,8 @@ void ringl_context_free_temporary(RinGLContext* context, void* memory,
 {
     if (memory == NULL)
         return;
-    ringl_context_release_shadow_bytes(context, bytes);
     free(memory);
+    ringl_context_release_shadow_bytes(context, bytes);
 }
 
 void* ringl_context_alloc_staging(RinGLContext* context, uint64_t bytes)
@@ -685,6 +687,7 @@ void ringl_context_free_staging(RinGLContext* context, void* memory,
         for (uint32_t index = 0u; index < RINGL_STAGING_CACHE_BLOCK_COUNT;
              ++index) {
             RinGLStagingBlock* block = &context->staging_blocks[index];
+            uint64_t capacity = block->capacity;
             if (block->memory != memory)
                 continue;
             if (!block->in_use)
@@ -706,12 +709,13 @@ void ringl_context_free_staging(RinGLContext* context, void* memory,
                     return;
                 }
             }
-            ringl_context_release_shadow_bytes(context, block->capacity);
             free(block->memory);
+            ringl_context_release_shadow_bytes(context, capacity);
             memset(block, 0, sizeof(*block));
             return;
         }
-        ringl_context_release_shadow_bytes(context, bytes);
     }
     free(memory);
+    if (ringl_context_is_valid(context))
+        ringl_context_release_shadow_bytes(context, bytes);
 }

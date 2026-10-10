@@ -303,8 +303,8 @@ static RinGLPipelineCache* cache_for(RinGLContext* context, int create)
     cache->entries = (RinGLPipelineCacheEntry*)calloc(
         RINGL_PIPELINE_CACHE_CAPACITY, sizeof(*cache->entries));
     if (cache->entries == NULL) {
-        ringl_context_release_shadow_bytes(context, entries_size);
         free(cache);
+        ringl_context_release_shadow_bytes(context, entries_size);
         ringl_context_release_shadow_bytes(context, sizeof(*cache));
         return NULL;
     }

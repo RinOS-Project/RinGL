@@ -123,9 +123,9 @@ void ringl_delete_buffers(int32_t count, const uint32_t* buffers)
         if (slot_index < RINGL_OBJECT_SLOT_COUNT) {
             ringl_backend_destroy_object(context,
                                          context->buffers[slot_index].ringpu_handle);
+            free(context->buffers[slot_index].shadow_bytes);
             ringl_context_release_shadow_bytes(
                 context, context->buffers[slot_index].size_bytes);
-            free(context->buffers[slot_index].shadow_bytes);
             memset(&context->buffers[slot_index], 0,
                    sizeof(context->buffers[slot_index]));
         }
@@ -259,9 +259,9 @@ static void ringl_buffer_data_impl(uint32_t target,
             if (new_handle != 0u &&
                 new_handle != object->ringpu_handle)
                 ringl_backend_destroy_object(context, new_handle);
+            free(new_shadow);
             ringl_context_release_shadow_bytes(context,
                                                 (uint64_t)size_bytes);
-            free(new_shadow);
             ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
             return;
         }
@@ -271,17 +271,17 @@ static void ringl_buffer_data_impl(uint32_t target,
         if (ringl_backend_upload_buffer(context, new_handle, 0u, new_shadow,
                                         (uint64_t)size_bytes) != 0) {
             ringl_backend_destroy_object(context, new_handle);
+            free(new_shadow);
             ringl_context_release_shadow_bytes(context,
                                                 (uint64_t)size_bytes);
-            free(new_shadow);
             ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
             return;
         }
     }
 
     ringl_backend_destroy_object(context, object->ringpu_handle);
-    ringl_context_release_shadow_bytes(context, object->size_bytes);
     free(object->shadow_bytes);
+    ringl_context_release_shadow_bytes(context, object->size_bytes);
     object->ringpu_handle = new_handle;
     object->size_bytes = (uint64_t)size_bytes;
     object->shadow_bytes = new_shadow;
@@ -381,8 +381,8 @@ static void ringl_buffer_sub_data_impl(uint32_t target,
         if (replacement_handle != 0u &&
             replacement_handle != object->ringpu_handle)
             ringl_backend_destroy_object(context, replacement_handle);
-        ringl_context_release_shadow_bytes(context, object->size_bytes);
         free(replacement_shadow);
+        ringl_context_release_shadow_bytes(context, object->size_bytes);
         ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
         return;
     }
@@ -390,15 +390,15 @@ static void ringl_buffer_sub_data_impl(uint32_t target,
                                     replacement_shadow,
                                     object->size_bytes) != 0) {
         ringl_backend_destroy_object(context, replacement_handle);
-        ringl_context_release_shadow_bytes(context, object->size_bytes);
         free(replacement_shadow);
+        ringl_context_release_shadow_bytes(context, object->size_bytes);
         ringl_context_record_error(context, RINGL_OUT_OF_MEMORY);
         return;
     }
 
     ringl_backend_destroy_object(context, object->ringpu_handle);
-    ringl_context_release_shadow_bytes(context, object->size_bytes);
     free(object->shadow_bytes);
+    ringl_context_release_shadow_bytes(context, object->size_bytes);
     object->ringpu_handle = replacement_handle;
     object->shadow_bytes = replacement_shadow;
     ringl_context_mark_dirty(context, RINGL_DIRTY_BINDINGS);
@@ -517,9 +517,9 @@ void ringl_buffer_objects_destroy_all(RinGLContext* context)
         }
         ringl_backend_destroy_object(context, context->buffers[index].ringpu_handle);
         context->buffers[index].ringpu_handle = 0u;
+        free(context->buffers[index].shadow_bytes);
         ringl_context_release_shadow_bytes(context,
                                             context->buffers[index].size_bytes);
-        free(context->buffers[index].shadow_bytes);
         context->buffers[index].shadow_bytes = NULL;
         context->buffers[index].size_bytes = 0u;
     }

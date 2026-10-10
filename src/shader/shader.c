@@ -11,10 +11,10 @@
 static void ringl_shader_release_storage(RinGLContext* context,
                                           void** bytes, uint64_t owned_size)
 {
-    if (context != NULL)
-        ringl_context_release_shadow_bytes(context, owned_size);
     if (bytes != NULL)
         free(*bytes);
+    if (context != NULL)
+        ringl_context_release_shadow_bytes(context, owned_size);
     if (bytes != NULL)
         *bytes = NULL;
 }

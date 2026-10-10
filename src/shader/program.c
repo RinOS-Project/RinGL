@@ -181,10 +181,10 @@ static void ringl_program_release_rsh1(RinGLContext* context, uint8_t** bytes,
 {
     uint64_t owned_size = size != NULL ? (uint64_t)*size : 0u;
 
-    if (context != NULL)
-        ringl_context_release_shadow_bytes(context, owned_size);
     if (bytes != NULL)
         free(*bytes);
+    if (context != NULL)
+        ringl_context_release_shadow_bytes(context, owned_size);
     if (bytes != NULL)
         *bytes = NULL;
     if (size != NULL)
@@ -1588,8 +1588,8 @@ static int ringl_program_lower_uniform_shader(
                                             &module) != 0 ||
          module == 0u)) {
         ringl_backend_destroy_object(context, module);
-        ringl_context_release_shadow_bytes(context, lowered->byte_size);
         free(copy);
+        ringl_context_release_shadow_bytes(context, lowered->byte_size);
         ringl_context_free_temporary(context, lowered, sizeof(*lowered));
         return 0;
     }

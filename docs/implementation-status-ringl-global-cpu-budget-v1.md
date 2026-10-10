@@ -15,6 +15,10 @@ reservation releases its charge. Accounting underflow does not reduce the
 aggregate counter. Staging-cache admission compares block capacity against the
 remaining cache allowance with subtraction after validating the current
 counter, so a damaged counter cannot wrap the room calculation.
+Persistent object release, temporary-buffer cleanup, staging-cache trimming,
+and context teardown now free the backing storage before returning its charge.
+Concurrent contexts therefore cannot claim capacity that is still occupied by
+the allocation being released.
 
 This is accounting for RinGL-owned CPU memory routed through the context
 budget. It does not account for GPU-driver allocations or the separate

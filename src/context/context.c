@@ -690,11 +690,15 @@ void ringl_context_free_staging(RinGLContext* context, void* memory,
             if (!block->in_use)
                 return;
             if (block->capacity <= RINGL_STAGING_CACHE_MAX_BLOCK_BYTES) {
-                if (context->staging_cached_bytes + block->capacity >
-                    RINGL_STAGING_CACHE_MAX_BYTES)
+                if (context->staging_cached_bytes >
+                        RINGL_STAGING_CACHE_MAX_BYTES ||
+                    block->capacity > RINGL_STAGING_CACHE_MAX_BYTES -
+                        context->staging_cached_bytes)
                     ringl_context_trim_staging_cache(context);
-                if (context->staging_cached_bytes + block->capacity <=
-                    RINGL_STAGING_CACHE_MAX_BYTES) {
+                if (context->staging_cached_bytes <=
+                        RINGL_STAGING_CACHE_MAX_BYTES &&
+                    block->capacity <= RINGL_STAGING_CACHE_MAX_BYTES -
+                        context->staging_cached_bytes) {
                     (void)ringl_context_release_shadow_bytes_local(
                         context, block->capacity);
                     context->staging_cached_bytes += block->capacity;

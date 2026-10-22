@@ -631,8 +631,10 @@ lowering. A bounded local may also start with the uniform on the left, for
 example `vec2 localUv = offset.yx / uv;`; subtraction and division preserve
 that operand order in RSH1. Only one declared uniform and the existing
 source-order local-coordinate grammar are accepted, not general vector
-expressions. The new uniform-led local form has compile coverage but its
-RinGPU readback regression remains open in the [implementation status](docs/implementation-status-ringl-coordinate-uniform-led-local-v1.md).
+expressions. A RinGL→RinGPU readback regression now covers uniform-led local
+`+`, `-`, `*`, and `/`, the `offset.yx` permutation, and runtime zero-divisor
+target preservation; it was not executed in this work session. See the
+[implementation status](docs/implementation-status-ringl-coordinate-uniform-led-local-v1.md).
 The same bounded two-UV operation may be named first as
 `vec2 mixedUv = firstUv +/- secondUv;` and then passed to `texture2D()`.
 That result can also feed a direct/finite-affine local chain of up to eight

@@ -9,9 +9,11 @@ operand order for subtraction and division through its reverse-operation
 forms. The initializer remains in the same bounded local-coordinate chain and
 does not add general vector-expression support or a host-side texture path.
 
-The existing `ringl-shader_ir-test` and `ringl-textured_draw-test` targets
-compile against the change. They were not executed in this work session, and
-there is no focused readback regression yet for the four uniform-led local
-operators, swizzle permutation, or zero-divisor target preservation. The
-runtime regression remains open in `TODO.md`; this status does not complete
-the broader GLSL texture or varying items.
+`tests/rin_webgl_ringl_bridge_test.c` now registers a focused product
+regression through the browser-facing RinGL bridge, RinGPU, and the private
+Aquamarine surface adapter. It reads back distinct texels for uniform-led
+local `+`, `-`, `*`, and `/` with an `offset.yx` permutation, then supplies a
+runtime zero divisor and checks both `INVALID_OPERATION` and byte-for-byte
+target preservation. The regression was not executed in this work session;
+its runtime result remains unverified. This bounded item does not complete the
+broader GLSL texture or varying work.
